@@ -305,6 +305,28 @@ def chk_disk():
 KERNEL_PKGS = ("akrex-kernel", "clockworkpi-kernel")
 
 
+def chk_devterm(which=None):
+    """The Dev terminal: BLE scan, MQTT dashboard, SSH."""
+    which = which or __import__("shutil").which
+    have, miss = [], []
+    try:
+        import bleak  # noqa: F401
+        have.append("BLE")
+    except ImportError:
+        miss.append("bleak (pip3 install bleak)")
+    try:
+        import paho.mqtt.client  # noqa: F401
+        have.append("MQTT")
+    except ImportError:
+        miss.append("paho-mqtt (pip3 install paho-mqtt)")
+    if which("ssh"):
+        have.append("SSH")
+    else:
+        miss.append("openssh-client")
+    return (True if len(have) >= 2 else None), ", ".join(have) or "nothing set up", \
+        ("install: " + "; ".join(miss)) if miss else ""
+
+
 def chk_hwbench(which=None):
     """The Hardware workbench: serial terminal, I2C scan, GPIO read."""
     which = which or __import__("shutil").which
@@ -423,7 +445,8 @@ CHECKS = [
                 ("1090 antenna", chk_antenna),
                 ("Aircraft database", chk_aircraft_db), ("Passwordless readsb", chk_sudoers),
                 ("Autopilot (Overwatch)", chk_autopilot),
-                ("Hardware bench", chk_hwbench)]),
+                ("Hardware bench", chk_hwbench),
+                ("Dev terminal", chk_devterm)]),
     ("Device", [("GPS", chk_gpsd), ("Meshtastic", chk_mesh), ("Audio", chk_audio), ("Power", chk_power),
                 ("SD card", chk_sdcard), ("Disk", chk_disk), ("System updates", chk_updates),
                 ("Boot files", chk_bootfiles)]),

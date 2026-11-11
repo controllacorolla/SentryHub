@@ -52,7 +52,7 @@ fi
 
 echo "[1/8] System packages"
 NEED=0
-for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-utils espeak-ng mpv iw redsea rtl-433 multimon-ng nmap iproute2 libnotify-bin wmctrl stress-ng python3-serial i2c-tools raspi-gpio; do
+for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-utils espeak-ng mpv iw redsea rtl-433 multimon-ng nmap iproute2 libnotify-bin wmctrl stress-ng python3-serial i2c-tools raspi-gpio bluez; do
   dpkg -s "$pkg" >/dev/null 2>&1 || NEED=1
 done
 if [ "$NEED" = 1 ] && [ -z "${SKIP_APT_UPDATE:-}" ]; then
@@ -61,7 +61,7 @@ elif [ "$NEED" = 1 ]; then
   echo "      (package lists not refreshed - see the warning above; missing packages may be skipped)"
 fi
 # one package at a time, so one unavailable or conflicting package can't block the rest
-for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-utils espeak-ng mpv iw redsea rtl-433 multimon-ng nmap iproute2 libnotify-bin wmctrl stress-ng python3-serial i2c-tools raspi-gpio; do
+for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-utils espeak-ng mpv iw redsea rtl-433 multimon-ng nmap iproute2 libnotify-bin wmctrl stress-ng python3-serial i2c-tools raspi-gpio bluez; do
   rc=0; safe_apt "$pkg" >/dev/null 2>&1 || rc=$?
   case $rc in 0) echo "      ok  $pkg";; 2) echo "      --  $pkg (not in your apt sources - optional)";; *) echo "      --  $pkg (skipped)";; esac
 done
@@ -73,6 +73,8 @@ $PIP faster-whisper || echo "      WARNING: faster-whisper failed - transcripts/
 $PIP skyfield || echo "      WARNING: skyfield failed - weather-sat predictions won't work"
 $PIP meshtastic || echo "      WARNING: meshtastic failed - Mesh app won't connect"
 $PIP pyserial || echo "      note: pyserial not installed - the Hardware serial terminal needs it (python3-serial also works)"
+$PIP bleak || echo "      note: bleak not installed - the Dev terminal BLE scanner needs it"
+$PIP paho-mqtt || echo "      note: paho-mqtt not installed - the Dev terminal MQTT dashboard needs it"
 
 echo "[3/8] Installing apps to $APP"
 # unpack beside the working copy and only swap it in once it is complete and loads, so a
