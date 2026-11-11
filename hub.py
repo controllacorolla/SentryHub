@@ -36,6 +36,7 @@ TILES = [
     ("scout", "Scout", "Network + RF site survey", S.RED, [PY, os.path.join(HERE, "scout.py")]),
     ("hw", "Hardware", "Serial · I2C · GPIO bench", S.PURPLE, [PY, os.path.join(HERE, "hwlab.py")]),
     ("dev", "Dev terminal", "BLE · MQTT · SSH", S.PURPLE, [PY, os.path.join(HERE, "devterm.py")]),
+    ("fc", "Field computer", "Map · track · almanac", S.BLUE, [PY, os.path.join(HERE, "fieldcomp.py")]),
 ]
 
 
@@ -55,7 +56,7 @@ class Shell:
         "field": ("field_status", "main"), "ai": ("assistant", "main"),
         "tx": ("transcriber", "viewer"), "signals": ("signals", "main"),
         "scout": ("scout", "main"), "ow": ("overwatch", "main"),
-        "hw": ("hwlab", "main"), "dev": ("devterm", "main"),
+        "hw": ("hwlab", "main"), "dev": ("devterm", "main"), "fc": ("fieldcomp", "main"),
     }
     PASS = ("--demo",)            # shell flags every workspace inherits
 
@@ -772,6 +773,7 @@ def main():
         ("Network & field", S.RED, [
             ("hw", "Hardware", "Serial · I2C · GPIO", ("launch", "hw")),
             ("dev", "Dev terminal", "BLE · MQTT · SSH", ("launch", "dev")),
+            ("fc", "Field computer", "Map · track · almanac", ("launch", "fc")),
             ("mesh", "Mesh", "Meshtastic messages", ("launch", "mesh")),
             ("scout", "Scout", "Network + RF survey", ("launch", "scout")),
             ("field", "Field Status", "GPS, battery, thermals", ("launch", "field")),
@@ -799,7 +801,7 @@ def main():
 
     HINT = "Ctrl+K jump to anything  ·  Esc back here  ·  Ctrl+W close a workspace"
     msg.config(text=HINT)
-    ICON = {"ops": "◈", "ow": "◉", "hw": "⎓", "dev": "⌨", "sky": "✈", "tx": "≡", "signals": "⌁", "fm": "♪", "scanner": "⇆",
+    ICON = {"ops": "◈", "ow": "◉", "hw": "⎓", "dev": "⌨", "fc": "⊕", "sky": "✈", "tx": "≡", "signals": "⌁", "fm": "♪", "scanner": "⇆",
             "rfx": "∿", "sdrpp": "⊕", "wx": "◐", "sensors": "◎", "sstv": "▣", "sonde": "○",
             "mesh": "⬡", "scout": "⌖", "field": "⊙", "aprs": "◇", "doctor": "✚",
             "security": "⛨", "log": "☰", "backup": "⇩", "settings": "⚙", "external": "⇱",

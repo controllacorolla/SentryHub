@@ -129,6 +129,7 @@ echo "Security review of your own device:  hub --security"
 echo "Spoken situation report:  hub --sitrep"
 echo "Overwatch (in the Hub): the sky dome, with Autopilot sharing the one radio between apps."
 echo "Hardware (in the Hub): serial terminal, I2C/SPI bus scan, and GPIO - the bench instruments."
+echo "Field computer (in the Hub): offline moving map, GPX track recording, and a sun/moon/ISS almanac."
 echo "Every app has a Settings button - no JSON editing needed."
 echo
 echo "Notes:"

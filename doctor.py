@@ -305,6 +305,17 @@ def chk_disk():
 KERNEL_PKGS = ("akrex-kernel", "clockworkpi-kernel")
 
 
+def chk_fieldcomp(which=None):
+    """The Field computer: GPS fix, map tiles, almanac."""
+    try:
+        import skyfield  # noqa: F401
+        alm = "almanac+ISS"
+    except ImportError:
+        alm = "almanac (ISS needs skyfield)"
+    gps = "gpsd" if __import__("shutil").which("gpsd") or os.path.exists("/dev/ttyAMA0") else "no gpsd"
+    return True, "map, track, %s · %s" % (alm, gps), ""
+
+
 def chk_devterm(which=None):
     """The Dev terminal: BLE scan, MQTT dashboard, SSH."""
     which = which or __import__("shutil").which
@@ -446,7 +457,8 @@ CHECKS = [
                 ("Aircraft database", chk_aircraft_db), ("Passwordless readsb", chk_sudoers),
                 ("Autopilot (Overwatch)", chk_autopilot),
                 ("Hardware bench", chk_hwbench),
-                ("Dev terminal", chk_devterm)]),
+                ("Dev terminal", chk_devterm),
+                ("Field computer", chk_fieldcomp)]),
     ("Device", [("GPS", chk_gpsd), ("Meshtastic", chk_mesh), ("Audio", chk_audio), ("Power", chk_power),
                 ("SD card", chk_sdcard), ("Disk", chk_disk), ("System updates", chk_updates),
                 ("Boot files", chk_bootfiles)]),
