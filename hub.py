@@ -484,6 +484,23 @@ def main():
 
     S.btn(top, "Sitrep", sitrep, F, font="map", padx=10, pady=2, kind="ghost").pack(
         side="right", padx=(0, 6))
+    # a visible way out (Ctrl+Q also works, from anywhere): one confirm so it isn't fat-fingered
+    quit_armed = [None]
+
+    def disarm_quit():
+        quit_armed[0] = None
+        T.set_btn(quit_btn, "⏻ Quit", "quiet")
+
+    def quit_clicked():
+        if quit_armed[0] is not None:          # second press within the window: go
+            on_close()
+            return
+        T.set_btn(quit_btn, "Quit — sure?", "danger")
+        msg.config(text="Press Quit again to shut down Sentry. Any app using the radio is "
+                        "stopped and the plane map is restored.")
+        quit_armed[0] = root.after(2500, disarm_quit)
+    quit_btn = S.btn(top, "⏻ Quit", quit_clicked, F, font="map", padx=10, pady=2, kind="quiet")
+    quit_btn.pack(side="right", padx=(0, 6))
 
     def open_log(_=None):
         win = tk.Toplevel(root, bg=T.SURFACE)
@@ -808,7 +825,7 @@ def main():
         else:
             val()
 
-    HINT = "Ctrl+K jump to anything  ·  Esc back here  ·  Ctrl+W close a workspace"
+    HINT = "Ctrl+K jump to anything  ·  Esc back here  ·  Ctrl+W close a workspace  ·  Ctrl+Q quit"
     msg.config(text=HINT)
     ICON = {"ops": "◈", "ow": "◉", "hw": "⎓", "dev": "⌨", "fc": "⊕", "sky": "✈", "tx": "≡", "signals": "⌁", "fm": "♪", "scanner": "⇆",
             "rfx": "∿", "sdrpp": "⊕", "wx": "◐", "sensors": "◎", "sstv": "▣", "sonde": "○",
