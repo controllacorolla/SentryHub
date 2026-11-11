@@ -498,9 +498,11 @@ def main():
 
     # output (line / hex)
     outwrap = tk.Frame(sp, bg=S.BG)
-    outwrap.pack(fill="both", expand=True)
+    # NOTE: not packed here. The bottom send row (srow) is packed first, below, so it always
+    # keeps its space; set_view() then packs outwrap/plotwrap into whatever remains. A Text
+    # defaults to a 24-line request, which would otherwise overflow the window and clip srow.
     out = tk.Text(outwrap, bg="#07080a", fg=T.TXT_2, font=F["mono"], bd=0, highlightthickness=0,
-                  wrap="none", state="disabled", padx=T.px(10), pady=T.px(6))
+                  wrap="none", state="disabled", padx=T.px(10), pady=T.px(6), height=1)
     sb = tk.Scrollbar(outwrap, command=out.yview, bg=T.SURFACE, troughcolor=S.BG, bd=0,
                       highlightthickness=0, width=T.px(10))
     out.config(yscrollcommand=sb.set)

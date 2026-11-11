@@ -402,12 +402,12 @@ def main():
     mqtt_btn.pack(side="left")
     mqtt_status = tk.Label(mhr, text="", font=F["map"], fg=T.TXT_3, bg=T.SURFACE)
     mqtt_status.pack(side="left", padx=(T.px(10), 0))
-    mgrid = tk.Frame(mp, bg=S.BG)
-    mgrid.pack(fill="both", expand=True, padx=T.px(10), pady=T.px(10))
-    # publish row
+    # publish row first (side=bottom) so it always keeps its space, then the grid fills the rest
     mpub = tk.Frame(mp, bg=T.SURFACE)
     mpub.pack(side="bottom", fill="x")
     tk.Frame(mp, bg=S.LINE, height=1).pack(side="bottom", fill="x")
+    mgrid = tk.Frame(mp, bg=S.BG)
+    mgrid.pack(fill="both", expand=True, padx=T.px(10), pady=T.px(10))
     mpr = tk.Frame(mpub, bg=T.SURFACE)
     mpr.pack(fill="x", padx=T.px(10), pady=T.px(7))
     tk.Label(mpr, text="Publish", font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE).pack(side="left")
@@ -559,7 +559,7 @@ def main():
         side="left", padx=(T.px(6), 0))
     cmd_out = tk.Text(sright, bg="#07080a", fg=T.TXT_2, font=F["mono"], bd=0,
                       highlightthickness=0, wrap="word", state="disabled", padx=T.px(8),
-                      pady=T.px(6))
+                      pady=T.px(6), height=1)
     cmd_out.pack(fill="both", expand=True, pady=(T.px(8), 0))
     S.bind_wheel(cmd_out)
 

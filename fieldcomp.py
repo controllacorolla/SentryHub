@@ -242,12 +242,13 @@ def main():
 
     # ================= MAP =================
     mp = panes["map"]
-    cv = tk.Canvas(mp, bg=tiles.MAPBG if hasattr(tiles, "MAPBG") else "#0a0c0d",
-                   highlightthickness=0)
-    cv.pack(side="top", fill="both", expand=True)
+    # bottom bar first (side=bottom) so it never gets clipped, then the map fills the rest
     mbar = tk.Frame(mp, bg=T.SURFACE)
     mbar.pack(side="bottom", fill="x")
     tk.Frame(mp, bg=S.LINE, height=1).pack(side="bottom", fill="x")
+    cv = tk.Canvas(mp, bg=tiles.MAPBG if hasattr(tiles, "MAPBG") else "#0a0c0d",
+                   highlightthickness=0)
+    cv.pack(side="top", fill="both", expand=True)
     mrow = tk.Frame(mbar, bg=T.SURFACE)
     mrow.pack(fill="x", padx=T.px(8), pady=T.px(5))
 
