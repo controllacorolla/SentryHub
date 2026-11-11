@@ -1,0 +1,11 @@
+# generated single-file installers (rebuild with: bash build_installer.sh out.sh)
+uconsole-suite-v*.sh
+install-uconsole-suite.sh
+# build/test artifacts
+__pycache__/
+*.pyc
+*.png
+*.log
+.pytest_cache/
+# runtime data / caches (never part of source)
+*.tar.gz
