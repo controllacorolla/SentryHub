@@ -572,8 +572,7 @@ def main():
         root.destroy()
 
     S.bind_quit(root, on_close)
-    S.btn(trow, "Quit" if not getattr(root, "embedded", False) else "Close", on_close, F,
-          padx=10, pady=4, kind="quiet").pack(side="right")
+    S.header_quit(top, root, F, on_close)
 
     show_tab("map")
     tick()

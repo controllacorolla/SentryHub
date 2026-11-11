@@ -77,6 +77,56 @@ def pill(parent, F, text="", bg=DIM):
     return T.Tag(parent, F, text, bg)
 
 
+def bind_wheel(widget, target=None, step=3):
+    """Mouse-wheel scrolling for one widget (Linux Button-4/5 and MouseWheel). Scoped to the
+    widget, so it never leaks into the shell. target defaults to the widget itself."""
+    t = target or widget
+
+    def scroll(d):
+        try:
+            t.yview_scroll(d, "units")
+        except Exception:
+            pass
+        return "break"
+    widget.bind("<Button-4>", lambda e: scroll(-step))
+    widget.bind("<Button-5>", lambda e: scroll(step))
+    widget.bind("<MouseWheel>", lambda e: scroll(-step if e.delta > 0 else step))
+
+
+def bind_wheel_tree(widget, target, step=3):
+    """Same, but for a canvas whose content is child widgets: bind the whole subtree so the
+    wheel works wherever the pointer sits. Call again after rebuilding the content."""
+    bind_wheel(widget, target, step)
+    for ch in widget.winfo_children():
+        bind_wheel_tree(ch, target, step)
+
+
+def dropdown(parent, F, var, values, width=12, command=None, font="map"):
+    """A consistently styled OptionMenu: flat, bordered, dark menu with an accent highlight.
+    Returns the widget; callers that rebuild items work on widget['menu'] as usual."""
+    import tkinter as tk
+    om = (tk.OptionMenu(parent, var, *values, command=command) if command
+          else tk.OptionMenu(parent, var, *values))
+    om.config(bg=T.SURFACE_2, fg=T.TXT, font=F[font], width=width, bd=0, highlightthickness=1,
+              highlightbackground=T.LINE, highlightcolor=T.ACCENT, activebackground=T.HOVER,
+              activeforeground=T.TXT, relief="flat", anchor="w", cursor="hand2",
+              takefocus=0)
+    om["menu"].config(bg=T.SURFACE_2, fg=T.TXT, font=F[font], bd=0, relief="flat",
+                      activebackground=T.ACCENT, activeforeground="#ffffff", tearoff=0)
+    return om
+
+
+def header_quit(top, root, F, on_close):
+    """A consistent exit in the title bar, visible from every tab. 'Quit' standalone, 'Close'
+    inside the Hub (where it closes just this workspace). Pack it before the others on the
+    right so it sits just left of the clock."""
+    emb = getattr(root, "embedded", False)
+    b = btn(top, ("Close" if emb else "Quit"), on_close, F, font="map", padx=10, pady=2,
+            kind="quiet")
+    b.pack(side="right", padx=(0, 8))
+    return b
+
+
 def bind_quit(root, on_close):
     import tkinter as tk
     if getattr(root, "embedded", False):

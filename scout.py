@@ -903,6 +903,7 @@ def main():
         _release_spec(sync=True)
         root.destroy()
 
+    S.header_quit(top, root, F, on_close)
     S.bind_quit(root, on_close)
     root.bind("q", lambda e: on_close())
     show_tab(os.environ.get("UCS_TAB", "network"))

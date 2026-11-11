@@ -422,10 +422,7 @@ def main():
 
     tk.Label(crow, text="Port", font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE).pack(side="left")
     port_var = tk.StringVar(value=s.get("port") or "")
-    port_menu = tk.OptionMenu(crow, port_var, "")
-    port_menu.config(bg=T.SURFACE_2, fg=T.TXT, font=F["map"], bd=0, highlightthickness=0,
-                     activebackground=T.HOVER, width=16)
-    port_menu["menu"].config(bg=T.SURFACE_2, fg=T.TXT, font=F["map"])
+    port_menu = S.dropdown(crow, F, port_var, [""], width=16)
     port_menu.pack(side="left", padx=(T.px(6), T.px(12)))
 
     def refresh_ports():
@@ -445,10 +442,7 @@ def main():
 
     tk.Label(crow, text="Baud", font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE).pack(side="left")
     baud_var = tk.IntVar(value=s.get("baud", 115200))
-    baud_menu = tk.OptionMenu(crow, baud_var, *BAUDS)
-    baud_menu.config(bg=T.SURFACE_2, fg=T.TXT, font=F["map"], bd=0, highlightthickness=0,
-                     activebackground=T.HOVER, width=7)
-    baud_menu["menu"].config(bg=T.SURFACE_2, fg=T.TXT, font=F["map"])
+    baud_menu = S.dropdown(crow, F, baud_var, BAUDS, width=7)
     baud_menu.pack(side="left", padx=(T.px(6), T.px(12)))
 
     connect_btn = S.btn(crow, "Connect", lambda: toggle_connect(), F, padx=12, pady=4,
@@ -510,6 +504,7 @@ def main():
     sb = tk.Scrollbar(outwrap, command=out.yview, bg=T.SURFACE, troughcolor=S.BG, bd=0,
                       highlightthickness=0, width=T.px(10))
     out.config(yscrollcommand=sb.set)
+    S.bind_wheel(out)
     sb.pack(side="right", fill="y")
     out.pack(side="left", fill="both", expand=True)
     out.tag_config("tx", foreground=T.ACCENT)
@@ -680,11 +675,8 @@ def main():
     entry.pack(side="left", fill="x", expand=True, ipady=T.px(5))
     nl_var = tk.StringVar(value={"\r\n": "CRLF", "\n": "LF", "\r": "CR", "": "none"}.get(
         s.get("newline", "\r\n"), "CRLF"))
-    nl_menu = tk.OptionMenu(sendwrap, nl_var, "CRLF", "LF", "CR", "none",
-                            command=lambda v: set_newline(v))
-    nl_menu.config(bg=T.SURFACE_2, fg=T.TXT_3, font=F["lbl"], bd=0, highlightthickness=0,
-                   activebackground=T.HOVER, width=4)
-    nl_menu["menu"].config(bg=T.SURFACE_2, fg=T.TXT, font=F["map"])
+    nl_menu = S.dropdown(sendwrap, F, nl_var, ["CRLF", "LF", "CR", "none"], width=4,
+                         command=lambda v: set_newline(v), font="lbl")
     nl_menu.pack(side="left", padx=(T.px(6), 0))
     send_btn = S.btn(sendwrap, "Send", lambda: do_send(), F, padx=12, pady=4, kind="primary")
     send_btn.pack(side="left", padx=(T.px(6), 0))
@@ -996,8 +988,7 @@ def main():
         root.destroy()
 
     S.bind_quit(root, on_close)
-    S.btn(grow, "Quit" if not getattr(root, "embedded", False) else "Close", on_close, F,
-          padx=10, pady=4, kind="quiet").pack(side="right")
+    S.header_quit(top, root, F, on_close)
 
     build_macros()
     build_legend()

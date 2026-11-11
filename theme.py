@@ -94,7 +94,7 @@ if STYLE == "maven":
     # Colour is reserved for data and state; the UI itself is monochrome.
     BG, SURFACE, SURFACE_2, HOVER = "#0b0c0e", "#121417", "#1a1d21", "#23272c"
     LINE, LINE_HI, MAPBG, RING = "#262a30", "#3b4149", "#07080a", "#1a1e23"
-    TXT, TXT_2, TXT_3 = "#e8eaed", "#9aa1aa", "#5d646e"
+    TXT, TXT_2, TXT_3 = "#e8eaed", "#9aa1aa", "#6e7883"   # TXT_3 lifted for small-label legibility
     ACCENT, ACCENT_BG = "#4c90f0", "#122641"
     ALERT, OK = "#e5484d", "#3fb27f"
     PANEL, ROW, ROW_OFF, ROW_HOT = SURFACE, SURFACE_2, SURFACE, ACCENT_BG

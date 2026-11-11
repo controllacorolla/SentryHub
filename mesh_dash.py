@@ -651,6 +651,7 @@ def main():
             pass
         root.destroy()
 
+    S.header_quit(top, root, F, on_close)
     S.bind_quit(root, on_close)
     S.in_thread(connect)
     pump()

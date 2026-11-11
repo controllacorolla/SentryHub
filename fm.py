@@ -544,6 +544,7 @@ def main():
         closing[0] = True
         cmds.put("quit")
 
+    S.header_quit(top, root, F, on_close)
     S.bind_quit(root, on_close)
     draw()
     build_presets()

@@ -747,6 +747,7 @@ def main():
 
     polar.bind("<Configure>", lambda e: draw_polar())
     gmap.bind("<Configure>", lambda e: draw_ground())
+    S.header_quit(top, root, F, on_close)
     S.bind_quit(root, on_close)
     root.bind("q", lambda e: on_close())
     refresh_passes()

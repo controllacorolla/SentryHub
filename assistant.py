@@ -503,6 +503,7 @@ def main():
         spk.q.put((None, None))          # ends the speech thread
         root.destroy()
 
+    S.header_quit(top, root, F, on_close)
     S.bind_quit(root, on_close)
     meta("Hold Space and talk, or type below and press Enter.")
     S.in_thread(load_whisper)

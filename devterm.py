@@ -359,7 +359,9 @@ def main():
         inner = tk.Frame(cv, bg=S.BG)
         cv.create_window(0, 0, window=inner, anchor="nw")
         cv.config(yscrollcommand=sb.set)
-        inner.bind("<Configure>", lambda e: cv.config(scrollregion=cv.bbox("all")))
+        inner.bind("<Configure>", lambda e: (cv.config(scrollregion=cv.bbox("all")),
+                                             S.bind_wheel_tree(inner, cv)))
+        S.bind_wheel(cv)
         sb.pack(side="right", fill="y")
         cv.pack(side="left", fill="both", expand=True)
         for suuid, sname, chars in st["ble_services"]:
@@ -559,6 +561,7 @@ def main():
                       highlightthickness=0, wrap="word", state="disabled", padx=T.px(8),
                       pady=T.px(6))
     cmd_out.pack(fill="both", expand=True, pady=(T.px(8), 0))
+    S.bind_wheel(cmd_out)
 
     def render_hosts():
         for w in shlist_in.winfo_children():
@@ -684,8 +687,7 @@ def main():
         root.destroy()
 
     S.bind_quit(root, on_close)
-    S.btn(bhr, "Quit" if not getattr(root, "embedded", False) else "Close", on_close, F,
-          padx=10, pady=4, kind="quiet").pack(side="right")
+    S.header_quit(top, root, F, on_close)
 
     render_ble_list()
     render_ble_detail()
