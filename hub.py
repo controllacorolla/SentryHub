@@ -225,8 +225,8 @@ def read_jsonl(path, n, max_bytes=400_000):
 
 
 def main():
-    S.single_instance("Radio Hub")
-    root, F = S.make_root("Radio Hub")
+    S.single_instance("Sentry")
+    root, F = S.make_root("Sentry")
     import tkinter as tk
 
     T = S.T
@@ -245,8 +245,17 @@ def main():
     host = tk.Frame(body, bg=S.BG)           # workspaces live here
     shell = Shell(root, F, barhost, host)
     T.EMBED = shell
-    home = shell.new_workspace("uConsole", key="home")
-    top = S.top_bar(home, F, "uConsole", "workstation")
+    home = shell.new_workspace("Sentry", key="home")
+    top = S.top_bar(home, F, "Sentry")
+    # RX status: receive-only, right of the wordmark (green dot + RX), clock stays far right
+    rx = tk.Frame(top, bg=top["bg"])
+    rx.pack(side="left", padx=(T.px(10), 0))
+    tk.Canvas(rx, width=T.px(7), height=T.px(7), bg=top["bg"], highlightthickness=0).pack(
+        side="left", pady=T.px(3))
+    _rxdot = rx.winfo_children()[0]
+    _rxdot.create_oval(1, 1, T.px(7) - 1, T.px(7) - 1, fill=S.GREEN, outline="")
+    tk.Label(rx, text="RX", font=F["lbl"], fg=T.TXT_2, bg=top["bg"]).pack(side="left",
+                                                                          padx=(T.px(4), 0))
     sdr_pill = S.pill(top, F, "SDR")
     h4m_pill = S.pill(top, F, "H4M")
     if not S.core.H4M_ENABLED:
@@ -1248,6 +1257,40 @@ def main():
     _sigtick()
     home.bind("q", lambda e: on_close())
     shell.show("home")
+
+    # ---- boot splash: the SENTRY wordmark over the window, fades to the dashboard
+    def boot_splash():
+        if "--no-splash" in sys.argv or getattr(T, "EMBED", None) is None:
+            pass
+        sp = tk.Frame(root, bg=T.BG)
+        sp.place(relx=0, rely=0, relwidth=1, relheight=1)
+        sp.lift()
+        c = tk.Canvas(sp, bg=T.BG, highlightthickness=0)
+        c.pack(fill="both", expand=True)
+
+        def paint(_=None):
+            c.delete("all")
+            w, h = max(c.winfo_width(), 100), max(c.winfo_height(), 100)
+            cx, cy = w / 2, h / 2
+            q = T.px(16)
+            c.create_polygon(cx - q, cy - T.px(26), cx, cy - T.px(26) + q, cx + q, cy - T.px(26),
+                             cx, cy - T.px(26) - q, outline=T.ACCENT, fill="", width=2)
+            c.create_text(cx, cy + T.px(6), text=T.spaced("SENTRY"), font=F["title"], fill=T.TXT)
+            c.create_oval(cx - T.px(58), cy + T.px(30), cx - T.px(53), cy + T.px(35),
+                          fill=S.GREEN, outline="")
+            c.create_text(cx - T.px(46), cy + T.px(32), text="RX", anchor="w", font=F["lbl"],
+                          fill=T.TXT_2)
+            c.create_text(cx + T.px(6), cy + T.px(32), text="//  uCONSOLE", anchor="w",
+                          font=F["lbl"], fill=T.TXT_3)
+            c.create_text(cx, h - T.px(26),
+                          text=time.strftime("%d%b%Y %H:%M:%SZ", time.gmtime()).upper(),
+                          font=F["lbl"], fill=T.TXT_3)
+        c.bind("<Configure>", paint)
+        paint()
+        c.bind("<Button-1>", lambda e: sp.destroy())
+        root.after(1400, sp.destroy)
+    if "--no-splash" not in sys.argv:
+        root.after(60, boot_splash)
     if "--no-ops" not in sys.argv:
         # the common picture runs from the start so watch rules are armed in the background
         root.after(1500, lambda: shell.open("ops", show=False))

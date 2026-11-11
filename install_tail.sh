@@ -47,7 +47,7 @@ Terminal=false
 Categories=AudioVideo;HamRadio;
 EOF2
 }
-mk hub "Radio Hub" "uConsole radio + tools launcher" hub.py network-wireless
+mk hub "Sentry" "uConsole receive-only signals + field terminal" hub.py network-wireless
 mk sky "Sky" "Live ADS-B map + airband voice" sky_app.py applications-science
 mk fm "FM Radio" "FM + NOAA Weather Radio" fm.py audio-radio
 mk wx "Weather Sats" "Meteor LRPT passes + capture" wxsat.py weather-few-clouds
@@ -123,7 +123,7 @@ echo
 if pgrep -f "$APP/hub.py" >/dev/null 2>&1 || pgrep -f "bin/hub" >/dev/null 2>&1; then
   echo "The Hub is open: close it (Ctrl+Q) and start it again to use the new version."
 fi
-echo "Open the Radio Hub from the menu, or run:  hub"
+echo "Open Sentry from the menu, or run:  hub"
 echo "Check every connection (radios, services, servers):  hub --doctor"
 echo "Security review of your own device:  hub --security"
 echo "Spoken situation report:  hub --sitrep"

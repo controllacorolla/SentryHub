@@ -1,5 +1,5 @@
 #!/bin/bash
-# uConsole Suite installer: Radio Hub, Sky (ADS-B + airband + transcripts), FM Radio,
+# Sentry installer (uConsole): Hub, Sky (ADS-B + airband + transcripts), FM Radio,
 # Weather Sats, SSTV, Balloons, APRS, Mesh, Field Status, Assistant.
 # Usage:  bash install-uconsole-suite.sh
 set -e
@@ -7,7 +7,7 @@ set -e
 # is a syntax error and runs nothing at all
 main() {
 APP="$HOME/.local/share/uconsole-suite/app"
-echo "=== uConsole Suite installer ==="
+echo "=== Sentry installer (uConsole) ==="
 if [ "$(id -u)" = "0" ]; then echo "Run as your normal user (not sudo)."; exit 1; fi
 
 safe_apt() {   # install only packages that exist, and only if nothing gets removed
