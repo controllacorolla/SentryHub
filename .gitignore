@@ -1,5 +1,7 @@
 # generated single-file installers (rebuild with: bash build_installer.sh out.sh)
 uconsole-suite-v*.sh
+sentry-v*.sh
+sentry-dev.sh
 install-uconsole-suite.sh
 # build/test artifacts
 __pycache__/
