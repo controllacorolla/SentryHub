@@ -10,19 +10,30 @@ you can work on the UI and logic without the radio hardware. Device-only feature
 ```bash
 git clone https://github.com/controllacorolla/SentryHub.git
 cd SentryHub
-code .
 ```
+
+Open it in VS Code with `code .` — if that says `command not found`, install the CLI
+first (VS Code → `Cmd/Ctrl-Shift-P` → "Shell Command: Install 'code' command in
+PATH"), or on macOS just `open -a "Visual Studio Code" .`.
 
 ## Environment
 
 Python 3.11+ with Tk. Create a virtualenv and install deps:
 
 ```bash
-python -m venv .venv
-# Windows (PowerShell):  .venv\Scripts\Activate.ps1
-# macOS / Linux:         source .venv/bin/activate
+# macOS / Linux  (the command is python3, not python):
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements-dev.txt
+
+# Windows (PowerShell):
+#   py -m venv .venv
+#   .venv\Scripts\Activate.ps1
+#   pip install -r requirements-dev.txt
 ```
+
+On macOS/Linux `python` usually doesn't exist — use `python3`. Once the venv is
+active, `python` works inside it. Python 3.14 is fine; 3.11+ is all that's needed.
 
 tkinter note:
 - Windows / macOS: bundled with the python.org installer.
