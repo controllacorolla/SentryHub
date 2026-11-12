@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "lint (pyflakes)",
+      "type": "shell",
+      "command": "python -m pyflakes *.py",
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "test (pytest)",
+      "type": "shell",
+      "command": "python -m pytest -q tests",
+      "problemMatcher": [],
+      "group": { "kind": "test", "isDefault": true }
+    },
+    {
+      "label": "build installer",
+      "type": "shell",
+      "command": "bash build_installer.sh sentry-dev.sh",
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
+}

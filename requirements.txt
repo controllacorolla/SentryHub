@@ -1,0 +1,23 @@
+# Sentry runtime dependencies.
+#
+# The suite degrades gracefully: every optional dependency below is detected at
+# runtime, and a missing one only disables its feature (see `hub --doctor`). None
+# of these are needed to launch the Hub in --demo mode except Pillow.
+#
+# Core (needed for the UI and most apps)
+Pillow>=10.0            # image handling, tile rendering, screenshots
+numpy>=1.24            # DSP in rf_explorer / sstv / signals
+
+# Field Kit (Hardware / Dev terminal)
+pyserial>=3.5          # hwlab serial console
+bleak>=0.21            # devterm BLE scanner
+paho-mqtt>=1.6         # devterm MQTT dashboard
+smbus2>=0.4            # hwlab I2C fallback when i2cdetect is absent
+
+# Almanac / satellite passes (Overwatch, Field computer)
+skyfield>=1.45         # ISS / weather-sat position from TLEs
+
+# tkinter is part of the Python standard library but ships separately on Linux:
+#   Debian/Ubuntu:  sudo apt install python3-tk
+# System radio tools are NOT pip packages (install via apt on the device):
+#   rtl-sdr  multimon-ng  rtl-433  i2c-tools  raspi-gpio  bluez  gpsd

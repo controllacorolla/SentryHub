@@ -1,0 +1,50 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Hub (demo)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/hub.py",
+      "args": ["--demo", "--no-ops"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Hub (demo, no splash)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/hub.py",
+      "args": ["--demo", "--no-ops", "--no-splash"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Hub --doctor",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/hub.py",
+      "args": ["--doctor"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Current app (demo)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "args": ["--demo"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Overwatch (demo, autopilot)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/overwatch.py",
+      "args": ["--demo", "--auto"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
+}

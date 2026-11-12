@@ -1,0 +1,4 @@
+# Developer tooling for Sentry. Install with:  pip install -r requirements-dev.txt
+-r requirements.txt
+pyflakes>=3.0          # the lint gate used before every build
+pytest>=7.4            # test suite under tests/
