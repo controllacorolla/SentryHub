@@ -4,6 +4,7 @@ Kept lean on purpose: each proves its archetype shape and opens as an embedded Q
 per-module engine wiring happens in the per-cluster sweep; this is UI-only scaffolding with
 demo feeds, like the other archetypes.
 """
+import math
 import random
 import time
 
@@ -25,7 +26,6 @@ class _DomeWorker(Worker):
         pts = []
         for o in self.objs:
             o["az"] = (o["az"] + random.uniform(-2, 2)) % 360
-            import math
             r = (90 - o["el"]) / 90 * 78
             a = math.radians(o["az"])
             pts.append({"name": o["name"], "x": r * math.sin(a), "y": r * math.cos(a),
@@ -38,6 +38,8 @@ class OverwatchApp(PalisadeApp):
     LEASE = "OVERWATCH"
 
     def build_body(self):
+        from . import theme
+        self._tok = theme.tokens(self.mode)
         body = QtWidgets.QWidget()
         lay = QtWidgets.QHBoxLayout(body)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -61,9 +63,20 @@ class OverwatchApp(PalisadeApp):
         return _DomeWorker(demo=self.demo)
 
     def on_row(self, pts):
-        self.dome.set_contacts([(p["x"], p["y"]) for p in pts])
+        self.dome.set_contacts([(p["x"], p["y"]) for p in pts],
+                               labels=[p["name"] for p in pts])
         ranked = sorted(pts, key=lambda p: -float(p["el"]))
+        for p in ranked:
+            el = float(p["el"])
+            if el > 45:
+                c = self._tok["live"]
+            elif el > 15:
+                c = self._tok["text"]
+            else:
+                c = self._tok["muted"]
+            p["_colors"] = {"el": c}
         self.feed.model.set_rows(ranked)
+        self.header.set_chip("sdr", "%d OBJECTS" % len(pts), ok=True)
         if not self._selected and ranked:
             self._show(ranked[0])
 

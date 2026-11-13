@@ -96,6 +96,9 @@ class PalisadeHub(QtWidgets.QMainWindow):
 
         QtGui.QShortcut(QtGui.QKeySequence("Escape"), self,
                         activated=lambda: self.show_page("OPS"))
+        for i, (name, _) in enumerate(CALLSIGNS):
+            QtGui.QShortcut(QtGui.QKeySequence(str(i + 1)),
+                            self, activated=lambda n=name: self.open_callsign(n))
 
     def _add_page(self, name, widget):
         self.pages[name] = widget

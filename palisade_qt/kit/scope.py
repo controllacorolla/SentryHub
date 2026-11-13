@@ -67,8 +67,15 @@ class ScopePanel(QtWidgets.QFrame):
 
     @staticmethod
     def _lut(tok):
-        stops = [(0.0, (9, 11, 14)), (0.45, (40, 36, 70)), (0.72, tuple(int(tok["accent"][i:i + 2], 16)
-                 for i in (1, 3, 5))), (1.0, (240, 244, 255))]
+        accent = tuple(int(tok["accent"][i:i + 2], 16) for i in (1, 3, 5))
+        stops = [
+            (0.00, (6, 8, 12)),
+            (0.25, (18, 16, 42)),
+            (0.50, (60, 40, 90)),
+            (0.70, accent),
+            (0.85, (accent[0] // 2 + 128, accent[1] // 2 + 128, accent[2] // 2 + 128)),
+            (1.00, (245, 248, 255)),
+        ]
         cm = pg.ColorMap([s[0] for s in stops], [s[1] + (255,) for s in stops])
         return cm.getLookupTable(0.0, 1.0, 256)
 

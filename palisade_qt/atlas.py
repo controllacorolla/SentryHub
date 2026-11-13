@@ -85,7 +85,8 @@ class AtlasApp(PalisadeApp):
         return ContactWorker(demo=self.demo)
 
     def on_row(self, rows):
-        self.map.set_contacts([(r["x"], r["y"]) for r in rows])
+        self.map.set_contacts([(r["x"], r["y"]) for r in rows],
+                              labels=[r["cs"] for r in rows])
         for r in rows:
             rng = float(r["rng"])
             if rng < 20:

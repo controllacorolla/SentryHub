@@ -66,6 +66,7 @@ class MapPanel(QtWidgets.QFrame):
         self.home = pg.ScatterPlotItem([0], [0], size=9, symbol="+",
                                        pen=pg.mkPen(tok["accent"], width=2))
         self.plot.addItem(self.home)
+        self._contact_labels = []
         lay.addWidget(self.plot)
 
         self._styles = STYLES_DARK if mode == "dark" else STYLES_LIGHT
@@ -133,7 +134,19 @@ class MapPanel(QtWidgets.QFrame):
         for lbl in self._cardinal_labels:
             lbl.setColor(text_color)
 
-    def set_contacts(self, points):
-        """points: iterable of (x_nm, y_nm)."""
+    def set_contacts(self, points, labels=None):
+        """points: iterable of (x_nm, y_nm). labels: optional list of label strings."""
         pts = list(points)
         self.scatter.setData([p[0] for p in pts], [p[1] for p in pts])
+        for lbl in self._contact_labels:
+            self.plot.removeItem(lbl)
+        self._contact_labels.clear()
+        if labels:
+            for (x, y), txt in zip(pts, labels):
+                t = pg.TextItem(txt, color=(200, 200, 200, 160), anchor=(0, 1))
+                t.setPos(x + 1.5, y + 1.5)
+                font = t.textItem.font()
+                font.setPointSize(7)
+                t.setFont(font)
+                self.plot.addItem(t)
+                self._contact_labels.append(t)
