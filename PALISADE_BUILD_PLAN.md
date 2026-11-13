@@ -33,23 +33,37 @@ before redesigning it.
 
 ---
 
-## 1. Gate decision — Tk vs. local web UI (blocks Track B; decide first)
+## 1. UI toolkit — DECIDED: PySide6 (Qt) + PyQtGraph
 
-The concept's fidelity — depth, soft shadows, the floating rounded window, tabular type — is
-**hard to reach in raw Tkinter and trivial in HTML/CSS.** But a local fullscreen web UI on a
-CM5, on top of the SDR DSP, has a real runtime cost, and the whole codebase is Tk today
-(embed/workspace pattern), so a web move is a near-total UI-layer rewrite (backend stays).
+**Locked.** The UI layer moves from Tkinter to **PySide6 (Qt, LGPL) + PyQtGraph**. Full
+rationale, options considered, and evidence in `DECISION-UI-TOOLKIT.md`. Short version: it's
+the toolkit real-time SDR instruments are actually built in (native waterfall/spectrum via
+PyQtGraph), it's far lighter than a browser, it runs well on the Pi 5-class CM5, and Qt
+stylesheets (QSS) reach most of the concept's depth/chrome that Tk can't. Web/Chromium was
+viable on the cooled build but carries a documented memory-leak/watchdog/reboot tax and a
+battery hit; DearPyGui's GPU path is unreliable on Pi; Tk can't hit the look.
 
-**Recommendation: don't decide on taste — spike it.** Build the **OPS home screen both ways**
-and measure on the actual uConsole: cold-start, RAM, CPU under live SDR load, thermals, and
-battery draw. Decide from numbers.
-- If the CM5 carries Chromium comfortably → **web** (hits the concept, far better UI velocity;
-  reuses the `headless.py` direction — but see S1 below, security gets *more* important).
-- If it doesn't → **push Tk** with the depth tokens (DESIGN.md §4) and accept it won't fully
-  match the mock.
+**Why this isn't a big-bang rewrite:** the Hub already launches most apps as **separate
+subprocesses**, so a Qt app and a Tk app coexist as separate processes during migration.
+Convert one app to Qt, the Hub launches it as a Qt process, the rest stay Tk until their turn.
+That makes the UI-layer rewrite **incremental**, cluster by cluster.
 
-This is the one thing that must be settled before archetype work — everything in Track B
-builds on the answer.
+Key implications (detail in the memo):
+- **Engines stay.** Pure helpers, decoders, lease, `suite` — untouched. Only each app's
+  presentation/interaction layer is reimplemented in Qt.
+- **Embed pattern → Qt.** Mirror `theme.workspace_class()` with a base `QWidget` that runs
+  standalone (own `QMainWindow`) and embeds in the Hub (stacked widget / tab).
+- **Threading → Qt native, and it fixes R1/R3.** Replace the `queue`+`root.after` pattern with
+  `QThread` + signals/slots; worker emits to the GUI thread, clean `quit()/wait()` on close.
+  Bake this into the base widget so every migrated app gets correct thread lifecycle for free.
+- **Theming → QSS.** DESIGN.md §4 depth tokens map to a QSS stylesheet; light/dark = two
+  sheets. This is where the rounded float / soft shadows / tabular type the mock wants come from.
+- **Viz → PyQtGraph.** PRISM (spectrum/waterfall via `ImageItem`), ATLAS map, the OPS PPI scope.
+- **Tests → pytest-qt** for the UI smoke layer; pure-logic tests are unaffected (no Tk/Qt).
+
+Still worth a cheap confirmation before committing hard: build **one live waterfall** in
+PyQtGraph on the actual uConsole and watch RAM/CPU/temp for 30 min. Expected to pass easily on
+the cooled 65 °C build; it just de-risks the viz path.
 
 ---
 
@@ -112,14 +126,16 @@ extended.
 
 One reusable kit, which is also the lifecycle base class (Track A2):
 
-**Kit components:** status header · control bar · feed table · detail card · map panel ·
-spectrum/waterfall panel · empty/no-signal state. Plus the base workspace: queue pump,
-`after`-registry with cancel-on-close, worker `stop()/join()`, `--demo` synthetic feed hook,
-health-awareness via `suite.start_health`.
+Built in **Qt (PySide6)**. One reusable kit of `QWidget` components: status header · control
+bar · feed table (`QTableView`/model) · detail card · map panel · spectrum/waterfall panel
+(**PyQtGraph**) · empty/no-signal state. Plus the base workspace `QWidget`: standalone
+(`QMainWindow`) **and** embeddable in the Hub (stacked widget/tab), a `QThread`+signals worker
+contract with clean `quit()/wait()` on close (this *is* the R1/R3 fix), a `--demo` synthetic
+feed hook, health-awareness via `suite.start_health`, and the QSS depth-token theme (light/dark).
 
-**Acceptance for the kit:** a throwaway module built on it, in demo mode, renders the depth
-tokens correctly in both modes, survives open→close with no leaked thread and no exception
-(the R1/R3 test), and matches the OPS concept at 1280×480.
+**Acceptance for the kit:** a throwaway module built on it, in demo mode, renders the QSS depth
+tokens correctly in both modes, survives open→close with no leaked `QThread` and no exception
+(the R1/R3 test, via pytest-qt), and matches the OPS concept at 1280×480.
 
 ---
 
@@ -191,7 +207,7 @@ change while it's reskinned or merged.
 
 ## 8. Decisions that need you (not the agent)
 
-1. **Tk vs web** (§1) — the gate. Spike both, decide on measured numbers.
+1. **UI toolkit** — DECIDED: PySide6 + PyQtGraph (§1, `DECISION-UI-TOOLKIT.md`). No open question.
 2. **Logo #4** → SVG export + lockup/favicon/app-icon.
 3. **Second SDR** — Airspy Mini vs 2nd RTL V4 (decontention). No purchase yet.
 4. **Ham callsign** — only if you want the legal APRS/SSTV TX features.
@@ -203,10 +219,11 @@ change while it's reskinned or merged.
 ## 9. Execution order (the merged sequence)
 
 1. **Phase 0** — A0 (secure the bugfix batch, reconcile branches) + A3 CI skeleton.
-2. **Phase 1** — Gate spike (§1): OPS home, both ways, measured on-device → **decide Tk/web.**
-   In parallel: A1 security fixes (S1–S4) — independent of the gate.
-3. **Phase 2** — Build the **UI kit = lifecycle base class** (§4 + A2). Nothing migrates until
-   this exists and passes its open/close/no-leak test.
+2. **Phase 1** — Confirm the viz path: one live PyQtGraph waterfall on-device, watch
+   RAM/CPU/temp 30 min (expected to pass on the cooled build). In parallel: A1 security fixes
+   (S1–S4). Stand up PySide6 + pyqtgraph in the dev env.
+3. **Phase 2** — Build the **Qt UI kit = lifecycle base class** (§4 + A2). Nothing migrates
+   until it exists and passes its open/close/no-leaked-QThread test (pytest-qt).
 4. **Phase 3** — Build the ~5 archetypes (§5). Render one representative screen each, post to
    lock the look.
 5. **Phase 4** — The per-module sweep (§6): one cluster per branch, one PR per cluster, suite
@@ -217,8 +234,8 @@ change while it's reskinned or merged.
 ## 10. Definition of done (every migration PR)
 On a branch (never `main`) · UI-only, no behaviour change · uses the kit (so lifecycle is
 correct by construction) · use brief + before/after shots attached · `pyflakes` + full suite
-green in CI (real 3.12/tk + flask) · a headless open/close smoke test for the screen · scoped
-to its cluster, no drive-by refactors.
+green in CI (3.12, PySide6 + pyqtgraph + flask; Tk still present for not-yet-migrated apps) ·
+a pytest-qt open/close smoke test for the screen · scoped to its cluster, no drive-by refactors.
 
 ## 11. Standing guardrails
 Receive-first; TX only behind `txguard` (ham/ISM/conducted, protected bands denied; "TX SAFE"

@@ -19,9 +19,11 @@ got in — a name-based assumption created a duplicate dict key.)
 ## Hard constraints (do not violate without asking the human)
 - **Never commit to `main`.** One cluster per branch, one PR per cluster.
 - **UI-only changes must not alter a module's data/decoding/radio behaviour.**
-- **Don't claim tests pass that you didn't run** in a real **Python 3.12 + tkinter** venv
-  (the dev Mac's system Python has no tk). Tests: `xvfb-run -a python3.12 -m pytest -q tests`.
-  Install `flask` in the env (the only `test_headless` failures are its absence).
+- **Don't claim tests pass that you didn't run** in a real **Python 3.12** venv with the GUI
+  deps (the dev Mac's system Python has nothing). Install `tkinter` (still needed for
+  not-yet-migrated apps), **PySide6 + pyqtgraph** (the new UI), `flask`, `numpy`. Tests:
+  `xvfb-run -a python3.12 -m pytest -q tests`. (The only `test_headless` failures in a bare env
+  are missing `flask`.)
 - **Receive-first.** Any TX stays behind `txguard` (ham/ISM/conducted; protected bands
   denied; chrome shows "TX SAFE"). Do **not** route around txguard or add OTA
   attack/jam/deauth. `jammer.py` and `imsicatch.py` are **detectors** — keep them; if you
@@ -35,12 +37,17 @@ got in — a name-based assumption created a duplicate dict key.)
    `tests/test_bughunt.py`) not yet pushed. Run `git status`. If present, commit to
    `fix/bughunt` and push before anything else — it's unbacked-up. Some `file:line` refs in
    the review assume it; if you cloned clean `main`, they may differ.
-2. **Gate decision (Tk vs local web UI)** must be settled before archetype work — spike the
-   OPS home both ways, measure on-device, decide on numbers.
-3. **Security fixes** (S1–S4) — independent of the gate; S1 (headless XSS) first if web wins.
-4. **Build the UI kit = lifecycle base class** (join threads on close, cancel `after`,
-   `--demo` hook) before migrating anything.
-5. **Archetypes → per-module sweep** (use brief + wire/merge/hide together), one cluster per PR.
+2. **UI toolkit is DECIDED: PySide6 (Qt) + PyQtGraph** (see `DECISION-UI-TOOLKIT.md`). Do not
+   re-open Tk-vs-web. Confirm the viz path with one on-device PyQtGraph waterfall, stand up
+   PySide6 + pyqtgraph in the dev env. Migration is incremental — the Hub launches apps as
+   subprocesses, so Qt and Tk apps coexist until each is converted.
+3. **Security fixes** (S1–S4) — independent; still fix the `headless.py` XSS (S1) even though it
+   is no longer the primary UI.
+4. **Build the Qt UI kit = lifecycle base class** (base `QWidget`; `QThread`+signals worker with
+   `quit()/wait()` on close — this is the R1/R3 fix; QSS depth-token theme; `--demo` hook)
+   before migrating anything.
+5. **Archetypes → per-module sweep** (use brief + wire/merge/hide together), one cluster per PR,
+   one app converted to Qt at a time.
 
 ## Per-PR definition of done
 On a branch · UI-only · uses the kit (lifecycle correct by construction) · use brief +
