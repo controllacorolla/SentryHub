@@ -1,0 +1,73 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+  :root{--bg:#0a0c0f;--p2:#161b24;--line:#2a313a;--line2:#39414c;--txt:#eef1f4;--txt2:#8b95a0;--txt3:#5c6670;--acc:#a492da;--acc2:#bcace8}
+  *{margin:0;box-sizing:border-box}
+  body{background:#000;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;padding:34px;display:flex;justify-content:center}
+  .sheet{width:1100px;background:var(--bg);border:1px solid var(--line2);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.6);overflow:hidden}
+  .head{padding:20px 30px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:14px}
+  .head h1{font-size:14px;letter-spacing:5px;color:var(--txt);font-weight:400}
+  .head span{font-size:10px;letter-spacing:2px;color:var(--txt3)}
+  .row{display:grid;grid-template-columns:150px 110px 1fr 210px;align-items:center;gap:20px;padding:26px 30px;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .big{display:flex;justify-content:center}
+  .tile{width:74px;height:74px;border-radius:17px;background:var(--p2);border:1px solid var(--line2);box-shadow:0 6px 16px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;margin:0 auto}
+  .lock{display:flex;align-items:center;gap:12px}
+  .lock .w{font-size:18px;letter-spacing:4px;color:var(--txt)}
+  .meta .n{font-size:12px;letter-spacing:2px;color:var(--acc2)}
+  .meta .d{font-size:10.5px;color:var(--txt3);margin-top:5px;line-height:1.5}
+  svg{display:block}
+</style></head><body>
+<div class="sheet">
+  <div class="head"><h1>PALISADE</h1><span>MARK · STAKES = WALL + SPECTRUM</span></div>
+
+  <!-- A: Spectrum stakes (peak) -->
+  <div class="row">
+    <div class="big"><svg width="92" height="92" viewBox="0 0 120 120"><g fill="var(--acc)">
+      <polygon points="12,104 28,104 28,66 20,52 12,66"/>
+      <polygon points="33,104 49,104 49,48 41,34 33,48"/>
+      <polygon points="54,104 70,104 70,28 62,14 54,28"/>
+      <polygon points="75,104 91,104 91,48 83,34 75,48"/>
+      <polygon points="96,104 112,104 112,66 104,52 96,66"/>
+    </g></svg></div>
+    <div><div class="tile"><svg width="48" height="48" viewBox="0 0 120 120"><g fill="var(--acc)">
+      <polygon points="18,98 32,98 32,66 25,54 18,66"/>
+      <polygon points="38,98 52,98 52,50 45,38 38,50"/>
+      <polygon points="58,98 72,98 72,34 65,22 58,34"/>
+      <polygon points="78,98 92,98 92,50 85,38 78,50"/>
+      <polygon points="98,98 112,98 112,66 105,54 98,66"/></g></svg></div></div>
+    <div class="lock"><svg width="28" height="28" viewBox="0 0 120 120"><g fill="var(--acc)">
+      <polygon points="14,104 30,104 30,66 22,52 14,66"/><polygon points="36,104 52,104 52,46 44,32 36,46"/>
+      <polygon points="58,104 74,104 74,24 66,10 58,24"/><polygon points="80,104 96,104 96,46 88,32 80,46"/>
+      <polygon points="102,104 118,104 118,66 110,52 102,66"/></g></svg><span class="w">PALISADE</span></div>
+    <div class="meta"><div class="n">A · SPECTRUM</div><div class="d">Pointed stakes peaking at center — reads as both a palisade wall and an RF spectrum.</div></div>
+  </div>
+
+  <!-- B: Rampart (outlined wall) -->
+  <div class="row">
+    <div class="big"><svg width="92" height="92" viewBox="0 0 120 120"><g fill="none" stroke="var(--acc)" stroke-width="3.2" stroke-linejoin="round">
+      <polygon points="16,104 16,46 24,32 32,46 32,104"/>
+      <polygon points="40,104 40,46 48,32 56,46 56,104"/>
+      <polygon points="64,104 64,46 72,32 80,46 80,104"/>
+      <polygon points="88,104 88,46 96,32 104,46 104,104"/>
+    </g><line x1="12" y1="104" x2="108" y2="104" stroke="var(--acc2)" stroke-width="3"/></svg></div>
+    <div><div class="tile"><svg width="50" height="50" viewBox="0 0 120 120"><g fill="none" stroke="var(--acc)" stroke-width="4.5" stroke-linejoin="round">
+      <polygon points="26,96 26,50 36,36 46,50 46,96"/><polygon points="54,96 54,50 64,36 74,50 74,96"/><polygon points="82,96 82,50 92,36 102,50 102,96"/>
+    </g></svg></div></div>
+    <div class="lock"><svg width="27" height="27" viewBox="0 0 120 120"><g fill="none" stroke="var(--acc)" stroke-width="5" stroke-linejoin="round"><polygon points="20,104 20,44 32,28 44,44 44,104"/><polygon points="52,104 52,44 64,28 76,44 76,104"/><polygon points="84,104 84,44 96,28 108,44 108,104"/></g></svg><span class="w">PALISADE</span></div>
+    <div class="meta"><div class="n">B · RAMPART</div><div class="d">Outlined stakes — the literal defensive wall. More architectural, less spectrum.</div></div>
+  </div>
+
+  <!-- C: Warded (stakes in aperture) -->
+  <div class="row">
+    <div class="big"><svg width="92" height="92" viewBox="0 0 120 120">
+      <polygon points="60,10 110,60 60,110 10,60" fill="none" stroke="var(--acc)" stroke-width="3"/>
+      <g fill="var(--acc)">
+        <polygon points="42,80 52,80 52,56 47,47 42,56"/>
+        <polygon points="55,80 65,80 65,44 60,35 55,44"/>
+        <polygon points="68,80 78,80 78,56 73,47 68,56"/>
+      </g></svg></div>
+    <div><div class="tile"><svg width="50" height="50" viewBox="0 0 120 120"><polygon points="60,14 106,60 60,106 14,60" fill="none" stroke="var(--acc)" stroke-width="4"/><g fill="var(--acc)"><polygon points="44,76 53,76 53,56 48.5,48 44,56"/><polygon points="56,76 65,76 65,46 60.5,38 56,46"/><polygon points="68,76 77,76 77,56 72.5,48 68,56"/></g></svg></div></div>
+    <div class="lock"><svg width="28" height="28" viewBox="0 0 120 120"><polygon points="60,12 108,60 60,108 12,60" fill="none" stroke="var(--acc)" stroke-width="5"/><g fill="var(--acc)"><polygon points="45,78 54,78 54,54 49.5,45 45,54"/><polygon points="57,78 66,78 66,42 61.5,33 57,42"/><polygon points="69,78 78,78 78,54 73.5,45 69,54"/></g></svg><span class="w">PALISADE</span></div>
+    <div class="meta"><div class="n">C · WARDED</div><div class="d">Stakes held inside the aperture diamond — keeps continuity with your current mark.</div></div>
+  </div>
+</div>
+</body></html>
