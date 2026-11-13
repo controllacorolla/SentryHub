@@ -7,7 +7,7 @@ boot + sensor stream, on-device it reads the real serial port (engine unchanged)
 """
 import random
 
-from PySide6 import QtWidgets
+from PySide6 import QtGui, QtWidgets
 
 from .app import PalisadeApp
 from . import theme
@@ -81,8 +81,19 @@ class ForgeApp(PalisadeApp):
 
     def on_row(self, msg):
         prefix = "" if msg["kind"] == "sys" else "  "
-        self.console.appendPlainText(prefix + msg["line"])
+        line = prefix + msg["line"]
+        cursor = self.console.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        fmt = cursor.charFormat()
+        if msg["kind"] == "sys":
+            fmt.setForeground(QtGui.QColor(self._tok["muted"]))
+        else:
+            fmt.setForeground(QtGui.QColor(self._tok["text"]))
+        cursor.insertText(line + "\n", fmt)
+        self.console.setTextCursor(cursor)
+        self.console.ensureCursorVisible()
         self._line_count += 1
         self._lines.setText("%d lines" % self._line_count)
+        self.header.set_chip("sdr", "%d LINES" % self._line_count, ok=True)
         if "temp" in msg:
             self.readout.setText("%.1f °C" % msg["temp"])

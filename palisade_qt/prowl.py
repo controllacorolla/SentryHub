@@ -25,6 +25,7 @@ class ScanWorker(Worker):
     def __init__(self, demo=True, squelch=-70, parent=None):
         super().__init__(demo=demo, interval_ms=350, parent=parent)
         self.squelch = squelch
+        self.hold = False
 
     def step(self):
         rows = []
@@ -59,6 +60,7 @@ class ProwlApp(PalisadeApp):
         self.squelch.setSuffix(" dBm")
         self.squelch.valueChanged.connect(self._sq)
         self.bar.add_field("squelch", self.squelch, "Squelch")
+        self.hold_btn = self.bar.add_button("SCAN", self._toggle_hold)
         self.bar.add_stretch()
         self.bar.lay.addWidget(micro("Active"))
         self.active = QtWidgets.QLabel("—  scanning")
@@ -72,11 +74,31 @@ class ProwlApp(PalisadeApp):
                                ("sig", "dBm"), ("last", "LAST")])
         self.feed.selected.connect(self._show)
         split.addWidget(self.feed, 3)
+
+        right = QtWidgets.QVBoxLayout()
+        right.setSpacing(8)
         self.detail = DetailCard("CHANNEL")
         self.detail.set_hero("—", "select a channel")
-        split.addWidget(self.detail, 1)
+        right.addWidget(self.detail, 3)
+        self.sig_bar = QtWidgets.QProgressBar()
+        self.sig_bar.setRange(0, 100)
+        self.sig_bar.setValue(0)
+        self.sig_bar.setTextVisible(False)
+        self.sig_bar.setFixedHeight(8)
+        accent = self._tok["accent"]
+        self.sig_bar.setStyleSheet(
+            "QProgressBar { background: %s; border: none; border-radius: 3px; }"
+            "QProgressBar::chunk { background: %s; border-radius: 3px; }"
+            % (self._tok["well"], accent))
+        right.addWidget(self.sig_bar)
+        split.addLayout(right, 1)
         lay.addLayout(split, 1)
         return body
+
+    def _toggle_hold(self):
+        if self._worker is not None:
+            self._worker.hold = not self._worker.hold
+            self.hold_btn.setText("HOLD" if self._worker.hold else "SCAN")
 
     def _sq(self, v):
         if self._worker is not None:
@@ -94,6 +116,7 @@ class ProwlApp(PalisadeApp):
 
     def on_row(self, msg):
         rows = msg["rows"]
+        hot_count = 0
         for r in rows:
             sig = int(r["sig"])
             c = self._sig_color(sig, r.get("_hot", False))
@@ -101,16 +124,21 @@ class ProwlApp(PalisadeApp):
             if r.get("_hot"):
                 r["_colors"]["label"] = self._tok["live"]
                 r["_colors"]["freq"] = self._tok["live"]
+                hot_count += 1
         self.feed.model.set_rows(rows)
+        self.header.set_chip("sdr", "%d CH" % len(rows), ok=True)
         act = msg.get("active")
         if act:
             self.active.setText("%s  %s  %d dBm" % (act[0], act[1], act[2]))
             self.active.setProperty("class", "value live")
+            pct = max(0, min(100, int((act[2] + 120) * 100 / 80)))
+            self.sig_bar.setValue(pct)
             self._show({"freq": act[0], "label": act[1], "sig": str(act[2]),
                          "last": time.strftime("%H:%M:%S"), "_hot": True})
         else:
             self.active.setText("—  scanning")
             self.active.setProperty("class", "value")
+            self.sig_bar.setValue(0)
         self.active.style().unpolish(self.active)
         self.active.style().polish(self.active)
 

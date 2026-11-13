@@ -11,6 +11,7 @@ import time
 from PySide6 import QtCore, QtWidgets
 
 from .app import PalisadeApp
+from . import theme
 from .kit import card, DetailCard, FeedTable
 from .worker import Worker
 
@@ -60,6 +61,7 @@ class OpsHome(PalisadeApp):
     launch = QtCore.Signal(str)  # a callsign tile was pressed
 
     def build_body(self):
+        self._tok = theme.tokens(self.mode)
         body = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(body)
         grid.setContentsMargins(0, 0, 0, 0)
@@ -86,8 +88,11 @@ class OpsHome(PalisadeApp):
         nl = QtWidgets.QHBoxLayout(nav)
         nl.setContentsMargins(10, 8, 10, 8)
         nl.setSpacing(6)
+        self._tiles = {}
         for name, sub in CALLSIGNS[1:]:
-            nl.addWidget(self._tile(name, sub))
+            btn, dot = self._tile(name, sub)
+            nl.addWidget(btn)
+            self._tiles[name] = dot
         grid.addWidget(nav, 1, 1, 1, 1)
 
         grid.setColumnStretch(0, 2)
@@ -98,19 +103,39 @@ class OpsHome(PalisadeApp):
         return body
 
     def _tile(self, name, sub):
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(2)
         b = QtWidgets.QPushButton(name)
         b.setProperty("class", "tile")
-        b.setMinimumHeight(40)
+        b.setMinimumHeight(34)
         b.setToolTip(sub)
         b.clicked.connect(lambda: self.launch.emit(name))
-        return b
+        lay.addWidget(b)
+        dot = QtWidgets.QFrame()
+        dot.setFixedHeight(3)
+        dot.setStyleSheet("background: transparent; border-radius: 1px;")
+        lay.addWidget(dot)
+        return w, dot
 
     def make_worker(self):
         return OpsWorker(demo=True)
 
+    _SRC_MAP = {"ADS-B": "ATLAS", "AIS": "ATLAS", "APRS": "ATLAS",
+                 "POCSAG": "BABEL", "ACARS": "BABEL", "RDS": "BABEL"}
+
     def on_row(self, row):
         self.feed.model.prepend(row, cap=200)
         self._show_event(row)
+        src = row.get("src", "")
+        callsign = self._SRC_MAP.get(src)
+        if callsign and callsign in self._tiles:
+            self._tiles[callsign].setStyleSheet(
+                "background: %s; border-radius: 1px;" % self._tok["accent"])
+            QtCore.QTimer.singleShot(300, lambda c=callsign:
+                self._tiles[c].setStyleSheet(
+                    "background: transparent; border-radius: 1px;"))
 
     def _show_event(self, row):
         self.event_detail.set_hero(row.get("id", "—"), row.get("src", ""))
