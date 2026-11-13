@@ -882,10 +882,10 @@ def power_banner(root, F, interval=4000):
     so it never runs a subprocess on the UI thread. Inside the workstation only the shell
     shows it. Returns the frame."""
     import tkinter as tk
-    bar = tk.Frame(root, bg=T.RED)
+    bar = tk.Frame(root, bg=T.BG)          # invisible until a real power/heat condition
     if getattr(root, "embedded", False):
         return bar
-    lbl = tk.Label(bar, bg=T.RED, fg="#ffffff", font=F["smb"], anchor="w", padx=12, pady=3)
+    lbl = tk.Label(bar, bg="#4a1f1c", fg="#e8d6d2", font=F["smb"], anchor="w", padx=12, pady=3)
     shown = {"v": None}
     start_health()
 
