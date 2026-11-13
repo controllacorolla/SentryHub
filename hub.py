@@ -962,15 +962,37 @@ def main():
             w.bind("<Leave>", lambda e: hover(False))
         return f
 
-    for _name, _col, _tiles in GROUPS:
-        hdr = tk.Label(grid, text=T.spaced(_name), font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE,
+    def _toggle_group(body, caret):
+        if body.winfo_manager():
+            body.pack_forget()
+            caret.config(text="▸")           # ▸ collapsed
+        else:
+            body.pack(fill="x", after=caret.master)
+            caret.config(text="▾")           # ▾ expanded
+
+    for _gi, (_name, _col, _tiles) in enumerate(GROUPS):
+        hrow = tk.Frame(grid, bg=T.SURFACE, cursor="hand2")
+        hrow.pack(fill="x", padx=T.px(10), pady=(T.px(9), T.px(2)))
+        caret = tk.Label(hrow, text="▾", font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE)
+        caret.pack(side="left", padx=(0, T.px(5)))
+        hdr = tk.Label(hrow, text=T.spaced(_name), font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE,
                        anchor="w")
-        hdr.pack(fill="x", padx=T.px(10), pady=(T.px(9), T.px(2)))
+        hdr.pack(side="left", fill="x", expand=True)
+        cnt = tk.Label(hrow, text=str(len(_tiles)), font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE)
+        cnt.pack(side="right")
+        body = tk.Frame(grid, bg=T.SURFACE)
+        body.pack(fill="x")
         for key, title, sub, action in _tiles:
             hk = str((len(hotkeys) + 1) % 10) if len(hotkeys) < 10 else ""
-            tile(grid, key, title, sub, _col, action, hk).pack(fill="x")
+            tile(body, key, title, sub, _col, action, hk).pack(fill="x")
             if len(hotkeys) < 10:
                 hotkeys.append((hk, action))
+        for _w in (hrow, caret, hdr, cnt):
+            _w.bind("<Button-1>", lambda e, b=body, c=caret: _toggle_group(b, c))
+            _w.bind("<Enter>", lambda e, wl=(caret, hdr, cnt): [x.config(fg=T.TXT_2) for x in wl])
+            _w.bind("<Leave>", lambda e, wl=(caret, hdr, cnt): [x.config(fg=T.TXT_3) for x in wl])
+        if _gi != 0:                               # default: only the first group expanded
+            _toggle_group(body, caret)
 
     for _digit, _action in hotkeys:
         home.bind(_digit, lambda e, a=_action: do_action(a))

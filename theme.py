@@ -88,19 +88,19 @@ TRACK = "#c6ccd2"       # default contact colour
 
 STYLE = UI.get("style", "maven")
 NOTE = "#5ec4d4"           # notable data (military, watched) - cyan, not orange
-FILL = "#2d72d2"           # primary button fill
+FILL = "#b86a3c"           # primary button fill (warm copper)
 if STYLE == "maven":
-    # Analyst-workstation look: near-black graphite, greyscale chrome, ONE blue accent.
+    # Analyst-workstation look: near-black graphite, greyscale chrome, ONE warm accent.
     # Colour is reserved for data and state; the UI itself is monochrome.
     BG, SURFACE, SURFACE_2, HOVER = "#0b0c0e", "#121417", "#1a1d21", "#23272c"
     LINE, LINE_HI, MAPBG, RING = "#262a30", "#3b4149", "#07080a", "#1a1e23"
     TXT, TXT_2, TXT_3 = "#e8eaed", "#9aa1aa", "#6e7883"   # TXT_3 lifted for small-label legibility
-    ACCENT, ACCENT_BG = "#4c90f0", "#122641"
+    ACCENT, ACCENT_BG = "#dd8a4a", "#2a1d10"
     ALERT, OK = "#e5484d", "#3fb27f"
     PANEL, ROW, ROW_OFF, ROW_HOT = SURFACE, SURFACE_2, SURFACE, ACCENT_BG
     GRID = RING
     MUTED, DIM = TXT_2, TXT_3
-    AMBER, AMBER_DIM = ACCENT, "#1d3a63"       # legacy "live/notable" = the accent
+    AMBER, AMBER_DIM = ACCENT, "#5c3f1f"       # legacy "live/notable" = the accent
     GREEN, RED = OK, ALERT
     BLUE = PURPLE = ACCENT
     TRACK = "#c9ced5"
