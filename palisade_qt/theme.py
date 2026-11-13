@@ -8,7 +8,7 @@ from PySide6 import QtGui, QtWidgets
 
 # token name -> value, per mode. Keep names aligned with DESIGN §4 (--bg/--p1/--p2/--well …).
 DARK = {
-    "bg": "#0E1013", "p1": "#15181D", "p2": "#1C2026", "well": "#090B0E",
+    "bg": "#000000", "p1": "#15181D", "p2": "#1C2026", "well": "#0A0C0F",
     "hairline": "#272B31", "text": "#E6E9EE", "muted": "#8A929C",
     "accent": "#A492DA", "live": "#56D68E", "warn": "#E6B450", "alert": "#E06A6A",
     "highlight": "rgba(255,255,255,0.05)", "shadow": 0.55,
