@@ -3,7 +3,6 @@
 Minimal for the kit: contacts as points with range rings around home. Real tile rendering
 (ImageItem tiles vs a Qt map widget) is deferred to the ATLAS archetype per the decision memo.
 """
-import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtWidgets
 
@@ -26,10 +25,20 @@ class MapPanel(QtWidgets.QFrame):
         self.plot.hideAxis("bottom")
         self.plot.setXRange(-span_nm, span_nm)
         self.plot.setYRange(-span_nm, span_nm)
-        for r in (span_nm / 4, span_nm / 2, span_nm * 3 / 4, span_nm):
+        rings = [span_nm / 4, span_nm / 2, span_nm * 3 / 4, span_nm]
+        for r in rings:
             circ = pg.QtWidgets.QGraphicsEllipseItem(-r, -r, 2 * r, 2 * r)
             circ.setPen(pg.mkPen(tok["hairline"], width=1))
             self.plot.addItem(circ)
+        for r in rings[:-1]:
+            lbl = pg.TextItem("%.0f" % r, color=tok["muted"], anchor=(0, 1))
+            lbl.setPos(2, r)
+            self.plot.addItem(lbl)
+        for txt, x, y in [("N", 0, span_nm * 0.92), ("S", 0, -span_nm * 0.92),
+                           ("E", span_nm * 0.92, 0), ("W", -span_nm * 0.92, 0)]:
+            c = pg.TextItem(txt, color=tok["muted"], anchor=(0.5, 0.5))
+            c.setPos(x, y)
+            self.plot.addItem(c)
         self.scatter = pg.ScatterPlotItem(size=7, pen=None, brush=pg.mkBrush(tok["live"]))
         self.plot.addItem(self.scatter)
         self.home = pg.ScatterPlotItem([0], [0], size=9, symbol="+",
