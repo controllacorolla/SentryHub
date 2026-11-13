@@ -208,6 +208,11 @@ def deepcopy(x):
 def load_settings():
     s = load_json(SETTINGS_PATH, None)
     if not isinstance(s, dict):
+        if os.path.exists(SETTINGS_PATH):
+            try:
+                os.replace(SETTINGS_PATH, SETTINGS_PATH + ".corrupt")   # keep it for recovery
+            except OSError:
+                pass
         s = deepcopy(DEFAULT_SETTINGS)
         # carry over channel on/off + RTL gain from the Airband app, if present
         old = load_json(OLD_AIRBAND_SETTINGS, None)
@@ -1331,10 +1336,12 @@ class Controller:
         self.set_state("idle", "")
 
     def _restore_services(self):
-        if not self.s.get("restore_plane_map", True) or not self.lease:
+        if not self.lease:
             return
         try:
-            self.lease.release()
+            # free the lease either way; only restart readsb if the user wants it (else the
+            # lease would stay held for the life of the process and block the next app / Hub quit)
+            self.lease.release(restart=self.s.get("restore_plane_map", True))
         except Exception as e:
             self.log("Couldn't restore the plane map: %s" % e)
 
@@ -1496,7 +1503,7 @@ def run_gui(parent=None):
     # emergency squawks: 7500 hijack, 7600 radio failure, 7700 general emergency
     EMERG = {"7500": "hijack", "7600": "radio failure", "7700": "emergency"}
     alerts = {}      # hex -> {"sq", "cs", "t0", "last", "kind"}
-    acked = set()    # cleared by the user; not re-announced while the squawk persists
+    acked = {}       # hex -> last seen; cleared by the user, not re-announced while the squawk persists
     slog = __import__("suite").SessionLog("sky")
     alert_box = tk.Frame(panel_alerts, bg=T.SURFACE)
     alert_box.pack(fill="both", expand=True)
@@ -1506,7 +1513,9 @@ def run_gui(parent=None):
     alert_rows.pack(fill="x")
 
     def clear_alerts():
-        acked.update(alerts)
+        t_ack = time.time()
+        for h in alerts:
+            acked[h] = t_ack
         alerts.clear()
         del kw_log[:]
         rebuild_alerts()
@@ -1689,10 +1698,11 @@ def run_gui(parent=None):
                 kind, tag, say = check_anomaly(a, cs, alt_s)
             if kind is None:
                 if h in acked:
-                    acked.discard(h)       # condition cleared: a new one announces again
+                    del acked[h]           # condition cleared: a new one announces again
                 continue
             seen_now.add(h)
             if h in acked:
+                acked[h] = now
                 continue
             if h not in alerts:
                 alerts[h] = {"sq": tag, "cs": cs, "t0": now, "kind": kind}
@@ -1709,6 +1719,11 @@ def run_gui(parent=None):
         for h in list(anom_track):
             if h not in live_hexes:
                 del anom_track[h]
+        for h in list(acked):
+            # gone from the feed for 10 min: forget the ack, so a return with the same
+            # condition announces again (and the dict can't grow for the whole session)
+            if h not in live_hexes and now - acked[h] > 600:
+                del acked[h]
         for h in list(alerts):
             limit = 600 if alerts[h]["kind"] in ("hijack", "radio failure", "emergency") else 150
             if h not in seen_now and now - alerts[h].get("last", now) > limit:
@@ -3756,11 +3771,11 @@ def run_gui(parent=None):
                 import suite as _suite
                 tpv = _suite.gps_fix(timeout=1.5)
                 if tpv and tpv.get("mode", 0) >= 2:
-                    my["pos"] = (tpv["lat"], tpv["lon"])
-                    my["alt_m"] = tpv.get("altMSL", tpv.get("alt"))
+                    fix = {"pos": (tpv["lat"], tpv["lon"]),
+                           "alt_m": tpv.get("altMSL", tpv.get("alt")), "t": time.time()}
                     if (tpv.get("speed") or 0) > 0.8 and tpv.get("track") is not None:
-                        my["trk"] = tpv["track"]
-                    my["t"] = time.time()
+                        fix["trk"] = tpv["track"]
+                    my.update(fix)      # one step, so the UI never sees a half-written fix
             except Exception:
                 pass
             time.sleep(5)
@@ -3779,16 +3794,17 @@ def run_gui(parent=None):
     def describe(a):
         """Spoken description of contact a from where you stand."""
         _, _, _, rcv = feed.snapshot()
-        here = my["pos"] or rcv or (AIRPORTS["KAPA"]["lat"], AIRPORTS["KAPA"]["lon"])
+        me = dict(my)               # one consistent fix (the GPS thread updates it)
+        here = me["pos"] or rcv or (AIRPORTS["KAPA"]["lat"], AIRPORTS["KAPA"]["lon"])
         cs = (a.get("flight") or "").strip() or a["hex"].upper()
         typ = (a.get("t") or "").strip()
         d = dist_nm(here[0], here[1], a["lat"], a["lon"])
         brg = bearing(here[0], here[1], a["lat"], a["lon"])
         alt = alt_ft(a) or 0
-        agl = alt - (my["alt_m"] or 1750) * 3.28084
+        agl = alt - (me["alt_m"] if me["alt_m"] is not None else 1750) * 3.28084
         elev = math.degrees(math.atan2(agl, max(0.1, d) * 6076.0)) if agl > 0 else 0
-        if my["trk"] is not None and time.time() - my["t"] < 60:
-            rel = (brg - my["trk"] + 360) % 360
+        if me["trk"] is not None and time.time() - me["t"] < 60:
+            rel = (brg - me["trk"] + 360) % 360
             clock = int(round(rel / 30)) % 12 or 12
             where = "%d o'clock" % clock
         else:
@@ -3803,7 +3819,7 @@ def run_gui(parent=None):
                                                "%.0f" % d if d >= 2 else "%.1f" % d, height, trend)
         shown = "%s%s  ·  %s  ·  %.1f nm  ·  %s  ·  %03.0f°%s" % (
             cs, ("  " + typ) if typ else "", where, d, height, brg,
-            "" if my["trk"] is not None else "  (no heading: directions are compass points)")
+            "" if me["trk"] is not None else "  (no heading: directions are compass points)")
         return txt, shown
 
     def point_at(_=None):
@@ -4425,6 +4441,12 @@ def run_gui(parent=None):
         save_view()
         logbook_save(force=True)
         routes.save()
+        stop_worker()          # synchronous: the Hub destroys this workspace as soon as on_close
+        if replay_proc[0] and replay_proc[0].poll() is None:   # returns, which would strand the worker
+            try:
+                replay_proc[0].terminate()
+            except OSError:
+                pass
         detail.config(text="Shutting down cleanly...")
         ctl.submit("quit")
 

@@ -21,7 +21,10 @@ import wave
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import suite as S          # noqa: E402
-import sstvdec as D        # noqa: E402
+try:
+    import sstvdec as D    # noqa: E402
+except ImportError:        # no numpy: recording and pass prediction still work
+    D = None
 
 DIR = os.path.join(S.DATA, "sstv")
 TLE = os.path.join(S.CACHE, "sstv.tle")
@@ -43,6 +46,12 @@ def good_pass(p, min_elev):
     return p.get("max", 0) >= min_elev
 
 
+def eta_text(aos, now):
+    """"in 12 min" / "in 2h05" for a pass that hasn't started."""
+    m = int((aos - now) / 60)
+    return "in %dh%02d" % (m // 60, m % 60) if m >= 60 else "in %d min" % m
+
+
 def pass_line(p, now=None):
     now = now or time.time()
     aos, los = p["aos"], p["los"]
@@ -51,8 +60,7 @@ def pass_line(p, now=None):
     if aos <= now <= los:
         state = "NOW"
     elif aos > now:
-        m = int((aos - now) / 60)
-        state = "in %dh%02d" % (m // 60, m % 60) if m >= 60 else "in %d min" % m
+        state = eta_text(aos, now)
     else:
         state = "done"
     return "%-9s %3d°  %2d min  %-10s %s" % (when, round(p["max"]), dur,
@@ -198,6 +206,8 @@ def main():
 
         def work():
             try:
+                if D is None:
+                    raise RuntimeError("decoding needs numpy (pip install numpy)")
                 r = D.decode_wav(wav)
                 png = D.save_image(r["image"], wav[:-4] + ".png")
                 q.put(("decoded", wav, png, r["mode"], r["lines"], r["slant_ppm"]))
@@ -316,7 +326,7 @@ def main():
         passes_box.config(state="disabled")
         nxt = next((p for p in shown if good_pass(p, s["min_elev"])), None)
         if nxt:
-            next_pill.config(text="next good pass " + pass_line(nxt, now).split()[-1]
+            next_pill.config(text="next good pass " + eta_text(nxt["aos"], now)
                              if nxt["aos"] > now else "ISS overhead now", bg=S.GREEN)
         else:
             next_pill.config(text="", bg=S.DIM)

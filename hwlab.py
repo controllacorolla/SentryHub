@@ -273,6 +273,7 @@ class DemoSerial:
         self.t0 = time.time()
         self.n = 0
         self.open = True
+        self.raw = bytearray()
 
     def read_lines(self):
         out = []
@@ -284,7 +285,13 @@ class DemoSerial:
             out.append("[%6d] temp=%.1fC hum=%d%% pres=%.1fhPa rssi=-%ddBm" % (
                 self.n * 1000, 21 + (self.n % 5) * 0.3, 40 + self.n % 8,
                 1012.0 + (self.n % 10) * 0.2, 60 + self.n % 25))
+        for ln in out:
+            self.raw += ln.encode("utf-8") + b"\r\n"
         return out
+
+    def take_raw(self):
+        data, self.raw = bytes(self.raw), bytearray()
+        return data
 
     def write(self, data):
         cmd = data.decode("utf-8", "replace").strip().lower()
@@ -307,6 +314,9 @@ DEMO_GPIO = [(2, "INPUT", "", "1"), (3, "INPUT", "", "1"), (4, "OUTPUT", "", "0"
              (18, "INPUT", "", "0"), (27, "INPUT", "", "0")]
 
 
+RAW_KEEP = 65536     # bytes of raw serial history kept for the Hex view
+
+
 # ---- live serial reader ---------------------------------------------------------------------
 class SerialReader:
     """Owns the pyserial port and a reader thread. The UI calls read_lines() each tick and
@@ -318,6 +328,7 @@ class SerialReader:
         self.open = True
         self.lock = threading.Lock()
         self.inbuf = bytearray()
+        self.raw = bytearray()        # same bytes, kept for the Hex view
         self.framer = LineFramer()
         self.err = None
         self.t = threading.Thread(target=self._run, daemon=True)
@@ -338,7 +349,15 @@ class SerialReader:
     def read_lines(self):
         with self.lock:
             data, self.inbuf = bytes(self.inbuf), bytearray()
+        self.raw += data
+        if len(self.raw) > RAW_KEEP:
+            del self.raw[:-RAW_KEEP]
         return self.framer.feed(data)
+
+    def take_raw(self):
+        """The raw bytes behind the lines read_lines() has returned since the last call."""
+        data, self.raw = bytes(self.raw), bytearray()
+        return data
 
     def read_bytes(self):
         with self.lock:
@@ -374,7 +393,7 @@ def main():
     import tkinter as tk
     T = S.T
     slog = S.SessionLog("hwlab")
-    st = {"reader": None, "tab": "serial", "logf": None, "rawbytes": bytearray(),
+    st = {"reader": None, "tab": "serial", "logf": None, "rawbytes": bytearray(), "rawtotal": 0,
           "lines": 0, "closed": False, "i2c": None, "i2c_err": None, "gpio": [],
           "scanning": False}
 
@@ -725,7 +744,7 @@ def main():
         out.delete("1.0", "end")
         if s.get("view") == "hex":
             data = bytes(st["rawbytes"][-4096:])
-            for ln in hexdump(data, base=max(0, len(st["rawbytes"]) - 4096)):
+            for ln in hexdump(data, base=st["rawtotal"] - len(data)):
                 out.insert("end", ln + "\n", "rx")
         else:
             for kind, text, ts in ring:
@@ -816,6 +835,7 @@ def main():
     def clear_output():
         ring.clear()
         st["rawbytes"] = bytearray()
+        st["rawtotal"] = 0
         redraw_output()
     S.btn(crow, "Clear", clear_output, F, padx=10, pady=4, kind="quiet").pack(
         side="right", padx=(0, T.px(4)))
@@ -962,11 +982,18 @@ def main():
                 lines = r.read_lines()
             except Exception:
                 lines = []
-            if not demo and hasattr(r, "read_bytes"):
-                pass
             for ln in lines:
                 append("rx", ln)
                 st["lines"] += 1
+            raw = r.take_raw() if hasattr(r, "take_raw") else b""
+            if raw:
+                st["rawbytes"] += raw
+                st["rawtotal"] += len(raw)
+                if len(st["rawbytes"]) > RAW_KEEP:
+                    del st["rawbytes"][:-RAW_KEEP]
+                # redraw only while the user is at the end, so scrolling back isn't yanked away
+                if st["tab"] == "serial" and s.get("view") == "hex" and out.yview()[1] > 0.995:
+                    redraw_output()
             if hasattr(r, "err") and r.err:
                 append("sys", "Port error: %s" % r.err)
                 disconnect()

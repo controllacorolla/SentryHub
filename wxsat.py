@@ -50,7 +50,7 @@ def fetch_tles(s, force=False, path=None):
         try:
             with urllib.request.urlopen(url, timeout=15) as r:
                 txt = r.read().decode()
-            if any(("1 %s" % n) in txt for n in want):
+            if any(("1 %s" % n.zfill(5)) in txt for n in want):   # TLEs zero-pad the id
                 open(TLE_PATH, "w").write(txt)
                 return "updated"
         except Exception:
@@ -608,7 +608,7 @@ def main():
                                                                round(p["max"]))])
             if not wanted:
                 continue
-            if p["aos"] - now < 300 and p not in st["alerted"]:
+            if 0 < p["aos"] - now < 300 and p not in st["alerted"]:
                 st["alerted"].add(p)
                 S.notify("Weather sat pass in 5 min", "%s, max %.0f°" % (p["sat"], p["max"]))
             if p["aos"] - now < 60 and not st["capturing"] and p not in st["tried"]:

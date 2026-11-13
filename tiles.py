@@ -380,7 +380,9 @@ class TileLayer:
                 self.bulk_keys = set()
             self.bulk_keys.update(keys)
             self.bulk = {"total": self.bulk["total"] + len(keys) if self.bulk["active"] else len(keys),
-                         "done": self.bulk["done"] if self.bulk["active"] else 0, "active": bool(keys)}
+                         "done": self.bulk["done"] if self.bulk["active"] else 0,
+                         # an empty request (all cached) must not end a download still in flight
+                         "active": self.bulk["active"] or bool(keys)}
         for k in keys:
             self._enqueue(k, priority=1)
         return len(keys)

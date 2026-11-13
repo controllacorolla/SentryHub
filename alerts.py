@@ -110,6 +110,8 @@ class AlertEngine:
             lat, lon = _get(event, p.get("lat_field", "lat")), _get(event, p.get("lon_field", "lon"))
             if lat is None or lon is None:
                 return False, ""
+            if p.get("lat") is None or p.get("lon") is None:
+                return False, ""          # malformed rule (no centre): skip it, don't crash every rule
             d = geo.dist_nm(p["lat"], p["lon"], lat, lon)
             inside = d <= p.get("radius_nm", 1.0)
             eid = event.get("id")

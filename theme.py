@@ -477,13 +477,18 @@ def top_bar(root, F, title, subtitle=""):
     clk.pack(side="right")
 
     def tick():
+        try:
+            if not clk.winfo_exists():
+                return                  # bar closed: stop the chain
+        except Exception:
+            return
         now = time.time()
         if STYLE == "maven":
             clk.config(text=time.strftime("%d%b%Y %H:%M:%SZ", time.gmtime(now)).upper())
         else:
             clk.config(text="%s L   %sZ" % (time.strftime("%H:%M:%S", time.localtime(now)),
                                             time.strftime("%H%M", time.gmtime(now))))
-        clk.after(1000, tick)
+        root.after(1000, tick)          # a workspace cancels its own timers on close
     tick()
     if not emb:
         tk.Frame(root, bg=LINE, height=1).pack(fill="x")

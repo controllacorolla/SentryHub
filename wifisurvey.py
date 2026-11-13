@@ -81,6 +81,7 @@ def scan_argv(iface="wlan0"):
 def main(parent=None):
     import shutil
     import subprocess
+    import threading
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import suite as S
     if parent is None:
@@ -98,28 +99,48 @@ def main(parent=None):
     txt.tag_config("open", foreground=S.RED)
     txt.pack(fill="both", expand=True)
 
-    def scan():
-        aps = []
-        if shutil.which("iw"):
-            try:
-                out = subprocess.run(scan_argv(s.get("iface", "wlan0")), capture_output=True,
-                                     text=True, timeout=15).stdout
-                aps = parse_iw_scan(out)
-            except (OSError, subprocess.TimeoutExpired):
-                aps = []
+    scanning = {"on": False}
+
+    def render(aps):
         txt.config(state="normal")
         txt.delete("1.0", "end")
         util = channel_utilization(aps)
-        txt.insert("end", "Channels (busiest): %s\n\n" % ", ".join(
-            "ch%s×%d" % (k, v) for k, v in util.items()) or "(none)")
-        for a in sorted(aps, key=lambda a: -(a.get("signal") or -999)):
-            txt.insert("end", "%-24s " % (a["ssid"] or "<hidden>"),
-                       "open" if a["security"] == "open" else "ssid")
+        chans = ", ".join("ch%s×%d" % (k, v) for k, v in util.items())
+        txt.insert("end", "Channels (busiest): %s\n\n" % (chans or "(none)"))  # fmt string is
+        for a in sorted(aps, key=lambda a: -(a.get("signal") or -999)):        # always truthy, so
+            txt.insert("end", "%-24s " % (a["ssid"] or "<hidden>"),            # the (none) default
+                       "open" if a["security"] == "open" else "ssid")          # must be on `chans`
             txt.insert("end", "%s  ch%s  %s dBm  %s\n" % (
                 a["bssid"], a.get("channel"), a.get("signal"), a["security"]))
         if not aps:
             txt.insert("end", "No scan (needs iw + a Wi-Fi adapter).\n")
         txt.config(state="disabled")
+
+    def scan():
+        # `iw scan` blocks for up to 15 s; run it off the shared Tk thread or the whole suite
+        # freezes. Results are rendered back on the main thread via root.after.
+        if scanning["on"]:
+            return
+        scanning["on"] = True
+
+        def work():
+            aps = []
+            if shutil.which("iw"):
+                try:
+                    out = subprocess.run(scan_argv(s.get("iface", "wlan0")), capture_output=True,
+                                         text=True, timeout=15).stdout
+                    aps = parse_iw_scan(out)
+                except (OSError, subprocess.TimeoutExpired):
+                    aps = []
+
+            def done():
+                scanning["on"] = False
+                try:
+                    render(aps)
+                except tk.TclError:
+                    pass                 # workspace closed while the scan was running
+            root.after(0, done)
+        threading.Thread(target=work, daemon=True).start()
 
     bar = tk.Frame(root, bg=T.SURFACE)
     bar.pack(side="bottom", fill="x")

@@ -63,6 +63,11 @@ def settings(name, defaults):
     path = os.path.join(CFG, name + ".json")
     s = load_json(path, None)
     if not isinstance(s, dict):
+        if os.path.exists(path):
+            try:
+                os.replace(path, path + ".corrupt")   # a torn/hand-broken file is recoverable, not trash
+            except OSError:
+                pass
         s = json.loads(json.dumps(defaults))
         try:
             save_json(path, s)
@@ -540,8 +545,9 @@ class RtlLease:
             raise RuntimeError("%s is still holding the SDR after %ds; try again in a minute"
                                % (svc, self.EXIT_WAIT_S))
 
-    def release(self):
-        """Restore the plane map unless another live app now holds the dongle."""
+    def release(self, restart=True):
+        """Free the lease, and restart the plane map unless another live app now holds the
+        dongle (or restart is False, e.g. the user turned off \"restart readsb after listening\")."""
         if getattr(self, "handover", False):
             # we were asked to yield to another workspace: it inherits the paused plane map
             self.handover = False
@@ -554,6 +560,11 @@ class RtlLease:
         owner, pid = lease_holder()
         if owner and (pid != os.getpid() or owner != self.who):
             # someone else has it now - another program, or another workspace in this one
+            self.held = False
+            return
+        if not restart:
+            # user doesn't want readsb back; drop the debt in the shared file but free the lease
+            self._write(paused=[], owner=None, pid=None)
             self.held = False
             return
         for svc in self.paused:
@@ -837,11 +848,18 @@ def backup_configs(dest=None):
     import tarfile
     import glob
     paths = []
-    if os.path.isdir(CFG):
-        paths.append(CFG)
-    # accumulated data worth keeping, re-derivable caches are not
-    for p in (os.path.join(HOME, ".local", "share", "uconsole-suite", "sky_records.json"),
-              os.path.join(CACHE, "bingo.json")):
+    for d in (CFG, os.path.join(HOME, ".config", "sky-app")):   # Sky keeps its settings separately
+        if os.path.isdir(d):
+            paths.append(d)
+    # accumulated data worth keeping; re-derivable caches (tiles, recordings) and the big
+    # radiosonde venv are left out, so list the specific files/dirs instead of all of DATA
+    data = os.path.join(HOME, ".local", "share", "uconsole-suite")
+    for name in ("sky_records.json", "sky_coverage.json", "sky_types.json", "logbook"):
+        p = os.path.join(data, name)
+        if os.path.exists(p):
+            paths.append(p)
+    for p in (os.path.join(CACHE, "bingo.json"),
+              os.path.join(HOME, ".cache", "sky-app", "bingo.json")):   # Sky's actual bingo file
         if os.path.exists(p):
             paths.append(p)
     if dest is None:
