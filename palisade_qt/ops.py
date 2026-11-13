@@ -11,7 +11,7 @@ import time
 from PySide6 import QtCore, QtWidgets
 
 from .app import PalisadeApp
-from .kit import card, micro, DetailCard, FeedTable
+from .kit import card, DetailCard, FeedTable
 from .worker import Worker
 
 # the 9 callsigns (DESIGN §2); OPS is home, the rest are destinations
@@ -65,40 +65,43 @@ class OpsHome(PalisadeApp):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(10)
 
-        # left: the hero stat (the one glanceable number) + two small readouts
+        # left: hero stat (the one glanceable number) + system readouts
         self.hero = DetailCard("CONTACTS IN RANGE")
         self.hero.set_hero("—", "live across all feeds")
         self.hero.set_rows([("SoC TEMP", "—"), ("BATTERY", "—"), ("UPTIME", "0s")])
-        grid.addWidget(self.hero, 0, 0, 2, 1)
+        grid.addWidget(self.hero, 0, 0, 1, 1)
 
-        # center: the callsign grid
-        nav = card(1)
-        nl = QtWidgets.QVBoxLayout(nav)
-        nl.setContentsMargins(12, 10, 12, 12)
-        nl.addWidget(micro("Callsigns"))
-        tiles = QtWidgets.QGridLayout()
-        tiles.setSpacing(8)
-        for i, (name, sub) in enumerate(CALLSIGNS):
-            tiles.addWidget(self._tile(name, sub), i // 3, i % 3)
-        nl.addLayout(tiles)
-        grid.addWidget(nav, 0, 1, 1, 1)
-
-        # bottom: live mini-feed
+        # right: live event feed — the situational stream
         self.feed = FeedTable([("time", "TIME"), ("src", "SRC"), ("id", "ID"), ("note", "")])
-        grid.addWidget(self.feed, 1, 1, 1, 1)
+        self.feed.selected.connect(self._show_event)
+        grid.addWidget(self.feed, 0, 1, 1, 1)
 
-        grid.setColumnStretch(0, 3)
+        # bottom-left: last event detail
+        self.event_detail = DetailCard("LAST EVENT")
+        self.event_detail.set_hero("—", "waiting for first signal")
+        grid.addWidget(self.event_detail, 1, 0, 1, 1)
+
+        # bottom-right: callsign shortcut tiles
+        nav = card(1)
+        nl = QtWidgets.QHBoxLayout(nav)
+        nl.setContentsMargins(10, 8, 10, 8)
+        nl.setSpacing(6)
+        for name, sub in CALLSIGNS[1:]:
+            nl.addWidget(self._tile(name, sub))
+        grid.addWidget(nav, 1, 1, 1, 1)
+
+        grid.setColumnStretch(0, 2)
         grid.setColumnStretch(1, 5)
-        grid.setRowStretch(0, 3)
-        grid.setRowStretch(1, 2)
+        grid.setRowStretch(0, 4)
+        grid.setRowStretch(1, 1)
         self._t0 = time.time()
         return body
 
     def _tile(self, name, sub):
-        # QPushButton eats "&" as a mnemonic; escape it so "Hardware & IO" renders literally
-        b = QtWidgets.QPushButton(("%s\n%s" % (name, sub)).replace("&", "&&"))
+        b = QtWidgets.QPushButton(name)
         b.setProperty("class", "tile")
-        b.setMinimumHeight(52)
+        b.setMinimumHeight(40)
+        b.setToolTip(sub)
         b.clicked.connect(lambda: self.launch.emit(name))
         return b
 
@@ -107,6 +110,15 @@ class OpsHome(PalisadeApp):
 
     def on_row(self, row):
         self.feed.model.prepend(row, cap=200)
+        self._show_event(row)
+
+    def _show_event(self, row):
+        self.event_detail.set_hero(row.get("id", "—"), row.get("src", ""))
+        self.event_detail.set_rows([
+            ("TIME", row.get("time", "")),
+            ("SOURCE", row.get("src", "")),
+            ("STATUS", row.get("note", "")),
+        ])
 
     def on_status(self, status):
         super().on_status(status)

@@ -74,6 +74,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
 
         self.rail = NavRail(self)
         hbox.addWidget(self.rail)
+        hbox.addSpacing(2)
 
         self.stack = QtWidgets.QStackedWidget()
         hbox.addWidget(self.stack, 1)

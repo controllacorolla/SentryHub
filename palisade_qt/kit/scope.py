@@ -32,8 +32,23 @@ class ScopePanel(QtWidgets.QFrame):
         self.spectrum.setYRange(-115, -15)
         self.spectrum.getAxis("left").setTextPen(tok["muted"])
         self.spectrum.getAxis("bottom").setTextPen(tok["muted"])
-        self.curve = self.spectrum.plot(pen=pg.mkPen(tok["accent"], width=1))
+        self.spectrum.getAxis("left").setStyle(tickLength=-5)
+        self.spectrum.getAxis("bottom").setStyle(tickLength=-5)
+
+        accent_rgb = tuple(int(tok["accent"][i:i + 2], 16) for i in (1, 3, 5))
+        fill_brush = pg.mkBrush(accent_rgb[0], accent_rgb[1], accent_rgb[2], 25)
+        self.curve = self.spectrum.plot(pen=pg.mkPen(tok["accent"], width=1.5),
+                                        fillLevel=-115, fillBrush=fill_brush)
+        self.peak_hold = np.full(bins, -115.0, dtype=np.float32)
+        self.peak_curve = self.spectrum.plot(
+            pen=pg.mkPen(tok["muted"], width=1, style=pg.QtCore.Qt.DotLine))
+        self._peak_decay = 0.97
         lay.addWidget(self.spectrum, 35)
+
+        sep = QtWidgets.QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: %s;" % tok["hairline"])
+        lay.addWidget(sep)
 
         self.img = pg.ImageItem()
         view = pg.GraphicsLayoutWidget()
@@ -65,6 +80,8 @@ class ScopePanel(QtWidgets.QFrame):
         self.buf = np.roll(self.buf, -1, axis=0)
         self.buf[-1] = power
         self.curve.setData(self.freqs, power)
+        self.peak_hold = np.maximum(power, self.peak_hold * self._peak_decay)
+        self.peak_curve.setData(self.freqs, self.peak_hold)
         self._refresh()
 
     def _refresh(self):

@@ -16,7 +16,7 @@ DARK = {
     "accent": "#A492DA", "live": "#56D68E", "warn": "#E6B450", "alert": "#E06A6A",
     "highlight": "rgba(255,255,255,0.06)", "shadow": 0.55,
     "field": "#0E1115", "accent_dim": "rgba(164,146,218,0.15)",
-    "row_alt": "rgba(255,255,255,0.02)", "row_hover": "rgba(255,255,255,0.05)",
+    "row_alt": "rgba(255,255,255,0.035)", "row_hover": "rgba(255,255,255,0.06)",
 }
 LIGHT = {
     "bg": "#E9EBEE", "p1": "#F5F6F8", "p2": "#FFFFFF", "well": "#DADDE2",
@@ -24,7 +24,7 @@ LIGHT = {
     "accent": "#5A4790", "live": "#2E9E63", "warn": "#9A6B12", "alert": "#B5443E",
     "highlight": "rgba(255,255,255,0.85)", "shadow": 0.18,
     "field": "#FFFFFF", "accent_dim": "rgba(90,71,144,0.12)",
-    "row_alt": "rgba(0,0,0,0.03)", "row_hover": "rgba(0,0,0,0.06)",
+    "row_alt": "rgba(0,0,0,0.04)", "row_hover": "rgba(0,0,0,0.07)",
 }
 MODES = {"dark": DARK, "light": LIGHT}
 FONT_STACK = '"IBM Plex Mono", "DejaVu Sans Mono", monospace'
@@ -106,15 +106,24 @@ QScrollBar:vertical {{ background: {bg}; width: 8px; margin: 0; }}
 QScrollBar::handle:vertical {{ background: {hairline}; border-radius: 4px; min-height: 24px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
 
+QScrollBar:horizontal {{ background: {bg}; height: 8px; margin: 0; }}
+QScrollBar::handle:horizontal {{ background: {hairline}; border-radius: 4px; min-width: 24px; }}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+
+QToolTip {{ background: {p1}; color: {text}; border: 1px solid {hairline};
+            padding: 4px 8px; border-radius: 4px; font-size: 12px; }}
+
 /* callsign rail */
-QFrame#nav_rail {{ background: {p1}; border: 1px solid {hairline}; border-radius: 10px; }}
+QFrame#nav_rail {{ background: {p1}; border: none;
+    border-right: 1px solid {hairline}; border-radius: 0; }}
 QPushButton.nav_item {{ background: transparent; border: none; border-radius: 6px;
-    padding: 3px 10px; color: {muted}; font-size: 11px; font-weight: 600;
-    letter-spacing: 1px; text-align: left; min-height: 24px; }}
+    padding: 4px 10px; color: {muted}; font-size: 11px; font-weight: 600;
+    letter-spacing: 1px; text-align: left; min-height: 26px; }}
 QPushButton.nav_item:hover {{ background: {row_hover}; color: {text}; }}
 QPushButton.nav_active {{ background: {accent_dim}; border: none; border-radius: 6px;
-    padding: 3px 10px; color: {accent}; font-size: 11px; font-weight: 600;
-    letter-spacing: 1px; text-align: left; min-height: 24px; }}
+    padding: 4px 10px; color: {accent}; font-size: 11px; font-weight: 600;
+    letter-spacing: 1px; text-align: left; min-height: 26px;
+    border-left: 2px solid {accent}; }}
 """
 
 

@@ -105,7 +105,7 @@ class PrismApp(PalisadeApp):
         self.span.valueChanged.connect(self._retune)
         lay.addWidget(self.bar)
 
-        self.scope = ScopePanel(bins=BINS, history=200, lo_mhz=self._lo, hi_mhz=self._hi,
+        self.scope = ScopePanel(bins=BINS, history=120, lo_mhz=self._lo, hi_mhz=self._hi,
                                 mode=self.mode)
         lay.addWidget(self.scope, 1)
         return body
