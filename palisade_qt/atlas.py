@@ -72,9 +72,10 @@ class AtlasApp(PalisadeApp):
         right.setSpacing(10)
         self.feed = FeedTable([("cs", "CALLSIGN"), ("rng", "NM"), ("brg", "BRG"), ("alt", "ALT")])
         self.feed.selected.connect(self._show)
-        right.addWidget(self.feed, 2)
+        right.addWidget(self.feed, 3)
         self.detail = DetailCard("CONTACT")
-        right.addWidget(self.detail, 1)
+        self.detail.set_hero("—", "select a contact")
+        right.addWidget(self.detail, 2)
         split.addLayout(right, 2)
         return body
 

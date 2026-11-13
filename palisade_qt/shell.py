@@ -12,7 +12,7 @@ import sys
 from PySide6 import QtGui, QtWidgets
 
 from . import theme
-from .ops import OpsHome
+from .ops import OpsHome, CALLSIGNS
 from .prism import PrismApp
 from .babel import BabelApp
 from .atlas import AtlasApp
@@ -22,15 +22,40 @@ from .more import OverwatchApp, ReconApp, BenchApp
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Migrated callsigns -> a factory; the Hub builds them lazily and embeds them as pages.
 QT_PAGES = {
     "OVERWATCH": OverwatchApp, "ATLAS": AtlasApp, "BABEL": BabelApp, "PRISM": PrismApp,
     "PROWL": ProwlApp, "FORGE": ForgeApp, "RECON": ReconApp, "BENCH": BenchApp,
 }
-# Not-yet-migrated callsigns -> a Tk host module, launched as a separate process (inverted
-# coexistence). Empty now: all nine callsigns are Qt pages. Individual absorbed modules still
-# migrate per-cluster into these archetypes; until then their Tk apps remain runnable standalone.
 TK_HOSTS = {}
+
+
+class NavRail(QtWidgets.QFrame):
+    """Persistent left callsign rail — always visible, active one highlighted violet."""
+
+    def __init__(self, hub, parent=None):
+        super().__init__(parent)
+        self.setObjectName("nav_rail")
+        self.setProperty("class", "nav_rail")
+        self.setFixedWidth(100)
+        self.hub = hub
+        self.btns = {}
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(6, 8, 6, 8)
+        lay.setSpacing(2)
+        for name, _sub in CALLSIGNS:
+            b = QtWidgets.QPushButton(name)
+            b.setProperty("class", "nav_item")
+            b.clicked.connect(lambda _, n=name: self.hub.open_callsign(n))
+            lay.addWidget(b)
+            self.btns[name] = b
+        lay.addStretch(1)
+        self.set_active("OPS")
+
+    def set_active(self, name):
+        for n, b in self.btns.items():
+            b.setProperty("class", "nav_active" if n == name else "nav_item")
+            b.style().unpolish(b)
+            b.style().polish(b)
 
 
 class PalisadeHub(QtWidgets.QMainWindow):
@@ -40,8 +65,18 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.mode = mode
         self.setWindowTitle("PALISADE")
         self.resize(1280, 480)
+
+        central = QtWidgets.QWidget()
+        self.setCentralWidget(central)
+        hbox = QtWidgets.QHBoxLayout(central)
+        hbox.setContentsMargins(0, 0, 0, 0)
+        hbox.setSpacing(0)
+
+        self.rail = NavRail(self)
+        hbox.addWidget(self.rail)
+
         self.stack = QtWidgets.QStackedWidget()
-        self.setCentralWidget(self.stack)
+        hbox.addWidget(self.stack, 1)
 
         self.pages = {}
         self.ops = OpsHome(demo=demo, mode=mode)
@@ -50,7 +85,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.show_page("OPS")
 
         QtGui.QShortcut(QtGui.QKeySequence("Escape"), self,
-                        activated=lambda: self.show_page("OPS"))     # esc -> home (chrome spec)
+                        activated=lambda: self.show_page("OPS"))
 
     def _add_page(self, name, widget):
         self.pages[name] = widget
@@ -60,19 +95,20 @@ class PalisadeHub(QtWidgets.QMainWindow):
         w = self.pages.get(name)
         if w is not None:
             self.stack.setCurrentWidget(w)
+            self.rail.set_active(name)
 
     def open_callsign(self, name):
-        if name in self.pages:                 # already-built migrated Qt page
+        if name in self.pages:
             self.show_page(name)
             return
-        if name in QT_PAGES:                   # migrated but not built yet: build + embed lazily
+        if name in QT_PAGES:
             page = QT_PAGES[name](demo=self.demo, mode=self.mode)
             self._add_page(name, page)
             self.show_page(name)
             return
         mod = TK_HOSTS.get(name)
         if mod:
-            self.launch_tk(mod)                # not migrated yet: run its Tk standalone as a subprocess
+            self.launch_tk(mod)
 
     def launch_tk(self, module):
         """Launch a not-yet-migrated Tk app as its own process (inverted coexistence)."""
@@ -100,7 +136,10 @@ def main(argv=None):
     demo = "--demo" in argv
     mode = "light" if "--light" in argv else "dark"
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(argv)
-    app.setStyleSheet(theme.qss(mode))        # app-wide theme so the window chrome matches too
+    theme.load_fonts()
+    theme.set_app_font(app)
+    theme.set_palette(app, mode)
+    app.setStyleSheet(theme.qss(mode))
     hub = PalisadeHub(demo=demo, mode=mode)
     hub.show()
     return app.exec()

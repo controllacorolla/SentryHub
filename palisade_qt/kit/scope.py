@@ -27,14 +27,13 @@ class ScopePanel(QtWidgets.QFrame):
 
         self.spectrum = pg.PlotWidget()
         self.spectrum.setBackground(tok["well"])
-        self.spectrum.setMaximumHeight(110)
         self.spectrum.setMenuEnabled(False)
         self.spectrum.setMouseEnabled(False, False)
         self.spectrum.setYRange(-115, -15)
         self.spectrum.getAxis("left").setTextPen(tok["muted"])
         self.spectrum.getAxis("bottom").setTextPen(tok["muted"])
         self.curve = self.spectrum.plot(pen=pg.mkPen(tok["accent"], width=1))
-        lay.addWidget(self.spectrum)
+        lay.addWidget(self.spectrum, 35)
 
         self.img = pg.ImageItem()
         view = pg.GraphicsLayoutWidget()
@@ -46,7 +45,7 @@ class ScopePanel(QtWidgets.QFrame):
         self.vb.setDefaultPadding(0)
         self.vb.invertY(True)                 # newest sweep at the bottom
         self.img.setLookupTable(self._lut(tok))
-        lay.addWidget(view, 1)
+        lay.addWidget(view, 60)
         self._refresh()
         self.vb.setRange(xRange=(0, bins), yRange=(0, history), padding=0)
         self.vb.disableAutoRange()            # keep the full-well mapping as rows stream in

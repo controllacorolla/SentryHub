@@ -44,8 +44,16 @@ class OverwatchApp(PalisadeApp):
         lay.setSpacing(10)
         self.dome = MapPanel(span_nm=90, mode=self.mode)
         lay.addWidget(self.dome, 3)
+
+        right = QtWidgets.QVBoxLayout()
+        right.setSpacing(10)
         self.feed = FeedTable([("name", "OBJECT"), ("el", "EL"), ("az", "AZ")])
-        lay.addWidget(self.feed, 1)
+        self.feed.selected.connect(self._show)
+        right.addWidget(self.feed, 2)
+        self.detail = DetailCard("OBJECT")
+        self.detail.set_hero("—", "select an object")
+        right.addWidget(self.detail, 1)
+        lay.addLayout(right, 2)
         return body
 
     def make_worker(self):
@@ -54,6 +62,11 @@ class OverwatchApp(PalisadeApp):
     def on_row(self, pts):
         self.dome.set_contacts([(p["x"], p["y"]) for p in pts])
         self.feed.model.set_rows(sorted(pts, key=lambda p: -float(p["el"])))
+
+    def _show(self, row):
+        self.detail.set_hero(row.get("name", "—"), "tracked object")
+        self.detail.set_rows([("ELEVATION", row.get("el", "") + "°"),
+                              ("AZIMUTH", row.get("az", "") + "°")])
 
 
 # ---- RECON: network + RF survey (decoder-feed archetype) ----
