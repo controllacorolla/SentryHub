@@ -11,6 +11,7 @@ import time
 from PySide6 import QtWidgets
 
 from .app import PalisadeApp
+from . import theme
 from .kit import ControlBar, FeedTable, DetailCard
 from .worker import Worker
 
@@ -73,7 +74,13 @@ class BabelApp(PalisadeApp):
     TITLE = "BABEL"
     LEASE = "BABEL"
 
+    PROTO_COLORS = {
+        "AIS": "#4DA6FF", "ACARS": "#66D9A0", "POCSAG": "#FFB74D",
+        "RDS": "#CE93D8", "CW": "#F06292", "RTTY": "#90CAF9",
+    }
+
     def build_body(self):
+        self._tok = theme.tokens(self.mode)
         body = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(body)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -113,9 +120,14 @@ class BabelApp(PalisadeApp):
         return DecoderWorker(demo=self.demo, mode=self.mode.currentText())
 
     def on_row(self, row):
+        proto = row.get("proto", "")
+        color = self.PROTO_COLORS.get(proto)
+        if color:
+            row["_colors"] = {"proto": color}
         self.feed.model.prepend(row, cap=400)
         self._count += 1
         self.count.setText("%d msgs" % self._count)
+        self.header.set_chip("sdr", "%d MSGS" % self._count, ok=True)
         if self._count == 1:
             self._show(row)
 

@@ -138,6 +138,7 @@ class ReconApp(PalisadeApp):
         return _SurveyWorker(demo=self.demo, interval_ms=1500)
 
     def on_row(self, rows):
+        open_count = 0
         for r in rows:
             sig = int(r["sig"])
             if sig > -50:
@@ -147,8 +148,14 @@ class ReconApp(PalisadeApp):
             else:
                 c = self._tok["muted"]
             r["_colors"] = {"sig": c}
+            if r.get("sec") == "open":
+                r["_colors"]["sec"] = self._tok["warn"]
+                open_count += 1
         self.feed.model.set_rows(sorted(rows, key=lambda r: -int(r["sig"])))
-        self.header.set_chip("sdr", "%d APs" % len(rows), ok=True)
+        chip = "%d APs" % len(rows)
+        if open_count:
+            chip += " · %d OPEN" % open_count
+        self.header.set_chip("sdr", chip, ok=True)
 
     def _show(self, row):
         self.detail.set_hero(row.get("ssid", "—"), "wireless network")
@@ -193,10 +200,13 @@ class BenchApp(PalisadeApp):
         return body
 
     def _run(self):
-        # demo: a synthetic conducted loopback measurement. No transmit path is exercised here;
-        # the real bench routes through txguard's conducted gate and loopback engine.
         snr = random.uniform(28, 42)
+        freq_err = random.uniform(-0.8, 0.8)
+        ber = random.uniform(0, 0.003)
         self.card.set_hero("%.1f dB" % snr, "conducted loopback SNR (demo)")
+        result = "PASS" if (snr > 25 and ber < 0.005) else "LOW"
         self.card.set_rows([("TXGUARD", "conducted path only"),
-                            ("RESULT", "PASS" if snr > 25 else "LOW"),
+                            ("RESULT", result),
+                            ("FREQ ERROR", "%.2f ppm" % freq_err),
+                            ("BIT ERR RATE", "%.4f" % ber),
                             ("AT", time.strftime("%H:%M:%S"))])
