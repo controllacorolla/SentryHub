@@ -12,6 +12,7 @@ import time
 from PySide6 import QtWidgets
 
 from .app import PalisadeApp
+from . import theme
 from .kit import MapPanel, FeedTable, DetailCard
 from .worker import Worker
 
@@ -60,6 +61,7 @@ class AtlasApp(PalisadeApp):
     LEASE = "ATLAS"
 
     def build_body(self):
+        self._tok = theme.tokens(self.mode)
         body = QtWidgets.QWidget()
         split = QtWidgets.QHBoxLayout(body)
         split.setContentsMargins(0, 0, 0, 0)
@@ -84,6 +86,15 @@ class AtlasApp(PalisadeApp):
 
     def on_row(self, rows):
         self.map.set_contacts([(r["x"], r["y"]) for r in rows])
+        for r in rows:
+            rng = float(r["rng"])
+            if rng < 20:
+                c = self._tok["live"]
+            elif rng < 50:
+                c = self._tok["text"]
+            else:
+                c = self._tok["muted"]
+            r["_colors"] = {"rng": c}
         self.feed.model.set_rows(sorted(rows, key=lambda r: float(r["rng"])))
         self.header.set_chip("sdr", "%d CONTACTS" % len(rows), ok=True)
 

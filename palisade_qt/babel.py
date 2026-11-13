@@ -95,7 +95,7 @@ class BabelApp(PalisadeApp):
         self.feed = FeedTable([("time", "TIME"), ("proto", "PROTO"),
                                ("id", "ID"), ("summary", "MESSAGE")])
         self.feed.selected.connect(self._show)
-        split.addWidget(self.feed, 2)
+        split.addWidget(self.feed, 3)
         self.detail = DetailCard("MESSAGE")
         split.addWidget(self.detail, 1)
         outer.addLayout(split, 1)

@@ -1,5 +1,5 @@
 """Feed table — a QTableView + model for decoder/contact feeds (the BABEL/ATLAS list)."""
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 
 class FeedModel(QtCore.QAbstractTableModel):
@@ -22,9 +22,15 @@ class FeedModel(QtCore.QAbstractTableModel):
     def data(self, idx, role=QtCore.Qt.DisplayRole):
         if not idx.isValid():
             return None
+        row = self.rows[idx.row()]
+        key = self.columns[idx.column()][0]
         if role == QtCore.Qt.DisplayRole:
-            key = self.columns[idx.column()][0]
-            return str(self.rows[idx.row()].get(key, ""))
+            return str(row.get(key, ""))
+        if role == QtCore.Qt.ForegroundRole:
+            colors = row.get("_colors")
+            if colors and key in colors:
+                return QtGui.QColor(colors[key])
+            return None
         if role == QtCore.Qt.TextAlignmentRole and idx.column() > 0:
             return int(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         return None
@@ -61,7 +67,11 @@ class FeedTable(QtWidgets.QFrame):
         self.view.verticalHeader().setDefaultSectionSize(28)
         self.view.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.view.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-        self.view.horizontalHeader().setStretchLastSection(True)
+        hdr = self.view.horizontalHeader()
+        hdr.setStretchLastSection(True)
+        hdr.setMinimumSectionSize(70)
+        for i in range(len(columns) - 1):
+            hdr.setSectionResizeMode(i, QtWidgets.QHeaderView.ResizeToContents)
         self.view.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.view.clicked.connect(self._clicked)
         lay.addWidget(self.view)

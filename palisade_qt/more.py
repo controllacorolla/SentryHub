@@ -87,6 +87,8 @@ class ReconApp(PalisadeApp):
     LEASE = None
 
     def build_body(self):
+        from . import theme
+        self._tok = theme.tokens(self.mode)
         body = QtWidgets.QWidget()
         lay = QtWidgets.QVBoxLayout(body)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -96,9 +98,17 @@ class ReconApp(PalisadeApp):
         bar.add_stretch()
         bar.lay.addWidget(micro("Passive · no deauth/inject"))
         lay.addWidget(bar)
+
+        split = QtWidgets.QHBoxLayout()
+        split.setSpacing(10)
         self.feed = FeedTable([("ssid", "SSID"), ("bssid", "BSSID"),
                                ("ch", "CH"), ("sig", "dBm"), ("sec", "SEC")])
-        lay.addWidget(self.feed, 1)
+        self.feed.selected.connect(self._show)
+        split.addWidget(self.feed, 3)
+        self.detail = DetailCard("ACCESS POINT")
+        self.detail.set_hero("—", "select an AP")
+        split.addWidget(self.detail, 1)
+        lay.addLayout(split, 1)
         return body
 
     def _iface(self):
@@ -110,8 +120,26 @@ class ReconApp(PalisadeApp):
         return _SurveyWorker(demo=self.demo, interval_ms=1500)
 
     def on_row(self, rows):
+        for r in rows:
+            sig = int(r["sig"])
+            if sig > -50:
+                c = self._tok["live"]
+            elif sig > -70:
+                c = self._tok["warn"]
+            else:
+                c = self._tok["muted"]
+            r["_colors"] = {"sig": c}
         self.feed.model.set_rows(sorted(rows, key=lambda r: -int(r["sig"])))
         self.header.set_chip("sdr", "%d APs" % len(rows), ok=True)
+
+    def _show(self, row):
+        self.detail.set_hero(row.get("ssid", "—"), "wireless network")
+        self.detail.set_rows([
+            ("BSSID", row.get("bssid", "")),
+            ("CHANNEL", str(row.get("ch", ""))),
+            ("SIGNAL", str(row.get("sig", "")) + " dBm"),
+            ("SECURITY", row.get("sec", "")),
+        ])
 
 
 # ---- BENCH: conducted TX self-test, txguard-gated (status archetype, NO OTA) ----

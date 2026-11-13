@@ -6,11 +6,11 @@ is the serial/I2C/GPIO bench. The worker streams device lines; demo synthesises 
 boot + sensor stream, on-device it reads the real serial port (engine unchanged).
 """
 import random
-import time
 
 from PySide6 import QtWidgets
 
 from .app import PalisadeApp
+from . import theme
 from .kit import ControlBar, micro
 from .worker import Worker
 
@@ -39,6 +39,7 @@ class ForgeApp(PalisadeApp):
     LEASE = None            # serial/I2C/GPIO bench — never holds the SDR
 
     def build_body(self):
+        self._tok = theme.tokens(self.mode)
         body = QtWidgets.QWidget()
         lay = QtWidgets.QVBoxLayout(body)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -56,6 +57,10 @@ class ForgeApp(PalisadeApp):
         self.readout = QtWidgets.QLabel("—")
         self.readout.setProperty("class", "value")
         self.bar.lay.addWidget(self.readout)
+        self._lines = QtWidgets.QLabel("0 lines")
+        self._lines.setProperty("class", "micro")
+        self.bar.lay.addSpacing(12)
+        self.bar.lay.addWidget(self._lines)
         lay.addWidget(self.bar)
 
         well = QtWidgets.QFrame()
@@ -68,6 +73,7 @@ class ForgeApp(PalisadeApp):
         self.console.setMaximumBlockCount(500)
         wl.addWidget(self.console)
         lay.addWidget(well, 1)
+        self._line_count = 0
         return body
 
     def make_worker(self):
@@ -76,5 +82,7 @@ class ForgeApp(PalisadeApp):
     def on_row(self, msg):
         prefix = "" if msg["kind"] == "sys" else "  "
         self.console.appendPlainText(prefix + msg["line"])
+        self._line_count += 1
+        self._lines.setText("%d lines" % self._line_count)
         if "temp" in msg:
             self.readout.setText("%.1f °C" % msg["temp"])

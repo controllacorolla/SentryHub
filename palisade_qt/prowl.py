@@ -10,7 +10,8 @@ import time
 from PySide6 import QtWidgets
 
 from .app import PalisadeApp
-from .kit import ControlBar, FeedTable, micro
+from . import theme
+from .kit import ControlBar, FeedTable, DetailCard, micro
 from .worker import Worker
 
 CHANNELS = [
@@ -49,6 +50,7 @@ class ProwlApp(PalisadeApp):
         lay = QtWidgets.QVBoxLayout(body)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
+        self._tok = theme.tokens(self.mode)
 
         self.bar = ControlBar()
         self.squelch = QtWidgets.QSpinBox()
@@ -64,9 +66,16 @@ class ProwlApp(PalisadeApp):
         self.bar.lay.addWidget(self.active)
         lay.addWidget(self.bar)
 
+        split = QtWidgets.QHBoxLayout()
+        split.setSpacing(10)
         self.feed = FeedTable([("freq", "FREQUENCY"), ("label", "CHANNEL"),
                                ("sig", "dBm"), ("last", "LAST")])
-        lay.addWidget(self.feed, 1)
+        self.feed.selected.connect(self._show)
+        split.addWidget(self.feed, 3)
+        self.detail = DetailCard("CHANNEL")
+        self.detail.set_hero("—", "select a channel")
+        split.addWidget(self.detail, 1)
+        lay.addLayout(split, 1)
         return body
 
     def _sq(self, v):
@@ -76,14 +85,39 @@ class ProwlApp(PalisadeApp):
     def make_worker(self):
         return ScanWorker(demo=self.demo, squelch=self.squelch.value())
 
+    def _sig_color(self, sig, hot):
+        if hot:
+            return self._tok["live"]
+        if sig > -60:
+            return self._tok["warn"]
+        return self._tok["muted"]
+
     def on_row(self, msg):
-        self.feed.model.set_rows(msg["rows"])
+        rows = msg["rows"]
+        for r in rows:
+            sig = int(r["sig"])
+            c = self._sig_color(sig, r.get("_hot", False))
+            r["_colors"] = {"sig": c}
+            if r.get("_hot"):
+                r["_colors"]["label"] = self._tok["live"]
+                r["_colors"]["freq"] = self._tok["live"]
+        self.feed.model.set_rows(rows)
         act = msg.get("active")
         if act:
             self.active.setText("%s  %s  %d dBm" % (act[0], act[1], act[2]))
             self.active.setProperty("class", "value live")
+            self._show({"freq": act[0], "label": act[1], "sig": str(act[2]),
+                         "last": time.strftime("%H:%M:%S"), "_hot": True})
         else:
             self.active.setText("—  scanning")
             self.active.setProperty("class", "value")
         self.active.style().unpolish(self.active)
         self.active.style().polish(self.active)
+
+    def _show(self, row):
+        self.detail.set_hero(row.get("label", "—"), row.get("freq", "") + " MHz")
+        self.detail.set_rows([
+            ("SIGNAL", row.get("sig", "") + " dBm"),
+            ("LAST HEARD", row.get("last", "—")),
+            ("STATUS", "ACTIVE" if row.get("_hot") else "quiet"),
+        ])
