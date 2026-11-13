@@ -9,17 +9,22 @@ import os
 import subprocess
 import sys
 
-from PySide6 import QtWidgets
+from PySide6 import QtGui, QtWidgets
 
 from . import theme
 from .ops import OpsHome
+from .prism import PrismApp
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# callsign -> ("qt", factory) for migrated apps, or ("tk", module) to launch as a subprocess.
-# Only OPS is migrated in Phase 2; the rest resolve to their Tk hosts (launched as subprocesses).
+# Migrated callsigns -> a factory; the Hub builds them lazily and embeds them as pages.
+QT_PAGES = {
+    "PRISM": PrismApp,
+}
+# Not-yet-migrated callsigns -> a Tk host module, launched as a separate process (inverted
+# coexistence). As each cluster migrates, it moves from here into QT_PAGES.
 TK_HOSTS = {
-    "OVERWATCH": "overwatch", "ATLAS": "sky", "BABEL": "ais", "PRISM": "rf_explorer",
+    "OVERWATCH": "overwatch", "ATLAS": "sky", "BABEL": "ais",
     "PROWL": "scanner", "FORGE": "hwlab", "RECON": "wifisurvey", "BENCH": "loopback",
 }
 
@@ -40,6 +45,9 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self._add_page("OPS", self.ops)
         self.show_page("OPS")
 
+        QtGui.QShortcut(QtGui.QKeySequence("Escape"), self,
+                        activated=lambda: self.show_page("OPS"))     # esc -> home (chrome spec)
+
     def _add_page(self, name, widget):
         self.pages[name] = widget
         self.stack.addWidget(widget)
@@ -50,7 +58,12 @@ class PalisadeHub(QtWidgets.QMainWindow):
             self.stack.setCurrentWidget(w)
 
     def open_callsign(self, name):
-        if name in self.pages:                 # already a migrated, embedded Qt page
+        if name in self.pages:                 # already-built migrated Qt page
+            self.show_page(name)
+            return
+        if name in QT_PAGES:                   # migrated but not built yet: build + embed lazily
+            page = QT_PAGES[name](demo=self.demo, mode=self.mode)
+            self._add_page(name, page)
             self.show_page(name)
             return
         mod = TK_HOSTS.get(name)

@@ -75,3 +75,35 @@ def test_lease_skipped_in_demo():
     a.start()
     assert a._lease is None, "demo must never touch the dongle"
     a.stop()
+
+
+@pytest.mark.parametrize("mode", ["dark", "light"])
+def test_prism_open_pump_close_no_leaked_thread(mode):
+    _app()
+    from palisade_qt.prism import PrismApp
+    p = PrismApp(demo=True, mode=mode)
+    win = p.standalone()
+    win.show()
+    _pump(700)
+    worker = p._worker
+    assert worker is not None and worker.isRunning()
+    # the scope buffer should have advanced past its initial floor as sweeps arrive
+    import numpy as np
+    assert float(np.max(p.scope.buf)) > -115.0
+    win.close()
+    _pump(200)
+    assert p._worker is None and not worker.isRunning()
+
+
+def test_hub_embeds_prism_as_qt_page():
+    _app()
+    from palisade_qt.shell import PalisadeHub
+    hub = PalisadeHub(demo=True, mode="dark")
+    hub.open_callsign("PRISM")          # migrated -> builds + embeds, does NOT spawn a subprocess
+    _pump(300)
+    assert "PRISM" in hub.pages
+    assert hub.stack.currentWidget() is hub.pages["PRISM"]
+    prism_worker = hub.pages["PRISM"]._worker
+    hub.close()
+    _pump(200)
+    assert not (prism_worker and prism_worker.isRunning())

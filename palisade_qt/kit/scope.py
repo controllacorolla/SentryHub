@@ -39,13 +39,17 @@ class ScopePanel(QtWidgets.QFrame):
         self.img = pg.ImageItem()
         view = pg.GraphicsLayoutWidget()
         view.setBackground(tok["well"])
-        vb = view.addViewBox()
-        vb.setMouseEnabled(False, False)
-        vb.addItem(self.img)
-        vb.setAspectLocked(False)
+        self.vb = view.addViewBox()
+        self.vb.setMouseEnabled(False, False)
+        self.vb.addItem(self.img)
+        self.vb.setAspectLocked(False)
+        self.vb.setDefaultPadding(0)
+        self.vb.invertY(True)                 # newest sweep at the bottom
         self.img.setLookupTable(self._lut(tok))
         lay.addWidget(view, 1)
         self._refresh()
+        self.vb.setRange(xRange=(0, bins), yRange=(0, history), padding=0)
+        self.vb.disableAutoRange()            # keep the full-well mapping as rows stream in
 
     @staticmethod
     def _lut(tok):
@@ -65,4 +69,7 @@ class ScopePanel(QtWidgets.QFrame):
         self._refresh()
 
     def _refresh(self):
-        self.img.setImage(self.buf.T, autoLevels=False, levels=(-115, -15))
+        # row-major: buf is (time rows x freq cols); map onto x=bins, y=history so carriers are
+        # vertical stripes scrolling down the well, filling its full width
+        self.img.setImage(self.buf, autoLevels=False, levels=(-115, -15),
+                          rect=pg.QtCore.QRectF(0, 0, self.bins, self.history))
