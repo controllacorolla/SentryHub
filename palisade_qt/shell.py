@@ -14,19 +14,23 @@ from PySide6 import QtGui, QtWidgets
 from . import theme
 from .ops import OpsHome
 from .prism import PrismApp
+from .babel import BabelApp
+from .atlas import AtlasApp
+from .prowl import ProwlApp
+from .forge import ForgeApp
+from .more import OverwatchApp, ReconApp, BenchApp
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Migrated callsigns -> a factory; the Hub builds them lazily and embeds them as pages.
 QT_PAGES = {
-    "PRISM": PrismApp,
+    "OVERWATCH": OverwatchApp, "ATLAS": AtlasApp, "BABEL": BabelApp, "PRISM": PrismApp,
+    "PROWL": ProwlApp, "FORGE": ForgeApp, "RECON": ReconApp, "BENCH": BenchApp,
 }
 # Not-yet-migrated callsigns -> a Tk host module, launched as a separate process (inverted
-# coexistence). As each cluster migrates, it moves from here into QT_PAGES.
-TK_HOSTS = {
-    "OVERWATCH": "overwatch", "ATLAS": "sky", "BABEL": "ais",
-    "PROWL": "scanner", "FORGE": "hwlab", "RECON": "wifisurvey", "BENCH": "loopback",
-}
+# coexistence). Empty now: all nine callsigns are Qt pages. Individual absorbed modules still
+# migrate per-cluster into these archetypes; until then their Tk apps remain runnable standalone.
+TK_HOSTS = {}
 
 
 class PalisadeHub(QtWidgets.QMainWindow):
@@ -96,7 +100,7 @@ def main(argv=None):
     demo = "--demo" in argv
     mode = "light" if "--light" in argv else "dark"
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(argv)
-    theme.apply(app.activeWindow() or QtWidgets.QWidget(), mode)  # ensure font loads
+    app.setStyleSheet(theme.qss(mode))        # app-wide theme so the window chrome matches too
     hub = PalisadeHub(demo=demo, mode=mode)
     hub.show()
     return app.exec()

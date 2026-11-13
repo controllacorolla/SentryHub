@@ -99,11 +99,73 @@ def test_hub_embeds_prism_as_qt_page():
     _app()
     from palisade_qt.shell import PalisadeHub
     hub = PalisadeHub(demo=True, mode="dark")
+    hub.show()
     hub.open_callsign("PRISM")          # migrated -> builds + embeds, does NOT spawn a subprocess
-    _pump(300)
+    _pump(400)
     assert "PRISM" in hub.pages
     assert hub.stack.currentWidget() is hub.pages["PRISM"]
     prism_worker = hub.pages["PRISM"]._worker
     hub.close()
     _pump(200)
     assert not (prism_worker and prism_worker.isRunning())
+
+
+ALL_CALLSIGNS = ["OVERWATCH", "ATLAS", "BABEL", "PRISM", "PROWL", "FORGE", "RECON", "BENCH"]
+
+
+@pytest.mark.parametrize("name", ALL_CALLSIGNS)
+def test_every_callsign_opens_pumps_closes_clean(name):
+    _app()
+    from palisade_qt.shell import PalisadeHub
+    hub = PalisadeHub(demo=True, mode="dark")
+    hub.show()
+    hub.open_callsign(name)             # migrated -> embedded Qt page, no subprocess
+    _pump(600)
+    assert name in hub.pages
+    page = hub.pages[name]
+    worker = page._worker
+    assert worker is None or worker.isRunning(), "%s worker should be live if present" % name
+    hub.close()
+    _pump(200)
+    assert not (worker and worker.isRunning()), "%s leaked a QThread" % name
+
+
+@pytest.mark.parametrize("mode", ["dark", "light"])
+def test_all_callsigns_build_in_both_themes(mode):
+    _app()
+    from palisade_qt import shell
+    for factory in shell.QT_PAGES.values():
+        page = factory(demo=True, mode=mode)
+        page.start()
+        page.stop()
+
+
+def test_hub_soak_open_all_callsigns_then_close_no_leaks():
+    """Back-test: one hub, open every callsign in sequence, pump, close -> zero running QThreads."""
+    from PySide6 import QtCore
+    _app()
+    from palisade_qt.shell import PalisadeHub, QT_PAGES
+    before = QtCore.QThread.__subclasses__()  # noqa: F841 (kept for clarity)
+    hub = PalisadeHub(demo=True, mode="dark")
+    hub.show()
+    workers = []
+    for name in QT_PAGES:
+        hub.open_callsign(name)
+        _pump(250)
+        w = hub.pages[name]._worker
+        if w is not None:
+            workers.append((name, w))
+    assert len(hub.pages) == len(QT_PAGES) + 1          # +OPS
+    running = [n for n, w in workers if w.isRunning()]
+    assert running, "workers should be live while open"
+    hub.close()
+    _pump(400)
+    leaked = [n for n, w in workers if w.isRunning()]
+    assert not leaked, "leaked QThreads after hub close: %s" % leaked
+
+
+def test_launcher_main_is_importable():
+    # the entry points resolve without starting an event loop
+    import palisade_qt.shell as s
+    import palisade_qt.__main__ as m           # noqa: F401
+    assert callable(s.main)
