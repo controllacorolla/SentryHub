@@ -113,6 +113,13 @@ human decision on whether they belong in the repo at all before touching them.
 `replay`, `bench`, `noisefloor`, `sky` (launcher shim). These are engines/helpers other apps
 import or run shims. Confirm none is wrongly on the Hub grid; otherwise untouched.
 
+**Confirmed by import-graph audit (2026-11-13):** `engagement` is currently exposed as a Hub
+tile (key `eng`) but is imported by **12** modules — it is a shared evidence/logging library,
+not an app. **Remove the `eng` tile from the grid** when the grid is rebuilt (the hide pass);
+keep the module. Same check cleared the rest: `noisefloor` (imported by specan/waterfall/
+jammer/bugsweep) folds into PRISM per §A1; `radio` (cw/rtty/replay/loopback), `skyintel` (6
+aircraft apps), `txguard` (7), `geo`/`settings_ui`/`suite` are all true libraries, not tiles.
+
 ## F. Needs eyeball before action (`? review` in the audit)
 Heuristic couldn't classify — open each `main()` and confirm wired vs placard:
 `alerts`, `doctor`, `radio`, `skyintel`, `sstvdec`, `transcriber`, `blepent`, `netpent`,

@@ -33,21 +33,37 @@
 - **DearPyGui on Pi:** GPU path flaky; without it, software rendering is unusably slow.
 
 ## Why this isn't a big-bang rewrite
-The Hub **already launches most apps as separate subprocesses.** So Qt apps and Tk apps
-coexist as separate processes during migration: convert one app to Qt, the Hub launches it as
-a Qt process, the rest stay Tk until their turn. The UI-layer rewrite proceeds **cluster by
-cluster**, suite green throughout — no flag day.
+**Correction (2026-11-13, from reading the code — RULE ZERO).** An earlier draft claimed "the
+Hub already launches most apps as separate subprocesses." That is **false**: `Shell.open()`
+(`hub.py`) does `importlib.import_module(mod)` and runs each app **in-process**, embedded as a
+Tk `Workspace` frame sharing the Hub's single event loop (`theme.workspace_class()`). Only
+non-`MODS` keys (`sdrpp`, external tools) take the `subprocess.Popen` branch. You cannot embed
+a Qt `QWidget` in a Tk frame on a shared loop, so the migration model is:
+
+1. Build the **Qt Hub shell** (a `QStackedWidget`) + OPS home as the first unit — this proves
+   the kit, the shell, and Qt embedding together.
+2. **Invert the coexistence:** the Qt Hub hosts *migrated* apps as embedded `QStackedWidget`
+   pages, and launches *not-yet-migrated* Tk apps as **separate processes** (their standalone
+   `main()` already supports this). So Tk apps become the subprocesses, not the Qt ones.
+3. Keep the old `hub.py` runnable until the Qt Hub is proven — switch the launcher, don't
+   delete. Then migrate the rest cluster by cluster, suite green throughout — no flag day, no
+   mixed-window limbo.
 
 ## Architecture implications
 - **Engines untouched.** Pure helpers, decoders, the SDR lease, `suite` — all stay. Only each
   app's presentation/interaction layer is reimplemented in Qt. The ~13 library modules and the
   pure-logic tests don't move.
-- **Embed pattern → Qt.** Replace `theme.workspace_class()` with a base `QWidget` that runs
-  standalone (`QMainWindow`) and embeds in the Hub (stacked widget / tab).
+- **Embed pattern → Qt.** Replace `theme.workspace_class()` with a base `QWidget`
+  (`PalisadeApp`) that runs standalone (wrapped in a `QMainWindow`) and embeds in the Qt Hub
+  (as a `QStackedWidget` page).
 - **Threading → Qt native, and it closes review items R1/R3.** Replace `queue` + `root.after`
   with `QThread` + signals/slots; the worker emits to the GUI thread and is `quit()/wait()`-ed
   on close. Bake into the base widget → every migrated app gets correct thread lifecycle for
   free (no more unjoined daemon threads).
+- **SDR lease → also owned by the base widget.** `PalisadeApp` acquires the `RtlLease` on show
+  and releases it on close, the same way it owns the thread lifecycle. The `RtlLease.release`
+  bugs were half the bugfix batch; baking acquire/release into the base makes every radio app
+  correct by construction, not per-app.
 - **Theming → QSS.** The depth tokens become a QSS stylesheet; this is where the rounded
   floating window, soft shadows, hairlines, and tabular type the mock wants actually come from.
 - **Viz → PyQtGraph:** PRISM spectrum/waterfall (`ImageItem` + roll), ATLAS map, OPS PPI scope.

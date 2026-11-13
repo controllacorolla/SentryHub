@@ -43,10 +43,15 @@ stylesheets (QSS) reach most of the concept's depth/chrome that Tk can't. Web/Ch
 viable on the cooled build but carries a documented memory-leak/watchdog/reboot tax and a
 battery hit; DearPyGui's GPU path is unreliable on Pi; Tk can't hit the look.
 
-**Why this isn't a big-bang rewrite:** the Hub already launches most apps as **separate
-subprocesses**, so a Qt app and a Tk app coexist as separate processes during migration.
-Convert one app to Qt, the Hub launches it as a Qt process, the rest stay Tk until their turn.
-That makes the UI-layer rewrite **incremental**, cluster by cluster.
+**Why this isn't a big-bang rewrite (corrected 2026-11-13 from the code — RULE ZERO):** the
+earlier "the Hub already launches most apps as subprocesses" premise is **wrong**. `Shell.open()`
+imports each app and runs it **in-process**, embedded as a Tk frame on the Hub's shared event
+loop; only external tools (`sdrpp`) are subprocesses. Qt can't embed in a Tk loop, so migration
+goes: build the **Qt Hub shell (`QStackedWidget`) + OPS first**, then **invert** — the Qt Hub
+embeds *migrated* apps as pages and launches *un-migrated* Tk apps as **separate processes**
+(their standalone `main()` allows it). Keep the old `hub.py` runnable until the Qt Hub is proven;
+switch the launcher, don't delete. Still incremental, cluster by cluster — just with Tk as the
+subprocess during the transition, not Qt.
 
 Key implications (detail in the memo):
 - **Engines stay.** Pure helpers, decoders, lease, `suite` — untouched. Only each app's
@@ -128,9 +133,11 @@ One reusable kit, which is also the lifecycle base class (Track A2):
 
 Built in **Qt (PySide6)**. One reusable kit of `QWidget` components: status header · control
 bar · feed table (`QTableView`/model) · detail card · map panel · spectrum/waterfall panel
-(**PyQtGraph**) · empty/no-signal state. Plus the base workspace `QWidget`: standalone
-(`QMainWindow`) **and** embeddable in the Hub (stacked widget/tab), a `QThread`+signals worker
-contract with clean `quit()/wait()` on close (this *is* the R1/R3 fix), a `--demo` synthetic
+(**PyQtGraph**) · empty/no-signal state. Plus the base workspace `QWidget` (`PalisadeApp`):
+standalone (`QMainWindow`) **and** embeddable in the Qt Hub (`QStackedWidget` page), a
+`QThread`+signals worker contract with clean `quit()/wait()` on close (this *is* the R1/R3 fix),
+**SDR-lease lifecycle owned by the base — acquire on show, release on close** (bakes in the
+`RtlLease.release` fixes so every radio app is correct by construction), a `--demo` synthetic
 feed hook, health-awareness via `suite.start_health`, and the QSS depth-token theme (light/dark).
 
 **Acceptance for the kit:** a throwaway module built on it, in demo mode, renders the QSS depth
