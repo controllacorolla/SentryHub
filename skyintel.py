@@ -190,19 +190,9 @@ def flight_phase(alt, vr, gs, ground, near=None):
 
 
 # ---- geometry ---------------------------------------------------------------------------
-def bearing_deg(lat1, lon1, lat2, lon2):
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dl = math.radians(lon2 - lon1)
-    x = math.sin(dl) * math.cos(p2)
-    y = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
-    return math.degrees(math.atan2(x, y)) % 360
-
-
-def dist_nm(lat1, lon1, lat2, lon2):
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    a = math.sin((p2 - p1) / 2) ** 2 + \
-        math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
-    return 2 * 3440.065 * math.asin(min(1.0, math.sqrt(a)))
+# Geometry consolidated into geo.py (Phase 1a); re-exported here so the modules
+# that import skyintel.dist_nm / skyintel.bearing_deg keep working unchanged.
+from geo import bearing_deg, dist_nm  # noqa: E402,F401
 
 
 def offset(lat, lon, brg, nm):

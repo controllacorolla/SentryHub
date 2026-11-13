@@ -184,7 +184,11 @@ def test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone(tmp_path, mo
     assert passes, "a 51.6-degree orbit always passes over Denver within 48 h"
     p = passes[0]
     assert p["sat"] == "ISS" and p["los"] > p["aos"] and 10 <= p["max"] <= 90
-    assert 2 <= (p["los"] - p["aos"]) / 60 <= 12          # ISS passes last a few minutes
+    # ISS passes last from seconds (a pass grazing right at the 10-degree cutoff) up to ~12 minutes
+    # (a high overhead pass). The first pass in the window can be either, and los > aos is already
+    # asserted above, so the only real invariant is "minutes, not hours" — the <=12 upper bound.
+    # (This used to flake by wall clock when the first pass happened to be a short grazing one.)
+    assert 0 < (p["los"] - p["aos"]) / 60 <= 12
     after = os.path.getmtime(weather_cache) if os.path.exists(weather_cache) else None
     assert before == after                               # weather sats' cache untouched
     assert "NOW" in sstv.pass_line(dict(p, aos=time.time() - 60, los=time.time() + 60))

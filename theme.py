@@ -307,9 +307,15 @@ def on_workspace_close(fn):
         w.cleanups.append(fn)
 
 
-def make_root(title):
+def make_root(title, parent=None):
     import tkinter as tk
     import os
+    if parent is not None:
+        # Render into a caller-supplied frame instead of a fresh workspace/window — used by a
+        # tabbed host (e.g. the Sky shell) that embeds several modules side by side. The caller
+        # is responsible for giving `parent` the workspace-like behaviour a module expects
+        # (after/bind/protocol/cleanups); make_root only hands back the frame and the fonts.
+        return parent, (EMBED.F if EMBED is not None else fonts(parent.winfo_toplevel()))
     if EMBED is not None:
         return EMBED.new_workspace(title), EMBED.F
     root = tk.Tk()

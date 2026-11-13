@@ -246,8 +246,8 @@ def brief(use_llm=True):
                           "cadence of a shipping-forecast announcer. Plain sentences, no markdown, no "
                           "lists, no preamble. Mention weather, air traffic, any alerts, the next "
                           "satellite pass, and battery. Be concise.\n\nDATA:\n" + facts)
-                body = {"model": model or "llama3.2:3b",
-                        "messages": [{"role": "user", "content": prompt}], "stream": False}
+                body = assistant.chat_body(s, url, model or "llama3.2:3b",
+                                           [{"role": "user", "content": prompt}], stream=False)
                 r = assistant.http_json(url.rstrip("/") + "/api/chat", body, timeout=60)
                 txt = (r.get("message") or {}).get("content", "").strip()
                 if txt:

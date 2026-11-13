@@ -84,3 +84,36 @@ def test_acquire_waits_for_async_holder(monkeypatch, tmp_path):
             fn(*args)
     assert order == ["a released", "b acquired"] and S.radio_holder() == "APRS"
     b.release()
+
+
+def test_updates_check_reads_dpkg_hold_state_and_skips_dummy_packages():
+    def run(cmd, timeout=10):
+        if cmd[:2] == ["systemctl", "is-enabled"]:
+            return 0, "disabled"
+        if cmd[0] == "dpkg-query":       # what this uConsole really reports
+            return 0, ("akrex-kernel hold ok installed AK-Rex's kernel for devices\n"
+                       "clockworkpi-kernel install ok installed transitional dummy package")
+        if cmd[:2] == ["apt-mark", "showhold"]:
+            return 0, ""                 # rely on dpkg's "hold" want-state alone
+        return 1, ""
+    ok, txt, _ = D.chk_updates(run=run)
+    assert ok is True and "akrex-kernel" in txt and "clockworkpi" not in txt
+
+
+def test_bootfiles_resolves_dev_root_alias(tmp_path, monkeypatch):
+    b = tmp_path / "fw"
+    b.mkdir()
+    for f in ("config.txt", "cmdline.txt", "kernel8.img", "kernel_2712.img"):
+        (b / f).write_text("x")
+    m = tmp_path / "mounts"
+    m.write_text("/dev/root / ext4 rw 0 0\n/dev/nvme0n1p1 %s vfat rw 0 0\n" % b)
+    monkeypatch.setattr(D, "_real_blockdev", lambda dev, mnt: "/dev/nvme0n1p2")
+    assert D.chk_bootfiles(str(b), str(m))[0] is True
+    monkeypatch.setattr(D, "_real_blockdev", lambda dev, mnt: "/dev/mmcblk0p2")
+    ok, txt, _ = D.chk_bootfiles(str(b), str(m))       # card root, NVMe boot: still flagged
+    assert ok is None and "mmcblk0p2" in txt
+
+
+def test_real_blockdev_passthrough_and_live_root():
+    assert D._real_blockdev("/dev/nvme0n1p2", "/") == "/dev/nvme0n1p2"
+    assert D._real_blockdev("/dev/root", "/").startswith("/dev/")

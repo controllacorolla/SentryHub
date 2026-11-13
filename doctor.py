@@ -395,10 +395,22 @@ def chk_updates(run=None, which=None):
     run = run or core.run
     auto = [u for u in ("unattended-upgrades", "apt-daily-upgrade.timer")
             if run(["systemctl", "is-enabled", u])[1].strip().splitlines()[-1:] == ["enabled"]]
-    rc, out = run(["dpkg-query", "-W", "-f", "${Package} ${Status}\n"] + list(KERNEL_PKGS))
-    inst = [ln.split()[0] for ln in out.splitlines() if ln.endswith("install ok installed")]
+    rc, out = run(["dpkg-query", "-W", "-f", "${Package} ${Status} ${binary:Summary}\n"]
+                  + list(KERNEL_PKGS))
     rc, held = run(["apt-mark", "showhold"])
-    unheld = [p for p in inst if p not in held.split()]
+    held = set(held.split())
+    inst = []
+    for ln in out.splitlines():
+        # "<pkg> <want> ok installed <summary>"; a held package's want is "hold", not "install"
+        p = ln.split(None, 4)
+        if len(p) < 4 or p[2:4] != ["ok", "installed"]:
+            continue
+        if "transitional" in (p[4] if len(p) > 4 else "").lower():
+            continue        # empty dummy (clockworkpi-kernel -> akrex-kernel): ships no kernel
+        inst.append(p[0])
+        if p[1] == "hold":
+            held.add(p[0])
+    unheld = [p for p in inst if p not in held]
     if not inst:
         return (None, "automatic updates are ON", "sudo systemctl disable --now " + " ".join(auto)) \
             if auto else (True, "automatic updates off", "")
@@ -413,6 +425,22 @@ def chk_updates(run=None, which=None):
         return None, "kernel held, but automatic updates are ON", \
             "sudo systemctl disable --now " + " ".join(auto)
     return True, "kernel held (%s), automatic updates off" % ", ".join(inst), ""
+
+
+def _real_blockdev(dev, mnt, sysfs="/sys/dev/block"):
+    """Pi OS lists the root as the alias /dev/root; map it to the real device (nvme0n1p2,
+    mmcblk0p2, ...) via the mount's device number. Anything else is returned unchanged."""
+    if dev != "/dev/root":
+        return dev
+    try:
+        st = os.stat(mnt).st_dev
+        with open(os.path.join(sysfs, "%d:%d" % (os.major(st), os.minor(st)), "uevent")) as f:
+            for ln in f:
+                if ln.startswith("DEVNAME="):
+                    return "/dev/" + ln.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return dev
 
 
 def chk_bootfiles(boot="/boot/firmware", mounts="/proc/mounts"):
@@ -439,6 +467,7 @@ def chk_bootfiles(boot="/boot/firmware", mounts="/proc/mounts"):
                 rootsrc = p[0]
     except OSError:
         pass
+    rootsrc = _real_blockdev(rootsrc, "/")
     if bad or half:
         return False, "boot files missing or half-installed: %s" % ", ".join(bad + half[:3]), \
             "DO NOT reboot. Reinstall the kernel package (sudo apt install --reinstall akrex-kernel), " \
@@ -447,6 +476,21 @@ def chk_bootfiles(boot="/boot/firmware", mounts="/proc/mounts"):
         return None, "boot files are on %s but the system is on %s" % (src, rootsrc), \
             "booted with a card inserted? Kernel updates would land on the wrong drive - remove the card."
     return True, "kernel and config present on %s" % (src or boot), ""
+
+
+def chk_dronewatch():
+    """DroneWatch needs bleak + a Bluetooth adapter to hear Remote ID; else it runs demo-only."""
+    import os as _os
+    has_bleak = _py("bleak")
+    try:
+        adapters = _os.path.isdir("/sys/class/bluetooth") and bool(_os.listdir("/sys/class/bluetooth"))
+    except OSError:
+        adapters = False
+    if has_bleak and adapters:
+        return True, "bleak + Bluetooth adapter present (Remote ID scanning ready)", ""
+    if has_bleak:
+        return None, "bleak installed, no Bluetooth adapter detected", "enable/plug in a BT adapter"
+    return False, "bleak not installed - DroneWatch runs in demo only", "pip install bleak"
 
 
 CHECKS = [
@@ -458,7 +502,8 @@ CHECKS = [
                 ("Autopilot (Overwatch)", chk_autopilot),
                 ("Hardware bench", chk_hwbench),
                 ("Dev terminal", chk_devterm),
-                ("Field computer", chk_fieldcomp)]),
+                ("Field computer", chk_fieldcomp),
+                ("DroneWatch (Remote ID)", chk_dronewatch)]),
     ("Device", [("GPS", chk_gpsd), ("Meshtastic", chk_mesh), ("Audio", chk_audio), ("Power", chk_power),
                 ("SD card", chk_sdcard), ("Disk", chk_disk), ("System updates", chk_updates),
                 ("Boot files", chk_bootfiles)]),
@@ -666,15 +711,19 @@ def chk_config_perms():
 
 
 def chk_tx_safety():
-    """The suite must never key the HackRF transmitter.  Confirm no TX tool is running and the
-    config declares receive-only."""
-    tx_tools = ["hackrf_transfer", "gqrx", "sdrangel"]
-    running = [t for t in tx_tools if t == "hackrf_transfer" and core.pids_named(t)]
-    # rtl_airband and readsb are receive-only by construction; SoapySDR hackrf here is RX
+    """Transmit policy. The suite's RF apps are receive-only; the sanctioned transmit paths are
+    Mesh LoRa (license-free ISM) and, through txguard, amateur bands with a callsign. This check
+    confirms no raw TX tool is keying the HackRF on arbitrary frequencies, and reports whether
+    the global TX lock is engaged."""
+    import os
+    running = [t for t in ["hackrf_transfer"] if core.pids_named(t)]
     if running:
-        return False, "a transmit-capable process is running: " + ", ".join(running),             "the suite is receive-only; stop any TX tool (transmitting on these bands is illegal)"
-    return True, ("receive-only: no transmit process running, HackRF used for RX only. "
-                  "The one transmit path is Mesh: LoRa text goes out only when you press Send"), ""
+        return False, "a raw transmit tool is running: " + ", ".join(running),             "the suite keys the radio only through txguard (ISM/ham); stop any raw TX tool - " \
+            "transmitting outside those bands is illegal"
+    if os.environ.get("SUITE_TX_LOCK") == "1":
+        return True, "TX hard-locked (SUITE_TX_LOCK=1): nothing, not even Mesh, will transmit", ""
+    return True, ("receive-only RF; transmit only via txguard: Mesh LoRa (ISM) always, "
+                  "amateur bands with a callsign. Protected bands (GPS/ADS-B/aviation) blocked"), ""
 
 
 _SUDO_OK = re.compile(r"^(/usr)?/bin/systemctl (start|stop) (readsb|dump1090-fa)$")
