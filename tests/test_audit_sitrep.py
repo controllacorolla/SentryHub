@@ -38,3 +38,18 @@ def test_metar_stops_after_network_failure(monkeypatch):
     d = sitrep.gather()
     assert d["metar"] is None
     assert len([u for u in calls if "metar" in u]) == 1, "kept timing out on every airport"
+
+
+def test_brief_caps_threads_for_an_on_device_model(monkeypatch):
+    import assistant
+    monkeypatch.setattr(sitrep, "gather", lambda: {"time": "12:00"})
+    monkeypatch.setattr(assistant, "pick_host",
+                        lambda s: ("uConsole", "http://127.0.0.1:11434", "qwen-smart"))
+    seen = {}
+
+    def http_json(url, body, timeout=0):
+        seen.update(body)
+        return {"message": {"content": "All quiet."}}
+    monkeypatch.setattr(assistant, "http_json", http_json)
+    assert sitrep.brief() == ("All quiet.", "llm")
+    assert seen["options"]["num_thread"] >= 1 and seen["stream"] is False

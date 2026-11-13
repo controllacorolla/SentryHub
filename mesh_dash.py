@@ -19,7 +19,10 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite as S  # noqa: E402
 
-DEFAULTS = {"connect": "auto", "tcp_host": "127.0.0.1", "tcp_port": 4403, "serial_port": ""}
+DEFAULTS = {"connect": "auto", "tcp_host": "127.0.0.1", "tcp_port": 4403, "serial_port": "",
+            # TX policy (see txguard): LoRa is license-free, so Mesh send stays on by default;
+            # callsign/tx_enabled only matter if amateur-band TX is added later.
+            "tx_enabled": True, "callsign": ""}
 MSG_LOG = os.path.join(S.DATA, "mesh_messages.jsonl")
 
 
@@ -321,6 +324,11 @@ def main():
             return
         if len(text.encode()) > 200:
             node_info.config(text="Message too long (200 bytes max).", fg=S.RED)
+            return
+        import txguard
+        ok, why = txguard.decide(service="lora", settings=s)
+        if not ok:                       # only trips under a hard TX lockdown
+            node_info.config(text="TX blocked: " + why, fg=S.RED)
             return
         dest = st["sel"] if st["sel"] and st["sel"] != my_id() else "^all"
         try:

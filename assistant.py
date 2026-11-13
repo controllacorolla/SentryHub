@@ -28,6 +28,8 @@ DEFAULTS = {
         {"name": "Desktop", "url": "http://desktop:11434", "model": ""},
         {"name": "uConsole", "url": "http://127.0.0.1:11434", "model": "llama3.2:3b"},
     ],
+    "local_threads": 2,     # CPU threads for a model on this device (0 = all cores)
+    "live_context": True,   # tell the model what the suite currently sees (aircraft, GPS, ...)
     "whisper_model": "base.en",
     "tts": "auto",          # auto | piper | espeak | off
     "piper_voice": "",      # path to a Piper .onnx voice
@@ -58,11 +60,149 @@ def pick_host(s):
         models = [m["name"] for m in tags.get("models", [])]
         if not models:
             continue
-        model = h.get("model") or ""
-        if model and model not in models and model + ":latest" not in models:
-            model = ""
-        return h["name"], h["url"].rstrip("/"), model or models[0]
+        return h["name"], h["url"].rstrip("/"), best_model(models, h.get("model") or "")
     return None
+
+
+# General-purpose chat models, best first; used only when the host's Model field is blank or
+# names a model the server doesn't have. Substring match on the model name.
+PREFERRED = ("qwen-smart", "qwen3", "qwen2.5", "llama3", "gemma", "mistral", "phi")
+NOT_CHAT = ("embed", "bge-", "minilm", "whisper", "clip")
+
+
+def best_model(models, want=""):
+    """The model to chat with: the configured one if the server has it, else the best
+    general chat model it does have - never an embedding model just because it is listed first."""
+    if want and (want in models or want + ":latest" in models):
+        return want
+    chat = [m for m in models if not any(x in m.lower() for x in NOT_CHAT)] or list(models)
+    for pref in PREFERRED:
+        for m in chat:
+            if pref in m.lower():
+                return m
+    return chat[0]
+
+
+def is_local(url):
+    """True when the Ollama URL points at this device (so the model runs on the CM5)."""
+    host = re.sub(r"^\w+://", "", url or "").split("/")[0].rsplit(":", 1)[0].strip("[]")
+    return host in ("127.0.0.1", "localhost", "::1", "0.0.0.0")
+
+
+def chat_body(s, url, model, messages, stream=True):
+    """The /api/chat request. A model running on this device is capped to a couple of CPU
+    threads: all four cores at full load can brown out the uConsole on battery."""
+    body = {"model": model, "messages": messages, "stream": stream}
+    try:
+        n = int(s.get("local_threads", 2))
+    except (TypeError, ValueError):
+        n = 2
+    if is_local(url) and n > 0:
+        body["options"] = {"num_thread": n}
+    return body
+
+
+def power_warning(p, local):
+    """One line of advice before an on-device model runs on a weak supply, else ""."""
+    if not local or not p:
+        return ""
+    if p.get("undervolt_now"):
+        return "Under-voltage right now - an on-device model may crash the uConsole. Plug in first."
+    pct = p.get("pct")
+    if not p.get("charging") and pct is not None and pct < 50:
+        return ("Battery %d%% and not charging - an on-device model draws a lot of power; "
+                "plug in if it stutters or the device resets." % pct)
+    return ""
+
+
+def live_context(d, p=None):
+    """A few plain sentences describing what the suite sees right now, from sitrep.gather()'s
+    dict (and S.power_status()). Only facts that are present; "" when there is nothing."""
+    out = []
+    if not isinstance(d, dict):
+        d = {}
+    if "aircraft_airborne" in d:
+        line = "ADS-B receiver: %d aircraft airborne" % d["aircraft_airborne"]
+        hi = d.get("highest") or {}
+        if isinstance(hi.get("alt"), (int, float)):
+            line += ", highest %s at %d feet" % (hi.get("cs") or "unknown", hi["alt"])
+        out.append(line + ".")
+    if d.get("emergencies"):
+        out.append("Emergency squawks: %s." % ", ".join(d["emergencies"]))
+    m = d.get("metar")
+    if m and m.get("cat"):
+        line = "Weather at %s: %s" % (m.get("station") or "the home field", m["cat"])
+        if isinstance(m.get("temp"), (int, float)):
+            line += ", %d C" % m["temp"]
+        if isinstance(m.get("wind_dir"), int) and isinstance(m.get("wind_spd"), (int, float)):
+            line += ", wind %03d at %d knots" % (m["wind_dir"], m["wind_spd"])
+        out.append(line + ".")
+    if d.get("tfrs"):
+        n = len(d["tfrs"])
+        out.append("%d active flight restriction%s in the area." % (n, "" if n == 1 else "s"))
+    g = d.get("gps")
+    if g:
+        out.append("GPS fix: %.4f, %.4f." % (g["lat"], g["lon"]))
+    else:
+        out.append("GPS: no fix.")
+    np_ = d.get("next_pass")
+    if np_:
+        out.append("Next weather satellite pass: %s in %d minutes." % (np_.get("sat"), np_["in_min"]))
+    sd = d.get("sonde")
+    if sd and isinstance(sd.get("alt_m"), (int, float)):
+        out.append("Weather balloon %s %s at %d metres." % (sd.get("id"), sd.get("phase") or "aloft",
+                                                            sd["alt_m"]))
+    if d.get("aprs_24h"):
+        out.append("%d APRS stations heard in the last day." % d["aprs_24h"])
+    if d.get("mesh_nodes_24h"):
+        out.append("%d mesh nodes heard in the last day." % d["mesh_nodes_24h"])
+    b = p or d.get("battery") or {}
+    if b.get("pct") is not None:
+        line = "Battery %d%%, %s" % (b["pct"], str(b.get("status") or "unknown").lower())
+        if p and p.get("temp") is not None:
+            line += ", CPU %d C" % p["temp"]
+        if p and p.get("undervolt_now"):
+            line += ", under-voltage now"
+        out.append(line + ".")
+    return " ".join(out)
+
+
+def system_prompt(s, context="", now=None):
+    """System message: the user's prompt, the clock, and (if any) the live status block."""
+    txt = s["system"] + " Current local time: %s." % time.strftime("%A %B %d %Y, %H:%M", now or time.localtime())
+    if context:
+        txt += (" Live status from this device's own receivers and sensors follows. Use it only "
+                "when the question is about it, and do not invent readings that are not listed. "
+                + context)
+    return txt
+
+
+class LiveContext:
+    """Keeps a recent live_context() string without ever making a question wait: get() returns
+    the last snapshot at once and refreshes it in the background when it is older than ttl."""
+
+    def __init__(self, ttl=120, gather=None, power=None, spawn=None):
+        self.ttl, self.text, self.t, self.busy = ttl, "", 0.0, False
+        self._gather, self._power = gather, power
+        self._spawn = spawn or (lambda fn: threading.Thread(target=fn, daemon=True).start())
+
+    def refresh(self):
+        try:
+            if self._gather is None:
+                import sitrep
+                self._gather = sitrep.gather
+            p = (self._power or S.power_status)()
+            self.text = live_context(self._gather(), p)
+        except Exception:
+            pass        # keep the previous snapshot
+        finally:
+            self.t, self.busy = time.time(), False
+
+    def get(self):
+        if not self.busy and time.time() - self.t > self.ttl:
+            self.busy = True
+            self._spawn(self.refresh)
+        return self.text
 
 
 def espeak_cmd(exe, voice, rate, text):
@@ -160,6 +300,9 @@ def main():
     st = {"rec": None, "model": None, "history": [], "gen": 0, "host": None, "busy": False,
           "t_rec": 0}
     spk = Speaker(s, lambda m: ev.put(("log", m)))
+    live = LiveContext()
+    if s.get("live_context"):
+        live.get()                       # warm the first snapshot while Whisper loads
 
     top = S.top_bar(root, F, "Assistant", "Local AI")
     T = S.T
@@ -326,15 +469,23 @@ def main():
         ev.put(("llm", h))
         if not h:
             ev.put(("meta", "No Ollama server reachable. Start Ollama on your desktop (and Tailscale), "
-                    "or install a local model: ollama pull llama3.2:3b"))
+                    "or start it on this device: systemctl start ollama  "
+                    "(no local model yet? ollama pull llama3.2:3b)"))
             st["busy"] = False
             ev.put(("talk", None))
             return
         name, url, model = h
-        msgs = [{"role": "system", "content": s["system"] + " Current local time: %s." %
-                 time.strftime("%A %B %d %Y, %H:%M")}] + st["history"][-16:]
+        if is_local(url):
+            try:
+                warn = power_warning(S.power_status(), True)
+            except Exception:
+                warn = ""
+            if warn:
+                ev.put(("meta", warn))
+        ctx = live.get() if s.get("live_context") else ""
+        msgs = [{"role": "system", "content": system_prompt(s, ctx)}] + st["history"][-16:]
         req = urllib.request.Request(url + "/api/chat", data=json.dumps(
-            {"model": model, "messages": msgs, "stream": True}).encode(),
+            chat_body(s, url, model, msgs)).encode(),
             headers={"Content-Type": "application/json"})
         full, buf = "", ""
         ev.put(("stream_start", None))
@@ -398,6 +549,10 @@ def main():
              "columns": [("name", "Name", "str"), ("url", "URL", "str"), ("model", "Model", "str")],
              "template": {"name": "New", "url": "http://host:11434", "model": ""}},
             {"key": "system", "label": "System prompt", "type": "text", "rows": 5},
+            {"key": "live_context", "label": "Live device status", "type": "bool",
+             "help": "lets it answer about aircraft, weather, GPS and battery from the suite's own data"},
+            {"key": "local_threads", "label": "On-device CPU threads", "type": "int", "min": 0, "max": 4,
+             "step": 1, "help": "for a model running on the uConsole; 2 avoids brownouts, 0 = all cores"},
         ]),
         ("Speech", [
             {"key": "whisper_model", "label": "Whisper model", "type": "choice",

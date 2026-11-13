@@ -18,7 +18,7 @@ TILES = [
     # key, title, subtitle, colour, command
     ("ops", "Ops", "Everything on one map", S.BLUE, [PY, os.path.join(HERE, "ops.py")]),
     ("ow", "Overwatch", "Sky dome + radio autopilot", S.BLUE, [PY, os.path.join(HERE, "overwatch.py")]),
-    ("sky", "Sky", "Radar + ATC audio voice", S.AMBER, [PY, os.path.join(HERE, "sky_app.py")]),
+    ("sky", "Sky", "Aircraft + balloons + ATC voice", S.AMBER, [PY, os.path.join(HERE, "sky.py")]),
     ("fm", "FM Radio", "Broadcast + NOAA weather", S.GREEN, [PY, os.path.join(HERE, "fm.py")]),
     ("scanner", "Scanner", "Preset banks + squelch", S.GREEN, [PY, os.path.join(HERE, "scanner.py")]),
     ("rfx", "RF Explorer", "Spectrum + waterfall", S.GREEN, [PY, os.path.join(HERE, "rf_explorer.py")]),
@@ -27,16 +27,61 @@ TILES = [
     ("sensors", "Sensors", "433 MHz neighborhood", S.BLUE, [PY, os.path.join(HERE, "sensors.py")]),
     ("sstv", "SSTV", "Pictures from the ISS", S.BLUE, [PY, os.path.join(HERE, "sstv.py")]),
     ("sonde", "Balloons", "NWS weather balloons", S.BLUE, [PY, os.path.join(HERE, "balloons.py")]),
-    ("aprs", "APRS", "Ham position network", S.GREEN, [PY, os.path.join(HERE, "aprs_app.py")]),
+    ("aprs", "APRS", "Ham position network", S.GREEN, [PY, os.path.join(HERE, "aprs.py")]),
     ("mesh", "Mesh", "Meshtastic messages + map", S.BLUE, [PY, os.path.join(HERE, "mesh_dash.py")]),
     ("field", "Field Status", "GPS, battery, thermals", S.BLUE, [PY, os.path.join(HERE, "field_status.py")]),
     ("ai", "Assistant", "Push-to-talk local AI", S.PURPLE, [PY, os.path.join(HERE, "assistant.py")]),
     ("tx", "Transcripts", "What ATC said, as text", S.PURPLE, [PY, os.path.join(HERE, "transcriber.py"), "--view"]),
     ("signals", "Signals", "ACARS + VDL2 from the air", S.GREEN, [PY, os.path.join(HERE, "signals.py")]),
+    ("pager", "Pagers", "POCSAG + FLEX messages", S.GREEN, [PY, os.path.join(HERE, "pager.py")]),
+    ("nwr", "Weather Radio", "NOAA SAME / EAS alerts", S.BLUE, [PY, os.path.join(HERE, "nwr.py")]),
+    ("ais", "AIS", "Ships on 162 MHz", S.BLUE, [PY, os.path.join(HERE, "ais.py")]),
+    ("rds", "RDS", "FM station ID + RadioText", S.GREEN, [PY, os.path.join(HERE, "rds.py")]),
+    ("cw", "CW Keyer", "Morse encode/decode + gated TX", S.PURPLE, [PY, os.path.join(HERE, "cw.py")]),
+    ("rtty", "RTTY", "Baudot teletype + gated TX", S.PURPLE, [PY, os.path.join(HERE, "rtty.py")]),
+    ("freqdb", "Frequency DB", "Who is allocated where", S.DIM, [PY, os.path.join(HERE, "freqdb.py")]),
+    ("digi", "Digital Modes", "FT8/WSPR/PSK31 gated launch", S.PURPLE, [PY, os.path.join(HERE, "digimodes.py")]),
+    ("iq", "IQ Recorder", "Raw captures + metadata", S.DIM, [PY, os.path.join(HERE, "iqtool.py")]),
+    ("class", "Classifier", "Modulation triage", S.DIM, [PY, os.path.join(HERE, "classify.py")]),
+    ("roll", "Rolling Code", "Keyfob analysis (no TX)", S.RED, [PY, os.path.join(HERE, "rollcode.py")]),
+    ("gnss", "GNSS Monitor", "GPS jamming/spoof watch", S.RED, [PY, os.path.join(HERE, "gnss.py")]),
+    ("nf", "Noise Floor", "Band survey + new emitters", S.DIM, [PY, os.path.join(HERE, "noisefloor.py")]),
+    ("pass", "Pass Scheduler", "Satellite passes + capture", S.BLUE, [PY, os.path.join(HERE, "passsched.py")]),
+    ("wifi", "Wi-Fi Survey", "Passive 802.11 scan", S.RED, [PY, os.path.join(HERE, "wifisurvey.py")]),
+    ("jam", "Jamming Detector", "Sustained interference", S.RED, [PY, os.path.join(HERE, "jammer.py")]),
+    ("fp", "RF Fingerprint", "Device signatures", S.RED, [PY, os.path.join(HERE, "rffinger.py")]),
+    ("imsi", "IMSI-Catcher", "Fake BTS detection", S.RED, [PY, os.path.join(HERE, "imsicatch.py")]),
+    ("dx", "DX Cluster", "Propagation spots", S.GREEN, [PY, os.path.join(HERE, "dxcluster.py")]),
+    ("remote", "Remote Mode", "Web dashboard + API", S.DIM, [PY, os.path.join(HERE, "headless.py")]),
+    ("tpms", "TPMS", "Tire sensors / vehicle ID", S.GREEN, [PY, os.path.join(HERE, "tpms.py")]),
+    ("replay", "Replay", "IQ replay (gated)", S.RED, [PY, os.path.join(HERE, "replay.py")]),
+    ("ble", "BLE Scanner", "Passive BLE enumerate", S.RED, [PY, os.path.join(HERE, "blescan.py")]),
+    ("mlat", "MLAT Feed", "ADS-B multilateration", S.GREEN, [PY, os.path.join(HERE, "mlat.py")]),
+    ("pwr", "Power Governor", "Brownout-aware throttling", S.BLUE, [PY, os.path.join(HERE, "powergov.py")]),
+    ("tac", "Tactical Map", "All-source fused map", S.AMBER, [PY, os.path.join(HERE, "tacmap.py")]),
+    ("df", "Direction Finding", "KrakenSDR DF + geoloc", S.RED, [PY, os.path.join(HERE, "kraken.py")]),
+    ("op", "Operator", "Callsign / profile", S.DIM, [PY, os.path.join(HERE, "opprofile.py")]),
+    ("test", "Self-Test", "Loopback decoder check", S.DIM, [PY, os.path.join(HERE, "loopback.py")]),
+    ("eng", "Engagement", "Scoped assessment authz", S.RED, [PY, os.path.join(HERE, "engagement.py")]),
+    ("pm3", "Proxmark3", "RFID/NFC (gated)", S.RED, [PY, os.path.join(HERE, "proxmark.py")]),
+    ("wifix", "Wi-Fi Assess", "Handshake/PMKID (gated)", S.RED, [PY, os.path.join(HERE, "wifipent.py")]),
+    ("blex", "BLE Assess", "GATT enum/rw (gated)", S.RED, [PY, os.path.join(HERE, "blepent.py")]),
+    ("zb", "Zigbee", "802.15.4 (gated)", S.RED, [PY, os.path.join(HERE, "zigbee.py")]),
+    ("zw", "Z-Wave", "S0/S2 assess (gated)", S.RED, [PY, os.path.join(HERE, "zwave.py")]),
+    ("sweep", "Bug Sweep", "TSCM counter-surveillance", S.AMBER, [PY, os.path.join(HERE, "bugsweep.py")]),
+    ("net", "Network Assess", "Host/port/service (gated)", S.RED, [PY, os.path.join(HERE, "netpent.py")]),
+    ("pass", "Password Audit", "Crack own handshake (gated)", S.RED, [PY, os.path.join(HERE, "passaudit.py")]),
+    ("hid", "USB-HID", "Keystroke inject (gated)", S.RED, [PY, os.path.join(HERE, "usbhid.py")]),
+    ("wf", "Waterfall", "Wideband spectrum", S.AMBER, [PY, os.path.join(HERE, "waterfall.py")]),
+    ("rfai", "RF Copilot", "Offline AI analyst (qwen)", S.PURPLE, [PY, os.path.join(HERE, "copilot.py")]),
     ("scout", "Scout", "Network + RF site survey", S.RED, [PY, os.path.join(HERE, "scout.py")]),
     ("hw", "Hardware", "Serial · I2C · GPIO bench", S.PURPLE, [PY, os.path.join(HERE, "hwlab.py")]),
     ("dev", "Dev terminal", "BLE · MQTT · SSH", S.PURPLE, [PY, os.path.join(HERE, "devterm.py")]),
     ("fc", "Field computer", "Map · track · almanac", S.BLUE, [PY, os.path.join(HERE, "fieldcomp.py")]),
+    ("can", "CAN Bus", "Automotive · sniff/decode (gated TX)", S.RED, [PY, os.path.join(HERE, "canbus.py")]),
+    ("bus", "Bus Lab", "UART · JTAG · SPI-flash (gated)", S.RED, [PY, os.path.join(HERE, "buslab.py")]),
+    ("flip", "Flipper", "Flipper bridge + NFC relay", S.RED, [PY, os.path.join(HERE, "flipper.py")]),
+    ("spec", "Spectrum", "Analyzer · max-hold · markers", S.AMBER, [PY, os.path.join(HERE, "specan.py")]),
 ]
 
 
@@ -49,12 +94,12 @@ class Shell:
     front. Workspaces keep running when hidden, so a scan or a decode carries on."""
 
     MODS = {  # key -> (module, entry function)
-        "ops": ("ops", "main"), "sky": ("sky_app", "run_gui"), "fm": ("fm", "main"),
+        "ops": ("ops", "main"), "sky": ("sky", "main"), "fm": ("fm", "main"),
         "scanner": ("scanner", "main"), "rfx": ("rf_explorer", "main"), "wx": ("wxsat", "main"),
         "sensors": ("sensors", "main"), "sstv": ("sstv", "main"), "sonde": ("balloons", "main"),
-        "aprs": ("aprs_app", "main"), "mesh": ("mesh_dash", "main"),
+        "aprs": ("aprs", "main"), "mesh": ("mesh_dash", "main"),
         "field": ("field_status", "main"), "ai": ("assistant", "main"),
-        "tx": ("transcriber", "viewer"), "signals": ("signals", "main"),
+        "tx": ("transcriber", "viewer"), "signals": ("signals", "main"), "pager": ("pager", "main"), "nwr": ("nwr", "main"), "ais": ("ais", "main"), "rds": ("rds", "main"), "cw": ("cw", "main"), "rtty": ("rtty", "main"), "freqdb": ("freqdb", "main"), "digi": ("digimodes", "main"), "iq": ("iqtool", "main"), "class": ("classify", "main"), "roll": ("rollcode", "main"), "gnss": ("gnss", "main"), "nf": ("noisefloor", "main"), "pass": ("passsched", "main"), "wifi": ("wifisurvey", "main"), "jam": ("jammer", "main"), "fp": ("rffinger", "main"), "imsi": ("imsicatch", "main"), "dx": ("dxcluster", "main"), "remote": ("headless", "main"), "tpms": ("tpms", "main"), "replay": ("replay", "main"), "ble": ("blescan", "main"), "mlat": ("mlat", "main"), "pwr": ("powergov", "main"), "tac": ("tacmap", "main"), "df": ("kraken", "main"), "op": ("opprofile", "main"), "test": ("loopback", "main"), "eng": ("engagement", "main"), "pm3": ("proxmark", "main"), "wifix": ("wifipent", "main"), "blex": ("blepent", "main"), "zb": ("zigbee", "main"), "zw": ("zwave", "main"), "sweep": ("bugsweep", "main"), "net": ("netpent", "main"), "pass": ("passaudit", "main"), "hid": ("usbhid", "main"), "wf": ("waterfall", "main"), "rfai": ("copilot", "main"), "can": ("canbus", "main"), "bus": ("buslab", "main"), "flip": ("flipper", "main"), "spec": ("specan", "main"),
         "scout": ("scout", "main"), "ow": ("overwatch", "main"),
         "hw": ("hwlab", "main"), "dev": ("devterm", "main"), "fc": ("fieldcomp", "main"),
     }
@@ -225,6 +270,18 @@ def read_jsonl(path, n, max_bytes=400_000):
 
 
 def main():
+    # Auto-load any drop-in plugins (Phase 3e) before the UI is built, so they appear like any
+    # other module. Guarded: a bad plugin can never stop the hub from starting.
+    try:
+        import plugins as _plugins
+        _found = _plugins.discover(os.path.join(HERE, "plugins"))
+        if _found:
+            added, _ = _plugins.register_into(Shell.MODS, _found)
+            if added:
+                print("plugins loaded: " + ", ".join(added), file=sys.stderr)
+    except Exception as _e:        # never let plugin loading break startup
+        print("plugin load skipped: %r" % _e, file=sys.stderr)
+
     S.single_instance("Sentry")
     root, F = S.make_root("Sentry")
     import tkinter as tk
@@ -783,12 +840,54 @@ def main():
             ("sky", "Sky", "Radar + ATC audio", ("launch", "sky")),
             ("tx", "Transcripts", "ATC as text", ("launch", "tx")),
             ("signals", "Signals", "ACARS + VDL2", ("launch", "signals")),
+            ("pager", "Pagers", "POCSAG + FLEX", ("launch", "pager")),
+            ("nwr", "Weather Radio", "SAME / EAS alerts", ("launch", "nwr")),
+            ("ais", "AIS", "Ships on 162 MHz", ("launch", "ais")),
+            ("rds", "RDS", "FM station data", ("launch", "rds")),
+            ("cw", "CW Keyer", "Morse + gated TX", ("launch", "cw")),
+            ("rtty", "RTTY", "Baudot + gated TX", ("launch", "rtty")),
+            ("freqdb", "Frequency DB", "Allocations lookup", ("launch", "freqdb")),
+            ("digi", "Digital Modes", "FT8/WSPR/PSK31", ("launch", "digi")),
+            ("iq", "IQ Recorder", "Raw IQ + metadata", ("launch", "iq")),
+            ("class", "Classifier", "Modulation triage", ("launch", "class")),
+            ("roll", "Rolling Code", "Keyfob analysis", ("launch", "roll")),
+            ("gnss", "GNSS Monitor", "GPS jam/spoof", ("launch", "gnss")),
+            ("nf", "Noise Floor", "Band survey", ("launch", "nf")),
+            ("pass", "Pass Scheduler", "Satellite passes", ("launch", "pass")),
+            ("wifi", "Wi-Fi Survey", "802.11 scan", ("launch", "wifi")),
+            ("jam", "Jamming Detector", "Interference", ("launch", "jam")),
+            ("fp", "RF Fingerprint", "Device signatures", ("launch", "fp")),
+            ("imsi", "IMSI-Catcher", "Fake BTS", ("launch", "imsi")),
+            ("dx", "DX Cluster", "Propagation", ("launch", "dx")),
+            ("remote", "Remote Mode", "Web dashboard", ("launch", "remote")),
+            ("tpms", "TPMS", "Tire sensors", ("launch", "tpms")),
+            ("replay", "Replay", "IQ replay (gated)", ("launch", "replay")),
+            ("ble", "BLE Scanner", "BLE enumerate", ("launch", "ble")),
+            ("mlat", "MLAT Feed", "Multilateration", ("launch", "mlat")),
+            ("pwr", "Power Governor", "Power/thermal", ("launch", "pwr")),
+            ("tac", "Tactical Map", "All-source map", ("launch", "tac")),
+            ("df", "Direction Finding", "KrakenSDR DF", ("launch", "df")),
+            ("op", "Operator", "Callsign / profile", ("launch", "op")),
+            ("test", "Self-Test", "Loopback check", ("launch", "test")),
+            ("eng", "Engagement", "Assessment authz", ("launch", "eng")),
+            ("pm3", "Proxmark3", "RFID/NFC", ("launch", "pm3")),
+            ("wifix", "Wi-Fi Assess", "Handshake/PMKID", ("launch", "wifix")),
+            ("blex", "BLE Assess", "GATT enum/rw", ("launch", "blex")),
+            ("zb", "Zigbee", "802.15.4", ("launch", "zb")),
+            ("zw", "Z-Wave", "S0/S2 assess", ("launch", "zw")),
+            ("sweep", "Bug Sweep", "TSCM", ("launch", "sweep")),
+            ("net", "Network Assess", "Host/port/svc", ("launch", "net")),
+            ("pass", "Password Audit", "Handshake audit", ("launch", "pass")),
+            ("hid", "USB-HID", "Keystroke inject", ("launch", "hid")),
+            ("wf", "Waterfall", "Spectrum", ("launch", "wf")),
+            ("rfai", "RF Copilot", "AI analyst", ("launch", "rfai")),
         ]),
         ("Listen", S.GREEN, [
             ("fm", "FM Radio", "Broadcast + NOAA", ("launch", "fm")),
             ("scanner", "Scanner", "Preset banks + squelch", ("launch", "scanner")),
             ("rfx", "RF Explorer", "Spectrum + waterfall", ("launch", "rfx")),
             ("sdrpp", "SDR++", "Free tuning, any band", ("launch", "sdrpp")),
+            ("spec", "Spectrum", "Analyzer + markers", ("launch", "spec")),
         ]),
         ("Weather & space", S.BLUE, [
             ("wx", "Weather Sats", "Meteor passes + images", ("launch", "wx")),
@@ -802,6 +901,9 @@ def main():
             ("fc", "Field computer", "Map · track · almanac", ("launch", "fc")),
             ("mesh", "Mesh", "Meshtastic messages", ("launch", "mesh")),
             ("scout", "Scout", "Network + RF survey", ("launch", "scout")),
+            ("can", "CAN Bus", "Automotive bus", ("launch", "can")),
+            ("bus", "Bus Lab", "UART/JTAG/SPI", ("launch", "bus")),
+            ("flip", "Flipper", "Bridge + NFC relay", ("launch", "flip")),
             ("field", "Field Status", "GPS, battery, thermals", ("launch", "field")),
             ("aprs", "APRS", "Ham position network", ("launch", "aprs")),
         ]),
@@ -827,11 +929,11 @@ def main():
 
     HINT = "Ctrl+K jump to anything  ·  Esc back here  ·  Ctrl+W close a workspace  ·  Ctrl+Q quit"
     msg.config(text=HINT)
-    ICON = {"ops": "◈", "ow": "◉", "hw": "⎓", "dev": "⌨", "fc": "⊕", "sky": "✈", "tx": "≡", "signals": "⌁", "fm": "♪", "scanner": "⇆",
+    ICON = {"ops": "◈", "ow": "◉", "hw": "⎓", "dev": "⌨", "fc": "⊕", "sky": "✈", "tx": "≡", "signals": "⌁", "pager": "✉", "nwr": "⚠", "ais": "⚓", "rds": "♫", "cw": "•−", "rtty": "⇅", "freqdb": "▦", "digi": "◧", "iq": "⎙", "class": "◫", "roll": "⟲", "gnss": "✛", "nf": "▂", "pass": "☄", "wifi": "≋", "jam": "⚡", "fp": "⊚", "imsi": "📶", "dx": "⇌", "remote": "⌂", "tpms": "◉", "replay": "⟳", "ble": "ᛒ", "mlat": "△", "pwr": "⚡", "tac": "⊕", "df": "➤", "op": "☰", "test": "✓", "eng": "⊗", "pm3": "▥", "wifix": "⚔", "blex": "ᛒ", "zb": "⬡", "zw": "〜", "sweep": "⌕", "net": "⇄", "pass": "⚿", "hid": "⌨", "wf": "▒", "rfai": "✦", "fm": "♪", "scanner": "⇆",
             "rfx": "∿", "sdrpp": "⊕", "wx": "◐", "sensors": "◎", "sstv": "▣", "sonde": "○",
             "mesh": "⬡", "scout": "⌖", "field": "⊙", "aprs": "◇", "doctor": "✚",
             "security": "⛨", "log": "☰", "backup": "⇩", "settings": "⚙", "external": "⇱",
-            "ai": "✦"}
+            "ai": "✦", "can": "⊞", "bus": "⌗", "flip": "◪", "spec": "⋀"}
 
     def tile(parent, key, title, sub, col, action, hk):
         f = tk.Frame(parent, bg=T.SURFACE, cursor="hand2")
@@ -914,6 +1016,28 @@ def main():
             S.radio_holder() or "plane map", " · Autopilot on" if S.AUTOPILOT["on"] else "")),
             tip.place(x=T.px(38), y=radio_auto.winfo_rooty() - root.winfo_rooty()), tip.lift()))
         w_.bind("<Leave>", lambda e: tip.place_forget())
+
+    # master TX kill switch — default OFF/safe, hardware-red when armed. Visible everywhere.
+    # Arming only ENABLES the possibility of TX; a transmission still needs a per-session unlock
+    # plus band/power/callsign to pass txguard.authorize().
+    import txguard as _TXG
+    _TXG.reset_session()                         # always boot disarmed/locked
+    tx_tag = tk.Label(mini, text="TX", font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE, cursor="hand2")
+    tx_tag.pack(side="bottom", pady=(0, T.px(4)))
+
+    def _tx_paint():
+        armed = _TXG.is_armed()
+        tx_tag.config(text="TX●" if armed else "TX", fg="#ff3b30" if armed else T.TXT_3)
+
+    def _tx_toggle(_=None):
+        _TXG.arm(not _TXG.is_armed())
+        _tx_paint()
+    tx_tag.bind("<Button-1>", _tx_toggle)
+    tx_tag.bind("<Enter>", lambda e: (tip.config(text=" TX %s — click to %s " % (
+        "ARMED" if _TXG.is_armed() else "safe", "disarm" if _TXG.is_armed() else "arm")),
+        tip.place(x=T.px(38), y=tx_tag.winfo_rooty() - root.winfo_rooty()), tip.lift()))
+    tx_tag.bind("<Leave>", lambda e: tip.place_forget())
+    _tx_paint()
 
     def mark_running():
         draw_radio()
@@ -1216,6 +1340,15 @@ def main():
             except Exception:
                 pass
         S.reap()
+        try:                                    # power/thermal governor (brownout-aware)
+            import powergov
+            import txguard
+            mode, _pol = powergov.poll()
+            if mode == "critical" and txguard.is_armed():
+                txguard.arm(False)
+                notify("Power critical — TX disarmed for safety", "system")
+        except Exception:
+            pass
         if not status_busy[0]:
             status_busy[0] = True
 

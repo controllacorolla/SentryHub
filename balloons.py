@@ -192,10 +192,13 @@ def next_launch(now=None):
 
 
 # ---- the app ----------------------------------------------------------------------------
-def main():
-    S.single_instance("Balloons")
+def main(parent=None):
+    # parent: a tab host (the Sky shell) supplies a workspace-like frame to render into; it
+    # owns the instance lock and lifecycle, so skip single_instance. parent=None is unchanged.
+    if parent is None:
+        S.single_instance("Balloons")
     s, spath = S.settings("balloons", DEFAULTS)
-    root, F = S.make_root("Balloons")
+    root, F = S.make_root("Balloons", parent=parent)
     import tkinter as tk
     T = S.T
     slog = S.SessionLog("balloons")

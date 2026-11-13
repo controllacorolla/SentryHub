@@ -508,11 +508,7 @@ def audio_output_name():
 
 # ----------------------------------------------------------------------- geo/ADS-B
 
-def dist_nm(lat1, lon1, lat2, lon2):
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp, dl = p2 - p1, math.radians(lon2 - lon1)
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 3440.065 * 2 * math.asin(math.sqrt(min(1, a)))
+from geo import dist_nm  # noqa: E402,F401  (consolidated into geo.py, Phase 1a)
 
 
 def on_ground(ac):
@@ -1354,7 +1350,9 @@ def _fire(cmd):
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def run_gui():
+def run_gui(parent=None):
+    # parent: when a tab host (the Sky shell) supplies a workspace-like frame, render into it
+    # instead of a fresh workspace/window. parent=None keeps the standalone/hub behaviour.
     import tkinter as tk
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import theme as T
@@ -1371,7 +1369,7 @@ def run_gui():
     routes = RouteFeed()
     metar = MetarFeed(AIRPORTS.keys())
 
-    root, F = T.make_root("Sky")
+    root, F = T.make_root("Sky", parent=parent)
     T.on_workspace_close(lambda: routes.q.put(None))    # (built before the workspace existed)
 
     # ---- top bar

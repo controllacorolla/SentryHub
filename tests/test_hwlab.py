@@ -68,9 +68,13 @@ def test_parse_raspi_gpio():
     assert rows == [(2, "INPUT", "0", "1"), (4, "OUTPUT", "1", "0"), (14, "ALT0", "4", "1")]
 
 
-def test_scan_i2c_without_the_bus():
+def test_scan_i2c_without_the_bus(monkeypatch):
+    # pretend /dev/i2c-1 is absent, so this also holds on a real uConsole that has the bus
+    real_exists = H.os.path.exists
+    monkeypatch.setattr(H.os.path, "exists",
+                        lambda p: False if p == "/dev/i2c-1" else real_exists(p))
     addrs, err = H.scan_i2c(1, run=lambda *a, **k: (1, ""))
-    # no /dev/i2c-1 in the sandbox: a clear, actionable message, no crash
+    # no /dev/i2c-1: a clear, actionable message, no crash
     assert addrs == [] and err and "i2c" in err.lower()
 
 
