@@ -113,6 +113,9 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 QToolTip {{ background: {p1}; color: {text}; border: 1px solid {hairline};
             padding: 4px 8px; border-radius: 4px; font-size: 12px; }}
 
+/* brand bar — thin accent line at the top of the main window */
+QFrame#brand_bar {{ background: {accent}; min-height: 2px; max-height: 2px; border: none; }}
+
 /* callsign rail */
 QFrame#nav_rail {{ background: {p1}; border: none;
     border-right: 1px solid {hairline}; border-radius: 0; }}

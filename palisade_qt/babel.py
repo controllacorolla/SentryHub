@@ -94,6 +94,8 @@ class BabelApp(PalisadeApp):
         split.setSpacing(10)
         self.feed = FeedTable([("time", "TIME"), ("proto", "PROTO"),
                                ("id", "ID"), ("summary", "MESSAGE")])
+        self.feed.view.setColumnWidth(0, 90)
+        self.feed.view.setColumnWidth(2, 100)
         self.feed.selected.connect(self._show)
         split.addWidget(self.feed, 3)
         self.detail = DetailCard("MESSAGE")

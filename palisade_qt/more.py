@@ -54,6 +54,7 @@ class OverwatchApp(PalisadeApp):
         self.detail.set_hero("—", "select an object")
         right.addWidget(self.detail, 1)
         lay.addLayout(right, 2)
+        self._selected = False
         return body
 
     def make_worker(self):
@@ -61,9 +62,13 @@ class OverwatchApp(PalisadeApp):
 
     def on_row(self, pts):
         self.dome.set_contacts([(p["x"], p["y"]) for p in pts])
-        self.feed.model.set_rows(sorted(pts, key=lambda p: -float(p["el"])))
+        ranked = sorted(pts, key=lambda p: -float(p["el"]))
+        self.feed.model.set_rows(ranked)
+        if not self._selected and ranked:
+            self._show(ranked[0])
 
     def _show(self, row):
+        self._selected = True
         self.detail.set_hero(row.get("name", "—"), "tracked object")
         self.detail.set_rows([("ELEVATION", row.get("el", "") + "°"),
                               ("AZIMUTH", row.get("az", "") + "°")])
@@ -162,13 +167,16 @@ class BenchApp(PalisadeApp):
         self.run = bar.add_button("Run self-test", self._run)
         lay.addWidget(bar)
 
+        split = QtWidgets.QHBoxLayout()
+        split.setSpacing(10)
         self.card = DetailCard("LOOPBACK SELF-TEST")
         self.card.set_hero("—", "conducted into a load — no antenna, no OTA")
         self.card.set_rows([("TXGUARD", "conducted path only"), ("RESULT", "idle")])
-        lay.addWidget(self.card, 1)
+        split.addWidget(self.card, 2)
         self.empty = EmptyState("CONDUCTED BENCH", "txguard permits conducted self-test only; "
                                 "protected bands and OTA transmit stay denied")
-        lay.addWidget(self.empty, 1)
+        split.addWidget(self.empty, 3)
+        lay.addLayout(split, 1)
         return body
 
     def _run(self):

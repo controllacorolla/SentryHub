@@ -36,7 +36,7 @@ class NavRail(QtWidgets.QFrame):
         super().__init__(parent)
         self.setObjectName("nav_rail")
         self.setProperty("class", "nav_rail")
-        self.setFixedWidth(100)
+        self.setFixedWidth(108)
         self.hub = hub
         self.btns = {}
         lay = QtWidgets.QVBoxLayout(self)
@@ -68,7 +68,15 @@ class PalisadeHub(QtWidgets.QMainWindow):
 
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
-        hbox = QtWidgets.QHBoxLayout(central)
+        vbox = QtWidgets.QVBoxLayout(central)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(0)
+
+        brand = QtWidgets.QFrame()
+        brand.setObjectName("brand_bar")
+        vbox.addWidget(brand)
+
+        hbox = QtWidgets.QHBoxLayout()
         hbox.setContentsMargins(0, 0, 0, 0)
         hbox.setSpacing(0)
 
@@ -78,6 +86,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
 
         self.stack = QtWidgets.QStackedWidget()
         hbox.addWidget(self.stack, 1)
+        vbox.addLayout(hbox, 1)
 
         self.pages = {}
         self.ops = OpsHome(demo=demo, mode=mode)
