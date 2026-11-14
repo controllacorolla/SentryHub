@@ -17,6 +17,7 @@ This UI never spawns a produced write/TX command and wires no new TX/inject path
 """
 import os
 import sys
+import threading
 import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -132,6 +133,7 @@ class SerialWorker(Worker):
         self.port, self.baud = port, baud
         self._reader = None
         self._pending = []
+        self._lock = threading.Lock()           # guards _pending across GUI/worker threads
 
     def _open(self):
         import hwlab
@@ -145,33 +147,48 @@ class SerialWorker(Worker):
             return None
 
     def write(self, text):
-        self._pending.append(text)
+        with self._lock:
+            self._pending.append(text)
 
     def step(self):
         import hwlab
         if self._reader is None:
+            if self._stop:                      # don't re-open a port while shutting down (leak)
+                return
             self._reader = self._open()
             if self._reader is None:
                 self.status.emit({"standby": True,
                                   "sdr": {"text": "NO DEVICE — plug a USB-serial adapter", "ok": False}})
                 return
             self.row.emit({"kind": "sys", "line": "connected %s" % (self.port or "demo ESP32")})
-            eventbus.bus.publish(eventbus.decode("FORGE", "SERIAL", self.port or "demo",
-                                                 "serial device connected")) if not self.demo else None
-        for text in self._pending:
+            if not self.demo:
+                eventbus.bus.publish(eventbus.decode("FORGE", "SERIAL", self.port or "demo",
+                                                     "serial device connected"))
+        with self._lock:                        # atomic drain -> no lost keystroke on the swap
+            pending, self._pending = self._pending, []
+        for text in pending:
             try:
                 self._reader.write((text + "\r\n").encode())
             except Exception:
                 pass
-        self._pending = []
         try:
             for line in self._reader.read_lines():
                 self.row.emit({"kind": "rx", "line": hwlab.clean_text(line)})
         except Exception:
             pass
 
+    def run(self):
+        try:
+            super().run()
+        finally:                                # close the reader on the WORKER thread, after the
+            self._close_reader()                # loop has exited — no stop()/step() reopen race
+
     def stop(self):
-        super().stop()
+        super().stop()                          # set _stop; the run() finally closes the reader
+        if not self.isRunning():                # direct-step tests (no run loop) still clean up
+            self._close_reader()
+
+    def _close_reader(self):
         if self._reader is not None:
             try:
                 self._reader.close()

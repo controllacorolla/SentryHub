@@ -1053,3 +1053,27 @@ def test_forge_open_pump_close_no_leaked_threads():
     p.stop()
     assert all(not w.isRunning() for w in p._workers) if p._workers else True
     _reset_engagement()
+
+
+def test_forge_serial_stop_does_not_reopen_reader():
+    """Review fix: a worker shutting down must not re-open (leak) the serial port in step()."""
+    from palisade_qt import forge
+    w = forge.SerialWorker(demo=True)
+    w.step()                                     # opens DemoSerial
+    assert w._reader is not None
+    w.stop()                                     # not running (direct-step) -> closes the reader
+    assert w._reader is None
+    w.step()                                     # _stop is set -> must NOT re-open
+    assert w._reader is None
+
+
+def test_forge_serial_write_queue_drains_atomically():
+    from palisade_qt import forge
+    w = forge.SerialWorker(demo=True)
+    w.step()                                     # connect
+    w.write("AT")
+    with w._lock:
+        assert w._pending == ["AT"]
+    w.step()                                     # locked drain -> no lost keystroke
+    assert w._pending == []
+    w.stop()
