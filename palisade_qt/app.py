@@ -60,7 +60,8 @@ class PalisadeApp(QtWidgets.QWidget):
     def on_status(self, status):
         for k in ("sdr", "gps", "pwr", "tx"):
             if k in status:
-                self.header.set_chip(k, status[k].get("text"), status[k].get("ok"))
+                v = status[k]
+                self.header.set_chip(k, v.get("text"), state=v.get("state"), ok=v.get("ok"))
 
     def on_error(self, msg):
         # R2: surface, don't swallow. Subclasses can show it in the UI; default routes to stderr.

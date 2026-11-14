@@ -131,7 +131,7 @@ class OverwatchApp(PalisadeApp):
                 c = self._tok["muted"]
             p["_colors"] = {"el": c}
         self.feed.model.set_rows(ranked)
-        self.header.set_chip("sdr", "%d OBJECTS" % len(pts), ok=True)
+        self.header.set_chip("sdr", "%d OBJECTS" % len(pts), state="neutral")
         if not self._selected and ranked:
             self._show(ranked[0])
 
@@ -260,7 +260,7 @@ class ReconApp(PalisadeApp):
         chip = "%d APs" % len(rows)
         if open_count:
             chip += " · %d OPEN" % open_count
-        self.header.set_chip("sdr", chip, ok=True)
+        self.header.set_chip("sdr", chip, state="warn" if open_count else "neutral")
 
     def _show(self, row):
         self.detail.set_hero(row.get("ssid", "—"), "wireless network")

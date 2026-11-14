@@ -94,6 +94,6 @@ class ForgeApp(PalisadeApp):
         self.console.ensureCursorVisible()
         self._line_count += 1
         self._lines.setText("%d lines" % self._line_count)
-        self.header.set_chip("sdr", "%d LINES" % self._line_count, ok=True)
+        self.header.set_chip("sdr", "%d LINES" % self._line_count, state="neutral")
         if "temp" in msg:
             self.readout.setText("%.1f °C" % msg["temp"])
