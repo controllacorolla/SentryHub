@@ -919,3 +919,33 @@ def test_recon_open_pump_close_no_leaked_threads():
     p.stop()
     assert all(not w.isRunning() for w in p._workers) if p._workers else True
     _reset_engagement()
+
+
+def test_recon_demo_stays_off_the_shared_bus():
+    """Honesty: synthetic demo RECON data is shown locally but must NOT pollute the OPS event bus."""
+    _app()
+    from palisade_qt import recon, eventbus
+    eventbus.bus.clear()
+    evs = []
+    eventbus.bus.published.connect(lambda e: evs.append(e))
+    p = recon.ReconApp(demo=True, mode="dark")
+    p._on_wifi({"aps": recon._demo_aps(), "demo": True})
+    p._on_ble({"devs": [{"address": "a", "name": "x", "vendor": "v", "kind": "k", "rssi": -50}],
+               "demo": True})
+    p._on_counter({"kind": "bugsweep", "alert": ("bug", "2 suspect"), "demo": True})
+    assert evs == [], "demo synthetic RECON data must not publish to the shared bus"
+
+
+def test_recon_passaudit_hashcat_authorizes_in_scope():
+    _app()
+    _reset_engagement()
+    import engagement
+    from palisade_qt.recon import ReconApp
+    p = ReconApp(demo=False, mode="dark")
+    engagement.start("Op", "ROE-9", ["cap-*"], "N0CALL")
+    p._refresh_gate()
+    g = p.pass_gated
+    g.target.setText("cap-01")
+    g._authorize("hashcat")                            # a real passaudit op (was the dead 'crack')
+    assert "AUTHORIZED" in g.result.text() and "passaudit:hashcat" in g.result.text()
+    _reset_engagement()

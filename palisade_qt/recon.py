@@ -414,9 +414,11 @@ class ReconApp(PalisadeApp):
         left.addWidget(self.ble_feed, 1)
         split.addLayout(left, 3)
         import blepent
+        # only the ops that need no per-characteristic handle/value input (read/write need a handle
+        # + value the single target field can't supply, so they'd be dead buttons) — device-only
         self.ble_gated = GatedTool("BLEPENT", "address", blepent.prepare,
-                                   list(getattr(blepent, "OPS", ("enum", "read", "write"))),
-                                   self, self._tok, "target BLE address")
+                                   ["enum", "characteristics"], self, self._tok,
+                                   "target BLE address")
         self._gated.append(self.ble_gated)
         split.addWidget(self.ble_gated, 2)
         pl.addLayout(split, 1)
@@ -433,7 +435,8 @@ class ReconApp(PalisadeApp):
                                    ["discover", "portscan", "services"], self, self._tok,
                                    "target IP / host / CIDR")
         self.pass_gated = GatedTool("PASSAUDIT", "target", passaudit.prepare,
-                                    ["convert", "crack"], self, self._tok, "capture / hash target")
+                                    ["convert", "hashcat", "aircrack"], self, self._tok,
+                                    "capture / hash target")
         self._gated += [self.net_gated, self.pass_gated]
         pl.addWidget(self.net_gated)
         pl.addWidget(self.pass_gated)
@@ -626,20 +629,22 @@ class ReconApp(PalisadeApp):
     # ---- passive results -> feed + event bus ----
     def _on_wifi(self, msg):
         aps = msg.get("aps", [])
+        live = not msg.get("demo")                     # synthetic demo stays local, off the OPS bus
         rows = []
         for ap in aps:
             rows.append({"ssid": ap.get("ssid") or "<hidden>", "bssid": ap.get("bssid", ""),
                          "ch": str(ap.get("channel") or "—"), "sig": str(int(ap["signal"]))
                          if ap.get("signal") is not None else "—",
                          "sec": ap.get("security", "")})
-            if ap.get("security") == "open":           # open network -> OPS alert
+            if live and ap.get("security") == "open":  # real open network -> OPS alert
                 eventbus.bus.publish(eventbus.alert(
                     "RECON", "open Wi-Fi: %s" % (ap.get("ssid") or ap.get("bssid")),
                     severity="warn"))
         self.wifi_feed.model.set_rows(rows)
-        for ap in aps:                                 # scan results on the bus (decode)
-            eventbus.bus.publish(eventbus.decode("RECON", "WIFI", ap.get("bssid", ""),
-                                                 ap.get("ssid") or "<hidden>"))
+        if live:
+            for ap in aps:                             # real scan results on the bus (decode)
+                eventbus.bus.publish(eventbus.decode("RECON", "WIFI", ap.get("bssid", ""),
+                                                     ap.get("ssid") or "<hidden>"))
         self.header.set_chip("sdr", "%d AP" % len(rows), state="neutral")
 
     def _on_ble(self, msg):
@@ -647,8 +652,9 @@ class ReconApp(PalisadeApp):
         self.ble_feed.model.set_rows([{"name": d["name"], "address": d["address"],
                                        "vendor": d["vendor"], "kind": d["kind"],
                                        "rssi": str(d["rssi"])} for d in devs])
-        for d in devs:
-            eventbus.bus.publish(eventbus.decode("RECON", "BLE", d["address"], d["name"]))
+        if not msg.get("demo"):                        # real decodes only on the bus
+            for d in devs:
+                eventbus.bus.publish(eventbus.decode("RECON", "BLE", d["address"], d["name"]))
 
     def _on_counter(self, msg):
         alert = msg.get("alert")
@@ -659,4 +665,6 @@ class ReconApp(PalisadeApp):
         self.counter_feed.model.prepend({"time": time.strftime("%H:%M:%S"), "det": det.upper(),
                                          "sev": sev.upper(), "text": text,
                                          "_colors": {"sev": self._tok["warn"]}}, cap=200)
-        eventbus.bus.publish(eventbus.alert("RECON", "%s: %s" % (det.upper(), text), severity=sev))
+        if not msg.get("demo"):                        # a real detector finding reaches the OPS strip
+            eventbus.bus.publish(eventbus.alert("RECON", "%s: %s" % (det.upper(), text),
+                                                severity=sev))
