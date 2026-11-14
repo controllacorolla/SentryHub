@@ -949,3 +949,107 @@ def test_recon_passaudit_hashcat_authorizes_in_scope():
     g._authorize("hashcat")                            # a real passaudit op (was the dead 'crack')
     assert "AUTHORIZED" in g.result.text() and "passaudit:hashcat" in g.result.text()
     _reset_engagement()
+
+
+# ---- FORGE: hardware bench — engagement + txguard gates, console, honest standby ----
+
+def test_forge_engagement_tools_locked_without_engagement():
+    _app()
+    _reset_engagement()
+    from palisade_qt.forge import ForgeApp, EngagementCard
+    p = ForgeApp(demo=False, mode="dark")
+    eng_cards = [c for c in p._cards if isinstance(c, EngagementCard)]
+    assert eng_cards, "FORGE has engagement-gated cards"
+    for c in eng_cards:
+        assert not c._btn.isEnabled(), "gated tool locked with no engagement"
+    _reset_engagement()
+
+
+def test_forge_canbus_tx_gated_by_engagement():
+    _app()
+    _reset_engagement()
+    import engagement, canbus
+    from palisade_qt.forge import ForgeApp
+    p = ForgeApp(demo=False, mode="dark")
+    # no engagement -> denied, no argv
+    ok, why, argv = p._can_send(canbus, {"id": "7DF", "data": "0201", "target": "ecu-1"}, p.evidence)
+    assert ok is False and argv is None and "engagement" in why.lower()
+    # in-scope engagement -> authorized + argv produced by the engine
+    engagement.start("Op", "ROE", ["ecu-*"], "N0CALL")
+    ok, why, argv = p._can_send(canbus, {"id": "7DF", "data": "0201", "target": "ecu-1"}, p.evidence)
+    assert ok is True and argv and argv[0] == "cansend"
+    # out of scope -> denied
+    ok, why, argv = p._can_send(canbus, {"id": "7DF", "data": "0201", "target": "other"}, p.evidence)
+    assert ok is False and argv is None
+    _reset_engagement()
+
+
+def test_forge_proxmark_write_gated_and_reads_are_not():
+    _app()
+    _reset_engagement()
+    import engagement, proxmark
+    from palisade_qt.forge import ForgeApp
+    p = ForgeApp(demo=False, mode="dark")
+    active = [o for o, v in proxmark.OPS.items() if v[0] and "{" not in v[1]][0]  # no-param op
+    ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "badge-1"}, p.evidence)
+    assert ok is False and cmd is None, "write op gated without engagement"
+    engagement.start("Op", "ROE", ["badge-*"], "N0CALL")
+    ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "badge-1"}, p.evidence)
+    assert ok is True and cmd
+    # a read op is NOT gated
+    ok, why, cmd = p._pm_write(proxmark, {"op": "lf_search", "target": ""}, p.evidence)
+    assert ok is True and "ungated" in why
+    _reset_engagement()
+
+
+def test_forge_replay_is_txguard_gated():
+    _app()
+    import txguard
+    from palisade_qt.forge import ForgeApp
+    p = ForgeApp(demo=False, mode="dark")
+    txguard.arm(False)
+    p.replay_card.refresh()
+    assert "TX GATED" in p.replay_card.state.text()
+    # confirm but TX not armed -> denied, no argv
+    p.replay_card.confirm.setChecked(True)
+    p.replay_card._run()
+    assert "DENIED" in p.replay_card.result.text()
+
+
+def test_forge_serial_console_demo_populates_and_live_standby():
+    from palisade_qt import forge
+    w = forge.SerialWorker(demo=True)
+    rows = []
+    w.row.connect(lambda m: rows.append(m))
+    w.step()
+    w.step()
+    assert any(r.get("kind") == "rx" for r in rows), "demo serial yields console output"
+    w.stop()
+    # live with no port -> NO DEVICE standby, no fabrication
+    w2 = forge.SerialWorker(demo=False, port=None)
+    seen, rows2 = [], []
+    w2.status.connect(lambda s: seen.append(s))
+    w2.row.connect(lambda m: rows2.append(m))
+    w2.step()
+    assert rows2 == [] and any(s.get("standby") for s in seen)
+
+
+def test_forge_can_monitor_demo_decodes():
+    from palisade_qt import forge
+    w = forge.CanWorker(demo=True)
+    rows = []
+    w.row.connect(lambda m: rows.append(m))
+    w.step()
+    assert rows and "frame" in rows[0] and rows[0].get("demo")
+
+
+def test_forge_open_pump_close_no_leaked_threads():
+    _app()
+    _reset_engagement()
+    from palisade_qt.forge import ForgeApp
+    p = ForgeApp(demo=False, mode="dark")
+    p.start()
+    _pump(200)
+    p.stop()
+    assert all(not w.isRunning() for w in p._workers) if p._workers else True
+    _reset_engagement()
