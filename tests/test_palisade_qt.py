@@ -625,3 +625,93 @@ def test_babel_cw_rtty_no_live_synth_only_practice(monkeypatch):
         assert rows == [], "%s must not synthesise decodes in live mode" % mode
         assert any(s.get("practice") and "practice only" in (s.get("sdr") or {}).get("text", "")
                    for s in status)
+
+
+# ---- BABEL PR-B3: SSTV image decoder (sstv.Recorder + sstvdec.decode_wav AS-IS) ----
+
+def test_babel_sstv_registered():
+    from palisade_qt import babel, radio_arbiter as ra
+    assert "SSTV" in babel.MODES
+    assert ra.OWNER_LABELS.get("BABEL-SSTV")
+
+
+def test_babel_sstv_demo_emits_image():
+    from palisade_qt import babel
+    w = babel.SstvWorker(demo=True)
+    rows = []
+    w.row.connect(lambda r: rows.append(r))
+    w.step()
+    assert rows and rows[0]["kind"] == "sstv" and rows[0].get("demo")
+    assert rows[0]["image"].shape[2] == 3
+
+
+def test_babel_sstv_live_leases_and_decodes(monkeypatch):
+    import numpy as np
+    from palisade_qt import babel, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda n: None)
+    monkeypatch.setattr(babel.shutil, "which", lambda b: "/usr/bin/" + b)   # rtl_fm "present"
+    w = babel.SstvWorker(demo=False)
+
+    class FakeRec:
+        level = 120.0
+        err = ""
+
+        def seconds(self):
+            return 25.0
+
+        def stop(self):
+            pass
+    w._make_recorder = lambda path: FakeRec()
+    w._decode = lambda path: {"image": np.zeros((8, 8, 3), np.uint8), "mode": "PD120",
+                              "lines": 496, "slant_ppm": 2}
+    rows = []
+    w.row.connect(lambda r: rows.append(r))
+    w.step()
+    assert ra.arbiter.owner() == "BABEL-SSTV"
+    img = [r for r in rows if r.get("kind") == "sstv"]
+    assert img and img[0]["mode"] == "PD120" and img[0]["image"].shape == (8, 8, 3)
+    w.stop()
+    assert ra.arbiter.owner() is None, "closing SSTV releases the SDR"
+
+
+def test_babel_sstv_no_rtl_fm_standby_no_lease(monkeypatch):
+    from palisade_qt import babel, radio_arbiter as ra
+    monkeypatch.setattr(babel.shutil, "which", lambda b: None)
+    w = babel.SstvWorker(demo=False)
+    seen = []
+    w.status.connect(lambda s: seen.append(s))
+    w.step()
+    assert ra.arbiter.owner() is None
+    assert any(s.get("standby") and "rtl_fm" in (s.get("sdr") or {}).get("text", "") for s in seen)
+
+
+def test_babel_sstv_offscreen_opens_no_recorder(monkeypatch):
+    from palisade_qt import babel, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda n: None)
+    monkeypatch.setattr(babel.shutil, "which", lambda b: "/usr/bin/" + b)
+    w = babel.SstvWorker(demo=False)
+    w.step()                                 # real _make_recorder returns None under offscreen
+    assert w._rec is None and ra.arbiter.owner() == "BABEL-SSTV"
+    w.stop()
+    assert ra.arbiter.owner() is None
+
+
+def test_sstv_image_panel_renders_ndarray():
+    _app()
+    import numpy as np
+    from palisade_qt.babel import SstvImagePanel
+    p = SstvImagePanel(mode="dark")
+    p.show_image(np.zeros((16, 24, 3), np.uint8), "test frame")
+    pm = p.view.pixmap()
+    assert pm is not None and not pm.isNull()
+
+
+def test_babel_switch_to_sstv_swaps_view_and_worker():
+    _app()
+    from palisade_qt.babel import BabelApp, SstvWorker, DecoderWorker
+    p = BabelApp(demo=True, mode="dark")
+    assert p.stack.currentIndex() == 0 and isinstance(p.make_worker(), DecoderWorker)
+    p.mode.setCurrentText("SSTV")
+    assert p.stack.currentIndex() == 1 and isinstance(p.make_worker(), SstvWorker)
+    p.mode.setCurrentText("AIS")
+    assert p.stack.currentIndex() == 0 and isinstance(p.make_worker(), DecoderWorker)

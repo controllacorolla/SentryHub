@@ -71,7 +71,8 @@ class RadioArbiter(QtCore.QObject):
 arbiter = RadioArbiter()
 
 # lease name -> short label for the "RADIO BUSY — held by X" chrome
-OWNER_LABELS = {"ATLAS-APRS": "APRS", "ATLAS-AIS": "AIS", "BABEL": "BABEL"}
+OWNER_LABELS = {"ATLAS-APRS": "APRS", "ATLAS-AIS": "AIS", "BABEL": "BABEL",
+                "BABEL-SSTV": "BABEL SSTV"}
 
 
 def owner_label():

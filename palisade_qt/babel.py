@@ -12,18 +12,21 @@ import subprocess
 import sys
 import time
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from .app import PalisadeApp
 from . import theme, radio_arbiter, eventbus
-from .kit import ControlBar, FeedTable, DetailCard
+from .kit import ControlBar, FeedTable, DetailCard, micro
 from .worker import Worker
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-MODES = ["AIS", "ACARS", "POCSAG", "RDS", "TPMS", "CW", "RTTY"]
+MODES = ["AIS", "ACARS", "POCSAG", "RDS", "TPMS", "SSTV", "CW", "RTTY"]
+
+SSTV_LEASE = "BABEL-SSTV"       # SSTV captures off-air (ISS 145.800) -> needs the single SDR
+SSTV_DEFAULT_FREQ = 145.800
 
 # BABEL's radio modes (AIS/ACARS/POCSAG/RDS) all want the one built-in dongle, so they go through
 # the shared radio_arbiter under this single lease name — exactly like ATLAS's lease layers. Only
@@ -432,6 +435,185 @@ class DecoderWorker(Worker):
         radio_arbiter.arbiter.release(LEASE_NAME)   # belt-and-suspenders if wait() ever times out
 
 
+def _sstv_demo_image():
+    """A synthetic SSTV-style colour-bar test pattern (demo only, flagged SDR-DEMO). Never shown
+    in live mode — live only displays a real decoded frame."""
+    import numpy as np
+    h, w = 256, 320
+    bars = [(255, 255, 255), (255, 255, 0), (0, 255, 255), (0, 255, 0),
+            (255, 0, 255), (255, 0, 0), (0, 0, 255), (20, 20, 20)]
+    img = np.zeros((h, w, 3), dtype=np.uint8)
+    bw = w // len(bars)
+    for i, c in enumerate(bars):
+        img[: h * 3 // 4, i * bw:(i + 1) * bw] = c
+    grad = np.linspace(0, 255, w, dtype=np.uint8)
+    img[h * 3 // 4:, :] = np.repeat(grad[None, :, None], h - h * 3 // 4, axis=0)
+    return img
+
+
+class SstvImagePanel(QtWidgets.QFrame):
+    """Shows the decoded SSTV frame (a numpy RGB ndarray) as a scaled pixmap + a caption. The
+    numpy buffer is kept alive for the QImage's lifetime."""
+
+    def __init__(self, mode="dark", parent=None):
+        super().__init__(parent)
+        self.setProperty("class", "well")
+        tok = theme.tokens(mode)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(10, 10, 10, 10)
+        lay.setSpacing(6)
+        self.caption = micro("SSTV — no frame yet")
+        lay.addWidget(self.caption)
+        self.view = QtWidgets.QLabel("listening…")
+        self.view.setAlignment(QtCore.Qt.AlignCenter)
+        self.view.setStyleSheet("color:%s;" % tok["muted"])
+        self.view.setMinimumHeight(240)
+        lay.addWidget(self.view, 1)
+        self._buf = None
+
+    def show_image(self, arr, caption):
+        import numpy as np
+        self._buf = np.ascontiguousarray(arr, dtype=np.uint8)   # keep the buffer alive
+        h, w = self._buf.shape[:2]
+        img = QtGui.QImage(self._buf.data, w, h, 3 * w, QtGui.QImage.Format_RGB888)
+        pix = QtGui.QPixmap.fromImage(img).scaled(
+            self.view.width() or 560, self.view.height() or 360,
+            QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        self.view.setPixmap(pix)
+        self.caption.setText(caption)
+
+    def set_note(self, text):
+        self.caption.setText(text)
+
+
+def _sstv_ready():
+    """numpy + rtl_fm both present (numpy is a hard dependency of the sstvdec decoder)."""
+    import importlib.util
+    if importlib.util.find_spec("numpy") is None:
+        return False, "numpy"
+    if not shutil.which("rtl_fm"):
+        return False, "rtl_fm"
+    return True, None
+
+
+class SstvWorker(Worker):
+    """Captures the ISS SSTV downlink (rtl_fm -> WAV via sstv.Recorder) under the BABEL-SSTV lease
+    and re-runs sstvdec.decode_wav on the growing WAV until a frame decodes. Reused AS-IS: the
+    capture is sstv.Recorder, the decode is sstvdec.decode_wav; this only wires them to Qt. Live
+    shows a frame ONLY on a real decode — ISS SSTV is rare, so STANDBY/listening is the norm."""
+    NAME = SSTV_LEASE
+
+    def __init__(self, demo=True, freq=SSTV_DEFAULT_FREQ, gain=40, parent=None):
+        super().__init__(demo=demo, interval_ms=1000, parent=parent)
+        self.freq, self.gain = freq, gain
+        self._has_radio = False
+        self._rec = None
+        self._wav = None
+        self._last_decode = 0.0
+        self._demo_sent = False
+
+    # seams so tests/CI never open a real radio or require a WAV
+    def _make_recorder(self, path):
+        if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            return None
+        import sstv
+        return sstv.Recorder(path, self.freq, self.gain, monitor=False)
+
+    def _decode(self, path):
+        import sstvdec
+        return sstvdec.decode_wav(path)
+
+    def step(self):
+        if self._stop:
+            return
+        if self.demo:
+            if not self._demo_sent:
+                self._demo_sent = True
+                self.row.emit({"kind": "sstv", "image": _sstv_demo_image(), "mode": "PD120",
+                               "lines": 496, "slant": 0, "demo": True})
+                self.status.emit({"sdr": {"text": "SSTV DEMO", "ok": True}})
+            return
+        ok, missing = _sstv_ready()
+        if not ok:
+            self._release(); self._stop_rec()
+            self.status.emit({"sdr": {"text": "SSTV STANDBY — no %s" % missing, "ok": False},
+                              "standby": True})
+            return
+        if not self._ensure_lease():
+            self._stop_rec()
+            return
+        if self._rec is None:
+            self._start_rec()
+        if self._rec is None:                        # offscreen seam: hold lease, no capture
+            self.status.emit({"sdr": {"text": "SSTV — capturing", "ok": True}, "busy": None})
+            return
+        secs = self._rec.seconds()
+        if self._rec.err:
+            self.status.emit({"sdr": {"text": "SSTV — %s" % self._rec.err[:40], "ok": False}})
+            return
+        self.status.emit({"sdr": {"text": "SSTV — capturing %ds (lvl %.0f)" % (secs, self._rec.level),
+                                  "ok": True}, "busy": None})
+        now = time.time()
+        if secs > 20 and (now - self._last_decode) > 12:
+            self._last_decode = now
+            self._try_decode()
+
+    def _start_rec(self):
+        import tempfile
+        self._wav = os.path.join(tempfile.gettempdir(), "palisade_sstv_%d.wav" % os.getpid())
+        self._rec = self._make_recorder(self._wav)
+
+    def _try_decode(self):
+        try:
+            r = self._decode(self._wav)
+        except ValueError as e:                      # no header yet / truncated: keep listening
+            self.status.emit({"sdr": {"text": "SSTV — listening (%s)" % str(e)[:28], "ok": False}})
+            return
+        except Exception as e:
+            self.error.emit("SSTV decode: %s" % str(e)[:120])
+            return
+        self.row.emit({"kind": "sstv", "image": r["image"], "mode": r.get("mode", "?"),
+                       "lines": r.get("lines", 0), "slant": r.get("slant_ppm", 0)})
+        eventbus.bus.publish(eventbus.decode(
+            "BABEL-SSTV", "SSTV", r.get("mode", "?"),
+            "%s frame · %d lines" % (r.get("mode", "?"), r.get("lines", 0)), severity="info"))
+
+    def _ensure_lease(self):
+        if self._has_radio:
+            return True
+        if radio_arbiter.arbiter.request(self.NAME):
+            self._has_radio = True
+            self.status.emit({"busy": None})
+            return True
+        self.status.emit({"busy": radio_arbiter.owner_label(),
+                          "sdr": {"text": "RADIO BUSY", "ok": False}})
+        return False
+
+    def _release(self):
+        if self._has_radio:
+            radio_arbiter.arbiter.release(self.NAME)
+            self._has_radio = False
+
+    def _stop_rec(self):
+        if self._rec is not None:
+            try:
+                self._rec.stop()
+            except Exception:
+                pass
+            self._rec = None
+        if self._wav:
+            try:
+                os.remove(self._wav)
+            except OSError:
+                pass
+            self._wav = None
+
+    def stop(self):
+        super().stop()
+        self._stop_rec()
+        self._release()
+
+
 class BabelApp(PalisadeApp):
     TITLE = "BABEL"
     LEASE = None          # the radio is leased per-mode via radio_arbiter, not by the base class
@@ -442,7 +624,9 @@ class BabelApp(PalisadeApp):
     }
 
     def build_body(self):
-        self._tok = theme.tokens(self.mode)
+        tmode = self.mode                        # theme string (self.mode is reassigned to the combo)
+        self._tok = theme.tokens(tmode)
+        self._cur_mode = MODES[0]
         body = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(body)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -462,7 +646,10 @@ class BabelApp(PalisadeApp):
         self.bar.lay.addWidget(self.count)
         outer.addWidget(self.bar)
 
-        split = QtWidgets.QHBoxLayout()
+        self.stack = QtWidgets.QStackedWidget()
+        text_page = QtWidgets.QWidget()
+        split = QtWidgets.QHBoxLayout(text_page)
+        split.setContentsMargins(0, 0, 0, 0)
         split.setSpacing(10)
         self.feed = FeedTable([("time", "TIME"), ("proto", "PROTO"),
                                ("id", "ID"), ("summary", "MESSAGE")])
@@ -472,30 +659,61 @@ class BabelApp(PalisadeApp):
         split.addWidget(self.feed, 3)
         self.detail = DetailCard("MESSAGE")
         split.addWidget(self.detail, 1)
-        outer.addLayout(split, 1)
+        self.image_panel = SstvImagePanel(mode=tmode)
+        self.stack.addWidget(text_page)          # index 0: text decoders
+        self.stack.addWidget(self.image_panel)   # index 1: SSTV image
+        outer.addWidget(self.stack, 1)
         self._count = 0
         return body
 
     def _set_mode(self, mode):
+        prev_img, now_img = (self._cur_mode == "SSTV"), (mode == "SSTV")
+        self._cur_mode = mode
+        self.stack.setCurrentIndex(1 if now_img else 0)
         self.feed.model.set_rows([])
         self._count = 0
         self.count.setText("0 msgs")
         self.busy.setText("")               # the new mode re-derives BUSY from the arbiter
-        if self._worker is not None:
+        if prev_img != now_img:             # worker TYPE changes (text decoder <-> SSTV image)
+            self._rebuild_worker()
+        elif self._worker is not None and hasattr(self._worker, "set_mode"):
             self._worker.set_mode(mode)
 
+    def _rebuild_worker(self):
+        if not self._started or self._stopped:
+            return
+        if self._worker is not None:
+            self._worker.stop()
+            self._worker.quit()
+            self._worker.wait(3000)         # release the old lease before the new worker starts
+            self._worker = None
+        self._worker = self.make_worker()
+        if self._worker is not None:
+            self._worker.row.connect(self.on_row)
+            self._worker.status.connect(self.on_status)
+            self._worker.error.connect(self.on_error)
+            self._worker.start()
+
     def make_worker(self):
+        if self.mode.currentText() == "SSTV":
+            return SstvWorker(demo=self.demo)
         return DecoderWorker(demo=self.demo, mode=self.mode.currentText())
 
     def on_status(self, status):
         super().on_status(status)
-        if status.get("practice"):               # no live RX backend: say it, don't imply a decode
+        if status.get("practice") or status.get("standby"):   # no backend / no device: say so
             self.busy.setText(status.get("sdr", {}).get("text", ""))
         elif "busy" in status:                   # the single-SDR banner, driven by the arbiter
             owner = status["busy"]
             self.busy.setText("RADIO BUSY — held by %s" % owner if owner else "")
 
     def on_row(self, row):
+        is_sstv = row.get("kind") == "sstv"
+        if is_sstv != (self._cur_mode == "SSTV"):
+            return                               # stale row from the old worker during a mode swap
+        if is_sstv:                              # an SSTV image frame -> the image panel
+            self._on_sstv(row)
+            return
         proto = row.get("proto", "")
         color = self.PROTO_COLORS.get(proto)
         if color:
@@ -506,6 +724,15 @@ class BabelApp(PalisadeApp):
         self.header.set_chip("sdr", "%d MSGS" % self._count, state="neutral")
         if self._count == 1:
             self._show(row)
+
+    def _on_sstv(self, row):
+        tag = "DEMO · " if row.get("demo") else ""
+        cap = "SSTV · %s%s · %d lines · slant %d ppm" % (
+            tag, row.get("mode", "?"), row.get("lines", 0), row.get("slant", 0))
+        self.image_panel.show_image(row["image"], cap)
+        self._count += 1
+        self.count.setText("%d frame%s" % (self._count, "" if self._count == 1 else "s"))
+        self.header.set_chip("sdr", "SSTV %d" % self._count, state="neutral")
 
     def _show(self, row):
         self.detail.set_hero(row.get("id", "—"), row.get("proto", ""))
