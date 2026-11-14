@@ -25,11 +25,10 @@ got in — a name-based assumption created a duplicate dict key.)
   `xvfb-run -a python3.12 -m pytest -q tests`. (The only `test_headless` failures in a bare env
   are missing `flask`.)
 - **All tools come in.** PALISADE is a full pentest + SIGINT suite — passive AND active
-  assessment. Active modules (`wifipent`, `blepent`, `netpent`, `usbhid`, `canbus`, `proxmark`,
-  etc.) are **gated** behind `engagement.py` (authorization), `opprofile.py` (operator identity),
-  and `txguard` (TX safety; protected bands denied). **Do not route around or remove these
-  gates**, and don't layer new restrictions on top — they are the safety model. Wire every module
-  into the Qt UI under its callsign; the gates stay. `jammer.py`/`imsicatch.py` stay.
+  assessment. Active modules (wifipent, blepent, netpent, usbhid, canbus, proxmark, etc.)
+  are gated behind `engagement.py` (authorization), `opprofile.py` (operator identity), and
+  `txguard` (TX safety on protected bands). Do **not** route around these gates. Wire every
+  module into the Qt UI under its callsign; the gates stay.
 - **No system changes:** no kernel-hold / firewall / SSH / sudoers edits, no full-system apt
   upgrades. Data/config path stays `uconsole-suite`.
 - Don't delete git branches or force-push without explicit approval.
