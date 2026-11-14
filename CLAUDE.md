@@ -24,10 +24,12 @@ got in — a name-based assumption created a duplicate dict key.)
   not-yet-migrated apps), **PySide6 + pyqtgraph** (the new UI), `flask`, `numpy`. Tests:
   `xvfb-run -a python3.12 -m pytest -q tests`. (The only `test_headless` failures in a bare env
   are missing `flask`.)
-- **Receive-first.** Any TX stays behind `txguard` (ham/ISM/conducted; protected bands
-  denied; chrome shows "TX SAFE"). Do **not** route around txguard or add OTA
-  attack/jam/deauth. `jammer.py` and `imsicatch.py` are **detectors** — keep them; if you
-  touch them, confirm they have no TX path.
+- **All tools come in.** PALISADE is a full pentest + SIGINT suite — passive AND active
+  assessment. Active modules (`wifipent`, `blepent`, `netpent`, `usbhid`, `canbus`, `proxmark`,
+  etc.) are **gated** behind `engagement.py` (authorization), `opprofile.py` (operator identity),
+  and `txguard` (TX safety; protected bands denied). **Do not route around or remove these
+  gates**, and don't layer new restrictions on top — they are the safety model. Wire every module
+  into the Qt UI under its callsign; the gates stay. `jammer.py`/`imsicatch.py` stay.
 - **No system changes:** no kernel-hold / firewall / SSH / sudoers edits, no full-system apt
   upgrades. Data/config path stays `uconsole-suite`.
 - Don't delete git branches or force-push without explicit approval.
@@ -55,4 +57,4 @@ before/after screenshots · `pyflakes` + full suite green in a tk venv/CI · ope
 test · scoped to the cluster, no drive-by refactors.
 
 ## Decisions reserved for the human (flag, don't decide)
-Tk vs web · logo/SVG · second SDR · ham callsign · whether `jammer`/`imsicatch` stay.
+Tk vs web · logo/SVG · second SDR · ham callsign.
