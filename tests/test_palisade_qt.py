@@ -506,3 +506,237 @@ def test_prowl_live_no_rtl_fm_shows_standby_not_synth(monkeypatch):
     assert rows[0]["active"] is None
     assert all(not r.get("_hot") for r in rows[0]["rows"]), "no fabricated hot channels in standby"
     assert any("STANDBY" in (s.get("sdr") or {}).get("text", "") for s in status)
+
+
+# ---- PROWL PR2: FM + NWR sub-modes, all leased through the shared arbiter ----
+
+def test_prowl_off_base_lease_and_submode_labels():
+    from palisade_qt.prowl import ProwlApp
+    from palisade_qt import radio_arbiter as ra
+    assert ProwlApp.LEASE is None                 # no base lease; each sub-mode leases per-run
+    for n in ("PROWL-SCAN", "PROWL-FM", "PROWL-NWR"):
+        assert n in ra.OWNER_LABELS
+
+
+def test_prowl_scan_leases_and_releases_via_arbiter(monkeypatch):
+    from palisade_qt import prowl, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    w = prowl.ScanWorker(demo=False, bank="NOAA Wx")
+    assert w._ensure_lease() is True
+    assert ra.arbiter.owner() == "PROWL-SCAN"
+    w.stop()
+    assert ra.arbiter.owner() is None, "stop() must release the scanner's SDR lease"
+
+
+def test_prowl_submodes_mutually_exclusive_on_the_radio(monkeypatch):
+    """One SDR: while SCAN holds the dongle, NWR is denied and shows BUSY; only one owner ever."""
+    from palisade_qt import prowl, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    scan, nwr_w = prowl.ScanWorker(demo=False), prowl.NwrWorker(demo=False)
+    assert scan._ensure_lease() is True and ra.arbiter.owner() == "PROWL-SCAN"
+    seen = []
+    nwr_w.status.connect(lambda s: seen.append(s))
+    assert nwr_w._ensure_lease() is False                 # SCAN holds it
+    assert any(s.get("busy") for s in seen), "denied sub-mode must report RADIO BUSY"
+    scan.stop()
+    assert ra.arbiter.owner() is None
+    assert nwr_w._ensure_lease() is True and ra.arbiter.owner() == "PROWL-NWR"
+    nwr_w.stop()
+    assert ra.arbiter.owner() is None
+
+
+def test_prowl_fm_step_leases_but_opens_no_radio_offscreen(monkeypatch):
+    from palisade_qt import prowl, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    monkeypatch.setattr(prowl.shutil, "which", lambda b: "/usr/bin/" + b)   # rtl_fm "present"
+    w = prowl.FmWorker(demo=False, freq=97.3)
+    rows = []
+    w.row.connect(lambda r: rows.append(r))
+    w.step()
+    assert ra.arbiter.owner() == "PROWL-FM"
+    assert w._pipe is None, "offscreen seam must open no real radio"
+    assert rows and rows[-1]["kind"] == "fm" and rows[-1]["audio"] is False
+    w.stop()
+    assert ra.arbiter.owner() is None
+
+
+def test_prowl_fm_no_rtl_fm_shows_standby_no_lease(monkeypatch):
+    from palisade_qt import prowl, radio_arbiter as ra
+    monkeypatch.setattr(prowl.shutil, "which", lambda b: None)
+    w = prowl.FmWorker(demo=False)
+    seen = []
+    w.status.connect(lambda s: seen.append(s))
+    w.step()
+    assert ra.arbiter.owner() is None, "no device -> never grab the radio"
+    assert any(s.get("standby") for s in seen)
+
+
+def test_prowl_nwr_decodes_same_and_publishes_alert(monkeypatch):
+    from palisade_qt import prowl, eventbus
+    import nwr
+    monkeypatch.setattr(prowl.shutil, "which", lambda b: "/usr/bin/" + b)
+    eventbus.bus.clear()
+    alerts = []
+    eventbus.bus.published.connect(lambda e: alerts.append(e) if e["type"] == "alert" else None)
+    w = prowl.NwrWorker(demo=False)
+    rows = []
+    w.row.connect(lambda r: rows.append(r))
+    line = [ln for ln in nwr.Demo.LINES if "TOR" in ln][0]      # a real urgent SAME header
+    w._handle_line(line)
+    w._drain()
+    assert rows and rows[-1]["kind"] == "nwr" and rows[-1]["event"]
+    assert rows[-1]["urgent"] is True
+    assert alerts and alerts[0]["source"] == "PROWL" and alerts[0]["severity"] == "alert"
+
+
+def test_prowl_nwr_skips_non_same_lines_zero_fabrication(monkeypatch):
+    from palisade_qt import prowl
+    monkeypatch.setattr(prowl.shutil, "which", lambda b: "/usr/bin/" + b)
+    w = prowl.NwrWorker(demo=False)
+    rows = []
+    w.row.connect(lambda r: rows.append(r))
+    w._handle_line("multimon-ng: some chatter, not a SAME header\n")
+    w._drain()
+    assert rows == [], "non-SAME stdout must produce no rows"
+
+
+def test_prowl_nwr_no_binary_standby(monkeypatch):
+    from palisade_qt import prowl, radio_arbiter as ra
+    monkeypatch.setattr(prowl.shutil, "which", lambda b: None)
+    w = prowl.NwrWorker(demo=False)
+    seen = []
+    w.status.connect(lambda s: seen.append(s))
+    w.step()
+    assert ra.arbiter.owner() is None
+    assert any(s.get("standby") for s in seen)
+
+
+def test_prowl_backgrounded_releases_the_radio(monkeypatch):
+    from palisade_qt import prowl, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    monkeypatch.setattr(prowl.shutil, "which", lambda b: "/usr/bin/" + b)
+    w = prowl.FmWorker(demo=False)
+    w.step()
+    assert ra.arbiter.owner() == "PROWL-FM"
+    w.set_active(False)
+    w.step()
+    assert ra.arbiter.owner() is None, "backgrounding PROWL frees the dongle for ATLAS/PRISM"
+    w.stop()
+
+
+def test_prowl_submode_switch_updates_stack_and_worker_type():
+    _app()
+    from palisade_qt.prowl import ProwlApp, FmWorker, NwrWorker, ScanWorker
+    p = ProwlApp(demo=True, mode="dark")
+    assert p._submode == "SCAN" and isinstance(p.make_worker(), ScanWorker)
+    p._switch_submode("FM")
+    assert p._submode == "FM" and p.stack.currentWidget() is p._pages["FM"]
+    assert isinstance(p.make_worker(), FmWorker)
+    p._switch_submode("NWR")
+    assert isinstance(p.make_worker(), NwrWorker)
+    p._switch_submode("SCAN")
+    assert isinstance(p.make_worker(), ScanWorker)
+
+
+def test_prowl_open_pump_close_no_leaked_lease():
+    _app()
+    from palisade_qt.prowl import ProwlApp
+    from palisade_qt import radio_arbiter as ra
+    p = ProwlApp(demo=False, mode="dark")
+    p.start()
+    _pump(200)
+    p.stop()
+    assert ra.arbiter.owner() is None, "closing PROWL must leave the SDR free"
+
+
+# ---- PROWL PR2 review fixes: interruptible SCAN, hermetic SCAN, race guards, fatal surfacing ----
+
+def test_prowl_scan_stop_interrupts_blocking_listen_channel(monkeypatch):
+    """A continuous carrier makes scanner.listen_channel block; stop() must set scan['on']=False
+    so it exits and the QThread joins (no orphaned thread / rtl_fm, no leaked lease)."""
+    import scanner
+    import time as _t
+    from palisade_qt import prowl, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda n: None)
+    monkeypatch.setattr(prowl, "_offscreen", lambda: False)           # exercise the live loop
+    monkeypatch.setattr(prowl.shutil, "which", lambda b: "/usr/bin/" + b)
+
+    def blocking_listen(freq, mode, s, scan, post, **k):             # held channel: never returns
+        while scan["on"] and not scan.get("pause"):
+            _t.sleep(0.01)
+        return False
+    monkeypatch.setattr(scanner, "listen_channel", blocking_listen)
+
+    w = prowl.ScanWorker(demo=False, bank="NOAA Wx")
+    w.start()
+    t0 = _t.time()
+    while ra.arbiter.owner() != "PROWL-SCAN" and _t.time() - t0 < 3:
+        _t.sleep(0.01)
+    assert ra.arbiter.owner() == "PROWL-SCAN"
+    w.stop()
+    w.quit()
+    assert w.wait(3000), "stop() must interrupt the blocking listen_channel and join the thread"
+    assert ra.arbiter.owner() is None
+
+
+def test_prowl_scan_offscreen_routes_to_standby_never_spawns(monkeypatch):
+    """Even with rtl_fm 'present', offscreen must route SCAN to standby — never call the engine."""
+    import scanner
+    from palisade_qt import prowl
+    monkeypatch.setattr(prowl.shutil, "which", lambda b: "/usr/bin/" + b)
+    called = []
+    monkeypatch.setattr(scanner, "listen_channel", lambda *a, **k: called.append(1))
+    w = prowl.ScanWorker(demo=False)
+    flag = {}
+    monkeypatch.setattr(w, "_run_standby", lambda: flag.setdefault("standby", True))
+    monkeypatch.setattr(w, "_run_live", lambda: flag.setdefault("live", True))
+    w.run()                                   # QT_QPA_PLATFORM=offscreen is set -> _offscreen() True
+    assert flag.get("standby") and not flag.get("live")
+    assert called == [], "offscreen must never spawn the scanner engine"
+
+
+def test_prowl_scan_fatal_is_surfaced(monkeypatch):
+    from palisade_qt import prowl
+    w = prowl.ScanWorker(demo=False)
+    errs = []
+    w.error.connect(lambda e: errs.append(e))
+    post = w._make_post(162.4, "WX2", {})
+    post(("fatal", "rtl_fm not found — install it"))
+    assert w._fatal is True and errs and "rtl_fm" in errs[0]
+
+
+def test_prowl_fm_spawn_after_stop_drops_the_pipe(monkeypatch):
+    """Race guard: a pipe spawned by the worker thread after stop() won the race is torn down,
+    never left holding the radio."""
+    from palisade_qt import prowl
+
+    class FakePipe:
+        def __init__(self):
+            self.stopped = False
+
+        def stop(self):
+            self.stopped = True
+    fake = FakePipe()
+    monkeypatch.setattr(prowl, "_open_fm_pipe", lambda *a, **k: fake)
+    w = prowl.FmWorker(demo=False)
+    w._stop = True                             # stop() already happened on the GUI thread
+    w._spawn()
+    assert w._pipe is None and fake.stopped, "a pipe spawned after stop() must be stopped"
+
+
+def test_prowl_nwr_spawn_after_stop_drops_the_proc(monkeypatch):
+    from palisade_qt import prowl
+
+    class FakeProc:
+        pid = -1
+
+        def poll(self):
+            return None
+    fake = FakeProc()
+    killed = []
+    monkeypatch.setattr(prowl, "_open_nwr_pipe", lambda cmd: fake)
+    monkeypatch.setattr(prowl.NwrWorker, "_terminate", staticmethod(lambda p: killed.append(p)))
+    w = prowl.NwrWorker(demo=False)
+    w._stop = True
+    w._spawn()
+    assert w._proc is None and killed == [fake], "a proc spawned after stop() must be terminated"

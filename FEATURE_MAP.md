@@ -62,11 +62,20 @@ Absorbs: rf_explorer, specan, waterfall, iqtool, noisefloor, classify.
 - ➕ click-to-tune into PROWL/BABEL from a spectrum peak
 
 ## PROWL — scanner / tuner
-Absorbs: scanner, fm, freqdb.
-- ✅ scanner wired · ✅ **freqdb** (lookup/search panel + ALLOCATION row via freqdb.describe/lookup/search) · ⬜ fm
-- ⬜ fm (PR2): FM/NOAA tuner mode via fm.pipeline/Pipe through the radio arbiter (NAME 'PROWL'), RDS→decode;
-  also migrate ProwlApp off base-class LEASE='PROWL' (bypasses the arbiter today) to arbiter-routed
-- ➕ memory banks + scan/hold + audio with the top-bar volume
+Absorbs: scanner, fm, nwr, freqdb.
+- ◐ **SCAN + FM + NWR wired** (PR2) — three sub-modes (tabs), each leasing the one SDR through the
+  shared `radio_arbiter` (`PROWL-SCAN` / `PROWL-FM` / `PROWL-NWR`); switching releases the old and
+  acquires the new, so only one holds the dongle (denied → RADIO BUSY). `ProwlApp` is off the
+  base-class lease (`LEASE=None`) and releases the radio when backgrounded (the ATLAS/PRISM pattern).
+  - **FM** — `fm.pipeline`/`fm.Pipe` AS-IS: broadcast + weather tuner, frequency entry + step-seek +
+    gain, audio out, RDS (station/PI/PTY/radiotext) via redsea; auto-nbfm in the 162 MHz band.
+  - **NWR** — `nwr.pipeline`/`nwr.parse_same` AS-IS: 7-channel NOAA Weather Radio, SAME/EAS decode →
+    event/areas/station/valid; urgent events flagged.
+- ✅ scanner wired · ✅ **freqdb** (lookup/search panel + ALLOCATION row)
+- ➕ bus: scanner hits → `decode(source=PROWL)`, NWR SAME → `alert(source=PROWL)` (urgent → severity
+  `alert`); both already render in OPS's decode/alert cards by source. A dedicated OPS mode+freq tile
+  is an OPS-cluster item.
+- ⬜ memory banks, true signal-seek (vs step-tune), audio volume on the top bar
 
 ## FORGE — hardware & IO bench
 Absorbs: hwlab (serial/I2C/GPIO), devterm (serial/BLE/MQTT/SSH), buslab, canbus, proxmark,
