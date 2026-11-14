@@ -192,9 +192,12 @@ def worker():
         last_status["key"], last_status["t"] = key, time.time()
         kw["t"] = time.time()
         tmp = STATUS + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(kw, f)
-        os.replace(tmp, STATUS)
+        try:
+            with open(tmp, "w") as f:
+                json.dump(kw, f)
+            os.replace(tmp, STATUS)
+        except OSError:
+            pass       # full/read-only card: a status file must not kill the worker
 
     status(state="loading", model=model_name)
     try:
@@ -212,6 +215,7 @@ def worker():
         return 1
     status(state="ready", model=model_name)
     done = set()
+    fails = {}     # clip -> failed transcript writes (retried a couple of times)
     names = labels()
     last_clean = 0
     while True:
@@ -250,13 +254,22 @@ def worker():
                    "text": text, "dur": round(dur, 1), "file": os.path.basename(f),
                    "secs": round(time.time() - t0, 1)}
             day = time.strftime("%Y-%m-%d", time.localtime(rec["t"]))
+            logged = False
             try:
                 with open(os.path.join(OUT_DIR, day + ".jsonl"), "a") as out:
                     out.write(json.dumps(rec) + "\n")
+                logged = True
                 with open(f + ".json", "w") as jf:
                     json.dump(rec, jf)
             except OSError as e:   # full/read-only card, or the clip was cleaned up meanwhile
                 status(state="warn", error=str(e)[:200])
+                if not logged and os.path.exists(f) and fails.get(f, 0) < 2:
+                    # nothing was saved: try again next sweep, but only a couple of times so a
+                    # full card can't keep the CPU re-transcribing the same clip
+                    fails[f] = fails.get(f, 0) + 1
+                    time.sleep(2)
+                    continue
+            fails.pop(f, None)
             done.add(f)
         if time.time() - last_clean > 600:
             last_clean = time.time()
@@ -328,15 +341,18 @@ def viewer():
                 chans.append(lab)
         chans = chans[:6]
         x0, x1, y0 = 170, w - 24, 26
-        lane = (150 - y0 - 24) / max(len(chans), 1)
+        h = strip.winfo_height()            # the canvas is px()-scaled, so don't assume 150
+        if h < 60:
+            h = S.T.px(150)
+        lane = (h - y0 - 24) / max(len(chans), 1)
         now = time.time()
         span = 6 * 3600
         strip.create_text(28, 10, text=S.T.spaced("Last 6 hours"), anchor="nw", fill=T.TXT_3,
                           font=F["lbl"])
         for hh in range(0, 7):
             xx = x1 - (x1 - x0) * hh / 6
-            strip.create_line(xx, y0, xx, 150 - 22, fill=T.RING)
-            strip.create_text(xx, 150 - 18, text="now" if hh == 0 else "−%dh" % hh, anchor="n",
+            strip.create_line(xx, y0, xx, h - 22, fill=T.RING)
+            strip.create_text(xx, h - 18, text="now" if hh == 0 else "−%dh" % hh, anchor="n",
                               fill=T.TXT_3, font=F["map"])
         for i, ch in enumerate(chans):
             yy = y0 + lane * i + lane / 2

@@ -1,0 +1,88 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+  :root{--bg:#0a0c0f;--p2:#161b24;--line:#2a313a;--line2:#39414c;--txt:#eef1f4;--txt2:#8b95a0;--txt3:#5c6670;--acc:#a492da;--acc2:#bcace8;--ink:#070809}
+  *{margin:0;box-sizing:border-box}
+  body{background:#000;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;padding:34px;display:flex;justify-content:center}
+  .sheet{width:1180px;background:var(--bg);border:1px solid var(--line2);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.6);overflow:hidden}
+  .head{padding:20px 30px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:14px}
+  .head h1{font-size:14px;letter-spacing:5px;color:var(--txt);font-weight:400}
+  .head span{font-size:10px;letter-spacing:2px;color:var(--txt3)}
+  .row{display:grid;grid-template-columns:150px 120px 1fr 230px;align-items:center;gap:20px;padding:22px 30px;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .big{display:flex;justify-content:center}
+  .tile{width:76px;height:76px;border-radius:18px;background:var(--p2);border:1px solid var(--line2);box-shadow:0 6px 16px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;margin:0 auto}
+  .lock{display:flex;align-items:center;gap:13px}
+  .lock .w{font-size:19px;letter-spacing:6px;color:var(--txt)}
+  .meta .n{font-size:12px;letter-spacing:2px;color:var(--acc2)}
+  .meta .d{font-size:10.5px;color:var(--txt3);margin-top:5px;letter-spacing:.3px;line-height:1.5}
+  svg{display:block}
+</style></head><body>
+<div class="sheet">
+  <div class="head"><h1>SENTRY</h1><span>LOGO DIRECTIONS · 05</span></div>
+
+  <!-- A: Aperture Diamond -->
+  <div class="row">
+    <div class="big"><svg width="96" height="96" viewBox="0 0 120 120">
+      <polygon points="60,10 110,60 60,110 10,60" fill="none" stroke="var(--acc)" stroke-width="3.2"/>
+      <polygon points="60,32 88,60 60,88 32,60" fill="none" stroke="var(--acc)" stroke-width="2" opacity=".55"/>
+      <polygon points="60,49 71,60 60,71 49,60" fill="var(--acc)"/>
+    </svg></div>
+    <div><div class="tile"><svg width="46" height="46" viewBox="0 0 120 120">
+      <polygon points="60,14 106,60 60,106 14,60" fill="none" stroke="var(--acc)" stroke-width="4"/>
+      <polygon points="60,50 70,60 60,70 50,60" fill="var(--acc)"/></svg></div></div>
+    <div class="lock"><svg width="30" height="30" viewBox="0 0 120 120"><polygon points="60,12 108,60 60,108 12,60" fill="none" stroke="var(--acc)" stroke-width="5"/><polygon points="60,48 72,60 60,72 48,60" fill="var(--acc)"/></svg><span class="w">SENTRY</span></div>
+    <div class="meta"><div class="n">A · APERTURE</div><div class="d">Nested diamond closing on a single watching point. Evolves your current mark.</div></div>
+  </div>
+
+  <!-- B: Sweep Reticle -->
+  <div class="row">
+    <div class="big"><svg width="96" height="96" viewBox="0 0 120 120">
+      <defs><linearGradient id="sw" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a492da" stop-opacity=".35"/><stop offset="1" stop-color="#a492da" stop-opacity="0"/></linearGradient></defs>
+      <circle cx="60" cy="60" r="48" fill="none" stroke="var(--line2)" stroke-width="2"/>
+      <circle cx="60" cy="60" r="29" fill="none" stroke="var(--line2)" stroke-width="1.3"/>
+      <g stroke="var(--txt2)" stroke-width="2"><line x1="60" y1="5" x2="60" y2="17"/><line x1="60" y1="103" x2="60" y2="115"/><line x1="5" y1="60" x2="17" y2="60"/><line x1="103" y1="60" x2="115" y2="60"/></g>
+      <path d="M60 60 L60 12 A48 48 0 0 1 102 60 Z" fill="url(#sw)"/>
+      <line x1="60" y1="60" x2="99" y2="33" stroke="var(--acc)" stroke-width="2.6"/>
+      <circle cx="82" cy="46" r="4.3" fill="var(--acc)"/><circle cx="60" cy="60" r="3.6" fill="var(--acc)"/>
+    </svg></div>
+    <div><div class="tile"><svg width="48" height="48" viewBox="0 0 120 120"><circle cx="60" cy="60" r="44" fill="none" stroke="var(--line2)" stroke-width="3"/><path d="M60 60 L60 16 A44 44 0 0 1 98 60 Z" fill="#a492da" fill-opacity=".3"/><line x1="60" y1="60" x2="96" y2="36" stroke="var(--acc)" stroke-width="3.4"/><circle cx="60" cy="60" r="4" fill="var(--acc)"/></svg></div></div>
+    <div class="lock"><svg width="30" height="30" viewBox="0 0 120 120"><circle cx="60" cy="60" r="46" fill="none" stroke="var(--acc)" stroke-width="5"/><line x1="60" y1="60" x2="98" y2="36" stroke="var(--acc)" stroke-width="5"/><circle cx="60" cy="60" r="6" fill="var(--acc)"/></svg><span class="w">SENTRY</span></div>
+    <div class="meta"><div class="n">B · SWEEP</div><div class="d">Radar reticle with a live sweep and contact. Literal watch-the-sky read.</div></div>
+  </div>
+
+  <!-- C: Sentinel Eye -->
+  <div class="row">
+    <div class="big"><svg width="96" height="96" viewBox="0 0 120 120">
+      <path d="M60 9 L104 25 V59 C104 86 84 105 60 113 C36 105 16 86 16 59 V25 Z" fill="none" stroke="var(--acc)" stroke-width="3.2"/>
+      <path d="M36 58 C48 42 72 42 84 58 C72 74 48 74 36 58 Z" fill="none" stroke="var(--acc2)" stroke-width="2.4"/>
+      <circle cx="60" cy="58" r="8" fill="var(--acc)"/>
+    </svg></div>
+    <div><div class="tile"><svg width="46" height="52" viewBox="0 0 120 120"><path d="M60 12 L102 28 V60 C102 85 83 102 60 110 C37 102 18 85 18 60 V28 Z" fill="none" stroke="var(--acc)" stroke-width="4"/><circle cx="60" cy="58" r="12" fill="var(--acc)"/></svg></div></div>
+    <div class="lock"><svg width="27" height="30" viewBox="0 0 120 120"><path d="M60 10 L104 26 V60 C104 86 84 104 60 112 C36 104 16 86 16 60 V26 Z" fill="none" stroke="var(--acc)" stroke-width="6"/><circle cx="60" cy="58" r="11" fill="var(--acc)"/></svg><span class="w">SENTRY</span></div>
+    <div class="meta"><div class="n">C · SENTINEL</div><div class="d">A shield with a single vigilant eye. The most literal "sentry on watch."</div></div>
+  </div>
+
+  <!-- D: Signal Monolith -->
+  <div class="row">
+    <div class="big"><svg width="96" height="96" viewBox="0 0 120 120">
+      <path d="M44 112 L54 40 H66 L76 112 Z" fill="var(--acc)"/>
+      <circle cx="60" cy="33" r="7.5" fill="var(--acc)"/>
+      <path d="M34 34 A30 30 0 0 1 86 34" fill="none" stroke="var(--acc2)" stroke-width="3"/>
+      <path d="M24 26 A44 44 0 0 1 96 26" fill="none" stroke="var(--acc2)" stroke-width="2.4" opacity=".55"/>
+    </svg></div>
+    <div><div class="tile"><svg width="46" height="46" viewBox="0 0 120 120"><path d="M46 104 L55 46 H65 L74 104 Z" fill="var(--acc)"/><circle cx="60" cy="40" r="8" fill="var(--acc)"/><path d="M36 40 A28 28 0 0 1 84 40" fill="none" stroke="var(--acc2)" stroke-width="3.4"/></svg></div></div>
+    <div class="lock"><svg width="26" height="30" viewBox="0 0 120 120"><path d="M44 112 L54 42 H66 L76 112 Z" fill="var(--acc)"/><circle cx="60" cy="34" r="9" fill="var(--acc)"/><path d="M32 34 A32 32 0 0 1 88 34" fill="none" stroke="var(--acc)" stroke-width="5"/></svg><span class="w">SENTRY</span></div>
+    <div class="meta"><div class="n">D · MONOLITH</div><div class="d">A standing sentinel broadcasting / receiving. Reads at tiny sizes.</div></div>
+  </div>
+
+  <!-- E: Angular S -->
+  <div class="row">
+    <div class="big"><svg width="96" height="96" viewBox="0 0 120 120">
+      <path d="M86 34 H52 A14 14 0 0 0 52 62 H68 A14 14 0 0 1 68 90 H34" fill="none" stroke="var(--acc)" stroke-width="8" stroke-linecap="square"/>
+      <circle cx="86" cy="34" r="4.5" fill="var(--acc2)"/><circle cx="34" cy="90" r="4.5" fill="var(--acc2)"/>
+    </svg></div>
+    <div><div class="tile"><svg width="52" height="52" viewBox="0 0 120 120"><path d="M84 38 H54 A13 13 0 0 0 54 64 H66 A13 13 0 0 1 66 90 H36" fill="none" stroke="var(--acc)" stroke-width="9" stroke-linecap="square"/></svg></div></div>
+    <div class="lock"><svg width="28" height="28" viewBox="0 0 120 120"><path d="M86 34 H52 A15 15 0 0 0 52 62 H68 A15 15 0 0 1 68 90 H34" fill="none" stroke="var(--acc)" stroke-width="11" stroke-linecap="square"/></svg><span class="w">SENTRY</span></div>
+    <div class="meta"><div class="n">E · MONOGRAM</div><div class="d">Geometric S cut with hard corners. Cleanest app-icon, most brandable.</div></div>
+  </div>
+</div>
+</body></html>

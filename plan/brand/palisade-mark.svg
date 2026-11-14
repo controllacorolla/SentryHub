@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 116 96" width="116" height="96" role="img" aria-label="PALISADE">
+  <g fill="currentColor">
+    <rect x="6" y="66" width="7" height="28"/>
+    <rect x="18" y="54" width="7" height="40"/>
+    <rect x="30" y="40" width="7" height="54"/>
+    <rect x="42" y="26" width="7" height="68"/>
+    <rect x="66" y="26" width="7" height="68"/>
+    <rect x="78" y="40" width="7" height="54"/>
+    <rect x="90" y="54" width="7" height="40"/>
+    <rect x="102" y="66" width="7" height="28"/>
+  </g>
+  <rect x="54" y="12" width="7" height="82" fill="#a492da"/>
+</svg>

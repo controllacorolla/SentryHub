@@ -121,13 +121,13 @@ def _compressed(s):
     c, sp, t = s[10], s[11], s[12]
     if c != " " and ord(t) - 33 >= 0:
         cv, sv = ord(c) - 33, ord(sp) - 33
-        if 0 <= cv <= 89:
+        if c == "{":
+            pass                                   # radio range, not used
+        elif ((ord(t) - 33) >> 3) & 3 == 2:        # type byte flags altitude in the c/s bytes
+            out["alt_ft"] = 1.002 ** (cv * 91 + sv)
+        elif 0 <= cv <= 89:
             out["course"] = (cv * 4) % 360
             out["speed_kt"] = round(1.08 ** sv - 1)
-        elif c == "{":
-            pass                                   # radio range, not used
-        elif ((ord(t) - 33) >> 3) & 3 == 2:        # altitude in cs bytes
-            out["alt_ft"] = 1.002 ** (cv * 91 + sv)
     out["comment"] = s[13:]
     return out
 

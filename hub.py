@@ -70,7 +70,7 @@ TILES = [
     ("zw", "Z-Wave", "S0/S2 assess (gated)", S.RED, [PY, os.path.join(HERE, "zwave.py")]),
     ("sweep", "Bug Sweep", "TSCM counter-surveillance", S.AMBER, [PY, os.path.join(HERE, "bugsweep.py")]),
     ("net", "Network Assess", "Host/port/service (gated)", S.RED, [PY, os.path.join(HERE, "netpent.py")]),
-    ("pass", "Password Audit", "Crack own handshake (gated)", S.RED, [PY, os.path.join(HERE, "passaudit.py")]),
+    ("pwaudit", "Password Audit", "Crack own handshake (gated)", S.RED, [PY, os.path.join(HERE, "passaudit.py")]),
     ("hid", "USB-HID", "Keystroke inject (gated)", S.RED, [PY, os.path.join(HERE, "usbhid.py")]),
     ("wf", "Waterfall", "Wideband spectrum", S.AMBER, [PY, os.path.join(HERE, "waterfall.py")]),
     ("rfai", "RF Copilot", "Offline AI analyst (qwen)", S.PURPLE, [PY, os.path.join(HERE, "copilot.py")]),
@@ -99,7 +99,7 @@ class Shell:
         "sensors": ("sensors", "main"), "sstv": ("sstv", "main"), "sonde": ("balloons", "main"),
         "aprs": ("aprs", "main"), "mesh": ("mesh_dash", "main"),
         "field": ("field_status", "main"), "ai": ("assistant", "main"),
-        "tx": ("transcriber", "viewer"), "signals": ("signals", "main"), "pager": ("pager", "main"), "nwr": ("nwr", "main"), "ais": ("ais", "main"), "rds": ("rds", "main"), "cw": ("cw", "main"), "rtty": ("rtty", "main"), "freqdb": ("freqdb", "main"), "digi": ("digimodes", "main"), "iq": ("iqtool", "main"), "class": ("classify", "main"), "roll": ("rollcode", "main"), "gnss": ("gnss", "main"), "nf": ("noisefloor", "main"), "pass": ("passsched", "main"), "wifi": ("wifisurvey", "main"), "jam": ("jammer", "main"), "fp": ("rffinger", "main"), "imsi": ("imsicatch", "main"), "dx": ("dxcluster", "main"), "remote": ("headless", "main"), "tpms": ("tpms", "main"), "replay": ("replay", "main"), "ble": ("blescan", "main"), "mlat": ("mlat", "main"), "pwr": ("powergov", "main"), "tac": ("tacmap", "main"), "df": ("kraken", "main"), "op": ("opprofile", "main"), "test": ("loopback", "main"), "eng": ("engagement", "main"), "pm3": ("proxmark", "main"), "wifix": ("wifipent", "main"), "blex": ("blepent", "main"), "zb": ("zigbee", "main"), "zw": ("zwave", "main"), "sweep": ("bugsweep", "main"), "net": ("netpent", "main"), "pass": ("passaudit", "main"), "hid": ("usbhid", "main"), "wf": ("waterfall", "main"), "rfai": ("copilot", "main"), "can": ("canbus", "main"), "bus": ("buslab", "main"), "flip": ("flipper", "main"), "spec": ("specan", "main"),
+        "tx": ("transcriber", "viewer"), "signals": ("signals", "main"), "pager": ("pager", "main"), "nwr": ("nwr", "main"), "ais": ("ais", "main"), "rds": ("rds", "main"), "cw": ("cw", "main"), "rtty": ("rtty", "main"), "freqdb": ("freqdb", "main"), "digi": ("digimodes", "main"), "iq": ("iqtool", "main"), "class": ("classify", "main"), "roll": ("rollcode", "main"), "gnss": ("gnss", "main"), "nf": ("noisefloor", "main"), "pass": ("passsched", "main"), "wifi": ("wifisurvey", "main"), "jam": ("jammer", "main"), "fp": ("rffinger", "main"), "imsi": ("imsicatch", "main"), "dx": ("dxcluster", "main"), "remote": ("headless", "main"), "tpms": ("tpms", "main"), "replay": ("replay", "main"), "ble": ("blescan", "main"), "mlat": ("mlat", "main"), "pwr": ("powergov", "main"), "tac": ("tacmap", "main"), "df": ("kraken", "main"), "op": ("opprofile", "main"), "test": ("loopback", "main"), "eng": ("engagement", "main"), "pm3": ("proxmark", "main"), "wifix": ("wifipent", "main"), "blex": ("blepent", "main"), "zb": ("zigbee", "main"), "zw": ("zwave", "main"), "sweep": ("bugsweep", "main"), "net": ("netpent", "main"), "pwaudit": ("passaudit", "main"), "hid": ("usbhid", "main"), "wf": ("waterfall", "main"), "rfai": ("copilot", "main"), "can": ("canbus", "main"), "bus": ("buslab", "main"), "flip": ("flipper", "main"), "spec": ("specan", "main"),
         "scout": ("scout", "main"), "ow": ("overwatch", "main"),
         "hw": ("hwlab", "main"), "dev": ("devterm", "main"), "fc": ("fieldcomp", "main"),
     }
@@ -877,7 +877,7 @@ def main():
             ("zw", "Z-Wave", "S0/S2 assess", ("launch", "zw")),
             ("sweep", "Bug Sweep", "TSCM", ("launch", "sweep")),
             ("net", "Network Assess", "Host/port/svc", ("launch", "net")),
-            ("pass", "Password Audit", "Handshake audit", ("launch", "pass")),
+            ("pwaudit", "Password Audit", "Handshake audit", ("launch", "pwaudit")),
             ("hid", "USB-HID", "Keystroke inject", ("launch", "hid")),
             ("wf", "Waterfall", "Spectrum", ("launch", "wf")),
             ("rfai", "RF Copilot", "AI analyst", ("launch", "rfai")),
@@ -929,7 +929,7 @@ def main():
 
     HINT = "Ctrl+K jump to anything  ·  Esc back here  ·  Ctrl+W close a workspace  ·  Ctrl+Q quit"
     msg.config(text=HINT)
-    ICON = {"ops": "◈", "ow": "◉", "hw": "⎓", "dev": "⌨", "fc": "⊕", "sky": "✈", "tx": "≡", "signals": "⌁", "pager": "✉", "nwr": "⚠", "ais": "⚓", "rds": "♫", "cw": "•−", "rtty": "⇅", "freqdb": "▦", "digi": "◧", "iq": "⎙", "class": "◫", "roll": "⟲", "gnss": "✛", "nf": "▂", "pass": "☄", "wifi": "≋", "jam": "⚡", "fp": "⊚", "imsi": "📶", "dx": "⇌", "remote": "⌂", "tpms": "◉", "replay": "⟳", "ble": "ᛒ", "mlat": "△", "pwr": "⚡", "tac": "⊕", "df": "➤", "op": "☰", "test": "✓", "eng": "⊗", "pm3": "▥", "wifix": "⚔", "blex": "ᛒ", "zb": "⬡", "zw": "〜", "sweep": "⌕", "net": "⇄", "pass": "⚿", "hid": "⌨", "wf": "▒", "rfai": "✦", "fm": "♪", "scanner": "⇆",
+    ICON = {"ops": "◈", "ow": "◉", "hw": "⎓", "dev": "⌨", "fc": "⊕", "sky": "✈", "tx": "≡", "signals": "⌁", "pager": "✉", "nwr": "⚠", "ais": "⚓", "rds": "♫", "cw": "•−", "rtty": "⇅", "freqdb": "▦", "digi": "◧", "iq": "⎙", "class": "◫", "roll": "⟲", "gnss": "✛", "nf": "▂", "pass": "☄", "wifi": "≋", "jam": "⚡", "fp": "⊚", "imsi": "📶", "dx": "⇌", "remote": "⌂", "tpms": "◉", "replay": "⟳", "ble": "ᛒ", "mlat": "△", "pwr": "⚡", "tac": "⊕", "df": "➤", "op": "☰", "test": "✓", "eng": "⊗", "pm3": "▥", "wifix": "⚔", "blex": "ᛒ", "zb": "⬡", "zw": "〜", "sweep": "⌕", "net": "⇄", "pwaudit": "⚿", "hid": "⌨", "wf": "▒", "rfai": "✦", "fm": "♪", "scanner": "⇆",
             "rfx": "∿", "sdrpp": "⊕", "wx": "◐", "sensors": "◎", "sstv": "▣", "sonde": "○",
             "mesh": "⬡", "scout": "⌖", "field": "⊙", "aprs": "◇", "doctor": "✚",
             "security": "⛨", "log": "☰", "backup": "⇩", "settings": "⚙", "external": "⇱",
@@ -1411,7 +1411,7 @@ def main():
     # ---- boot splash: the SENTRY wordmark over the window, fades to the dashboard
     def boot_splash():
         if "--no-splash" in sys.argv or getattr(T, "EMBED", None) is None:
-            pass
+            return
         sp = tk.Frame(root, bg=T.BG)
         sp.place(relx=0, rely=0, relwidth=1, relheight=1)
         sp.lift()

@@ -27,8 +27,9 @@ class FakeLease:
     def acquire(self, keep=()):
         pass
 
-    def release(self):
+    def release(self, restart=True):
         self.released += 1
+        self.last_restart = restart
 
     paused = []
 
@@ -115,7 +116,7 @@ def test_record_retry_flag_reset_each_start(monkeypatch, tmp_path):
 def test_watch_restores_before_reporting_error(monkeypatch, tmp_path):
     c = _ctl(monkeypatch, tmp_path)
     order = []
-    c.lease.release = lambda: order.append("release")
+    c.lease.release = lambda restart=True: order.append("release")
     real_set = c.set_state
     c.set_state = lambda st, d="": (order.append(st), real_set(st, d))
     monkeypatch.setitem(__import__("sys").modules, "suite",

@@ -192,7 +192,7 @@ def main():
           "view": None, "z": int(s.get("zoom", 13)), "follow": True, "fix": None,
           "drag": None, "layer": s.get("layer", "dark")}
     q = queue.Queue()
-    tl = tiles.TileLayer(on_ready=lambda: q.put(("tiles", None)))
+    tl = tiles.TileLayer(on_ready=lambda ok=None: q.put(("tiles", None)))
     tl.layer = st["layer"]
 
     if not demo and not FS.GPS.get("_thread"):

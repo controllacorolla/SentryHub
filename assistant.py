@@ -199,7 +199,7 @@ class LiveContext:
             self.t, self.busy = time.time(), False
 
     def get(self):
-        if not self.busy and time.time() - self.t > self.ttl:
+        if not self.busy and time.time() - self.t >= self.ttl:
             self.busy = True
             self._spawn(self.refresh)
         return self.text

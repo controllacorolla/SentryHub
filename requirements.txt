@@ -8,6 +8,11 @@
 Pillow>=10.0            # image handling, tile rendering, screenshots
 numpy>=1.24            # DSP in rf_explorer / sstv / signals
 
+# PALISADE Qt UI (new UI layer; the legacy Tk hub still needs python3-tk during migration)
+PySide6>=6.6           # Qt widgets + event loop
+pyqtgraph>=0.13        # real-time spectrum / waterfall / map panels
+flask>=3.0             # headless.py remote JSON API
+
 # Field Kit (Hardware / Dev terminal)
 pyserial>=3.5          # hwlab serial console
 bleak>=0.21            # devterm BLE scanner

@@ -259,7 +259,7 @@ def brief(use_llm=True):
 
 def speak(text):
     if shutil.which("espeak-ng"):
-        S.fire_and_forget(["espeak-ng", "-s", "148", text])
+        S.fire_and_forget(["espeak-ng", "-s", "148", "--", text])
 
 
 def main():

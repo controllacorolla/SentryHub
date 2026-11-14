@@ -5,17 +5,31 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 OUT="${1:-install-uconsole-suite.sh}"
-TARBALL="$(mktemp --suffix=.tgz)"
+TARBALL="$(mktemp)"          # no --suffix: BSD mktemp (macOS) lacks it, and the name is internal
 trap 'rm -f "$TARBALL"' EXIT
 
-# Deterministic, reproducible tar (sorted, no mtondata noise)
 FILES=(*.py harden.sh install_radiosonde.sh run_tests.sh fonts tests)
-tar czf "$TARBALL" --sort=name --owner=0 --group=0 --numeric-owner \
-    --exclude='__pycache__' --exclude='*.pyc' "${FILES[@]}"
+# Prefer GNU tar for a deterministic, sorted archive; fall back to the platform tar (bsdtar on
+# macOS) so the documented macOS dev build still works - just not byte-reproducible there.
+if tar --version 2>/dev/null | grep -qi 'gnu tar'; then
+    GNUTAR=tar
+elif command -v gtar >/dev/null 2>&1; then
+    GNUTAR=gtar
+else
+    GNUTAR=
+fi
+if [ -n "$GNUTAR" ]; then
+    "$GNUTAR" czf "$TARBALL" --sort=name --owner=0 --group=0 --numeric-owner \
+        --exclude='__pycache__' --exclude='*.pyc' "${FILES[@]}"
+else
+    # bsdtar: no --sort/--owner; COPYFILE_DISABLE stops macOS adding ._ AppleDouble entries
+    COPYFILE_DISABLE=1 tar czf "$TARBALL" \
+        --exclude='__pycache__' --exclude='*.pyc' "${FILES[@]}"
+fi
 
 {
   cat install_head.sh
-  base64 "$TARBALL"
+  base64 < "$TARBALL"        # stdin, not a positional arg: BSD base64 (macOS) rejects the latter
   cat install_tail.sh
 } > "$OUT"
 

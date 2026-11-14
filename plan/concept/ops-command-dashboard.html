@@ -1,0 +1,103 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>PALISADE — OPS (command dashboard)</title><style>
+  body{--bg:#070809;--p1:#0f1318;--p2:#171c26;--well:#050609;--line:#242b33;--line2:#323a44;--txt:#f2f5f8;--txt2:#919ba6;--txt3:#606a74;--txt4:#434b55;--acc:#a492da;--acc2:#bcace8;--live:#56d68e;--warn:#e0ac48;--alert:#e2605b;--sh:0 2px 6px rgba(0,0,0,.55);--shl:0 20px 48px rgba(0,0,0,.62);--shin:inset 0 0 30px rgba(0,0,0,.5);--hi:inset 0 1px 0 rgba(255,255,255,.05)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#000;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;-webkit-font-smoothing:antialiased}
+  .dev{width:1280px;height:480px;background:var(--bg);color:var(--txt);border:1px solid var(--line2);border-radius:14px;box-shadow:var(--shl);display:flex;flex-direction:column;overflow:hidden}
+  .micro{font-size:9.5px;letter-spacing:2.5px;color:var(--txt3)}
+  .top{height:44px;min-height:44px;display:flex;align-items:center;gap:14px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--p1);box-shadow:var(--hi)}
+  .word{font-size:13px;letter-spacing:5px;color:var(--txt)}
+  .chips{display:flex;align-items:center;margin-left:8px}
+  .chip{font-size:10px;letter-spacing:1px;color:var(--txt3);padding:0 13px;border-left:1px solid var(--line)}
+  .chip:first-child{border-left:0}.chip b{color:var(--txt2)}
+  .chip.live b{color:var(--live)}
+  .ctl{margin-left:auto;display:flex;align-items:center;gap:16px}
+  .vol input{-webkit-appearance:none;width:80px;height:3px;background:var(--line2)}
+  .vol input::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;background:var(--acc2)}
+  .dtg{font-size:11px;letter-spacing:2.5px;color:var(--txt2)}
+  .main{flex:1;display:grid;grid-template-columns:188px 1fr 372px;min-height:0}
+  .nav{border-right:1px solid var(--line);padding:14px 0;background:var(--p1);box-shadow:var(--hi)}
+  .grp{padding:14px 18px 6px;font-size:12px;letter-spacing:1.5px;color:var(--txt2)}
+  .item{padding:5px 18px 5px 30px;font-size:10px;letter-spacing:1.3px;color:var(--txt3);text-transform:uppercase;border-left:2px solid transparent}
+  .item.on{color:var(--txt);border-left-color:var(--acc);background:rgba(164,146,218,.12)}
+  .hero{padding:16px 18px 14px;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+  .hhead{display:flex;align-items:center;gap:8px}
+  .tick{width:5px;height:5px;background:var(--acc);transform:rotate(45deg)}
+  .hstat{display:flex;align-items:baseline;gap:14px;margin-top:8px}
+  .hbig{font-size:46px;font-weight:300;line-height:.9;letter-spacing:-2px}
+  .hunit{font-size:10px;color:var(--txt2);letter-spacing:2.5px}
+  .hsub{font-size:10px;color:var(--txt3);margin-top:5px;letter-spacing:.5px}
+  .scope{flex:1;margin-top:10px;min-height:0;background:var(--well);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shin);overflow:hidden}
+  .rail{background:var(--p1);box-shadow:var(--hi);padding:11px;display:grid;grid-template-rows:auto auto 1fr auto;gap:9px;min-height:0}
+  .card{background:var(--p2);border-radius:10px;box-shadow:var(--sh),var(--hi);padding:10px 12px;min-height:0;overflow:hidden}
+  .ch{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .ch .r{font-size:9.5px;color:var(--txt3);letter-spacing:1px}
+  .wf{display:flex;gap:2px;align-items:flex-end;height:30px}
+  .wf i{flex:1;background:var(--acc);opacity:.5;border-radius:1px}
+  .dec{display:flex;justify-content:space-between;font-size:11px;color:var(--txt2);padding:3px 0;letter-spacing:.3px}
+  .dec b{color:var(--txt);font-weight:400}.dec .s{color:var(--txt3);font-size:10px}
+  .al{display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0;letter-spacing:.2px}
+  .al .d{width:5px;height:5px;border-radius:50%;flex:none}
+  .two{display:flex;gap:9px}
+  .mini{flex:1;background:var(--p2);border-radius:10px;box-shadow:var(--sh),var(--hi);padding:9px 11px}
+  .mini .l{font-size:9px;letter-spacing:1.5px;color:var(--txt3)}
+  .mini .v{font-size:15px;margin-top:4px}.mini .v.lv{color:var(--live)}
+  .bar{height:3px;background:var(--line2);margin-top:8px;border-radius:2px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--live)}
+  .foot{height:26px;min-height:26px;border-top:1px solid var(--line);display:flex;align-items:center;gap:20px;padding:0 16px;font-size:10px;color:var(--txt3);letter-spacing:1.5px;background:var(--p1);box-shadow:var(--hi)}
+  .foot .k{color:var(--txt2)}
+</style></head><body>
+<div class="dev">
+  <div class="top">
+    <svg width="20" height="15" viewBox="0 0 116 96"><g fill="var(--txt2)"><rect x="6" y="66" width="7" height="28"/><rect x="18" y="54" width="7" height="40"/><rect x="30" y="40" width="7" height="54"/><rect x="42" y="26" width="7" height="68"/><rect x="66" y="26" width="7" height="68"/><rect x="78" y="40" width="7" height="54"/><rect x="90" y="54" width="7" height="40"/><rect x="102" y="66" width="7" height="28"/></g><rect x="54" y="12" width="7" height="82" fill="var(--acc)"/></svg>
+    <div class="word">PALISADE</div>
+    <div class="chips"><div class="chip">SDR <b>DEMO</b></div><div class="chip live">TX <b>SAFE</b></div><div class="chip">GPS <b>9 SV</b></div><div class="chip">PWR <b>95%</b></div></div>
+    <div class="ctl"><div class="vol"><input type="range" min="0" max="100" value="72"></div><div class="dtg">0047Z</div></div>
+  </div>
+  <div class="main">
+    <div class="nav">
+      <div class="grp">OVERVIEW</div><div class="item on">OPS</div><div class="item">OVERWATCH</div>
+      <div class="grp">SENSE</div><div class="item">ATLAS</div><div class="item">BABEL</div><div class="item">PRISM</div><div class="item">PROWL</div>
+      <div class="grp">FIELD</div><div class="item">FORGE</div><div class="item">RECON</div><div class="item">BENCH</div>
+    </div>
+    <div class="hero">
+      <div class="hhead"><span class="tick"></span><span class="micro">SITUATION · ALL FEEDS</span></div>
+      <div class="hstat"><div class="hbig">24</div><div><div class="hunit">CONTACTS LIVE</div><div class="hsub">2 military · nearest 14 NM · 3 feeds up</div></div></div>
+      <div class="scope"><svg viewBox="0 0 440 180" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="display:block">
+        <defs><linearGradient id="s" x1="1" y1="0" x2="0.3" y2="1"><stop offset="0" stop-color="#a492da" stop-opacity=".24"/><stop offset="1" stop-color="#a492da" stop-opacity="0"/></linearGradient></defs>
+        <path d="M220 172 L220 6 A166 166 0 0 1 378 118 Z" fill="url(#s)"/>
+        <g fill="none" stroke="#242b33"><path d="M220 172 m-166 0 a166 166 0 0 1 332 0"/><path d="M220 172 m-110 0 a110 110 0 0 1 220 0"/><path d="M220 172 m-55 0 a55 55 0 0 1 110 0"/></g>
+        <g stroke="#323a44"><line x1="220" y1="172" x2="220" y2="6"/><line x1="54" y1="172" x2="386" y2="172"/></g>
+        <line x1="220" y1="172" x2="378" y2="118" stroke="#a492da" stroke-width="1.3"/>
+        <g fill="#56d68e"><circle cx="300" cy="112" r="2.3"/><circle cx="176" cy="92" r="2.3"/><circle cx="330" cy="150" r="2.3"/><circle cx="150" cy="134" r="2.3"/></g>
+        <circle cx="300" cy="112" r="5" fill="none" stroke="#a492da"/><circle cx="300" cy="112" r="2.3" fill="#bcace8"/>
+        <text x="308" y="109" fill="#bcace8" font-size="8.5" font-family="monospace">UAL233·14NM</text>
+        <circle cx="356" cy="96" r="2.3" fill="#e0ac48"/><text x="363" y="93" fill="#e0ac48" font-size="8" font-family="monospace">MIL</text>
+        <circle cx="220" cy="172" r="2.6" fill="#a492da"/>
+      </svg></div>
+    </div>
+    <div class="rail">
+      <div class="card">
+        <div class="ch"><span class="micro">PRISM · SPECTRUM</span><span class="r">1090.0 MHz · −62 dBFS</span></div>
+        <div class="wf"><i style="height:30%"></i><i style="height:55%"></i><i style="height:40%"></i><i style="height:80%;opacity:.9"></i><i style="height:45%"></i><i style="height:35%"></i><i style="height:60%"></i><i style="height:48%"></i><i style="height:38%"></i><i style="height:70%;opacity:.9"></i><i style="height:42%"></i><i style="height:30%"></i><i style="height:52%"></i><i style="height:36%"></i></div>
+      </div>
+      <div class="card">
+        <div class="ch"><span class="micro">BABEL · LATEST DECODES</span><span class="r">6/min</span></div>
+        <div class="dec"><span><b>ADS-B</b> <span class="s">A43F</span></span><span class="s">DAL1241 · FL340</span></div>
+        <div class="dec"><span><b>AIS</b> <span class="s">7DD1</span></span><span class="s">WAVE RUNNER · 8kn</span></div>
+        <div class="dec"><span><b>POCSAG</b> <span class="s">5579</span></span><span class="s">page · fire disp</span></div>
+      </div>
+      <div class="card">
+        <div class="ch"><span class="micro">ALERTS · EVENT BUS</span><span class="r">3 new</span></div>
+        <div class="al"><span class="d" style="background:var(--alert)"></span><span style="color:var(--txt)">Drone Remote-ID</span><span class="r" style="margin-left:auto">1.2 km · 02</span></div>
+        <div class="al"><span class="d" style="background:var(--warn)"></span><span style="color:var(--txt2)">Open AP · linksys</span><span class="r" style="margin-left:auto">RECON</span></div>
+        <div class="al"><span class="d" style="background:var(--acc)"></span><span style="color:var(--txt2)">MIL contact inbound</span><span class="r" style="margin-left:auto">ATLAS</span></div>
+      </div>
+      <div class="two">
+        <div class="mini"><div class="l">NEXT PASS</div><div class="v lv">NOAA-19 · 12m</div></div>
+        <div class="mini"><div class="l">POWER</div><div class="v">95%</div><div class="bar"><i style="width:95%"></i></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span><span class="k">⌘K</span> JUMP</span><span><span class="k">ESC</span> HOME</span><span><span class="k">⌘R</span> RECORD</span><span style="margin-left:auto;color:var(--acc2)">VIOLET</span></div>
+</div>
+</body></html>
