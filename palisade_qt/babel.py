@@ -358,10 +358,12 @@ class DecoderWorker(Worker):
             mode = self.mode
             self._mode_changed = False
 
-            if self.demo or mode not in _LIVE_RUNNERS:
+            if self.demo:
                 self._run_demo(mode)
+            elif mode not in _LIVE_RUNNERS:
+                self._run_practice(mode)      # live + no RX backend (CW/RTTY): honest, never synth
             elif not _can_run(mode):
-                self._run_standby(mode)       # live + no decoder: honest standby, never synth
+                self._run_standby(mode)       # live + no decoder binary: honest standby, no synth
             else:
                 self._run_live(mode)
 
@@ -397,6 +399,15 @@ class DecoderWorker(Worker):
         Live never synthesises — demo mode (the SDR-DEMO chip) is the only synthetic path."""
         binary = _MODE_BINARY.get(mode, "decoder")
         self.status.emit({"sdr": {"text": "%s STANDBY — no %s" % (mode, binary), "ok": False}})
+        while not self._stop and not self._mode_changed:
+            self.msleep(50)
+
+    def _run_practice(self, mode):
+        """Live mode for a mode with NO live RX backend (CW/RTTY are txguard TX/practice tools
+        with no demodulator; digimodes has no decoder). Say so honestly and publish nothing — live
+        never synthesises. The decoded text is available in demo mode (SDR-DEMO) only."""
+        self.status.emit({"sdr": {"text": "%s — practice only (no live decode)" % mode, "ok": False},
+                          "practice": True})
         while not self._stop and not self._mode_changed:
             self.msleep(50)
 
@@ -478,7 +489,9 @@ class BabelApp(PalisadeApp):
 
     def on_status(self, status):
         super().on_status(status)
-        if "busy" in status:                     # the single-SDR banner, driven by the arbiter
+        if status.get("practice"):               # no live RX backend: say it, don't imply a decode
+            self.busy.setText(status.get("sdr", {}).get("text", ""))
+        elif "busy" in status:                   # the single-SDR banner, driven by the arbiter
             owner = status["busy"]
             self.busy.setText("RADIO BUSY — held by %s" % owner if owner else "")
 

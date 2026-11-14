@@ -609,3 +609,19 @@ def test_babel_tpms_offscreen_opens_no_radio():
     w = babel.DecoderWorker(demo=False, mode="TPMS")
     babel._run_tpms(w)                         # _open_pipe seam returns None offscreen
     assert w._proc is None
+
+
+def test_babel_cw_rtty_no_live_synth_only_practice(monkeypatch):
+    """CW/RTTY have no live RX backend; in LIVE mode they must publish zero rows and say
+    'practice only' — never synthesise (demo is the only synthetic path)."""
+    from palisade_qt import babel
+    for mode in ("CW", "RTTY"):
+        w = babel.DecoderWorker(demo=False, mode=mode)
+        w._mode_changed = True
+        rows, status = [], []
+        w.row.connect(lambda r: rows.append(r))
+        w.status.connect(lambda s: status.append(s))
+        w._run_practice(mode)
+        assert rows == [], "%s must not synthesise decodes in live mode" % mode
+        assert any(s.get("practice") and "practice only" in (s.get("sdr") or {}).get("text", "")
+                   for s in status)
