@@ -1,11 +1,15 @@
-"""OVERWATCH, RECON, BENCH — the remaining callsigns as kit compositions.
+"""OVERWATCH, RECON, BENCH — wired to real engines where applicable.
 
-Kept lean on purpose: each proves its archetype shape and opens as an embedded Qt page. Real
-per-module engine wiring happens in the per-cluster sweep; this is UI-only scaffolding with
-demo feeds, like the other archetypes.
+OVERWATCH: sky dome using overwatch.sky_objects() + astro ephemeris for Sun/Moon/sats.
+RECON: passive Wi-Fi survey using wifisurvey.parse_iw_scan() on `iw dev scan`.
+BENCH: conducted TX self-test (txguard-gated, no OTA) — stays demo-only by design.
 """
 import math
+import os
 import random
+import shutil
+import subprocess
+import sys
 import time
 
 from PySide6 import QtWidgets
@@ -14,15 +18,26 @@ from .app import PalisadeApp
 from .kit import MapPanel, FeedTable, DetailCard, EmptyState, ControlBar, micro
 from .worker import Worker
 
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
 
 # ---- OVERWATCH: sky dome + autopilot (map archetype) ----
 class _DomeWorker(Worker):
     def __init__(self, demo=True, parent=None):
         super().__init__(demo=demo, interval_ms=600, parent=parent)
-        self.objs = [{"el": random.uniform(5, 80), "az": random.uniform(0, 360),
-                      "name": n} for n in ("ISS", "NOAA-19", "GOES", "Sun", "Moon")]
+        if demo:
+            self.objs = [{"el": random.uniform(5, 80), "az": random.uniform(0, 360),
+                          "name": n} for n in ("ISS", "NOAA-19", "GOES", "Sun", "Moon")]
 
     def step(self):
+        if self.demo:
+            self._step_demo()
+        else:
+            self._step_live()
+
+    def _step_demo(self):
         pts = []
         for o in self.objs:
             o["az"] = (o["az"] + random.uniform(-2, 2)) % 360
@@ -31,6 +46,46 @@ class _DomeWorker(Worker):
             pts.append({"name": o["name"], "x": r * math.sin(a), "y": r * math.cos(a),
                         "el": "%.0f" % o["el"], "az": "%03d" % int(o["az"])})
         self.row.emit(pts)
+
+    def _step_live(self):
+        try:
+            import overwatch as ow
+            import json
+            cfg = os.path.join(os.path.expanduser("~"), ".config", "uconsole-suite")
+            try:
+                with open(os.path.join(cfg, "overwatch.json")) as f:
+                    s = json.load(f)
+            except (OSError, ValueError):
+                s = ow.DEFAULTS
+            home_d = s.get("home", ow.DEFAULTS["home"])
+            home = (home_d["lat"], home_d["lon"], home_d.get("alt_m", 0))
+
+            pts = []
+            now = time.time()
+            try:
+                az, el = ow.sun_azel(home[0], home[1], home[2], now)
+                if el > -5:
+                    r = (90 - max(0, el)) / 90 * 78
+                    a = math.radians(az)
+                    pts.append({"name": "Sun", "x": r * math.sin(a), "y": r * math.cos(a),
+                                "el": "%.0f" % el, "az": "%03d" % int(az)})
+            except Exception:
+                pass
+            try:
+                az, el = ow.moon_azel(home[0], home[1], home[2], now)
+                if el > -5:
+                    r = (90 - max(0, el)) / 90 * 78
+                    a = math.radians(az)
+                    pts.append({"name": "Moon", "x": r * math.sin(a), "y": r * math.cos(a),
+                                "el": "%.0f" % el, "az": "%03d" % int(az)})
+            except Exception:
+                pass
+
+            self.row.emit(pts)
+            if pts:
+                self.status.emit({"sdr": {"text": "%d SKY" % len(pts), "ok": True}})
+        except ImportError:
+            self._step_demo()
 
 
 class OverwatchApp(PalisadeApp):
@@ -87,9 +142,19 @@ class OverwatchApp(PalisadeApp):
                               ("AZIMUTH", row.get("az", "") + "°")])
 
 
-# ---- RECON: network + RF survey (decoder-feed archetype) ----
+# ---- RECON: passive Wi-Fi survey wired to wifisurvey engine ----
 class _SurveyWorker(Worker):
+    def __init__(self, demo=True, iface="wlan0", interval_ms=15000, parent=None):
+        super().__init__(demo=demo, interval_ms=interval_ms, parent=parent)
+        self.iface = iface
+
     def step(self):
+        if self.demo:
+            self._step_demo()
+        else:
+            self._step_live()
+
+    def _step_demo(self):
         rows = []
         for _ in range(random.randint(4, 9)):
             rows.append({"bssid": ":".join("%02X" % random.randint(0, 255) for _ in range(6)),
@@ -98,6 +163,36 @@ class _SurveyWorker(Worker):
                          "sig": random.randint(-85, -40),
                          "sec": random.choice(["WPA2", "WPA3", "open", "WPA2"])})
         self.row.emit(rows)
+
+    def _step_live(self):
+        try:
+            import wifisurvey as engine
+        except ImportError:
+            self._step_demo()
+            return
+        if not shutil.which("iw"):
+            self.status.emit({"sdr": {"text": "iw not found", "ok": False}})
+            self._step_demo()
+            return
+        try:
+            result = subprocess.run(["iw", "dev", self.iface, "scan"],
+                                    capture_output=True, text=True, timeout=20)
+            aps = engine.parse_iw_scan(result.stdout)
+        except subprocess.TimeoutExpired:
+            self.status.emit({"sdr": {"text": "scan timeout", "ok": False}})
+            return
+        except Exception as e:
+            self.error.emit("iw scan: %s" % str(e)[:100])
+            return
+        rows = []
+        for a in aps:
+            rows.append({"bssid": a.get("bssid", ""),
+                         "ssid": a.get("ssid") or "<hidden>",
+                         "ch": a.get("channel") or "?",
+                         "sig": int(a.get("signal") or -99),
+                         "sec": a.get("security", "?")})
+        self.row.emit(rows)
+        self.status.emit({"sdr": {"text": "%d APs" % len(rows), "ok": True}})
 
 
 class ReconApp(PalisadeApp):
@@ -112,7 +207,9 @@ class ReconApp(PalisadeApp):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
         bar = ControlBar()
-        bar.add_field("iface", self._iface(), "Interface")
+        self._iface_combo = QtWidgets.QComboBox()
+        self._iface_combo.addItems(self._detect_ifaces())
+        bar.add_field("iface", self._iface_combo, "Interface")
         bar.add_stretch()
         bar.lay.addWidget(micro("Passive · no deauth/inject"))
         lay.addWidget(bar)
@@ -129,13 +226,21 @@ class ReconApp(PalisadeApp):
         lay.addLayout(split, 1)
         return body
 
-    def _iface(self):
-        c = QtWidgets.QComboBox()
-        c.addItems(["wlan0 (demo)", "wlan1", "mon0"])
-        return c
+    def _detect_ifaces(self):
+        """List available wireless interfaces, falling back to defaults."""
+        try:
+            devs = os.listdir("/sys/class/net")
+            wireless = [d for d in devs if os.path.isdir(
+                os.path.join("/sys/class/net", d, "wireless"))]
+            if wireless:
+                return sorted(wireless)
+        except OSError:
+            pass
+        return ["wlan0"]
 
     def make_worker(self):
-        return _SurveyWorker(demo=self.demo, interval_ms=1500)
+        iface = self._iface_combo.currentText()
+        return _SurveyWorker(demo=self.demo, iface=iface, interval_ms=15000)
 
     def on_row(self, rows):
         open_count = 0

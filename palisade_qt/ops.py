@@ -1,10 +1,10 @@
-"""OPS — the situational home (also the first screen that proves the kit + shell + embedding).
+"""OPS — the situational home, wired to real device status when not in demo mode.
 
-Composed entirely from kit components: status header, a hero stat card, a callsign grid, and a
-live mini-feed. In demo mode a Worker emits synthetic status + contacts so the screen is alive
-without hardware.
+Reads real SoC temperature, battery status, and GPS from the device in live mode.
+In demo mode a Worker emits synthetic data so the screen is alive without hardware.
 """
 import math
+import os
 import random
 import time
 
@@ -26,14 +26,20 @@ CALLSIGNS = [
 
 
 class OpsWorker(Worker):
-    """Synthetic situational feed: a drifting contact count, temperature, battery, and events."""
+    """Reads real device status (temp, battery) in live mode; synthetic in demo."""
 
     def __init__(self, demo=True, parent=None):
-        super().__init__(demo=demo, interval_ms=700, parent=parent)
+        super().__init__(demo=demo, interval_ms=2000 if not demo else 700, parent=parent)
         self._t0 = time.time()
         self._n = 0
 
     def step(self):
+        if self.demo:
+            self._step_demo()
+        else:
+            self._step_live()
+
+    def _step_demo(self):
         t = time.time() - self._t0
         self._n += 1
         contacts = int(18 + 6 * math.sin(t * 0.2) + random.randint(0, 2))
@@ -52,6 +58,43 @@ class OpsWorker(Worker):
             "id": "%04X" % random.randint(0x1000, 0xFFFF),
             "note": random.choice(["new", "update", "alert", "faded"]),
         })
+
+    def _step_live(self):
+        self._n += 1
+        temp = _read_cpu_temp()
+        batt = _read_battery()
+        batt_pct = batt if batt is not None else -1
+        sdr_ok = os.path.exists("/dev/swradio0") or os.path.exists("/dev/rtlsdr0")
+        status = {
+            "contacts": 0, "temp": temp or 0, "batt": batt_pct,
+            "sdr": {"text": "SDR OK" if sdr_ok else "SDR —", "ok": sdr_ok},
+            "pwr": {"text": "PWR %d%%" % batt_pct if batt_pct >= 0 else "PWR —",
+                    "ok": batt_pct > 20 if batt_pct >= 0 else False},
+        }
+        self.status.emit(status)
+
+
+def _read_cpu_temp():
+    for path in ("/sys/class/thermal/thermal_zone0/temp",
+                 "/sys/class/hwmon/hwmon0/temp1_input"):
+        try:
+            with open(path) as f:
+                return int(f.read().strip()) / 1000.0
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def _read_battery():
+    base = "/sys/class/power_supply"
+    for name in ("axp20x-battery", "battery", "BAT0"):
+        cap = os.path.join(base, name, "capacity")
+        try:
+            with open(cap) as f:
+                return int(f.read().strip())
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 class OpsHome(PalisadeApp):
@@ -120,7 +163,7 @@ class OpsHome(PalisadeApp):
         return w, dot
 
     def make_worker(self):
-        return OpsWorker(demo=True)
+        return OpsWorker(demo=self.demo)
 
     _SRC_MAP = {"ADS-B": "ATLAS", "AIS": "ATLAS", "APRS": "ATLAS",
                  "POCSAG": "BABEL", "ACARS": "BABEL", "RDS": "BABEL"}
