@@ -475,3 +475,67 @@ def test_adsb_goes_busy_when_a_lease_layer_holds_the_radio(monkeypatch):
     assert not any(e["payload"].get("kind") == "aircraft" for e in got), "ADS-B BUSY while held"
     for s in list(w._lease_srcs.values()):
         s.stop()
+
+
+# ---- BABEL PR-B1: single-SDR via the arbiter (not the base-class lease) ----
+
+def test_babel_app_leases_per_mode_not_via_base_class():
+    """PR-B1: BabelApp must NOT hold the base-class lease — its radio modes go through the
+    shared arbiter, so it coexists with ATLAS/PRISM under one SDR owner."""
+    from palisade_qt.babel import BabelApp
+    from palisade_qt import radio_arbiter as ra
+    assert BabelApp.LEASE is None
+    assert ra.OWNER_LABELS.get("BABEL") == "BABEL"
+
+
+def test_babel_live_mode_acquires_and_releases_via_arbiter(monkeypatch):
+    """A live radio mode takes the single SDR via the arbiter while decoding, then releases it."""
+    from palisade_qt import babel, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)       # no real radio
+    seen = []
+    monkeypatch.setitem(babel._LIVE_RUNNERS, "AIS",
+                        lambda worker: seen.append(ra.arbiter.owner()))
+    w = babel.DecoderWorker(demo=False, mode="AIS")
+    w._run_live("AIS")
+    assert seen == ["BABEL"], "BABEL must own the radio while its decoder runs"
+    assert ra.arbiter.owner() is None, "_run_live must release the SDR when the decoder returns"
+
+
+def test_babel_live_mode_shows_busy_when_radio_held_elsewhere(monkeypatch):
+    """Honest single-SDR: if another callsign owns the radio, BABEL shows RADIO BUSY and (being
+    live) never opens the dongle or synthesises data."""
+    from palisade_qt import babel, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    ran = []
+    monkeypatch.setitem(babel._LIVE_RUNNERS, "AIS", lambda worker: ran.append(1))
+    assert ra.arbiter.request("ATLAS-APRS") is True                # APRS holds the radio
+    w = babel.DecoderWorker(demo=False, mode="AIS")
+    w._mode_changed = True                                          # don't block on the retry sleep
+    status = []
+    w.status.connect(lambda s: status.append(s))
+    w._run_live("AIS")
+    assert ran == [], "BABEL must not decode while the radio is busy"
+    assert ra.arbiter.owner() == "ATLAS-APRS", "the holder keeps the SDR; BABEL never took it"
+    assert any(s.get("busy") for s in status), "BABEL must emit a RADIO BUSY status"
+    ra.arbiter.release("ATLAS-APRS")
+
+
+def test_babel_runners_never_open_a_real_radio_offscreen():
+    """The _open_pipe seam returns None under offscreen/offline, so the live runners spawn no
+    subprocess in tests/CI (QT_QPA_PLATFORM=offscreen is set at import)."""
+    from palisade_qt import babel
+    assert babel._open_pipe(["echo", "x"], shell=False) is None
+    w = babel.DecoderWorker(demo=False, mode="AIS")
+    babel._run_ais(w)                                              # returns immediately, no proc
+    assert w._proc is None
+
+
+def test_babel_open_close_no_leaked_thread_or_lease():
+    from palisade_qt.babel import BabelApp
+    from palisade_qt import radio_arbiter as ra
+    _app()
+    a = BabelApp(demo=False, mode="dark")
+    a.start()
+    _pump(200)
+    a.stop()
+    assert ra.arbiter.owner() is None, "closing BABEL must leave the SDR free"

@@ -15,7 +15,7 @@ import time
 from PySide6 import QtWidgets
 
 from .app import PalisadeApp
-from . import theme
+from . import theme, radio_arbiter
 from .kit import ControlBar, FeedTable, DetailCard
 from .worker import Worker
 
@@ -24,6 +24,22 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 MODES = ["AIS", "ACARS", "POCSAG", "RDS", "CW", "RTTY"]
+
+# BABEL's radio modes (AIS/ACARS/POCSAG/RDS) all want the one built-in dongle, so they go through
+# the shared radio_arbiter under this single lease name — exactly like ATLAS's lease layers. Only
+# one owner at a time; if another callsign holds the radio, BABEL shows RADIO BUSY and (being live)
+# synthesises nothing. CW/RTTY are practice tools with no capture pipe, so they never lease.
+LEASE_NAME = "BABEL"
+
+
+def _open_pipe(cmd, shell=True, stderr=subprocess.DEVNULL):
+    """Spawn a decoder capture pipeline — or None under offscreen/offline so tests and CI never
+    open a real radio. The caller has already confirmed the binary is present via _can_run()."""
+    if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        return None
+    return subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, stderr=stderr,
+                            stdin=subprocess.DEVNULL, text=True, bufsize=1, errors="replace",
+                            start_new_session=True)
 
 
 def _synth(mode):
@@ -94,9 +110,9 @@ def _run_ais(worker):
     cmd = engine.pipeline(gain=s.get("gain", 0))
     asm = engine.AivdmAssembler()
     n = 0
-    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            stdin=subprocess.DEVNULL, text=True, bufsize=1, errors="replace",
-                            start_new_session=True)
+    proc = _open_pipe(cmd)
+    if proc is None:
+        return                       # offscreen/offline seam: never open a real radio in tests
     worker._proc = proc
     worker.status.emit({"sdr": {"text": "AIS LIVE", "ok": True}})
     try:
@@ -136,12 +152,12 @@ def _run_acars(worker):
     parser = engine.parse_acars if s.get("source") != "vdl2" else engine.parse_vdl2
     n = 0
     try:
-        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                stdin=subprocess.DEVNULL, text=True, bufsize=1, errors="replace",
-                                start_new_session=True)
+        proc = _open_pipe(argv, shell=False, stderr=subprocess.STDOUT)
     except FileNotFoundError:
         worker.error.emit("acarsdec not found — install it or use --demo")
         return
+    if proc is None:
+        return                       # offscreen/offline seam: never open a real radio in tests
     worker._proc = proc
     worker.status.emit({"sdr": {"text": "ACARS LIVE", "ok": True}})
     try:
@@ -172,9 +188,9 @@ def _run_pocsag(worker):
     s = _load_settings("pager", engine.DEFAULTS)
     cmd = engine.pipeline(freq=s.get("freq", engine.FREQ_DEFAULT), gain=s.get("gain", 0))
     n = 0
-    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            stdin=subprocess.DEVNULL, text=True, bufsize=1, errors="replace",
-                            start_new_session=True)
+    proc = _open_pipe(cmd)
+    if proc is None:
+        return                       # offscreen/offline seam: never open a real radio in tests
     worker._proc = proc
     worker.status.emit({"sdr": {"text": "POCSAG LIVE", "ok": True}})
     try:
@@ -206,9 +222,9 @@ def _run_rds(worker):
     cmd = engine.pipeline(freq=s.get("freq", engine.FREQ_DEFAULT), gain=s.get("gain", 0))
     stations = engine.Stations()
     n = 0
-    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            stdin=subprocess.DEVNULL, text=True, bufsize=1, errors="replace",
-                            start_new_session=True)
+    proc = _open_pipe(cmd)
+    if proc is None:
+        return                       # offscreen/offline seam: never open a real radio in tests
     worker._proc = proc
     worker.status.emit({"sdr": {"text": "RDS LIVE", "ok": True}})
     try:
@@ -283,18 +299,34 @@ class DecoderWorker(Worker):
                 self.status.emit({"sdr": {"text": "%s DEMO (no binary)" % mode, "ok": False}})
                 self._run_demo(mode)
             else:
-                try:
-                    runner = _LIVE_RUNNERS[mode]
-                    runner(self)
-                except Exception as e:
-                    self.error.emit("%s: %s" % (mode, str(e)[:150]))
-                    self.status.emit({"sdr": {"text": "%s ERROR" % mode, "ok": False}})
-                    self.msleep(2000)
+                self._run_live(mode)
 
             if self._stop:
                 break
             if not self._mode_changed:
                 self.msleep(500)
+
+    def _run_live(self, mode):
+        """Acquire the single SDR via the shared arbiter, run the real decoder, then release. If
+        another callsign holds the radio, show RADIO BUSY and (being live) synthesise nothing."""
+        if not radio_arbiter.arbiter.request(LEASE_NAME):
+            owner = radio_arbiter.owner_label() or radio_arbiter.arbiter.owner() or "?"
+            self.status.emit({"sdr": {"text": "RADIO BUSY — %s" % owner, "ok": False},
+                              "busy": owner})
+            waited = 0                       # idle and retry while the radio is held elsewhere
+            while waited < 1500 and not self._stop and not self._mode_changed:
+                self.msleep(50)
+                waited += 50
+            return
+        self.status.emit({"busy": None})     # we hold the radio — clear any BUSY banner
+        try:
+            _LIVE_RUNNERS[mode](self)
+        except Exception as e:
+            self.error.emit("%s: %s" % (mode, str(e)[:150]))
+            self.status.emit({"sdr": {"text": "%s ERROR" % mode, "ok": False}})
+            self.msleep(2000)
+        finally:
+            radio_arbiter.arbiter.release(LEASE_NAME)
 
     def _run_demo(self, mode):
         while not self._stop and not self._mode_changed:
@@ -314,11 +346,12 @@ class DecoderWorker(Worker):
         super().stop()
         if self._proc and self._proc.poll() is None:
             _stop_proc(self._proc)
+        radio_arbiter.arbiter.release(LEASE_NAME)   # belt-and-suspenders if wait() ever times out
 
 
 class BabelApp(PalisadeApp):
     TITLE = "BABEL"
-    LEASE = "BABEL"
+    LEASE = None          # the radio is leased per-mode via radio_arbiter, not by the base class
 
     PROTO_COLORS = {
         "AIS": "#4DA6FF", "ACARS": "#66D9A0", "POCSAG": "#FFB74D",
@@ -338,6 +371,9 @@ class BabelApp(PalisadeApp):
         self.mode.currentTextChanged.connect(self._set_mode)
         self.bar.add_field("mode", self.mode, "Decoder")
         self.bar.add_stretch()
+        self.busy = QtWidgets.QLabel("")        # "RADIO BUSY — held by X" when another layer owns it
+        self.busy.setStyleSheet("color: %s;" % self._tok["warn"])
+        self.bar.lay.addWidget(self.busy)
         self.count = QtWidgets.QLabel("0 msgs")
         self.count.setProperty("class", "value")
         self.bar.lay.addWidget(self.count)
@@ -361,11 +397,18 @@ class BabelApp(PalisadeApp):
         self.feed.model.set_rows([])
         self._count = 0
         self.count.setText("0 msgs")
+        self.busy.setText("")               # the new mode re-derives BUSY from the arbiter
         if self._worker is not None:
             self._worker.set_mode(mode)
 
     def make_worker(self):
         return DecoderWorker(demo=self.demo, mode=self.mode.currentText())
+
+    def on_status(self, status):
+        super().on_status(status)
+        if "busy" in status:                     # the single-SDR banner, driven by the arbiter
+            owner = status["busy"]
+            self.busy.setText("RADIO BUSY — held by %s" % owner if owner else "")
 
     def on_row(self, row):
         proto = row.get("proto", "")
