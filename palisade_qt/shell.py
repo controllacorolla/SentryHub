@@ -19,7 +19,8 @@ from .babel import BabelApp
 from .atlas import AtlasApp
 from .prowl import ProwlApp
 from .forge import ForgeApp
-from .more import OverwatchApp, ReconApp, BenchApp
+from .more import OverwatchApp, BenchApp
+from .recon import ReconApp
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

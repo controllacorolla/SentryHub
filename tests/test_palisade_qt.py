@@ -798,3 +798,124 @@ def test_babel_switch_to_sstv_swaps_view_and_worker():
     assert p.stack.currentIndex() == 1 and isinstance(p.make_worker(), SstvWorker)
     p.mode_combo.setCurrentText("AIS")
     assert p.stack.currentIndex() == 0 and isinstance(p.make_worker(), DecoderWorker)
+
+
+# ---- RECON: engagement-gated active tools + passive scans + counter detectors ----
+
+def _reset_engagement():
+    import engagement
+    engagement.reset()
+
+
+def test_recon_active_tools_locked_without_engagement():
+    _app()
+    _reset_engagement()
+    from palisade_qt.recon import ReconApp
+    p = ReconApp(demo=False, mode="dark")
+    for g in p._gated:
+        assert all(not b.isEnabled() for b in g._btns), "active tools must be locked, no engagement"
+    g = p.wifi_gated
+    g.target.setText("aa:bb:cc:dd:ee:ff")
+    g._authorize("deauth")
+    assert "DENIED" in g.result.text() and "no active engagement" in g.result.text()
+    _reset_engagement()
+
+
+def test_recon_gate_authorizes_in_scope_denies_out_of_scope():
+    _app()
+    _reset_engagement()
+    import engagement
+    from palisade_qt.recon import ReconApp
+    p = ReconApp(demo=False, mode="dark")
+    engagement.start("Op", "ROE-7", ["aa:bb:cc:*"], "N0CALL")
+    p._refresh_gate()
+    g = p.wifi_gated
+    assert all(b.isEnabled() for b in g._btns), "unlocked under an active engagement"
+    g.target.setText("aa:bb:cc:dd:ee:ff")
+    g._authorize("deauth")
+    assert "AUTHORIZED" in g.result.text() and "wifi:deauth" in g.result.text()
+    assert any(a["action"] == "wifi:deauth" for a in engagement.actions()), "logged to the trail"
+    g.target.setText("99:99:99:99:99:99")               # out of scope
+    g._authorize("deauth")
+    assert "DENIED" in g.result.text() and "scope" in g.result.text()
+    _reset_engagement()
+
+
+def test_recon_wifi_passive_demo_and_standby(monkeypatch):
+    from palisade_qt import recon
+    w = recon.WifiScanWorker(demo=True)
+    rows = []
+    w.row.connect(lambda m: rows.append(m))
+    w.step()
+    assert rows and rows[0].get("demo") and rows[0]["aps"], "demo shows synthetic APs"
+    # live with no adapter/iw -> honest standby, no fabrication
+    w2 = recon.WifiScanWorker(demo=False)
+    seen, rows2 = [], []
+    w2.status.connect(lambda s: seen.append(s))
+    w2.row.connect(lambda m: rows2.append(m))
+    w2.step()                                            # offscreen -> _run_cmd None -> standby
+    assert rows2 == [] and any(s.get("standby") for s in seen)
+
+
+def test_recon_counter_alert_reaches_bus_and_feed():
+    _app()
+    from palisade_qt import recon, eventbus
+    eventbus.bus.clear()
+    alerts = []
+    eventbus.bus.published.connect(lambda e: alerts.append(e) if e["type"] == "alert" else None)
+    p = recon.ReconApp(demo=True, mode="dark")
+    p._on_counter({"kind": "gnss", "alert": ("gnss", "GPS jamming suspected (low C/N0)")})
+    assert p.counter_feed.model.rowCount() == 1
+    assert alerts and alerts[-1]["source"] == "RECON" and alerts[-1]["severity"] == "alert"
+
+
+def test_recon_demo_detectors_run_and_can_alert():
+    """All four real detector engines run AS-IS over a persistent synthetic feed and surface a
+    finding (with a human-readable text) — exercising the reuse path without any radio."""
+    from palisade_qt import recon
+    for kind in ("bugsweep", "jammer", "imsicatch", "gnss"):
+        w = recon.DetectorWorker(demo=True, kind=kind)     # persistent _det accumulates
+        got = [a for a in (w._demo_detect() for _ in range(200)) if a]
+        assert got, "demo %s should surface at least one finding over many cycles" % kind
+        det, text = got[0]
+        assert det and isinstance(text, str) and text, "%s finding needs readable text" % kind
+
+
+def test_recon_counter_detectors_have_no_tx_path():
+    """Guardrail: the counter modules are receive-only detectors — no transmit/jam/attack."""
+    import inspect
+    import bugsweep, jammer, imsicatch, gnss
+    for mod in (bugsweep, jammer, imsicatch, gnss):
+        src = inspect.getsource(mod)
+        low = src.lower()
+        for bad in ("txrequest", "txguard.authorize", "subprocess.popen", "deauth", "transmit("):
+            assert bad not in low, "%s must stay a passive detector (found %r)" % (mod.__name__, bad)
+
+
+def test_recon_engage_activate_deactivate_and_trail():
+    _app()
+    _reset_engagement()
+    import engagement
+    from palisade_qt.recon import ReconApp
+    p = ReconApp(demo=False, mode="dark")
+    p.eng_name.setText("NightWatch")
+    p.eng_auth.setText("ROE-42")
+    p.eng_scope.setText("10.0.0.*, Corp-*")
+    p.eng_operator.setText("N0CALL")
+    p._activate()
+    assert engagement.is_active() and "NightWatch" in p.eng_detail.hero.text()
+    p._deactivate()
+    assert not engagement.is_active()
+    _reset_engagement()
+
+
+def test_recon_open_pump_close_no_leaked_threads():
+    _app()
+    _reset_engagement()
+    from palisade_qt.recon import ReconApp
+    p = ReconApp(demo=False, mode="dark")
+    p.start()
+    _pump(200)
+    p.stop()
+    assert all(not w.isRunning() for w in p._workers) if p._workers else True
+    _reset_engagement()

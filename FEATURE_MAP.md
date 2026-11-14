@@ -96,10 +96,21 @@ flipper, usbhid, rollcode, replay, sensors (I2C).
 
 ## RECON — network + RF survey (authorized)
 Absorbs: wifisurvey, wifipent, netpent, blescan, blepent, passaudit, scout, rffinger,
-bugsweep, jammer (detector), imsicatch (detector).
-- ⬜ wifi survey/audit, BLE scan, net scan, RF fingerprint, counter-surveillance (bugsweep,
-  jam-detect, IMSI-catcher-detect)
-- ➕ open-network / rogue-AP / tracker + fake-BTS alerts into the OPS alert strip
+bugsweep, jammer (detector), imsicatch (detector), gnss, + engagement/opprofile/evidence.
+- ◐ **RECON page wired** — sub-tabs WIFI / BLE / NET / RF / COUNTER / ENGAGE, all backends AS-IS.
+  - **ENGAGE** (keystone): operator identity (`opprofile`), engagement scope (`engagement.start/end`),
+    the authorized-action trail + the tamper-evident evidence chain (`evidence.EvidenceChain`).
+  - **Gate is engine-enforced** — active tools (wifipent/blepent/netpent/passaudit) call their own
+    `prepare()` → `engagement.authorize_action(...)`; with no engagement (or out-of-scope target) the
+    engine returns no argv. The UI only reflects state ("REQUIRES ENGAGEMENT" vs the active scope) and
+    passes the shared evidence chain — it never routes around the gate or wires a new TX/attack path.
+  - **Passive**: wifisurvey AP scan + blescan BLE enum (hermetic seams, honest standby, bus publish).
+  - **COUNTER**: bugsweep / jammer / imsicatch / gnss — all receive-only detectors (no TX, guardrail
+    test), demo-fed, alerts → OPS strip.
+- ➕ open-network / fake-BTS / jammer / GPS-spoof alerts → `alert(source=RECON)` on the OPS strip;
+  Wi-Fi/BLE scans → `decode(source=RECON)`.
+- ⬜ live adapter wiring (monitor-mode Wi-Fi, bleak BLE, nmap, SatDump) is device-only; RF fingerprint
+  + scout site-survey are standby until an on-device feed is wired.
 
 ## BENCH — conducted TX self-test
 Absorbs: bench, loopback, txguard UI.
