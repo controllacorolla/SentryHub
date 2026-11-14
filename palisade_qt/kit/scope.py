@@ -67,14 +67,15 @@ class ScopePanel(QtWidgets.QFrame):
 
     @staticmethod
     def _lut(tok):
+        # PALISADE waterfall ramp: near-black floor -> violet mid -> green peak (theme colours).
         accent = tuple(int(tok["accent"][i:i + 2], 16) for i in (1, 3, 5))
+        green = tuple(int(tok["live"][i:i + 2], 16) for i in (1, 3, 5))
         stops = [
-            (0.00, (6, 8, 12)),
-            (0.25, (18, 16, 42)),
-            (0.50, (60, 40, 90)),
-            (0.70, accent),
-            (0.85, (accent[0] // 2 + 128, accent[1] // 2 + 128, accent[2] // 2 + 128)),
-            (1.00, (245, 248, 255)),
+            (0.00, (6, 8, 12)),             # noise floor, near black
+            (0.35, (30, 24, 60)),           # deep violet
+            (0.60, accent),                 # violet mid
+            (0.82, green),                  # green peak
+            (1.00, (220, 255, 235)),        # bright green-white
         ]
         cm = pg.ColorMap([s[0] for s in stops], [s[1] + (255,) for s in stops])
         return cm.getLookupTable(0.0, 1.0, 256)

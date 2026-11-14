@@ -475,3 +475,51 @@ def test_adsb_goes_busy_when_a_lease_layer_holds_the_radio(monkeypatch):
     assert not any(e["payload"].get("kind") == "aircraft" for e in got), "ADS-B BUSY while held"
     for s in list(w._lease_srcs.values()):
         s.stop()
+
+
+def test_prism_sweep_assembler_assembles_rtl_power():
+    from palisade_qt.prism import _SweepAssembler
+    a = _SweepAssembler()
+    rows = ["d,t,430000000,435000000,10000,100,-100,-98,-45",     # segment 1
+            "d,t,435000000,440000000,10000,100,-96,-95,-94",      # segment 2
+            "d,t,430000000,435000000,10000,100,-100,-98,-45"]     # wrap -> emit the pass
+    done = [o for o in (a.feed(r) for r in rows) if o is not None]
+    assert done, "a full rtl_power pass must assemble into one sweep"
+    f, p = done[0]
+    assert len(f) == 6 and abs(float(p.max()) - (-45)) < 0.1
+
+
+def test_prism_live_holds_radio_only_while_active(monkeypatch):
+    _app()
+    from palisade_qt import prism, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    monkeypatch.setattr(prism, "_open_rtl_power", lambda lo, hi, g: None)   # no real radio
+    w = prism.SweepWorker(demo=False, lo=430, hi=440)
+    w.set_active(True)
+    w.step()
+    assert ra.arbiter.owner() == "PRISM"          # active -> PRISM takes the radio
+    w.set_active(False)
+    w.step()
+    assert ra.arbiter.owner() is None             # page left -> release
+    w.set_active(True)
+    w.step()
+    assert ra.arbiter.owner() == "PRISM"
+    w.stop()
+    w.run()                                        # close -> release
+    assert ra.arbiter.owner() is None
+
+
+def test_prism_shows_busy_when_radio_held_by_atlas(monkeypatch):
+    _app()
+    from palisade_qt import prism, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    monkeypatch.setattr(prism, "_open_rtl_power", lambda lo, hi, g: None)
+    assert ra.arbiter.request("ATLAS-APRS") is True      # ATLAS holds the radio
+    w = prism.SweepWorker(demo=False, lo=430, hi=440)
+    seen = []
+    w.status.connect(seen.append)
+    w.set_active(True)
+    w.step()
+    assert ra.arbiter.owner() == "ATLAS-APRS"            # PRISM did NOT grab it
+    assert any(s.get("busy") == "APRS" for s in seen), "PRISM must report RADIO BUSY"
+    ra.arbiter.release("ATLAS-APRS")
