@@ -475,3 +475,17 @@ def test_adsb_goes_busy_when_a_lease_layer_holds_the_radio(monkeypatch):
     assert not any(e["payload"].get("kind") == "aircraft" for e in got), "ADS-B BUSY while held"
     for s in list(w._lease_srcs.values()):
         s.stop()
+
+
+def test_prowl_freqdb_allocation_and_panel():
+    _app()
+    from palisade_qt.prowl import ProwlApp, _describe_mhz
+    assert "NOAA Weather Radio" in _describe_mhz("162.400")
+    assert _describe_mhz("not-a-freq") == "—"
+    p = ProwlApp(demo=True, mode="dark")
+    p.fdb_input.setText("162.45")                 # numeric -> lookup/describe
+    assert "NOAA Weather Radio" in p.fdb_results.text()
+    p.fdb_input.setText("marine")                 # text -> search
+    assert p.fdb_results.text() and "no match" not in p.fdb_results.text().lower()
+    p.fdb_input.setText("")
+    assert p.fdb_results.text() == ""

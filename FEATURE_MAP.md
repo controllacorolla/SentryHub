@@ -63,7 +63,9 @@ Absorbs: rf_explorer, specan, waterfall, iqtool, noisefloor, classify.
 
 ## PROWL — scanner / tuner
 Absorbs: scanner, fm, freqdb.
-- ✅ scanner wired · ⬜ fm, freqdb
+- ✅ scanner wired · ✅ **freqdb** (lookup/search panel + ALLOCATION row via freqdb.describe/lookup/search) · ⬜ fm
+- ⬜ fm (PR2): FM/NOAA tuner mode via fm.pipeline/Pipe through the radio arbiter (NAME 'PROWL'), RDS→decode;
+  also migrate ProwlApp off base-class LEASE='PROWL' (bypasses the arbiter today) to arbiter-routed
 - ➕ memory banks + scan/hold + audio with the top-bar volume
 
 ## FORGE — hardware & IO bench
