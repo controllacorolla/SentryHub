@@ -19,13 +19,13 @@ import time
 from PySide6 import QtCore, QtWidgets
 
 from .app import PalisadeApp
-from . import theme, eventbus
+from . import theme, eventbus, radio_arbiter
 from .kit import MapPanel, FeedTable, DetailCard, micro
 from .worker import Worker
 
 # kind -> (legend label, theme colour token). Severity "alert" overrides the colour to red.
 # Remote-ID adds two kinds: the drone (alert red) and its OPERATOR (accent violet).
-KINDS = [("aircraft", "AIRCRAFT", "accent"), ("ship", "SHIPS", "live"),
+KINDS = [("aircraft", "AIRCRAFT", "accent"), ("vessel", "VESSELS", "cyan"),
          ("station", "APRS", "warn"), ("drone", "DRONES", "alert"),
          ("operator", "OPERATOR", "accent"),
          ("df", "DF", "text"), ("balloon", "BALLOONS", "muted")]
@@ -42,7 +42,7 @@ def _offset(lat, lon, d_nm, brg_deg):
 
 
 class _Track:
-    _SPD = {"aircraft": (160, 480), "ship": (4, 22), "station": (0, 55), "drone": (8, 40),
+    _SPD = {"aircraft": (160, 480), "vessel": (4, 22), "station": (0, 55), "drone": (8, 40),
             "df": (0, 0), "balloon": (6, 30)}
     _ALT = {"aircraft": (6000, 39000), "drone": (60, 400), "balloon": (30000, 90000)}
 
@@ -64,7 +64,7 @@ class _Track:
     def _mkid(kind):
         if kind == "aircraft":
             return random.choice(["UAL", "ASA", "DAL", "FDX", "N"]) + str(random.randint(100, 980))
-        if kind == "ship":
+        if kind == "vessel":
             return str(random.randint(200000000, 775000000))        # MMSI
         if kind == "station":
             return random.choice(["KD7", "W7", "N0", "KE7"]) + random.choice("ABCXYZ") + \
@@ -93,7 +93,7 @@ class _Track:
 
 class AtlasDemoWorker(Worker):
     """Synthetic multi-layer traffic, published to the bus (demo only)."""
-    _COUNT = {"aircraft": 6, "ship": 4, "station": 3, "drone": 2, "df": 1, "balloon": 1}
+    _COUNT = {"aircraft": 6, "vessel": 4, "station": 3, "drone": 2, "df": 1, "balloon": 1}
 
     def __init__(self, parent=None):
         super().__init__(demo=True, interval_ms=600, parent=parent)
@@ -235,22 +235,11 @@ class RidSource:
         self._on = False
 
 
-# ------------------------------------------------------------------ APRS (first lease-using source)
-def _acquire_aprs_lease():
-    """Acquire the built-in SDR for 144.39 via the shared lease (pauses readsb, coexists with the
-    autopilot). Returns the lease, or None if suite/radio is unavailable. Seam for tests."""
-    try:
-        import suite
-        lease = suite.RtlLease("ATLAS-APRS")
-        lease.acquire()                 # frees the built-in dongle; released again on layer-off
-        return lease
-    except Exception:
-        return None
-
-
+# ------------------------------------------------------------------ lease-using layers (one SDR)
+# APRS + AIS both need the single built-in dongle; they go through radio_arbiter so only ONE holds
+# it at a time (a denied layer renders RADIO BUSY). _open_*_pipe are test seams -> None under
+# offscreen/offline/no-tools, so CI never opens a real radio. Legacy decode paths reused AS-IS.
 def _open_aprs_pipe(gain):
-    """Start aprs.pipeline() (rtl_fm -> multimon-ng) as-is. None under tests/offline or without the
-    radio tools, so no real radio is ever opened in CI. Seam for tests."""
     import shutil
     import subprocess
     if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
@@ -259,6 +248,18 @@ def _open_aprs_pipe(gain):
         return None
     import aprs
     return subprocess.Popen(aprs.pipeline(gain), shell=True, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+
+
+def _open_ais_pipe(gain):
+    import shutil
+    import subprocess
+    if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        return None
+    if not shutil.which("rtl_ais"):
+        return None
+    import ais
+    return subprocess.Popen(ais.pipeline(gain), shell=True, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True, bufsize=1)
 
 
@@ -277,30 +278,59 @@ def aprs_station_contacts(stations, now):
     return out
 
 
-class AprsSource:
-    """Hear 144.39 APRS. Holds the single-SDR LEASE only while running: start() acquires it and
-    begins aprs.pipeline() (rtl_fm -> multimon-ng); stop() kills the pipe and RELEASES the lease,
-    so readsb/the autopilot come back. aprs's decoder (parse_frame/decode/Stations) is unchanged."""
+def ais_vessel_contacts(vessels, now):
+    """ais.Vessels -> typed contact events (kind=vessel). Decoding is ais's, unchanged."""
+    out = []
+    for v in vessels.active(now):
+        fc = vessels.fusion_contact(v)
+        lat, lon = fc.get("lat"), fc.get("lon")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            continue
+        spd = fc.get("speed_mps")
+        out.append(eventbus.contact(
+            "AIS", str(fc["mmsi"]), lat, lon, kind="vessel",
+            severity="live" if (spd or 0) > 0.5 else "info",
+            label=v.get("name") or str(fc["mmsi"]),
+            spd=int(spd / 0.514) if isinstance(spd, (int, float)) else None,   # m/s -> kt
+            course=fc.get("heading_deg"), mmsi=fc["mmsi"], ship_type=v.get("ship_type_name")))
+    return out
+
+
+class LeaseSource:
+    """A layer that needs the single SDR. Goes through radio_arbiter: poll() acquires the radio if
+    free and runs its capture pipe; if the radio is held by another layer it stays idle and
+    busy_owner() reports the holder (so the UI shows RADIO BUSY). stop() releases. Subclasses supply
+    the pipe and the decode (reused from the legacy module AS-IS). Only ONE LeaseSource is ever live."""
+    NAME = None
 
     def __init__(self, gain=0):
-        import aprs
-        self._aprs = aprs
         self._gain = gain
-        self._stations = aprs.Stations()
-        self._lease = None
+        self._on = False
+        self._has_radio = False
         self._proc = None
         self._thread = None
-        self._on = False
 
     def start(self):
-        if self._on:
-            return
-        self._on = True
-        self._lease = _acquire_aprs_lease()        # acquire the dongle for the duration only
-        self._proc = _open_aprs_pipe(self._gain)
-        if self._proc is not None:
-            self._thread = threading.Thread(target=self._read, daemon=True)
-            self._thread.start()
+        self._on = True          # acquire is deferred to poll() so a busy layer keeps retrying
+
+    def poll(self):
+        if not self._on:
+            return []
+        if not self._has_radio and radio_arbiter.arbiter.request(self.NAME):
+            self._has_radio = True
+            self._proc = self._open_pipe()
+            if self._proc is not None:
+                self._thread = threading.Thread(target=self._read, daemon=True)
+                self._thread.start()
+        if not self._has_radio:
+            return []            # radio busy: publish nothing (UI shows BUSY via busy_owner)
+        return self._contacts()
+
+    def busy_owner(self):
+        """Holder's lease name if this source wants the radio but can't have it, else None."""
+        if self._on and not self._has_radio:
+            return radio_arbiter.arbiter.owner()
+        return None
 
     def _read(self):
         try:
@@ -311,18 +341,6 @@ class AprsSource:
         except Exception:
             pass
 
-    def feed_line(self, line):
-        """One multimon-ng line -> aprs decode -> Stations (aprs's path, unchanged)."""
-        frame = self._aprs.parse_frame(line)
-        if not frame:
-            return
-        rep = self._aprs.decode(frame)
-        if rep:
-            self._stations.add(rep, time.time())
-
-    def contacts(self):
-        return aprs_station_contacts(self._stations, time.time())
-
     def stop(self):
         self._on = False
         if self._proc is not None:
@@ -331,12 +349,64 @@ class AprsSource:
             except Exception:
                 pass
             self._proc = None
-        if self._lease is not None:
-            try:
-                self._lease.release()              # restore readsb / hand back to the autopilot
-            except Exception:
-                pass
-            self._lease = None
+        if self._has_radio:
+            radio_arbiter.arbiter.release(self.NAME)   # readsb / the autopilot resume
+            self._has_radio = False
+
+    def _open_pipe(self):
+        raise NotImplementedError
+
+    def feed_line(self, line):
+        raise NotImplementedError
+
+    def _contacts(self):
+        raise NotImplementedError
+
+
+class AprsSource(LeaseSource):
+    """144.39 APRS (rtl_fm -> multimon-ng); aprs.parse_frame/decode/Stations unchanged."""
+    NAME = "ATLAS-APRS"
+
+    def __init__(self, gain=0):
+        super().__init__(gain)
+        import aprs
+        self._aprs = aprs
+        self._stations = aprs.Stations()
+
+    def _open_pipe(self):
+        return _open_aprs_pipe(self._gain)
+
+    def feed_line(self, line):
+        frame = self._aprs.parse_frame(line)
+        if frame:
+            rep = self._aprs.decode(frame)
+            if rep:
+                self._stations.add(rep, time.time())
+
+    def _contacts(self):
+        return aprs_station_contacts(self._stations, time.time())
+
+
+class AisSource(LeaseSource):
+    """162 MHz AIS (rtl_ais -> AIVDM); ais.AivdmAssembler/decode/Vessels unchanged."""
+    NAME = "ATLAS-AIS"
+
+    def __init__(self, gain=0):
+        super().__init__(gain)
+        import ais
+        self._assembler = ais.AivdmAssembler()
+        self._vessels = ais.Vessels()
+
+    def _open_pipe(self):
+        return _open_ais_pipe(self._gain)
+
+    def feed_line(self, line):
+        msg = self._assembler.feed(line)
+        if msg:
+            self._vessels.ingest(msg, time.time())
+
+    def _contacts(self):
+        return ais_vessel_contacts(self._vessels, time.time())
 
 
 class AtlasLiveWorker(Worker):
@@ -358,8 +428,8 @@ class AtlasLiveWorker(Worker):
         self._adsb_tried = False
         self._rid = None
         self._rid_tried = False
-        self._aprs = None            # AprsSource, created only while the APRS layer is on
-        self._aprs_wanted = False    # set by the layer toggle (GUI thread); reconciled in step()
+        self._lease_srcs = {}        # kind -> LeaseSource, alive only while that layer is on
+        self._wanted = set()         # lease-layer kinds toggled on (GUI thread); reconciled in step
 
     def _ensure_sources(self):
         if not self._adsb_tried:
@@ -380,33 +450,44 @@ class AtlasLiveWorker(Worker):
                 self.error.emit("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
                 self._rid = None
 
-    def set_aprs(self, on):
-        """Layer toggle (GUI thread): request the APRS capture on/off. The worker reconciles it
-        in step() so the lease acquire/release (which can block) runs off the GUI thread."""
-        self._aprs_wanted = bool(on)
+    LEASE_LAYERS = {"station": AprsSource, "vessel": AisSource}
 
-    def _reconcile_aprs(self):
-        if self._aprs_wanted and self._aprs is None:
-            try:
-                self._aprs = AprsSource()
-                self._aprs.start()           # acquires the lease (frees the dongle for 144.39)
-            except Exception as e:
-                self.error.emit("APRS unavailable: %s" % str(e)[:120])
-                self._aprs = None
-        elif not self._aprs_wanted and self._aprs is not None:
-            self._aprs.stop()                # releases the lease -> readsb/autopilot resume
-            self._aprs = None
+    def set_layer(self, kind, on):
+        """Lease-layer toggle (GUI thread): want this capture on/off. Reconciled in step() so the
+        arbiter request/release runs off the GUI thread."""
+        if on:
+            self._wanted.add(kind)
+        else:
+            self._wanted.discard(kind)
+
+    def _reconcile_leases(self):
+        for kind, cls in self.LEASE_LAYERS.items():
+            want = kind in self._wanted
+            src = self._lease_srcs.get(kind)
+            if want and src is None:
+                try:
+                    src = cls()
+                    src.start()
+                    self._lease_srcs[kind] = src
+                except Exception as e:
+                    self.error.emit("%s source unavailable: %s" % (kind, str(e)[:120]))
+            elif not want and src is not None:
+                src.stop()                   # releases the radio via the arbiter
+                del self._lease_srcs[kind]
 
     def step(self):
         self._ensure_sources()
-        self._reconcile_aprs()
-        for ev in self._adsb_contacts():
-            eventbus.bus.publish(ev)
+        self._reconcile_leases()
+        # ADS-B is the baseline (reads readsb's json). If a lease-layer holds the radio, readsb is
+        # paused -> ADS-B is BUSY (the app shows it) and we publish no stale aircraft.
+        if radio_arbiter.arbiter.owner() is None:
+            for ev in self._adsb_contacts():
+                eventbus.bus.publish(ev)
         if self._rid is not None:
             for ev in self._rid.contacts():
                 eventbus.bus.publish(ev)
-        if self._aprs is not None:
-            for ev in self._aprs.contacts():
+        for src in self._lease_srcs.values():
+            for ev in src.poll():            # acquires if free; nothing while the radio is busy
                 eventbus.bus.publish(ev)
 
     def _adsb_contacts(self):
@@ -424,9 +505,9 @@ class AtlasLiveWorker(Worker):
             self._adsb.stopped = True        # stop the ADS-B feed's poll thread on close
         if self._rid is not None:
             self._rid.stop()                 # stop the BLE scan thread on close
-        if self._aprs is not None:
-            self._aprs.stop()                # RELEASE the lease on page close (readsb resumes)
-            self._aprs = None
+        for src in list(self._lease_srcs.values()):
+            src.stop()                       # RELEASE the radio on page close (readsb resumes)
+        self._lease_srcs.clear()
 
 
 # ------------------------------------------------------------------ app
@@ -441,8 +522,10 @@ class AtlasApp(PalisadeApp):
         self._contacts = {}
         self._selected = None
         self._layers = {k for k, _, _ in KINDS}      # all layers on by default
+        self._busy_shown = set()
         if not self.demo:
-            self._layers.discard("station")          # APRS holds the SDR: opt-in in live mode
+            self._layers.discard("station")          # APRS + AIS hold the one SDR: opt-in in live
+            self._layers.discard("vessel")
 
         body = QtWidgets.QWidget()
         split = QtWidgets.QHBoxLayout(body)
@@ -456,6 +539,12 @@ class AtlasApp(PalisadeApp):
         right = QtWidgets.QVBoxLayout()
         right.setSpacing(10)
         right.addWidget(self._legend())
+        self._busy_label = QtWidgets.QLabel("")       # "RADIO BUSY — held by X" (live only)
+        self._busy_label.setProperty("class", "micro")
+        self._busy_label.setStyleSheet("color:%s;" % self._tok["warn"])
+        self._busy_label.setWordWrap(True)
+        self._busy_label.hide()
+        right.addWidget(self._busy_label)
         self.feed = FeedTable([("label", "CONTACT"), ("kind", "TYPE"),
                                ("rng", "NM"), ("alt", "ALT")])
         self.feed.selected.connect(self._show)
@@ -494,11 +583,13 @@ class AtlasApp(PalisadeApp):
         lay.addStretch(1)
         return f
 
+    LEASE_NAME = {"station": "ATLAS-APRS", "vessel": "ATLAS-AIS"}
+
     def _toggle(self, kind, on):
         self._layers.add(kind) if on else self._layers.discard(kind)
-        if kind == "station" and not self.demo and self._worker is not None \
-                and hasattr(self._worker, "set_aprs"):
-            self._worker.set_aprs(on)            # acquire/release the SDR lease with the layer
+        if kind in self.LEASE_NAME and not self.demo and self._worker is not None \
+                and hasattr(self._worker, "set_layer"):
+            self._worker.set_layer(kind, on)     # acquire/release the SDR via the arbiter
         self._render()
 
     def make_worker(self):
@@ -533,6 +624,33 @@ class AtlasApp(PalisadeApp):
         self.feed.model.set_rows(rows)
         self.set_chip("sdr", ("%d CONTACTS" % len(shown)) if (self.demo or shown) else "NO FEED",
                       state="neutral")
+        self._update_busy()
+
+    def _update_busy(self):
+        """Derive RADIO BUSY from the single arbiter: a toggled-on lease-layer (or ADS-B) that the
+        radio owner isn't shows BUSY — on the map rail and, edge-triggered, on the OPS alert strip."""
+        if self.demo:
+            return
+        owner = radio_arbiter.arbiter.owner()
+        ownerlbl = radio_arbiter.owner_label() or owner or "?"
+        msgs, busy_now = [], set()
+        for kind in ("station", "vessel"):
+            if kind in self._layers and owner and owner != self.LEASE_NAME[kind]:
+                msgs.append("%s: RADIO BUSY — held by %s" % (KIND_LABEL[kind], ownerlbl))
+                busy_now.add(kind)
+        if "aircraft" in self._layers and owner:
+            msgs.append("ADS-B paused — radio held by %s" % ownerlbl)
+            busy_now.add("aircraft")
+        if msgs:
+            self._busy_label.setText("  ·  ".join(msgs))
+            self._busy_label.show()
+        else:
+            self._busy_label.hide()
+        for kind in busy_now - self._busy_shown:     # OPS tile: alert when a layer becomes busy
+            eventbus.bus.publish(eventbus.alert(
+                "ATLAS", "%s RADIO BUSY — held by %s" % (KIND_LABEL.get(kind, kind), ownerlbl),
+                severity="warn"))
+        self._busy_shown = busy_now
 
     def _show(self, row):
         c = row.get("_src", {})

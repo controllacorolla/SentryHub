@@ -39,7 +39,13 @@ tacmap, geo, tiles, fieldcomp (map/trip/almanac).
   Holds the single-SDR **LEASE only while the APRS layer is on** (acquire on toggle-on, release on
   toggle-off AND page close); opt-in in live, so opening ATLAS never grabs the radio or disturbs
   the autopilot. This is the template for AIS/PRISM. **Device validation (real 144.39 + dongle) pending.**
-- ⬜ remaining live adapters (ais, kraken DF, balloons) — stubbed; zero until wired
+- ◐ **live AIS WIRED** — ais's 162 MHz decoder as-is (rtl_ais→AivdmAssembler/decode/Vessels);
+  vessels as typed contacts (cyan, kind=vessel). Uses the shared radio arbiter. Device validation pending.
+- ➕ **RADIO ARBITER** (radio_arbiter.py) — one SDR owner at a time (APRS/AIS; later PRISM). A
+  denied lease-layer renders "RADIO BUSY — held by X" on the map rail + an OPS alert, and ADS-B
+  shows BUSY (readsb paused) while a layer holds the radio, resuming on release. No time-sharing;
+  the displaced layer shows BUSY. This is the seed of the OVERWATCH radio director.
+- ⬜ remaining live adapters (kraken DF, balloons) — stubbed; zero until wired
 
 ## BABEL — universal decoder
 Absorbs: ais, signals (ACARS/VDL2), pager (POCSAG/FLEX), rds, cw, rtty, digimodes, tpms,

@@ -31,6 +31,9 @@ def _isolate_qt():
     try:
         from palisade_qt import eventbus
         eventbus.bus.clear()
+        from palisade_qt import radio_arbiter
+        radio_arbiter.arbiter._owner = None
+        radio_arbiter.arbiter._lease = None
     except Exception:
         pass
     import gc
@@ -327,49 +330,148 @@ class _FakeLease:
         self.released += 1
 
 
-def test_aprs_source_holds_lease_only_while_running(monkeypatch):
-    """The first lease-using layer: start() acquires, stop() releases; decode is aprs's, unchanged."""
-    from palisade_qt import atlas
-    lease = _FakeLease()
-    monkeypatch.setattr(atlas, "_acquire_aprs_lease", lambda: (lease.acquire(), lease)[1])
+def test_aprs_source_acquires_via_arbiter_and_releases(monkeypatch):
+    """APRS goes through the shared arbiter: poll() acquires, stop() releases; decode is aprs's."""
+    from palisade_qt import atlas, radio_arbiter as ra
+    rel = []
+    monkeypatch.setattr(ra, "_make_lease", lambda name: type("L", (), {"release": lambda s, restart=True: rel.append(1)})())
     monkeypatch.setattr(atlas, "_open_aprs_pipe", lambda gain: None)   # no real radio in tests
     src = atlas.AprsSource()
     src.start()
-    assert lease.acquired is True and lease.released == 0
+    src.poll()                                       # deferred acquire happens on first poll
+    assert ra.arbiter.owner() == "ATLAS-APRS"
     src.feed_line("APRS: K7ABC>APRS,WIDE1-1:!3758.00N/12221.00W>Mobile test")
-    evs = src.contacts()
+    evs = src.poll()
     assert any(e["payload"]["kind"] == "station" and e["payload"]["id"] == "K7ABC" for e in evs)
     assert evs[0]["source"] == "APRS"
     src.stop()
-    assert lease.released == 1, "stop() must release the SDR lease"
+    assert ra.arbiter.owner() is None and rel == [1], "stop() must release the SDR via the arbiter"
 
 
 def test_atlas_live_aprs_layer_toggles_the_lease_and_release_on_close(monkeypatch):
     _app()
-    from palisade_qt import atlas
-    lease = _FakeLease()
-    monkeypatch.setattr(atlas, "_acquire_aprs_lease", lambda: (lease.acquire(), lease)[1])
+    from palisade_qt import atlas, radio_arbiter as ra
+    rel = []
+    monkeypatch.setattr(ra, "_make_lease", lambda name: type("L", (), {"release": lambda s, restart=True: rel.append(1)})())
     monkeypatch.setattr(atlas, "_open_aprs_pipe", lambda gain: None)
     w = atlas.AtlasLiveWorker()
-    assert w._aprs is None                       # APRS off by default -> no lease on open
-    w.set_aprs(True)
-    w._reconcile_aprs()
-    assert w._aprs is not None and lease.acquired is True   # layer on -> acquire
-    w.set_aprs(False)
-    w._reconcile_aprs()
-    assert w._aprs is None and lease.released == 1          # layer off -> release
-    # and a close while active must release too
-    w.set_aprs(True)
-    w._reconcile_aprs()
-    w.stop()                                     # signal the loop to end...
-    w.run()                                      # ...so run()'s loop exits at once and releases
-    assert lease.released == 2, "page close must release the lease"
+    assert not w._lease_srcs                      # off by default -> no lease on open
+    w.set_layer("station", True)
+    w._reconcile_leases()
+    w._lease_srcs["station"].poll()               # acquire on first poll
+    assert ra.arbiter.owner() == "ATLAS-APRS"
+    w.set_layer("station", False)
+    w._reconcile_leases()
+    assert "station" not in w._lease_srcs and ra.arbiter.owner() is None and rel == [1]
+    # a close while active must release too
+    w.set_layer("station", True)
+    w._reconcile_leases()
+    w._lease_srcs["station"].poll()
+    w.stop()
+    w.run()                                       # loop exits immediately -> releases
+    assert ra.arbiter.owner() is None and len(rel) == 2, "page close must release the lease"
 
 
 def test_atlas_live_default_has_aprs_layer_off():
     _app()
     from palisade_qt.atlas import AtlasApp
     live = AtlasApp(demo=False, mode="dark")
-    assert "station" not in live._layers, "APRS (radio) must be opt-in in live mode"
+    assert "station" not in live._layers and "vessel" not in live._layers, \
+        "APRS + AIS (radio) must be opt-in in live mode"
     demo = AtlasApp(demo=True, mode="dark")
     assert "station" in demo._layers, "demo shows APRS (no radio cost)"
+
+
+def test_radio_arbiter_single_owner(monkeypatch):
+    from palisade_qt import radio_arbiter as ra
+    rel = []
+    monkeypatch.setattr(ra, "_make_lease",
+                        lambda name: type("L", (), {"release": lambda s, restart=True: rel.append(name)})())
+    assert ra.arbiter.request("ATLAS-APRS") is True
+    assert ra.arbiter.owner() == "ATLAS-APRS"
+    assert ra.arbiter.request("ATLAS-AIS") is False       # radio busy -> denied
+    assert ra.arbiter.owner() == "ATLAS-APRS"             # owner unchanged
+    ra.arbiter.release("ATLAS-AIS")                       # not the owner -> no-op
+    assert ra.arbiter.owner() == "ATLAS-APRS" and rel == []
+    ra.arbiter.release("ATLAS-APRS")
+    assert ra.arbiter.owner() is None and rel == ["ATLAS-APRS"]
+    assert ra.arbiter.request("ATLAS-AIS") is True        # free again
+    ra.arbiter.release("ATLAS-AIS")
+
+
+def test_ais_source_decodes_vessels_via_arbiter(monkeypatch):
+    from palisade_qt import atlas, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)       # no real radio
+    monkeypatch.setattr(atlas, "_open_ais_pipe", lambda gain: None)
+    import ais
+    src = atlas.AisSource()
+    src.start()
+    src.poll()
+    assert ra.arbiter.owner() == "ATLAS-AIS"
+    for ln in ais.Demo().SENTENCES:
+        src.feed_line(ln)
+    evs = src.poll()
+    assert any(e["payload"]["kind"] == "vessel" for e in evs) and evs[0]["source"] == "AIS"
+    assert evs[0]["payload"]["mmsi"]
+    src.stop()
+    assert ra.arbiter.owner() is None
+
+
+def test_arbiter_only_one_lease_layer_live_other_shows_busy(monkeypatch):
+    """The DoD arbiter test: AIS-on while APRS holds the radio -> AIS shows BUSY, only one live."""
+    _app()
+    from palisade_qt import atlas, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    monkeypatch.setattr(atlas, "_open_aprs_pipe", lambda g: None)
+    monkeypatch.setattr(atlas, "_open_ais_pipe", lambda g: None)
+    w = atlas.AtlasLiveWorker()
+    w.set_layer("station", True)
+    w._reconcile_leases()
+    w._lease_srcs["station"].poll()                 # APRS grabs the radio
+    assert ra.arbiter.owner() == "ATLAS-APRS"
+    w.set_layer("vessel", True)
+    w._reconcile_leases()
+    aprs, ais_src = w._lease_srcs["station"], w._lease_srcs["vessel"]
+    aprs.poll()
+    ais_src.poll()
+    assert aprs.busy_owner() is None                # APRS holds it
+    assert ais_src.busy_owner() == "ATLAS-APRS"     # AIS BUSY, held by APRS -> only one is live
+    assert ra.arbiter.owner() == "ATLAS-APRS"       # still exactly one owner
+    # release APRS -> AIS can take the radio
+    w.set_layer("station", False)
+    w._reconcile_leases()
+    assert ra.arbiter.owner() is None
+    ais_src.poll()
+    assert ra.arbiter.owner() == "ATLAS-AIS" and ais_src.busy_owner() is None
+    ais_src.stop()
+
+
+def test_adsb_goes_busy_when_a_lease_layer_holds_the_radio(monkeypatch):
+    """Fold ADS-B into the arbiter: while a lease-layer owns the radio, readsb is paused so ATLAS
+    publishes no aircraft; it resumes when released."""
+    _app()
+    from palisade_qt import atlas, radio_arbiter as ra, eventbus
+    eventbus.bus.clear()
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    monkeypatch.setattr(atlas, "_open_aprs_pipe", lambda g: None)
+
+    class FakeAdsb:
+        stopped = False
+
+        def snapshot(self):
+            return ([{"hex": "a1", "flight": "UAL1", "lat": 47.7, "lon": -122.4, "alt_baro": 30000}],
+                    {}, "live", None)
+    w = atlas.AtlasLiveWorker()
+    w._adsb, w._adsb_tried, w._rid_tried = FakeAdsb(), True, True   # adsb up, skip rid
+    got = []
+    eventbus.bus.published.connect(lambda e: got.append(e) if e["type"] == "contact" else None)
+    w.step()
+    assert any(e["payload"].get("kind") == "aircraft" for e in got), "ADS-B live when radio free"
+    got.clear()
+    w.set_layer("station", True)
+    w._reconcile_leases()
+    w._lease_srcs["station"].poll()                 # APRS now owns the radio
+    w.step()
+    assert not any(e["payload"].get("kind") == "aircraft" for e in got), "ADS-B BUSY while held"
+    for s in list(w._lease_srcs.values()):
+        s.stop()
