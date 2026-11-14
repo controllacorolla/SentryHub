@@ -45,7 +45,12 @@ tacmap, geo, tiles, fieldcomp (map/trip/almanac).
   denied lease-layer renders "RADIO BUSY — held by X" on the map rail + an OPS alert, and ADS-B
   shows BUSY (readsb paused) while a layer holds the radio, resuming on release. No time-sharing;
   the displaced layer shows BUSY. This is the seed of the OVERWATCH radio director.
-- ⬜ remaining live adapters (kraken DF, balloons) — stubbed; zero until wired
+- ◐ **live BALLOONS WIRED** — reads the radiosonde cache `sondes.json` (written by the Balloons
+  app's auto_rx UDP listener; the same file sky_app reads) via `balloons.parse_summary`'s shape;
+  sondes → balloon contacts. No SDR lease (auto_rx owns its pipeline). On ATLAS map + OPS PPI.
+- ◐ **DF (kraken) wired, device-gated** — `kraken.triangulate`/`confidence`/`kraken_available`
+  reused; the 5-channel KrakenSDR array is separate hardware (no lease). No array → zero (honest);
+  bearing collection + triangulation validate on the device.
 
 ## BABEL — universal decoder
 Absorbs: ais, signals (ACARS/VDL2), pager (POCSAG/FLEX), rds, cw, rtty, digimodes, tpms,
