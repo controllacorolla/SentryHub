@@ -254,7 +254,7 @@ class ProwlApp(PalisadeApp):
                 r["_colors"]["freq"] = self._tok["live"]
                 hot_count += 1
         self.feed.model.set_rows(rows)
-        self.header.set_chip("sdr", "%d CH" % len(rows), ok=True)
+        self.header.set_chip("sdr", "%d CH" % len(rows), state="neutral")
         act = msg.get("active")
         if act:
             self.active.setText("%s  %s  %d dBm" % (act[0], act[1], act[2]))

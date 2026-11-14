@@ -59,13 +59,20 @@ class StatusHeader(QtWidgets.QFrame):
     def _tick(self):
         self.clock.setText(QtCore.QDateTime.currentDateTimeUtc().toString("ddMMM HH:mm:ss'Z'").upper())
 
-    def set_chip(self, key, text=None, ok=None):
+    # state -> QSS class. Green (ok/live) is reserved for genuine live/OK; violet (accent) is
+    # identity/active; neutral is the default graphite; warn/alert for power & faults.
+    _STATE = {"neutral": "chip", "ok": "chip chip_ok", "live": "chip chip_ok",
+              "warn": "chip chip_warn", "alert": "chip chip_alert", "accent": "chip chip_accent"}
+
+    def set_chip(self, key, text=None, state=None, ok=None):
         c = self.chips.get(key)
         if c is None:
             return
         if text is not None:
             c.setText(text)
-        c.setProperty("class", "chip chip_ok" if ok else "chip")
+        if state is None:
+            state = "ok" if ok else "neutral"     # back-compat for ok=bool callers
+        c.setProperty("class", self._STATE.get(state, "chip"))
         c.style().unpolish(c)
         c.style().polish(c)
 

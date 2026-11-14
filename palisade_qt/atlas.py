@@ -97,7 +97,7 @@ class AtlasApp(PalisadeApp):
                 c = self._tok["muted"]
             r["_colors"] = {"rng": c}
         self.feed.model.set_rows(sorted(rows, key=lambda r: float(r["rng"])))
-        self.header.set_chip("sdr", "%d CONTACTS" % len(rows), ok=True)
+        self.header.set_chip("sdr", "%d CONTACTS" % len(rows), state="neutral")
 
     def _show(self, row):
         self.detail.set_hero(row.get("cs", "—"), "contact")

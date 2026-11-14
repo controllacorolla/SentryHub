@@ -375,7 +375,7 @@ class BabelApp(PalisadeApp):
         self.feed.model.prepend(row, cap=400)
         self._count += 1
         self.count.setText("%d msgs" % self._count)
-        self.header.set_chip("sdr", "%d MSGS" % self._count, ok=True)
+        self.header.set_chip("sdr", "%d MSGS" % self._count, state="neutral")
         if self._count == 1:
             self._show(row)
 

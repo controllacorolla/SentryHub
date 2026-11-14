@@ -47,9 +47,11 @@ class OpsWorker(Worker):
         batt = max(5, 96 - t * 0.02)
         self.status.emit({
             "contacts": contacts, "temp": temp, "batt": batt,
-            "sdr": {"text": "SDR DEMO", "ok": True},
-            "gps": {"text": "GPS 9", "ok": True},
-            "pwr": {"text": "PWR %d%%" % batt, "ok": batt > 20},
+            # green is reserved for genuine live/OK; demo status rides neutral/warn, not green
+            "sdr": {"text": "SDR DEMO", "state": "neutral"},
+            "gps": {"text": "GPS 9", "state": "neutral"},
+            "pwr": {"text": "PWR %d%%" % batt, "state": "alert" if batt <= 10
+                    else "warn" if batt <= 20 else "neutral"},
         })
         kinds = ["ADS-B", "AIS", "APRS", "POCSAG", "ACARS", "ADS-B", "RDS"]
         self.row.emit({
@@ -67,9 +69,11 @@ class OpsWorker(Worker):
         sdr_ok = os.path.exists("/dev/swradio0") or os.path.exists("/dev/rtlsdr0")
         status = {
             "contacts": 0, "temp": temp or 0, "batt": batt_pct,
-            "sdr": {"text": "SDR OK" if sdr_ok else "SDR —", "ok": sdr_ok},
+            "sdr": {"text": "SDR OK" if sdr_ok else "SDR —",
+                    "state": "live" if sdr_ok else "neutral"},   # green only when the SDR is really up
             "pwr": {"text": "PWR %d%%" % batt_pct if batt_pct >= 0 else "PWR —",
-                    "ok": batt_pct > 20 if batt_pct >= 0 else False},
+                    "state": ("alert" if 0 <= batt_pct <= 10 else "warn"
+                              if 0 <= batt_pct <= 20 else "neutral")},
         }
         self.status.emit(status)
 

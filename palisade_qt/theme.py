@@ -50,10 +50,13 @@ QLabel.alert  {{ color: {alert}; }}
 QLabel.accent {{ color: {accent}; }}
 
 /* chip: status pill in the header */
-QLabel.chip     {{ background: {p2}; border: 1px solid {hairline}; border-radius: 9px;
-                   padding: 2px 9px; color: {muted}; font-size: 11px; }}
-QLabel.chip_ok  {{ color: {live}; border-color: {live}; }}
-QLabel.chip_tx  {{ color: {live}; border-color: {live}; }}
+QLabel.chip       {{ background: {p2}; border: 1px solid {hairline}; border-radius: 9px;
+                     padding: 2px 9px; color: {muted}; font-size: 11px; }}
+QLabel.chip_ok    {{ color: {live}; border-color: {live}; }}       /* green: live / OK only */
+QLabel.chip_tx    {{ color: {live}; border-color: {live}; }}
+QLabel.chip_warn  {{ color: {warn}; border-color: {warn}; }}
+QLabel.chip_alert {{ color: {alert}; border-color: {alert}; }}
+QLabel.chip_accent {{ color: {accent}; border-color: {accent}; }}  /* violet: identity / active */
 
 QPushButton {{ background: {p2}; border: 1px solid {hairline}; border-radius: 8px;
                padding: 6px 12px; color: {text}; }}
