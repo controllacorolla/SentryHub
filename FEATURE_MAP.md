@@ -15,11 +15,12 @@ Absorbs: field_status, sensors, powergov, doctor (status), sitrep (summary), liv
 - ➕ one unified alert/timeline strip fed by every callsign
 - ➕ spoken sitrep (AI-generated voice summary of current picture)
 
-## OVERWATCH — sky dome + radio director
+## OVERWATCH — sky dome + radio director + power manager
 Absorbs: overwatch, astro, radio (SDR lease/autopilot), scout, passsched.
 - ⬜ sky dome (sun/moon/sat passes via astro), pass scheduling
 - 🔧 **radio director** — autopilot time-sharing the dongle across active layers (rotation)
 - 🔧 **remote sensor nodes** — distributed PALISADE instances feeding one OPS dashboard
+- 🔧 **GPIO power manager** (AIO V2) — individual SDR/GPS/LoRa/USB power on/off via GPIO for load shedding + hardware control
 
 ## ATLAS — the map
 Absorbs: sky_app (ADS-B), skyintel, mlat, balloons, aprs, dronewatch (Remote ID), kraken (DF),
@@ -59,6 +60,7 @@ Absorbs: rf_explorer, specan, waterfall, iqtool, noisefloor, classify, freqdb, r
 - ✅ PyQtGraph waterfall + spectrum, violet→green colormap, peak-hold, on arbiter
 - ◐ IQ record/replay (iqtool), noise-floor tracking, RF fingerprint, freqdb overlay
 - 🔧 **SigDigger-level signal analysis** — symbol recording, constellation view, baud rate estimation, scrambling polynomial detection, transition analysis
+- 🔧 **Sub-GHz LoRa band scanner** (AIO V2 SX1262) — 860–960 MHz spectrum scan + RSSI waterfall via LoRa radio, separate from RTL-SDR
 - 🔧 **TEMPEST** — EM emanation monitoring (gr-tempest, experimental)
 - ➕ click-to-tune into PROWL/BABEL from a spectrum peak
 
@@ -73,7 +75,11 @@ Absorbs: hwlab (serial/I2C/GPIO), devterm (serial/BLE/MQTT/SSH), buslab, canbus,
 flipper, usbhid, rollcode, replay, sensors (I2C).
 - ⬜ all — real serial/I2C/CAN/BLE consoles + tool integrations
 - ➕ one colored multiplexed console with per-device tabs
+- 🔧 **LoRa packet capture + replay** (AIO V2 SX1262) — raw LoRa sniff, record, decode, and replay (TX replay gated behind txguard). IoT/LoRaWAN security testing
+- 🔧 **Meshtastic packet analysis** (AIO V2 SX1262) — decode mesh traffic: node IDs, positions, messages, channel keys. Counter-mesh recon
+- 🔧 **Bias tee control** (AIO V2 RTL-SDR) — software toggle for 5V bias tee powering external LNAs/active antennas through coax
 - 🔧 **Ubertooth integration** — raw Bluetooth Classic sniffing (beyond BLE)
+- 🔧 **Nordic nRF sniffer** — protocol-aware BLE packet capture (GATT endpoints, pairing, keys) vs raw BLE scan
 
 ## RECON — network + RF survey + pentest (authorized)
 Absorbs: wifisurvey, wifipent, netpent, blescan, blepent, passaudit, scout, rffinger,
@@ -83,6 +89,11 @@ opprofile, engagement, evidence.
   jam-detect, IMSI-catcher-detect, GNSS spoof-detect)
 - ⬜ engagement governance UI (opprofile, engagement, evidence)
 - ➕ open-network / rogue-AP / tracker + fake-BTS alerts into the OPS alert strip
+- 🔧 **WiFi 6E (6 GHz) pentest** (AC1200 MT7921AUN) — monitor mode + packet injection on 2.4/5/6 GHz tri-band via mt76 driver
+- 🔧 **BT 5.2 recon** (AC1200 MT7921AUN) — Bluetooth 5.2 scanning/enum built into the WiFi card, supplements blescan
+- 🔧 **BLE proximity tracking** — passive BLE beacon/tag detection (AirTag, Tile, SmartTag) with RSSI-based distance estimation + alert on unknown trackers following you
+- 🔧 **WiFi client probe fingerprinting** — passive capture of probe requests to identify devices/people by their preferred network lists
+- 🔧 **Bluetooth MITM / GATTack** (engagement-gated) — BLE man-in-the-middle testing via blepent
 - 🔧 **threat correlation** — cross-reference WiFi/BLE/cellular anomalies into a unified threat picture
 
 ## BENCH — conducted TX self-test
@@ -103,13 +114,16 @@ Absorbs: settings_ui, doctor, assistant (AI), sitrep (spoken), transcriber, fusi
 - ✅ **Event bus** — typed contract, thread-safe, geo-native payloads. OPS + all panels consume.
 - ✅ **Radio arbiter** — one-owner dongle model, RADIO BUSY states, seed for OVERWATCH director.
 - ✅ **Theme** — violet light/dark per DESIGN.md, depth tokens, legible at 1280×480.
-- ➕ **Session record + replay** — capture all event-bus traffic, play back field sessions.
+- ➕ **Session record + replay** — capture all event-bus traffic to NVMe SSD, play back field sessions.
 - ➕ **Command palette (⌘K)** — jump to any callsign/freq/tail/decoder.
 - ➕ **Watchlists** — watch a tail/callsign/freq/MAC/MMSI; alert on hit.
 - ➕ **Export** — KML/CSV/GPX for contacts, tracks, logs.
 - ➕ **ATAK/Cursor-on-Target export** — push contacts to TAK as CoT XML over multicast.
-- ➕ **Global health-aware load shedding** — thermal/battery service shuts heavy panels first.
-- ➕ **Offline/air-gapped mode** — bundled assets, no internet required for core functions.
+- ➕ **Meshtastic CoT bridge** (AIO V2 SX1262) — relay contacts/alerts to other PALISADE nodes or TAK devices over LoRa mesh when there's no internet.
+- ➕ **Global health-aware load shedding** — thermal/battery + GPIO power gating (AIO V2) shuts heavy panels and radios individually.
+- ➕ **Offline/air-gapped mode** — bundled assets, NVMe storage, no internet required for core functions.
+- ➕ **GNSS position + heading overlay** (AIO V2 GNSS) — own-ship position on ATLAS map + bearing to contacts + moving map.
+- ➕ **Time sync from GNSS** (AIO V2 GNSS + RTC) — accurate timestamps on all event-bus records even without NTP; RTC holds time across reboots.
 
 ### Engineering phase (new code / DSP / algorithms)
 - 🔧 **DSP decoders** — CW, RTTY, digimodes, signal classifier (see BABEL above)
@@ -120,8 +134,16 @@ Absorbs: settings_ui, doctor, assistant (AI), sitrep (spoken), transcriber, fusi
 - 🔧 **Cross-feed fusion** — multi-source track correlation (see ATLAS above)
 - 🔧 **Pattern-of-life + anomaly detection** — contact time-series intelligence (see ATLAS above)
 - 🔧 **Radio director** — autopilot dongle rotation (see OVERWATCH above)
+- 🔧 **GPIO power manager** — individual hardware power gating via AIO V2 (see OVERWATCH above)
 - 🔧 **Remote sensor nodes** — distributed multi-device SIGINT (see OVERWATCH above)
-- 🔧 **Meshtastic mesh relay** — LoRa contact/alert relay (see MORE above)
+- 🔧 **LoRa packet capture + replay + Meshtastic analysis** — sub-GHz security testing via SX1262 (see FORGE above)
+- 🔧 **Sub-GHz LoRa band scanner** — 860–960 MHz spectrum via SX1262 (see PRISM above)
+- 🔧 **Meshtastic mesh relay + CoT bridge** — LoRa contact/alert relay (see cross-cutting above)
+- 🔧 **WiFi 6E pentest + BT 5.2 recon** — tri-band monitor mode + injection via MT7921AUN (see RECON above)
+- 🔧 **BLE proximity tracking + tracker detection** — AirTag/Tile/SmartTag detection + unknown tracker alerts (see RECON above)
+- 🔧 **WiFi client probe fingerprinting** — passive device identification from probe requests (see RECON above)
+- 🔧 **Nordic nRF BLE sniffer** — protocol-aware BLE packet capture (see FORGE above)
+- 🔧 **Bluetooth MITM / GATTack** — BLE MITM testing, engagement-gated (see RECON above)
 - 🔧 **TEMPEST** — EM emanation monitoring (see PRISM above, experimental)
 - 🔧 **Ubertooth BT Classic** — raw Bluetooth sniffing (see FORGE above)
 - 🔧 **Threat correlation** — unified threat picture from WiFi/BLE/cellular (see RECON above)
@@ -138,16 +160,25 @@ OPS ✅ → ATLAS ✅ → PRISM ✅ → PROWL ✅ → BABEL (in progress) → RE
 Priority order:
 1. rtl_433 ISM (easiest win, massive device coverage)
 2. ACARS/VDL2 (aircraft data beyond ADS-B, mature tools)
-3. Session record/replay + ATAK/CoT export (makes it a real field tool)
-4. Cross-feed fusion + pattern-of-life (the differentiator vs iNTERCEPT)
-5. Remote sensor nodes (distributed PALISADE)
-6. LTE cell scanning + GSM (cellular gap)
-7. SigDigger-level signal analysis in PRISM
-8. DSP decoders (CW/RTTY/digimodes)
-9. Iridium + DECT + SatDump (niche but powerful)
-10. TEMPEST + Ubertooth (experimental/hardware-gated)
-11. Second SDR + radio director (unlocks simultaneous operation)
-12. HackRF TX for BENCH (conducted self-test only)
+3. Session record/replay to NVMe + ATAK/CoT export (makes it a real field tool)
+4. LoRa packet capture + Meshtastic analysis (AIO V2 SX1262 — unique capability, IoT pentest)
+5. WiFi 6E pentest + BT 5.2 recon (AC1200 — unlock tri-band + BT assessment)
+6. BLE tracker detection (AirTag/Tile/SmartTag — counter-surveillance, high field value)
+7. Cross-feed fusion + pattern-of-life (the differentiator vs iNTERCEPT)
+8. Meshtastic CoT bridge + mesh relay (off-grid team SA via LoRa)
+9. GPIO power manager (AIO V2 — hardware load shedding, extends field time)
+10. GNSS own-ship position + time sync (AIO V2 — moving map + accurate timestamps)
+11. WiFi probe fingerprinting (passive device tracking — recon gold)
+12. Remote sensor nodes (distributed PALISADE)
+13. LTE cell scanning + GSM (cellular gap)
+14. Sub-GHz LoRa band scanner in PRISM (SX1262 spectrum)
+15. SigDigger-level signal analysis in PRISM
+16. DSP decoders (CW/RTTY/digimodes)
+17. Nordic nRF BLE sniffer + BLE MITM/GATTack
+18. Iridium + DECT + SatDump (niche but powerful)
+19. TEMPEST + Ubertooth (experimental/hardware-gated)
+20. Second SDR + radio director (unlocks simultaneous operation)
+21. HackRF TX for BENCH (conducted self-test only)
 
 ## Guardrails
 All tools come in. Active assessment gated behind engagement.py (authorization), opprofile.py
