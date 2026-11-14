@@ -12,7 +12,8 @@ import sys
 from PySide6 import QtGui, QtWidgets
 
 from . import theme
-from .ops import OpsHome, CALLSIGNS
+from .kit import TopBar
+from .ops import OpsHome, CALLSIGNS, GROUPS
 from .prism import PrismApp
 from .babel import BabelApp
 from .atlas import AtlasApp
@@ -30,24 +31,27 @@ TK_HOSTS = {}
 
 
 class NavRail(QtWidgets.QFrame):
-    """Persistent left callsign rail — always visible, active one highlighted violet."""
+    """Persistent left callsign rail, grouped OVERVIEW / SENSE / FIELD; active one violet."""
 
     def __init__(self, hub, parent=None):
         super().__init__(parent)
         self.setObjectName("nav_rail")
-        self.setProperty("class", "nav_rail")
-        self.setFixedWidth(108)
+        self.setFixedWidth(136)
         self.hub = hub
         self.btns = {}
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(6, 8, 6, 8)
-        lay.setSpacing(2)
-        for name, _sub in CALLSIGNS:
-            b = QtWidgets.QPushButton(name)
-            b.setProperty("class", "nav_item")
-            b.clicked.connect(lambda _, n=name: self.hub.open_callsign(n))
-            lay.addWidget(b)
-            self.btns[name] = b
+        lay.setContentsMargins(6, 4, 6, 8)
+        lay.setSpacing(1)
+        for group, names in GROUPS:
+            g = QtWidgets.QLabel(group)
+            g.setProperty("class", "navgroup")
+            lay.addWidget(g)
+            for name in names:
+                b = QtWidgets.QPushButton(name)
+                b.setProperty("class", "nav_item")
+                b.clicked.connect(lambda _, n=name: self.hub.open_callsign(n))
+                lay.addWidget(b)
+                self.btns[name] = b
         lay.addStretch(1)
         self.set_active("OPS")
 
@@ -67,26 +71,25 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.resize(1280, 480)
 
         central = QtWidgets.QWidget()
+        central.setObjectName("root")
         self.setCentralWidget(central)
         vbox = QtWidgets.QVBoxLayout(central)
         vbox.setContentsMargins(0, 0, 0, 0)
         vbox.setSpacing(0)
 
-        brand = QtWidgets.QFrame()
-        brand.setObjectName("brand_bar")
-        vbox.addWidget(brand)
+        self.topbar = TopBar(mode=mode)          # one app-wide top bar (logo/chips/vol/clock)
+        vbox.addWidget(self.topbar)
 
         hbox = QtWidgets.QHBoxLayout()
         hbox.setContentsMargins(0, 0, 0, 0)
         hbox.setSpacing(0)
-
         self.rail = NavRail(self)
         hbox.addWidget(self.rail)
-        hbox.addSpacing(2)
-
         self.stack = QtWidgets.QStackedWidget()
         hbox.addWidget(self.stack, 1)
         vbox.addLayout(hbox, 1)
+
+        vbox.addWidget(self._foot())
 
         self.pages = {}
         self.ops = OpsHome(demo=demo, mode=mode)
@@ -100,15 +103,38 @@ class PalisadeHub(QtWidgets.QMainWindow):
             QtGui.QShortcut(QtGui.QKeySequence(str(i + 1)),
                             self, activated=lambda n=name: self.open_callsign(n))
 
+    def _foot(self):
+        f = QtWidgets.QFrame()
+        f.setObjectName("foot_bar")
+        f.setFixedHeight(26)
+        h = QtWidgets.QHBoxLayout(f)
+        h.setContentsMargins(14, 0, 14, 0)
+        h.setSpacing(16)
+        for key, txt in (("⌘K", "JUMP"), ("ESC", "HOME"), ("⌘R", "RECORD")):
+            k = QtWidgets.QLabel(key)
+            k.setProperty("class", "footkey")
+            t = QtWidgets.QLabel(txt)
+            t.setProperty("class", "foottxt")
+            h.addWidget(k)
+            h.addWidget(t)
+        h.addStretch(1)
+        return f
+
     def _add_page(self, name, widget):
+        if hasattr(widget, "attach_topbar"):
+            widget.attach_topbar(self.topbar)
         self.pages[name] = widget
         self.stack.addWidget(widget)
 
     def show_page(self, name):
         w = self.pages.get(name)
-        if w is not None:
-            self.stack.setCurrentWidget(w)
-            self.rail.set_active(name)
+        if w is None:
+            return
+        self.stack.setCurrentWidget(w)
+        self.rail.set_active(name)
+        for n, page in self.pages.items():     # only the visible page drives the shared top bar
+            if hasattr(page, "set_active"):
+                page.set_active(n == name)
 
     def open_callsign(self, name):
         if name in self.pages:

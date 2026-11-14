@@ -119,6 +119,30 @@ QToolTip {{ background: {p1}; color: {text}; border: 1px solid {hairline};
 /* brand bar — thin accent line at the top of the main window */
 QFrame#brand_bar {{ background: {accent}; min-height: 2px; max-height: 2px; border: none; }}
 
+/* app-wide top bar */
+QFrame#top_bar {{ background: {p1}; border: none; border-bottom: 1px solid {hairline}; }}
+QLabel#wordmark {{ color: {text}; font-size: 13px; letter-spacing: 4px; }}
+QLabel.hchip {{ color: {muted}; font-size: 10px; letter-spacing: 1px; padding: 0 12px;
+                border-left: 1px solid {hairline}; }}
+QLabel.hchip_live {{ color: {live}; }}
+QLabel.hchip_warn {{ color: {warn}; }}
+QLabel.hchip_alert {{ color: {alert}; }}
+QLabel.hchip_accent {{ color: {accent}; }}
+QLabel#dtg {{ color: {muted}; font-size: 11px; letter-spacing: 2px; }}
+QSlider#vol::groove:horizontal {{ height: 3px; background: {hairline}; border-radius: 2px; }}
+QSlider#vol::handle:horizontal {{ width: 10px; height: 10px; margin: -4px 0;
+                                  border-radius: 5px; background: {accent}; }}
+QSlider#vol::sub-page:horizontal {{ background: {accent}; border-radius: 2px; }}
+
+/* foot bar */
+QFrame#foot_bar {{ background: {p1}; border: none; border-top: 1px solid {hairline}; }}
+QLabel.footkey {{ color: {text}; font-size: 10px; letter-spacing: 1px; }}
+QLabel.foottxt {{ color: {muted}; font-size: 10px; letter-spacing: 1.5px; }}
+
+/* nav group header */
+QLabel.navgroup {{ color: {muted}; font-size: 11px; letter-spacing: 1.5px;
+                   padding: 11px 14px 3px; }}
+
 /* callsign rail */
 QFrame#nav_rail {{ background: {p1}; border: none;
     border-right: 1px solid {hairline}; border-radius: 0; }}

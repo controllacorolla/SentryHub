@@ -42,7 +42,8 @@ def test_ops_open_pump_close_no_leaked_thread(mode):
     _pump(900)
     worker = ops._worker
     assert worker is not None and worker.isRunning(), "worker should run while open"
-    assert ops.feed.model.rowCount() > 0, "demo feed should have produced rows"
+    # OPS consumes the event bus; the demo feed should have published contacts
+    assert len(ops._contacts) > 0, "demo feed should have published contacts to the bus"
     win.close()
     _pump(200)
     assert ops._worker is None, "stop() must clear the worker"
@@ -169,3 +170,41 @@ def test_launcher_main_is_importable():
     import palisade_qt.shell as s
     import palisade_qt.__main__ as m           # noqa: F401
     assert callable(s.main)
+
+
+def test_eventbus_typed_contract():
+    from palisade_qt import eventbus
+    got = []
+    eventbus.bus.published.connect(got.append)
+    c = eventbus.contact("ATLAS", "UAL1", 10, -5, mil=True)
+    d = eventbus.decode("BABEL", "ADS-B", "A1", "FL340")
+    a = eventbus.alert("RECON", "Open AP", severity="warn")
+    for e in (c, d, a):
+        eventbus.bus.publish(e)
+    for e in (c, d, a):
+        assert set(e) == {"type", "source", "severity", "ts", "payload"}
+    assert c["type"] == "contact" and c["payload"]["x"] == 10 and c["payload"]["mil"] is True
+    assert d["type"] == "decode" and d["payload"]["proto"] == "ADS-B"
+    assert a["type"] == "alert" and a["severity"] == "warn"
+    assert eventbus.bus.recent(etype="alert")[-1]["payload"]["text"] == "Open AP"
+    import pytest as _pt
+    with _pt.raises(AssertionError):
+        eventbus.make_event("bogus", "X", {})
+    eventbus.bus.published.disconnect(got.append)
+
+
+def test_ops_live_mode_shows_standby_not_fake_data():
+    """Honesty: with no backend publishing, OPS cards stay on standby, no invented contacts."""
+    _app()
+    from palisade_qt import eventbus
+    eventbus.bus.clear()
+    from palisade_qt.ops import OpsHome
+    ops = OpsHome(demo=False, mode="dark")
+    win = ops.standalone()
+    win.show()
+    _pump(500)
+    # PRISM card is standby until PRISM is up; no contacts invented in live mode
+    assert ops.card_prism._live is False
+    assert len(ops._contacts) == 0, "live OPS must not fabricate contacts"
+    win.close()
+    _pump(150)

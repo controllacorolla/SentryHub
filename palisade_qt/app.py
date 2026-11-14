@@ -17,10 +17,9 @@ Subclass contract:
 """
 import threading
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtWidgets
 
 from . import theme
-from .kit import StatusHeader
 
 
 class PalisadeApp(QtWidgets.QWidget):
@@ -35,17 +34,36 @@ class PalisadeApp(QtWidgets.QWidget):
         self._lease = None
         self._started = False
         self._stopped = False
+        # status routes to the app-wide TopBar (shell sets it) only while this page is active,
+        # so a backgrounded page can't clobber the visible page's chips.
+        self._topbar = None
+        self._active = False
+        self._last_status = {"sdr": {"text": "SDR DEMO" if demo else "SDR —",
+                                     "state": "neutral", "ok": None}}
+        self.header = self          # pages call self.header.set_chip(...) -> routed below
 
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(10)
-        self.header = StatusHeader(self.TITLE)
-        root.addWidget(self.header)
-        self.header.set_chip("sdr", "SDR" + (" DEMO" if demo else ""), ok=demo)
         body = self.build_body()
         root.addWidget(body, 1)
 
         theme.apply(self, mode)
+
+    # ---- status routing to the shared top bar ----
+    def set_chip(self, key, text=None, state=None, ok=None):
+        self._last_status[key] = {"text": text, "state": state, "ok": ok}
+        if self._active and self._topbar is not None:
+            self._topbar.set_chip(key, text, state=state, ok=ok)
+
+    def attach_topbar(self, topbar):
+        self._topbar = topbar
+
+    def set_active(self, active):
+        self._active = active
+        if active and self._topbar is not None:
+            for k, v in self._last_status.items():
+                self._topbar.set_chip(k, v["text"], state=v["state"], ok=v["ok"])
 
     # ---- subclass hooks (defaults keep the base usable on its own) ----
     def build_body(self):
@@ -61,7 +79,7 @@ class PalisadeApp(QtWidgets.QWidget):
         for k in ("sdr", "gps", "pwr", "tx"):
             if k in status:
                 v = status[k]
-                self.header.set_chip(k, v.get("text"), state=v.get("state"), ok=v.get("ok"))
+                self.set_chip(k, v.get("text"), state=v.get("state"), ok=v.get("ok"))
 
     def on_error(self, msg):
         # R2: surface, don't swallow. Subclasses can show it in the UI; default routes to stderr.
@@ -124,14 +142,24 @@ class PalisadeApp(QtWidgets.QWidget):
         self.stop()
         super().closeEvent(ev)
 
-    # ---- standalone wrapper ----
+    # ---- standalone wrapper (own TopBar, since there's no shell) ----
     def standalone(self):
+        from .kit import TopBar
         win = QtWidgets.QMainWindow()
         win.setWindowTitle("PALISADE — " + self.TITLE)
-        win.setCentralWidget(self)
+        central = QtWidgets.QWidget()
+        central.setObjectName("root")
+        v = QtWidgets.QVBoxLayout(central)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+        tb = TopBar(mode=self.mode)
+        v.addWidget(tb)
+        v.addWidget(self, 1)
+        self.attach_topbar(tb)
+        self.set_active(True)
+        win.setCentralWidget(central)
         win.resize(1280, 480)
 
-        # ensure the app stops when the window closes (closeEvent is on the central widget)
         def _close(ev, _orig=win.closeEvent):
             self.stop()
             _orig(ev)
