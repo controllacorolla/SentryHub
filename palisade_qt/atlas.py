@@ -10,7 +10,10 @@ no backend shows zero contacts rather than inventing them. UI + wiring only; no 
 behaviour changes here.
 """
 import math
+import os
+import queue
 import random
+import threading
 import time
 
 from PySide6 import QtCore, QtWidgets
@@ -21,8 +24,10 @@ from .kit import MapPanel, FeedTable, DetailCard, micro
 from .worker import Worker
 
 # kind -> (legend label, theme colour token). Severity "alert" overrides the colour to red.
+# Remote-ID adds two kinds: the drone (alert red) and its OPERATOR (accent violet).
 KINDS = [("aircraft", "AIRCRAFT", "accent"), ("ship", "SHIPS", "live"),
          ("aprs", "APRS", "warn"), ("drone", "DRONES", "alert"),
+         ("operator", "OPERATOR", "accent"),
          ("df", "DF", "text"), ("balloon", "BALLOONS", "muted")]
 KIND_LABEL = {k: lbl for k, lbl, _ in KINDS}
 KIND_TOKEN = {k: tok for k, _, tok in KINDS}
@@ -51,6 +56,9 @@ class _Track:
         self.alt = random.randint(*self._ALT[kind]) if kind in self._ALT else None
         self.id = self._mkid(kind)
         self.mil = kind == "aircraft" and random.random() < 0.18
+        if kind == "drone":          # a Remote-ID drone broadcasts its operator too
+            self.op_lat, self.op_lon = _offset(self.lat, self.lon, random.uniform(0.2, 1.4),
+                                               random.uniform(0, 360))
 
     @staticmethod
     def _mkid(kind):
@@ -77,6 +85,11 @@ class _Track:
         return eventbus.contact("ATLAS", self.id, self.lat, self.lon, alt=self.alt,
                                 kind=self.kind, severity=sev, spd=round(self.spd), mil=self.mil)
 
+    def operator_event(self):
+        return eventbus.contact("RID", self.id + "-OP", self.op_lat, self.op_lon,
+                                kind="operator", severity="warn", label="OP " + self.id,
+                                drone=self.id)
+
 
 class AtlasDemoWorker(Worker):
     """Synthetic multi-layer traffic, published to the bus (demo only)."""
@@ -93,6 +106,8 @@ class AtlasDemoWorker(Worker):
         for tk in self.tracks:
             tk.step(dt)
             eventbus.bus.publish(tk.event())
+            if tk.kind == "drone":              # plot the operator too (the RID differentiator)
+                eventbus.bus.publish(tk.operator_event())
         self.status.emit({"sdr": {"text": "SDR DEMO", "state": "neutral"}})
 
 
@@ -125,35 +140,144 @@ def adsb_contacts(aircraft):
     return [ev for ev in (adsb_to_contact(a) for a in aircraft) if ev is not None]
 
 
+# ------------------------------------------------------------------ Remote-ID (dronewatch)
+def rid_contacts(fusion_list):
+    """Adapt dronewatch fusion_contacts() -> typed contact events: the DRONE (alert) and, when
+    the OpenDroneID System message carried it, the OPERATOR (operator kind). Decoding is
+    dronewatch's, unchanged — this only reshapes its output."""
+    out = []
+    for fc in fusion_list:
+        lat, lon = fc.get("lat"), fc.get("lon")
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+            alt_m = fc.get("alt_m")
+            out.append(eventbus.contact(
+                "RID", fc.get("id"), lat, lon,
+                alt=int(alt_m * 3.28084) if isinstance(alt_m, (int, float)) else None,
+                kind="drone", severity="alert",
+                spd=int(fc["speed_mps"]) if isinstance(fc.get("speed_mps"), (int, float)) else None,
+                uas_id=fc.get("uas_id"), operator_id=fc.get("operator_id")))
+        olat, olon = fc.get("operator_lat"), fc.get("operator_lon")
+        if isinstance(olat, (int, float)) and isinstance(olon, (int, float)):
+            out.append(eventbus.contact(
+                "RID", (fc.get("operator_id") or fc.get("id") or "OP") + "-OP", olat, olon,
+                kind="operator", severity="warn",
+                label="OP " + str(fc.get("uas_id") or fc.get("id")), drone=fc.get("uas_id")))
+    return out
+
+
+class RidSource:
+    """Drive dronewatch's OpenDroneID decoder from a BLE (bleak) scan and expose fusion contacts.
+    BLE + Wi-Fi only (OpenDroneID) — NOT the SDR, so no lease is taken. The Wi-Fi-monitor path is
+    device-only and left stubbed; BLE works on the dev Mac but sees zero without real beacons."""
+
+    def __init__(self):
+        import dronewatch
+        self._dw = dronewatch
+        self._drones = dronewatch.Drones()
+        self._q = queue.Queue()
+        self._on = False
+        self._thread = None
+
+    def start(self):
+        if self._on:
+            return
+        self._on = True
+        self._thread = threading.Thread(target=self._scan_ble, daemon=True)
+        self._thread.start()
+        # TODO(device-only): Wi-Fi monitor-mode OpenDroneID (NAN/beacon) — needs a monitor NIC;
+        # validate on the uConsole. BLE covers the common case and runs here.
+
+    def _scan_ble(self):
+        if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            return                      # never open a real BLE scan under tests/offline
+        try:
+            import asyncio
+            from bleak import BleakScanner
+        except Exception:
+            return                      # no bleak: zero drones (honest), BLE path simply absent
+
+        async def run():
+            def cb(dev, adv):
+                sd = getattr(adv, "service_data", None) or {}
+                p = sd.get(self._dw.ODID_SERVICE_UUID)
+                if p:
+                    self._q.put((dev.address, bytes(p), getattr(adv, "rssi", None)))
+            scanner = BleakScanner(detection_callback=cb)
+            await scanner.start()
+            try:
+                while self._on:
+                    await asyncio.sleep(0.5)
+            finally:
+                await scanner.stop()
+        try:
+            asyncio.run(run())
+        except Exception:
+            pass
+
+    def ingest_payload(self, addr, payload, rssi=None):
+        """Decode one BLE ODID service-data payload and fold it into the aggregator (dronewatch's
+        decoder, unchanged). Exposed for the Wi-Fi stub and tests."""
+        msgs = self._dw.decode_service_data(payload)
+        if msgs:
+            self._drones.ingest(addr, msgs, rssi=rssi)
+
+    def contacts(self):
+        while True:
+            try:
+                addr, payload, rssi = self._q.get_nowait()
+            except queue.Empty:
+                break
+            self.ingest_payload(addr, payload, rssi)
+        self._drones.prune()
+        return rid_contacts(self._drones.fusion_contacts())
+
+    def stop(self):
+        self._on = False
+
+
 class AtlasLiveWorker(Worker):
-    """Live mode: pull real aircraft from sky_app's ADS-B engine (readsb/dump1090 aircraft.json)
-    and publish them as typed contacts. No radio is opened and no lease is taken — readsb runs as
-    its own service and owns its radio; we only read its output, so decoding/radio behaviour is
-    unchanged and the autopilot is undisturbed. Other layers (AIS/APRS/dronewatch/DF/balloons)
-    are still stubbed; with no engine up this publishes ZERO contacts. Device-only: real RTL
-    capture is validated on the uConsole."""
+    """Live mode: wired sources publish real contacts; everything else stays at zero.
+      - ADS-B: sky_app's readsb/dump1090 aircraft.json (no radio opened, no lease — readsb owns
+        its radio; behaviour-preserving, autopilot undisturbed).
+      - Remote-ID: dronewatch's OpenDroneID decoder over a BLE scan (BLE/Wi-Fi, NOT the SDR, so
+        no lease). Publishes the drone AND its operator.
+    Remaining layers (AIS/APRS/DF/balloons) are still stubbed. With no engine/beacons up, this
+    publishes ZERO. Device-only bits (real RTL capture, Wi-Fi-monitor ODID) validate on the
+    uConsole."""
 
     def __init__(self, parent=None):
         super().__init__(demo=False, interval_ms=1000, parent=parent)
         self._adsb = None
         self._adsb_tried = False
+        self._rid = None
+        self._rid_tried = False
 
-    def _ensure_adsb(self):
-        if self._adsb_tried:
-            return
-        self._adsb_tried = True
-        try:
-            import sky_app
-            srcs = sky_app.DEFAULT_SETTINGS.get("adsb_sources") or ["/run/readsb"]
-            self._adsb = sky_app.AdsbFeed(list(srcs))
-        except Exception as e:       # no engine / no deps in this env: stay at zero, surface once
-            self.error.emit("ADS-B engine unavailable: %s" % str(e)[:120])
-            self._adsb = None
+    def _ensure_sources(self):
+        if not self._adsb_tried:
+            self._adsb_tried = True
+            try:
+                import sky_app
+                srcs = sky_app.DEFAULT_SETTINGS.get("adsb_sources") or ["/run/readsb"]
+                self._adsb = sky_app.AdsbFeed(list(srcs))
+            except Exception as e:   # no engine / no deps: stay at zero, surface once
+                self.error.emit("ADS-B engine unavailable: %s" % str(e)[:120])
+                self._adsb = None
+        if not self._rid_tried:
+            self._rid_tried = True
+            try:
+                self._rid = RidSource()
+                self._rid.start()
+            except Exception as e:
+                self.error.emit("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
+                self._rid = None
 
     def step(self):
-        self._ensure_adsb()
+        self._ensure_sources()
         for ev in self._adsb_contacts():
             eventbus.bus.publish(ev)
+        if self._rid is not None:
+            for ev in self._rid.contacts():
+                eventbus.bus.publish(ev)
 
     def _adsb_contacts(self):
         if self._adsb is None:
@@ -167,7 +291,9 @@ class AtlasLiveWorker(Worker):
     def run(self):
         super().run()
         if self._adsb is not None:
-            self._adsb.stopped = True        # stop the feed's poll thread on close
+            self._adsb.stopped = True        # stop the ADS-B feed's poll thread on close
+        if self._rid is not None:
+            self._rid.stop()                 # stop the BLE scan thread on close
 
 
 # ------------------------------------------------------------------ app

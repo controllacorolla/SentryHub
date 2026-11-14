@@ -22,6 +22,26 @@ def _app():
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 
+@pytest.fixture(autouse=True)
+def _isolate_qt():
+    """Keep the global event bus and Qt objects from leaking across tests: clear the bus and
+    flush deleted widgets (deleteLater) after each test, so a destroyed page's slot can't fire
+    into freed C++ during a later test (the full-suite soak segfault)."""
+    yield
+    try:
+        from palisade_qt import eventbus
+        eventbus.bus.clear()
+    except Exception:
+        pass
+    import gc
+    gc.collect()
+    app = QtWidgets.QApplication.instance()
+    if app is not None:
+        app.processEvents()
+        app.sendPostedEvents(None, 52)   # QEvent.DeferredDelete
+        app.processEvents()
+
+
 def _pump(ms=800, step=10):
     import time
     app = _app()
@@ -274,3 +294,22 @@ def test_atlas_adsb_contacts_converts_a_snapshot():
     evs = adsb_contacts(snap)
     assert len(evs) == 1 and evs[0]["payload"]["kind"] == "aircraft"
     assert evs[0]["payload"]["id"] == "ASA9" and evs[0]["source"] == "ADS-B"
+
+
+def test_rid_source_decodes_drone_and_operator():
+    """dronewatch's OpenDroneID decoder -> drone + operator contacts (operator = the RID differentiator)."""
+    from palisade_qt.atlas import RidSource
+    import dronewatch
+    rs = RidSource()                       # no BLE scan (we feed real ODID payloads directly)
+    demo = dronewatch.Demo({"lat": 47.6, "lon": -122.3})
+    for addr, payload, rssi in demo.adverts():
+        rs.ingest_payload(addr, payload, rssi)
+    evs = rs.contacts()
+    kinds = {e["payload"]["kind"] for e in evs}
+    assert "drone" in kinds and "operator" in kinds, "RID must plot the drone AND its operator"
+    drone = next(e for e in evs if e["payload"]["kind"] == "drone")
+    assert drone["source"] == "RID" and drone["severity"] == "alert"
+    op = next(e for e in evs if e["payload"]["kind"] == "operator")
+    assert op["source"] == "RID"
+    assert isinstance(op["payload"]["lat"], float) and isinstance(op["payload"]["lon"], float)
+    rs.stop()

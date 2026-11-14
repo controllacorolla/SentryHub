@@ -30,8 +30,11 @@ tacmap, geo, tiles, fieldcomp (map/trip/almanac).
   adapts its aircraft to typed `contact` events (`adsb_to_contact`, kind=aircraft, source=ADS-B,
   7x00 squawk/emergency → alert). No 2nd radio and no lease (readsb owns its radio). Shows on the
   ATLAS map AND the OPS PPI. **Device validation (real RTL capture) pending on the uConsole.**
-- ⬜ remaining live adapters (ais, aprs stations, dronewatch RID, kraken DF, balloons) — stubbed
-  behind AtlasLiveWorker; live mode publishes ZERO for them until wired (one source per PR)
+- ◐ **live Remote-ID (dronewatch) WIRED** — reuses dronewatch's OpenDroneID decoder as-is over a
+  BLE (bleak) scan; publishes the **DRONE (red)** AND its **OPERATOR (violet, the differentiator)**
+  as typed contacts. BLE/Wi-Fi, NOT the SDR → no lease. Wi-Fi-monitor path stubbed (device-only).
+  On the ATLAS map + OPS PPI. **Device validation (real beacons / BLE on the uConsole) pending.**
+- ⬜ remaining live adapters (ais, aprs stations, kraken DF, balloons) — stubbed; zero until wired
 
 ## BABEL — universal decoder
 Absorbs: ais, signals (ACARS/VDL2), pager (POCSAG/FLEX), rds, cw, rtty, digimodes, tpms,
