@@ -56,8 +56,20 @@ zigbee, zwave, nwr, sstv/sstvdec, wxsat (LRPT/APT).
   (no longer the base-class lease), so it coexists with ATLAS/PRISM — one owner at a time; a
   held radio renders "RADIO BUSY — held by X" and, being live, decodes nothing. The live
   runners gained the `_open_pipe` offscreen/offline seam so tests/CI never open a real radio.
-- ⬜ TPMS, CW, RTTY, digimodes, Zigbee, Z-Wave, NWR
-- ⬜ **406 MHz COSPAS-SARSAT** (new decoder), SSTV, weather-sat imagery (wxsat)
+- ✅ **TPMS** (PR-B2) — tire-pressure sensors via rtl_433 JSON (315/433.92 MHz); `tpms.parse_tpms`
+  reused AS-IS, SDR-leased, honest standby (no `rtl_433` → "TPMS STANDBY"), real decodes publish to
+  the bus as `decode(source=BABEL-TPMS)` → OPS decode card.
+- ⬜ **CW / RTTY / digimodes — no reusable live RX backend AS-IS.** cw.py/rtty.py expose only the
+  *encode/decode primitives* (`decode_morse`, `decode_timing`, `decode_codes`) and are TX keyers
+  gated by txguard; there is **no audio→timing / audio→FSK demodulator**. digimodes.py has **no
+  decode path at all** (a txguard-gated TX launcher). Wiring these "live" would require building new
+  DSP — out of the UI-only mandate — so they stay practice/demo until a demod backend exists.
+- ⬜ **classify** — pure `classify(iq, fs)` modulation triage, but BABEL has no live IQ feed to run
+  it on; it belongs where an IQ source exists (PRISM/file), not a BABEL live tab.
+- ⬜ **SSTV / wxsat — real image decoders, pending an image panel** (own PR): sstv `rec_cmd`→WAV→
+  `sstvdec.decode_wav`→RGB image (SDR); wxsat drives SatDump (APT/LRPT) → PNGs, pass-scheduled.
+- NWR is wired under **PROWL** (SAME/EAS), not duplicated here.
+- ⬜ **406 MHz COSPAS-SARSAT** (new decoder), Zigbee / Z-Wave (engagement-gated, future)
 - ➕ protocol filter + per-source coloring + one searchable decode log
 
 ## PRISM — spectrum + waterfall

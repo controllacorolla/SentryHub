@@ -15,7 +15,7 @@ import time
 from PySide6 import QtWidgets
 
 from .app import PalisadeApp
-from . import theme, radio_arbiter
+from . import theme, radio_arbiter, eventbus
 from .kit import ControlBar, FeedTable, DetailCard
 from .worker import Worker
 
@@ -23,7 +23,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-MODES = ["AIS", "ACARS", "POCSAG", "RDS", "CW", "RTTY"]
+MODES = ["AIS", "ACARS", "POCSAG", "RDS", "TPMS", "CW", "RTTY"]
 
 # BABEL's radio modes (AIS/ACARS/POCSAG/RDS) all want the one built-in dongle, so they go through
 # the shared radio_arbiter under this single lease name — exactly like ATLAS's lease layers. Only
@@ -69,6 +69,13 @@ def _synth(mode):
         return {"time": now, "proto": "RDS", "id": pi, "summary": ps,
                 "detail": [("PI", pi), ("PS", ps), ("PTY", random.randint(0, 31)),
                            ("RT", "Now playing — demo stream")]}
+    if mode == "TPMS":
+        sid = "%08X" % random.randint(0, 0xFFFFFFFF)
+        return {"time": now, "proto": "TPMS", "id": sid, "summary": "%d kPa · %d°C" % (
+                    random.randint(210, 260), random.randint(8, 34)),
+                "detail": [("ID", sid), ("MODEL", random.choice(["Toyota", "Schrader", "Pacific"])),
+                           ("PRESSURE", "%d kPa" % random.randint(210, 260)),
+                           ("TEMP", "%d °C" % random.randint(8, 34)), ("BATT", "ok")]}
     if mode == "CW":
         return {"time": now, "proto": "CW", "id": "%d WPM" % random.randint(12, 28),
                 "summary": random.choice(["CQ CQ DE", "599 TU", "QRZ?"]),
@@ -96,7 +103,8 @@ def _load_settings(name, defaults):
 
 
 # the capture binary each live radio mode needs on PATH
-_MODE_BINARY = {"AIS": "rtl_ais", "ACARS": "acarsdec", "POCSAG": "multimon-ng", "RDS": "redsea"}
+_MODE_BINARY = {"AIS": "rtl_ais", "ACARS": "acarsdec", "POCSAG": "multimon-ng", "RDS": "redsea",
+                "TPMS": "rtl_433"}
 
 
 def _can_run(mode):
@@ -256,7 +264,61 @@ def _run_rds(worker):
         _stop_proc(proc)
 
 
-_LIVE_RUNNERS = {"AIS": _run_ais, "ACARS": _run_acars, "POCSAG": _run_pocsag, "RDS": _run_rds}
+def _run_tpms(worker):
+    """TPMS tire-pressure sensors via rtl_433 JSON (315/433.92 MHz). tpms.parse_tpms reused AS-IS;
+    rtl_433 is the capture binary and SDR owner (tpms.py has no pipeline of its own)."""
+    import tpms as engine
+    s = _load_settings("tpms", {"freqs": ["315M", "433.92M"], "gain": 0})
+    argv = ["rtl_433", "-F", "json", "-M", "level"]
+    for f in s.get("freqs", ["315M", "433.92M"]):
+        argv += ["-f", f]
+    if int(s.get("gain") or 0):
+        argv += ["-g", str(int(s["gain"]))]
+    proc = _open_pipe(argv, shell=False)
+    if proc is None:
+        return                       # offscreen/offline seam: never open a real radio in tests
+    worker._proc = proc
+    worker.status.emit({"sdr": {"text": "TPMS LIVE", "ok": True}})
+    veh = engine.Vehicles()
+    n = 0
+    try:
+        for line in proc.stdout:
+            if worker.stopping:
+                break
+            r = engine.parse_tpms(line.rstrip("\n"))
+            if not r or not r.get("id"):     # rtl_433 decodes many devices; keep only real TPMS
+                continue
+            veh.add(r)
+            n += 1
+            now = time.strftime("%H:%M:%S")
+            dist = engine.rssi_to_distance_m(r.get("rssi"))
+            detail = [("ID", r["id"]), ("MODEL", r.get("model") or "—")]
+            if r.get("pressure_kpa") is not None:
+                detail.append(("PRESSURE", "%.0f kPa" % r["pressure_kpa"]))
+            if r.get("temp_c") is not None:
+                detail.append(("TEMP", "%.0f °C" % r["temp_c"]))
+            if dist is not None:
+                detail.append(("RANGE", "~%.0f m" % dist))
+            detail.append(("BATT", "ok" if r.get("battery_ok") else "low/unknown"))
+            parts = []
+            if r.get("pressure_kpa") is not None:
+                parts.append("%.0f kPa" % r["pressure_kpa"])
+            if r.get("temp_c") is not None:
+                parts.append("%.0f°C" % r["temp_c"])
+            summary = " · ".join(parts) or "sensor"
+            worker.row.emit({"time": now, "proto": "TPMS", "id": str(r["id"]),
+                             "summary": summary, "detail": detail})
+            eventbus.bus.publish(eventbus.decode(            # real decode only -> OPS decode card
+                "BABEL-TPMS", "TPMS", str(r["id"]), summary, severity="info",
+                pressure_kpa=r.get("pressure_kpa"), temp_c=r.get("temp_c")))
+            if n % 5 == 0:
+                worker.status.emit({"sdr": {"text": "TPMS %d" % n, "ok": True}})
+    finally:
+        _stop_proc(proc)
+
+
+_LIVE_RUNNERS = {"AIS": _run_ais, "ACARS": _run_acars, "POCSAG": _run_pocsag, "RDS": _run_rds,
+                 "TPMS": _run_tpms}
 
 
 def _stop_proc(proc):
@@ -365,7 +427,7 @@ class BabelApp(PalisadeApp):
 
     PROTO_COLORS = {
         "AIS": "#4DA6FF", "ACARS": "#66D9A0", "POCSAG": "#FFB74D",
-        "RDS": "#CE93D8", "CW": "#F06292", "RTTY": "#90CAF9",
+        "RDS": "#CE93D8", "TPMS": "#80DEEA", "CW": "#F06292", "RTTY": "#90CAF9",
     }
 
     def build_body(self):

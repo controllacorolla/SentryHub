@@ -554,3 +554,58 @@ def test_babel_live_no_binary_shows_standby_not_synth(monkeypatch):
     w._run_standby("AIS")
     assert rows == [], "live mode must not fabricate decoder rows when no hardware is present"
     assert any("STANDBY" in (s.get("sdr") or {}).get("text", "") for s in status)
+
+
+# ---- BABEL PR-B2: TPMS decoder (rtl_433 JSON -> parse_tpms AS-IS, SDR lease, bus) ----
+
+def test_babel_tpms_registered():
+    from palisade_qt import babel
+    assert "TPMS" in babel.MODES
+    assert babel._MODE_BINARY.get("TPMS") == "rtl_433"
+    assert "TPMS" in babel._LIVE_RUNNERS
+
+
+def test_babel_tpms_decodes_and_publishes_to_bus(monkeypatch):
+    from palisade_qt import babel, eventbus
+    eventbus.bus.clear()
+    decs = []
+    eventbus.bus.published.connect(lambda e: decs.append(e) if e["type"] == "decode" else None)
+    line = ('{"model":"Toyota","type":"TPMS","id":"3a1c","pressure_kPa":230.0,'
+            '"temperature_C":21.0,"battery_ok":1,"rssi":-42.0}')
+
+    class FakeProc:
+        pid = 2147483646        # unused: poll()=0 makes _stop_proc early-return (no killpg)
+        stdout = [line, "not json, rtl_433 chatter\n"]
+
+        def poll(self):
+            return 0
+    monkeypatch.setattr(babel, "_open_pipe", lambda *a, **k: FakeProc())
+    w = babel.DecoderWorker(demo=False, mode="TPMS")
+    rows = []
+    w.row.connect(lambda r: rows.append(r))
+    babel._run_tpms(w)
+    assert len(rows) == 1 and rows[0]["proto"] == "TPMS" and rows[0]["id"] == "3a1c"
+    assert "230 kPa" in rows[0]["summary"]
+    assert decs and decs[0]["source"] == "BABEL-TPMS" and decs[0]["payload"]["id"] == "3a1c"
+
+
+def test_babel_tpms_live_no_rtl433_standby_not_synth(monkeypatch):
+    """TPMS is a radio mode: no rtl_433 -> honest STANDBY, no fabricated rows."""
+    from palisade_qt import babel
+    monkeypatch.setattr(babel, "_can_run", lambda mode: False)
+    w = babel.DecoderWorker(demo=False, mode="TPMS")
+    w._mode_changed = True
+    rows, status = [], []
+    w.row.connect(lambda r: rows.append(r))
+    w.status.connect(lambda s: status.append(s))
+    w._run_standby("TPMS")
+    assert rows == []
+    assert any("STANDBY" in (s.get("sdr") or {}).get("text", "") and "rtl_433" in
+               (s.get("sdr") or {}).get("text", "") for s in status)
+
+
+def test_babel_tpms_offscreen_opens_no_radio():
+    from palisade_qt import babel
+    w = babel.DecoderWorker(demo=False, mode="TPMS")
+    babel._run_tpms(w)                         # _open_pipe seam returns None offscreen
+    assert w._proc is None
