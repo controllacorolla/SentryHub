@@ -166,7 +166,13 @@ class SweepWorker(Worker):
             self._start_rtl()
         with self._lock:
             row, self._latest = self._latest, None
-        self.status.emit({"busy": None, "sdr": {"text": "SDR PRISM", "state": "live"}})
+        if shutil.which("rtl_power"):
+            self.status.emit({"busy": None, "sdr": {"text": "SDR PRISM", "state": "live"}})
+        else:
+            # we hold the radio but there's no rtl_power to sweep: say STANDBY, never synthesise.
+            # (The scope already stays empty — a row is only emitted from a real assembled sweep.)
+            self.status.emit({"busy": None, "standby": True,
+                              "sdr": {"text": "SDR STANDBY — no rtl_power", "state": "warn"}})
         if row is not None:
             self.row.emit(row)
 
@@ -235,7 +241,10 @@ class PrismApp(PalisadeApp):
             self._worker.set_band(self._lo, self._hi)
 
     def make_worker(self):
-        return SweepWorker(demo=self.demo, lo=self._lo, hi=self._hi, gain=self.gain.value())
+        w = SweepWorker(demo=self.demo, lo=self._lo, hi=self._hi, gain=self.gain.value())
+        if not self.demo:
+            w.set_active(self._active)      # inherit the page's current front/back state at start
+        return w
 
     def set_active(self, active):
         super().set_active(active)
@@ -243,8 +252,11 @@ class PrismApp(PalisadeApp):
             self._worker.set_active(active)          # hold the radio only while PRISM is in front
 
     def on_status(self, status):
-        super().on_status(status)                    # chips (incl. SDR PRISM/BUSY)
-        if "busy" in status:
+        super().on_status(status)                    # chips (incl. SDR PRISM/BUSY/STANDBY)
+        if status.get("standby"):                    # live + no rtl_power: honest, no fake sweep
+            self.busy.setText("STANDBY — no rtl_power (no synthetic sweep)")
+            self.busy.show()
+        elif "busy" in status:
             owner = status["busy"]
             if owner:
                 self.busy.setText("RADIO BUSY — held by %s" % owner)

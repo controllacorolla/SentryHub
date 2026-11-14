@@ -523,3 +523,23 @@ def test_prism_shows_busy_when_radio_held_by_atlas(monkeypatch):
     assert ra.arbiter.owner() == "ATLAS-APRS"            # PRISM did NOT grab it
     assert any(s.get("busy") == "APRS" for s in seen), "PRISM must report RADIO BUSY"
     ra.arbiter.release("ATLAS-APRS")
+
+
+def test_prism_live_no_rtl_power_shows_standby_not_synth(monkeypatch):
+    """Live + no rtl_power: PRISM holds the radio (seam-nulled here) but emits NO synthetic sweep
+    and reports STANDBY — the scope stays empty, nothing is fabricated."""
+    from palisade_qt import prism, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    monkeypatch.setattr(prism, "_open_rtl_power", lambda lo, hi, g: None)
+    monkeypatch.setattr(prism.shutil, "which", lambda b: None)      # rtl_power absent
+    w = prism.SweepWorker(demo=False, lo=430, hi=440)
+    rows, seen = [], []
+    w.row.connect(lambda r: rows.append(r))
+    w.status.connect(lambda s: seen.append(s))
+    w.set_active(True)
+    w.step()
+    assert rows == [], "live mode must not synthesise a sweep when rtl_power is absent"
+    assert any(s.get("standby") for s in seen), "PRISM must report STANDBY without rtl_power"
+    w.set_active(False)
+    w.step()
+    assert ra.arbiter.owner() is None, "leaving PRISM releases the radio"
