@@ -313,3 +313,63 @@ def test_rid_source_decodes_drone_and_operator():
     assert op["source"] == "RID"
     assert isinstance(op["payload"]["lat"], float) and isinstance(op["payload"]["lon"], float)
     rs.stop()
+
+
+class _FakeLease:
+    def __init__(self):
+        self.acquired = False
+        self.released = 0
+
+    def acquire(self, keep=()):
+        self.acquired = True
+
+    def release(self, restart=True):
+        self.released += 1
+
+
+def test_aprs_source_holds_lease_only_while_running(monkeypatch):
+    """The first lease-using layer: start() acquires, stop() releases; decode is aprs's, unchanged."""
+    from palisade_qt import atlas
+    lease = _FakeLease()
+    monkeypatch.setattr(atlas, "_acquire_aprs_lease", lambda: (lease.acquire(), lease)[1])
+    monkeypatch.setattr(atlas, "_open_aprs_pipe", lambda gain: None)   # no real radio in tests
+    src = atlas.AprsSource()
+    src.start()
+    assert lease.acquired is True and lease.released == 0
+    src.feed_line("APRS: K7ABC>APRS,WIDE1-1:!3758.00N/12221.00W>Mobile test")
+    evs = src.contacts()
+    assert any(e["payload"]["kind"] == "station" and e["payload"]["id"] == "K7ABC" for e in evs)
+    assert evs[0]["source"] == "APRS"
+    src.stop()
+    assert lease.released == 1, "stop() must release the SDR lease"
+
+
+def test_atlas_live_aprs_layer_toggles_the_lease_and_release_on_close(monkeypatch):
+    _app()
+    from palisade_qt import atlas
+    lease = _FakeLease()
+    monkeypatch.setattr(atlas, "_acquire_aprs_lease", lambda: (lease.acquire(), lease)[1])
+    monkeypatch.setattr(atlas, "_open_aprs_pipe", lambda gain: None)
+    w = atlas.AtlasLiveWorker()
+    assert w._aprs is None                       # APRS off by default -> no lease on open
+    w.set_aprs(True)
+    w._reconcile_aprs()
+    assert w._aprs is not None and lease.acquired is True   # layer on -> acquire
+    w.set_aprs(False)
+    w._reconcile_aprs()
+    assert w._aprs is None and lease.released == 1          # layer off -> release
+    # and a close while active must release too
+    w.set_aprs(True)
+    w._reconcile_aprs()
+    w.stop()                                     # signal the loop to end...
+    w.run()                                      # ...so run()'s loop exits at once and releases
+    assert lease.released == 2, "page close must release the lease"
+
+
+def test_atlas_live_default_has_aprs_layer_off():
+    _app()
+    from palisade_qt.atlas import AtlasApp
+    live = AtlasApp(demo=False, mode="dark")
+    assert "station" not in live._layers, "APRS (radio) must be opt-in in live mode"
+    demo = AtlasApp(demo=True, mode="dark")
+    assert "station" in demo._layers, "demo shows APRS (no radio cost)"

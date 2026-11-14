@@ -26,7 +26,7 @@ from .worker import Worker
 # kind -> (legend label, theme colour token). Severity "alert" overrides the colour to red.
 # Remote-ID adds two kinds: the drone (alert red) and its OPERATOR (accent violet).
 KINDS = [("aircraft", "AIRCRAFT", "accent"), ("ship", "SHIPS", "live"),
-         ("aprs", "APRS", "warn"), ("drone", "DRONES", "alert"),
+         ("station", "APRS", "warn"), ("drone", "DRONES", "alert"),
          ("operator", "OPERATOR", "accent"),
          ("df", "DF", "text"), ("balloon", "BALLOONS", "muted")]
 KIND_LABEL = {k: lbl for k, lbl, _ in KINDS}
@@ -42,7 +42,7 @@ def _offset(lat, lon, d_nm, brg_deg):
 
 
 class _Track:
-    _SPD = {"aircraft": (160, 480), "ship": (4, 22), "aprs": (0, 55), "drone": (8, 40),
+    _SPD = {"aircraft": (160, 480), "ship": (4, 22), "station": (0, 55), "drone": (8, 40),
             "df": (0, 0), "balloon": (6, 30)}
     _ALT = {"aircraft": (6000, 39000), "drone": (60, 400), "balloon": (30000, 90000)}
 
@@ -66,7 +66,7 @@ class _Track:
             return random.choice(["UAL", "ASA", "DAL", "FDX", "N"]) + str(random.randint(100, 980))
         if kind == "ship":
             return str(random.randint(200000000, 775000000))        # MMSI
-        if kind == "aprs":
+        if kind == "station":
             return random.choice(["KD7", "W7", "N0", "KE7"]) + random.choice("ABCXYZ") + \
                 str(random.randint(1, 9))
         if kind == "drone":
@@ -93,7 +93,7 @@ class _Track:
 
 class AtlasDemoWorker(Worker):
     """Synthetic multi-layer traffic, published to the bus (demo only)."""
-    _COUNT = {"aircraft": 6, "ship": 4, "aprs": 3, "drone": 2, "df": 1, "balloon": 1}
+    _COUNT = {"aircraft": 6, "ship": 4, "station": 3, "drone": 2, "df": 1, "balloon": 1}
 
     def __init__(self, parent=None):
         super().__init__(demo=True, interval_ms=600, parent=parent)
@@ -235,13 +235,120 @@ class RidSource:
         self._on = False
 
 
+# ------------------------------------------------------------------ APRS (first lease-using source)
+def _acquire_aprs_lease():
+    """Acquire the built-in SDR for 144.39 via the shared lease (pauses readsb, coexists with the
+    autopilot). Returns the lease, or None if suite/radio is unavailable. Seam for tests."""
+    try:
+        import suite
+        lease = suite.RtlLease("ATLAS-APRS")
+        lease.acquire()                 # frees the built-in dongle; released again on layer-off
+        return lease
+    except Exception:
+        return None
+
+
+def _open_aprs_pipe(gain):
+    """Start aprs.pipeline() (rtl_fm -> multimon-ng) as-is. None under tests/offline or without the
+    radio tools, so no real radio is ever opened in CI. Seam for tests."""
+    import shutil
+    import subprocess
+    if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        return None
+    if not shutil.which("rtl_fm") or not shutil.which("multimon-ng"):
+        return None
+    import aprs
+    return subprocess.Popen(aprs.pipeline(gain), shell=True, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+
+
+def aprs_station_contacts(stations, now):
+    """aprs.Stations -> typed contact events (kind=station). Positions only; decoding is aprs's."""
+    out = []
+    for st in stations.s.values():
+        lat, lon = st.get("lat"), st.get("lon")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            continue
+        out.append(eventbus.contact(
+            "APRS", st["call"], lat, lon, kind="station",
+            severity="live" if (st.get("speed_kt") or 0) >= 3 else "info",
+            spd=int(st["speed_kt"]) if st.get("speed_kt") else None,
+            course=st.get("course"), symbol=st.get("symbol"), comment=st.get("comment")))
+    return out
+
+
+class AprsSource:
+    """Hear 144.39 APRS. Holds the single-SDR LEASE only while running: start() acquires it and
+    begins aprs.pipeline() (rtl_fm -> multimon-ng); stop() kills the pipe and RELEASES the lease,
+    so readsb/the autopilot come back. aprs's decoder (parse_frame/decode/Stations) is unchanged."""
+
+    def __init__(self, gain=0):
+        import aprs
+        self._aprs = aprs
+        self._gain = gain
+        self._stations = aprs.Stations()
+        self._lease = None
+        self._proc = None
+        self._thread = None
+        self._on = False
+
+    def start(self):
+        if self._on:
+            return
+        self._on = True
+        self._lease = _acquire_aprs_lease()        # acquire the dongle for the duration only
+        self._proc = _open_aprs_pipe(self._gain)
+        if self._proc is not None:
+            self._thread = threading.Thread(target=self._read, daemon=True)
+            self._thread.start()
+
+    def _read(self):
+        try:
+            for line in self._proc.stdout:
+                if not self._on:
+                    break
+                self.feed_line(line)
+        except Exception:
+            pass
+
+    def feed_line(self, line):
+        """One multimon-ng line -> aprs decode -> Stations (aprs's path, unchanged)."""
+        frame = self._aprs.parse_frame(line)
+        if not frame:
+            return
+        rep = self._aprs.decode(frame)
+        if rep:
+            self._stations.add(rep, time.time())
+
+    def contacts(self):
+        return aprs_station_contacts(self._stations, time.time())
+
+    def stop(self):
+        self._on = False
+        if self._proc is not None:
+            try:
+                self._proc.terminate()
+            except Exception:
+                pass
+            self._proc = None
+        if self._lease is not None:
+            try:
+                self._lease.release()              # restore readsb / hand back to the autopilot
+            except Exception:
+                pass
+            self._lease = None
+
+
 class AtlasLiveWorker(Worker):
     """Live mode: wired sources publish real contacts; everything else stays at zero.
       - ADS-B: sky_app's readsb/dump1090 aircraft.json (no radio opened, no lease — readsb owns
         its radio; behaviour-preserving, autopilot undisturbed).
       - Remote-ID: dronewatch's OpenDroneID decoder over a BLE scan (BLE/Wi-Fi, NOT the SDR, so
         no lease). Publishes the drone AND its operator.
-    Remaining layers (AIS/APRS/DF/balloons) are still stubbed. With no engine/beacons up, this
+      - APRS: aprs's 144.39 decoder; the FIRST lease-using source. It holds the single-SDR lease
+        ONLY while the APRS layer is active (acquire on layer-on, release on layer-off and close),
+        so it coexists with the autopilot and never holds the radio permanently.
+    Remaining layers (AIS/DF/balloons) are still stubbed. With no engine/beacons up, this
     publishes ZERO. Device-only bits (real RTL capture, Wi-Fi-monitor ODID) validate on the
     uConsole."""
 
@@ -251,6 +358,8 @@ class AtlasLiveWorker(Worker):
         self._adsb_tried = False
         self._rid = None
         self._rid_tried = False
+        self._aprs = None            # AprsSource, created only while the APRS layer is on
+        self._aprs_wanted = False    # set by the layer toggle (GUI thread); reconciled in step()
 
     def _ensure_sources(self):
         if not self._adsb_tried:
@@ -271,12 +380,33 @@ class AtlasLiveWorker(Worker):
                 self.error.emit("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
                 self._rid = None
 
+    def set_aprs(self, on):
+        """Layer toggle (GUI thread): request the APRS capture on/off. The worker reconciles it
+        in step() so the lease acquire/release (which can block) runs off the GUI thread."""
+        self._aprs_wanted = bool(on)
+
+    def _reconcile_aprs(self):
+        if self._aprs_wanted and self._aprs is None:
+            try:
+                self._aprs = AprsSource()
+                self._aprs.start()           # acquires the lease (frees the dongle for 144.39)
+            except Exception as e:
+                self.error.emit("APRS unavailable: %s" % str(e)[:120])
+                self._aprs = None
+        elif not self._aprs_wanted and self._aprs is not None:
+            self._aprs.stop()                # releases the lease -> readsb/autopilot resume
+            self._aprs = None
+
     def step(self):
         self._ensure_sources()
+        self._reconcile_aprs()
         for ev in self._adsb_contacts():
             eventbus.bus.publish(ev)
         if self._rid is not None:
             for ev in self._rid.contacts():
+                eventbus.bus.publish(ev)
+        if self._aprs is not None:
+            for ev in self._aprs.contacts():
                 eventbus.bus.publish(ev)
 
     def _adsb_contacts(self):
@@ -294,6 +424,9 @@ class AtlasLiveWorker(Worker):
             self._adsb.stopped = True        # stop the ADS-B feed's poll thread on close
         if self._rid is not None:
             self._rid.stop()                 # stop the BLE scan thread on close
+        if self._aprs is not None:
+            self._aprs.stop()                # RELEASE the lease on page close (readsb resumes)
+            self._aprs = None
 
 
 # ------------------------------------------------------------------ app
@@ -308,6 +441,8 @@ class AtlasApp(PalisadeApp):
         self._contacts = {}
         self._selected = None
         self._layers = {k for k, _, _ in KINDS}      # all layers on by default
+        if not self.demo:
+            self._layers.discard("station")          # APRS holds the SDR: opt-in in live mode
 
         body = QtWidgets.QWidget()
         split = QtWidgets.QHBoxLayout(body)
@@ -347,7 +482,7 @@ class AtlasApp(PalisadeApp):
         for k, lbl, tok in KINDS:
             b = QtWidgets.QPushButton(lbl)
             b.setCheckable(True)
-            b.setChecked(True)
+            b.setChecked(k in self._layers)      # APRS starts off in live (opt-in lease)
             b.setStyleSheet("QPushButton { color:%s; padding:2px 7px; font-size:10px;"
                             " border:1px solid %s; border-radius:6px; }"
                             " QPushButton:!checked { color:%s; border-color:%s; }"
@@ -361,6 +496,9 @@ class AtlasApp(PalisadeApp):
 
     def _toggle(self, kind, on):
         self._layers.add(kind) if on else self._layers.discard(kind)
+        if kind == "station" and not self.demo and self._worker is not None \
+                and hasattr(self._worker, "set_aprs"):
+            self._worker.set_aprs(on)            # acquire/release the SDR lease with the layer
         self._render()
 
     def make_worker(self):

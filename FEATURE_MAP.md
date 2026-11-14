@@ -34,7 +34,12 @@ tacmap, geo, tiles, fieldcomp (map/trip/almanac).
   BLE (bleak) scan; publishes the **DRONE (red)** AND its **OPERATOR (violet, the differentiator)**
   as typed contacts. BLE/Wi-Fi, NOT the SDR → no lease. Wi-Fi-monitor path stubbed (device-only).
   On the ATLAS map + OPS PPI. **Device validation (real beacons / BLE on the uConsole) pending.**
-- ⬜ remaining live adapters (ais, aprs stations, kraken DF, balloons) — stubbed; zero until wired
+- ◐ **live APRS WIRED** (the FIRST lease-using source) — aprs's 144.39 decoder as-is
+  (rtl_fm→multimon-ng→parse_frame/decode/Stations); stations as typed contacts (amber, kind=station).
+  Holds the single-SDR **LEASE only while the APRS layer is on** (acquire on toggle-on, release on
+  toggle-off AND page close); opt-in in live, so opening ATLAS never grabs the radio or disturbs
+  the autopilot. This is the template for AIS/PRISM. **Device validation (real 144.39 + dongle) pending.**
+- ⬜ remaining live adapters (ais, kraken DF, balloons) — stubbed; zero until wired
 
 ## BABEL — universal decoder
 Absorbs: ais, signals (ACARS/VDL2), pager (POCSAG/FLEX), rds, cw, rtty, digimodes, tpms,
