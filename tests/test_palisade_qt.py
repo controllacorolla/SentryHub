@@ -666,12 +666,95 @@ def test_babel_sstv_live_leases_and_decodes(monkeypatch):
                               "lines": 496, "slant_ppm": 2}
     rows = []
     w.row.connect(lambda r: rows.append(r))
-    w.step()
+    app = _app()
+    w.step()                                     # leases + starts the (daemon) decode
     assert ra.arbiter.owner() == "BABEL-SSTV"
+    import time as _t
+    t0 = _t.time()
+    while not rows and _t.time() - t0 < 3:       # decode runs off the step thread -> await it
+        app.processEvents()
+        _t.sleep(0.02)
     img = [r for r in rows if r.get("kind") == "sstv"]
     assert img and img[0]["mode"] == "PD120" and img[0]["image"].shape == (8, 8, 3)
     w.stop()
     assert ra.arbiter.owner() is None, "closing SSTV releases the SDR"
+
+
+def test_babel_sstv_stop_joins_during_a_slow_decode(monkeypatch):
+    """The HIGH fix: decode_wav runs on a disposable daemon thread, so a slow decode never blocks
+    the worker QThread — stop()/wait() joins promptly instead of orphaning the thread."""
+    import time as _t
+    import numpy as np
+    from palisade_qt import babel, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda n: None)
+    monkeypatch.setattr(babel.shutil, "which", lambda b: "/usr/bin/" + b)
+    w = babel.SstvWorker(demo=False)
+
+    class FakeRec:
+        level = 120.0
+        err = ""
+
+        def seconds(self):
+            return 25.0
+
+        def stop(self):
+            pass
+    w._make_recorder = lambda path: FakeRec()
+
+    def slow_decode(path):
+        _t.sleep(5)                              # longer than wait(3000)
+        return {"image": np.zeros((4, 4, 3), np.uint8), "mode": "PD120", "lines": 4, "slant_ppm": 0}
+    w._decode = slow_decode
+    w.start()
+    t0 = _t.time()
+    while not w._decoding and _t.time() - t0 < 3:
+        _t.sleep(0.02)
+    assert w._decoding, "a decode should be in flight"
+    t1 = _t.time()
+    w.stop()
+    w.quit()
+    assert w.wait(3000), "worker must join within 3s even though decode_wav is still running"
+    assert _t.time() - t1 < 3.0
+    assert ra.arbiter.owner() is None
+
+
+def test_babel_sstv_rtl_fm_death_reaps_and_retries(monkeypatch):
+    """The MED fix: a dead rtl_fm (rec.err) reaps the Recorder so the next step can restart,
+    instead of latching forever while holding the lease."""
+    from palisade_qt import babel, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda n: None)
+    monkeypatch.setattr(babel.shutil, "which", lambda b: "/usr/bin/" + b)
+    w = babel.SstvWorker(demo=False)
+    stopped = []
+
+    class DeadRec:
+        level = 0.0
+        err = "rtl_fm stopped - is the SDR free?"
+
+        def seconds(self):
+            return 5.0
+
+        def stop(self):
+            stopped.append(1)
+    w._make_recorder = lambda path: DeadRec()
+    w.step()                                      # leases, makes the recorder, sees err -> reaps it
+    assert ra.arbiter.owner() == "BABEL-SSTV"     # lease kept so the next step can restart
+    assert w._rec is None and stopped, "dead recorder must be stopped/cleared, not latched forever"
+    w.stop()
+    assert ra.arbiter.owner() is None
+
+
+def test_babel_mode_switch_clears_stale_sstv_frame():
+    _app()
+    import numpy as np
+    from palisade_qt.babel import BabelApp
+    p = BabelApp(demo=True, mode="dark")
+    p.mode_combo.setCurrentText("SSTV")
+    p.image_panel.show_image(np.zeros((8, 8, 3), np.uint8), "old frame")
+    assert p.image_panel._buf is not None
+    p.mode_combo.setCurrentText("AIS")
+    p.mode_combo.setCurrentText("SSTV")
+    assert p.image_panel._buf is None, "switching modes must clear the prior frame"
 
 
 def test_babel_sstv_no_rtl_fm_standby_no_lease(monkeypatch):
@@ -711,7 +794,7 @@ def test_babel_switch_to_sstv_swaps_view_and_worker():
     from palisade_qt.babel import BabelApp, SstvWorker, DecoderWorker
     p = BabelApp(demo=True, mode="dark")
     assert p.stack.currentIndex() == 0 and isinstance(p.make_worker(), DecoderWorker)
-    p.mode.setCurrentText("SSTV")
+    p.mode_combo.setCurrentText("SSTV")
     assert p.stack.currentIndex() == 1 and isinstance(p.make_worker(), SstvWorker)
-    p.mode.setCurrentText("AIS")
+    p.mode_combo.setCurrentText("AIS")
     assert p.stack.currentIndex() == 0 and isinstance(p.make_worker(), DecoderWorker)

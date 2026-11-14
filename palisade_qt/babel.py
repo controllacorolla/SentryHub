@@ -10,6 +10,7 @@ import random
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -485,6 +486,12 @@ class SstvImagePanel(QtWidgets.QFrame):
     def set_note(self, text):
         self.caption.setText(text)
 
+    def clear(self):
+        self.view.setPixmap(QtGui.QPixmap())
+        self.view.setText("listening…")
+        self.caption.setText("SSTV — no frame yet")
+        self._buf = None
+
 
 def _sstv_ready():
     """numpy + rtl_fm both present (numpy is a hard dependency of the sstvdec decoder)."""
@@ -511,6 +518,8 @@ class SstvWorker(Worker):
         self._wav = None
         self._last_decode = 0.0
         self._demo_sent = False
+        self._decoding = False
+        self._lock = threading.Lock()     # serialises _rec / _has_radio across step() and stop()
 
     # seams so tests/CI never open a real radio or require a WAV
     def _make_recorder(self, path):
@@ -535,43 +544,59 @@ class SstvWorker(Worker):
             return
         ok, missing = _sstv_ready()
         if not ok:
-            self._release(); self._stop_rec()
+            self._stop_rec()
+            self._release()
             self.status.emit({"sdr": {"text": "SSTV STANDBY — no %s" % missing, "ok": False},
                               "standby": True})
             return
         if not self._ensure_lease():
             self._stop_rec()
             return
-        if self._rec is None:
-            self._start_rec()
-        if self._rec is None:                        # offscreen seam: hold lease, no capture
+        # acquire/snapshot the recorder under the lock so a concurrent stop() can't race us into
+        # creating a Recorder after teardown (which would leak a 2nd rtl_fm on the one dongle)
+        with self._lock:
+            if self._stop:
+                return
+            rec = self._rec
+            if rec is None:
+                import tempfile
+                self._wav = os.path.join(tempfile.gettempdir(),
+                                         "palisade_sstv_%d.wav" % os.getpid())
+                rec = self._rec = self._make_recorder(self._wav)
+        if rec is None:                              # offscreen seam: hold lease, no capture
             self.status.emit({"sdr": {"text": "SSTV — capturing", "ok": True}, "busy": None})
             return
-        secs = self._rec.seconds()
-        if self._rec.err:
-            self.status.emit({"sdr": {"text": "SSTV — %s" % self._rec.err[:40], "ok": False}})
+        if rec.err:                                  # rtl_fm died: reap + restart on the next step
+            self._stop_rec()
+            self.status.emit({"sdr": {"text": "SSTV — %s (retrying)" % rec.err[:34], "ok": False}})
             return
-        self.status.emit({"sdr": {"text": "SSTV — capturing %ds (lvl %.0f)" % (secs, self._rec.level),
+        secs = rec.seconds()
+        self.status.emit({"sdr": {"text": "SSTV — capturing %ds (lvl %.0f)" % (secs, rec.level),
                                   "ok": True}, "busy": None})
         now = time.time()
-        if secs > 20 and (now - self._last_decode) > 12:
+        # run the CPU-bound decode on a DISPOSABLE daemon thread so step() stays responsive to
+        # _stop (the worker QThread must join within wait(); decode_wav can't be interrupted)
+        if secs > 20 and not self._decoding and (now - self._last_decode) > 12:
             self._last_decode = now
-            self._try_decode()
+            self._decoding = True
+            threading.Thread(target=self._decode_job, args=(self._wav,), daemon=True).start()
 
-    def _start_rec(self):
-        import tempfile
-        self._wav = os.path.join(tempfile.gettempdir(), "palisade_sstv_%d.wav" % os.getpid())
-        self._rec = self._make_recorder(self._wav)
-
-    def _try_decode(self):
+    def _decode_job(self, path):
         try:
-            r = self._decode(self._wav)
+            r = self._decode(path)
         except ValueError as e:                      # no header yet / truncated: keep listening
-            self.status.emit({"sdr": {"text": "SSTV — listening (%s)" % str(e)[:28], "ok": False}})
+            if not self._stop:
+                self.status.emit({"sdr": {"text": "SSTV — listening (%s)" % str(e)[:26],
+                                          "ok": False}})
             return
         except Exception as e:
-            self.error.emit("SSTV decode: %s" % str(e)[:120])
+            if not self._stop:
+                self.error.emit("SSTV decode: %s" % str(e)[:120])
             return
+        finally:
+            self._decoding = False
+        if self._stop:
+            return                                   # torn down mid-decode: drop the abandoned frame
         self.row.emit({"kind": "sstv", "image": r["image"], "mode": r.get("mode", "?"),
                        "lines": r.get("lines", 0), "slant": r.get("slant_ppm", 0)})
         eventbus.bus.publish(eventbus.decode(
@@ -579,9 +604,14 @@ class SstvWorker(Worker):
             "%s frame · %d lines" % (r.get("mode", "?"), r.get("lines", 0)), severity="info"))
 
     def _ensure_lease(self):
+        if self._stop:
+            return False
         if self._has_radio:
             return True
         if radio_arbiter.arbiter.request(self.NAME):
+            if self._stop:                           # stop() won the race -> release immediately
+                radio_arbiter.arbiter.release(self.NAME)
+                return False
             self._has_radio = True
             self.status.emit({"busy": None})
             return True
@@ -590,26 +620,28 @@ class SstvWorker(Worker):
         return False
 
     def _release(self):
-        if self._has_radio:
+        with self._lock:
+            had, self._has_radio = self._has_radio, False
+        if had:
             radio_arbiter.arbiter.release(self.NAME)
-            self._has_radio = False
 
     def _stop_rec(self):
-        if self._rec is not None:
+        with self._lock:
+            rec, self._rec = self._rec, None
+            wav, self._wav = self._wav, None
+        if rec is not None:
             try:
-                self._rec.stop()
+                rec.stop()
             except Exception:
                 pass
-            self._rec = None
-        if self._wav:
+        if wav:
             try:
-                os.remove(self._wav)
+                os.remove(wav)
             except OSError:
                 pass
-            self._wav = None
 
     def stop(self):
-        super().stop()
+        super().stop()          # sets _stop first, so _ensure_lease/_start can't re-acquire/respawn
         self._stop_rec()
         self._release()
 
@@ -624,19 +656,19 @@ class BabelApp(PalisadeApp):
     }
 
     def build_body(self):
-        tmode = self.mode                        # theme string (self.mode is reassigned to the combo)
-        self._tok = theme.tokens(tmode)
+        self._tok = theme.tokens(self.mode)      # self.mode stays the theme string (not the combo)
         self._cur_mode = MODES[0]
+        self._sstv_mode = None
         body = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(body)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(10)
 
         self.bar = ControlBar()
-        self.mode = QtWidgets.QComboBox()
-        self.mode.addItems(MODES)
-        self.mode.currentTextChanged.connect(self._set_mode)
-        self.bar.add_field("mode", self.mode, "Decoder")
+        self.mode_combo = QtWidgets.QComboBox()
+        self.mode_combo.addItems(MODES)
+        self.mode_combo.currentTextChanged.connect(self._set_mode)
+        self.bar.add_field("mode", self.mode_combo, "Decoder")
         self.bar.add_stretch()
         self.busy = QtWidgets.QLabel("")        # "RADIO BUSY — held by X" when another layer owns it
         self.busy.setStyleSheet("color: %s;" % self._tok["warn"])
@@ -659,7 +691,7 @@ class BabelApp(PalisadeApp):
         split.addWidget(self.feed, 3)
         self.detail = DetailCard("MESSAGE")
         split.addWidget(self.detail, 1)
-        self.image_panel = SstvImagePanel(mode=tmode)
+        self.image_panel = SstvImagePanel(mode=self.mode)
         self.stack.addWidget(text_page)          # index 0: text decoders
         self.stack.addWidget(self.image_panel)   # index 1: SSTV image
         outer.addWidget(self.stack, 1)
@@ -671,6 +703,8 @@ class BabelApp(PalisadeApp):
         self._cur_mode = mode
         self.stack.setCurrentIndex(1 if now_img else 0)
         self.feed.model.set_rows([])
+        self.image_panel.clear()            # don't present the old pass's frame as the new mode's
+        self._sstv_mode = None
         self._count = 0
         self.count.setText("0 msgs")
         self.busy.setText("")               # the new mode re-derives BUSY from the arbiter
@@ -695,9 +729,9 @@ class BabelApp(PalisadeApp):
             self._worker.start()
 
     def make_worker(self):
-        if self.mode.currentText() == "SSTV":
+        if self.mode_combo.currentText() == "SSTV":
             return SstvWorker(demo=self.demo)
-        return DecoderWorker(demo=self.demo, mode=self.mode.currentText())
+        return DecoderWorker(demo=self.demo, mode=self.mode_combo.currentText())
 
     def on_status(self, status):
         super().on_status(status)
@@ -729,8 +763,11 @@ class BabelApp(PalisadeApp):
         tag = "DEMO · " if row.get("demo") else ""
         cap = "SSTV · %s%s · %d lines · slant %d ppm" % (
             tag, row.get("mode", "?"), row.get("lines", 0), row.get("slant", 0))
-        self.image_panel.show_image(row["image"], cap)
-        self._count += 1
+        self.image_panel.show_image(row["image"], cap)   # always refresh the latest frame
+        # re-decoding a growing WAV refines the SAME frame — only count a genuinely new one
+        if self._sstv_mode is None or row.get("mode") != self._sstv_mode:
+            self._count += 1
+        self._sstv_mode = row.get("mode")
         self.count.setText("%d frame%s" % (self._count, "" if self._count == 1 else "s"))
         self.header.set_chip("sdr", "SSTV %d" % self._count, state="neutral")
 
