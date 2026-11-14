@@ -489,3 +489,20 @@ def test_prowl_freqdb_allocation_and_panel():
     assert p.fdb_results.text() and "no match" not in p.fdb_results.text().lower()
     p.fdb_input.setText("")
     assert p.fdb_results.text() == ""
+
+
+def test_prowl_live_no_rtl_fm_shows_standby_not_synth(monkeypatch):
+    """Live mode without rtl_fm must list the bank's channels all-quiet and publish NO fabricated
+    hits — live shows only real activity (honest standby), demo is the only synthetic path."""
+    _app()
+    from palisade_qt import prowl
+    monkeypatch.setattr(prowl.shutil, "which", lambda b: None)     # no rtl_fm on PATH
+    w = prowl.ScanWorker(demo=False, bank="NOAA Wx")
+    rows, status = [], []
+    w.status.connect(lambda s: status.append(s))
+    w.row.connect(lambda m: (rows.append(m), setattr(w, "_stop", True)))   # one pass, then stop
+    w._run_standby()
+    assert rows, "standby must still show the channel plan"
+    assert rows[0]["active"] is None
+    assert all(not r.get("_hot") for r in rows[0]["rows"]), "no fabricated hot channels in standby"
+    assert any("STANDBY" in (s.get("sdr") or {}).get("text", "") for s in status)

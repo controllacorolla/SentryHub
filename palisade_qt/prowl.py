@@ -40,10 +40,30 @@ class ScanWorker(Worker):
         self._bank = bank
 
     def run(self):
-        if self.demo or not shutil.which("rtl_fm"):
+        if self.demo:
             self._run_demo()
+        elif not shutil.which("rtl_fm"):
+            self._run_standby()        # live + no rtl_fm: honest standby, never synthesise hits
         else:
             self._run_live()
+
+    def _run_standby(self):
+        """Live mode without rtl_fm: list the bank's channels all-quiet and publish NO fake hits.
+        Live shows only real activity (zero with no hardware); demo is the only synthetic path."""
+        import scanner as engine
+        s, _ = _load_scanner_settings(engine)
+        channels = (engine.bank_channels(self._bank, s.get("custom", []))
+                    or engine.bank_channels("NOAA Wx", []))
+        scan = {"on": False, "pause": False, "idx": 0, "rms": 0.0}
+        while not self._stop:
+            self._emit_state(channels, {}, scan)   # channels listed, all quiet, no fabricated hits
+            # re-assert STANDBY *after* the rows so on_row's "N CH" chip doesn't mask it
+            self.status.emit({"sdr": {"text": "SCAN STANDBY — no rtl_fm", "ok": False},
+                              "standby": True})
+            waited = 0
+            while waited < 1000 and not self._stop:
+                self.msleep(20)
+                waited += 20
 
     def _run_demo(self):
         while not self._stop:
@@ -278,6 +298,14 @@ class ProwlApp(PalisadeApp):
     def make_worker(self):
         return ScanWorker(demo=self.demo, bank=self.bank_combo.currentText(),
                           squelch=self.squelch.value())
+
+    def on_status(self, status):
+        super().on_status(status)
+        if status.get("standby"):            # live + no device: say so, don't imply a live scan
+            self.active.setText("standby — no device")
+            self.active.setProperty("class", "value")
+            self.active.style().unpolish(self.active)
+            self.active.style().polish(self.active)
 
     def _sig_color(self, sig, hot):
         if hot:
