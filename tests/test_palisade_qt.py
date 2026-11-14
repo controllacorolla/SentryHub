@@ -539,3 +539,18 @@ def test_babel_open_close_no_leaked_thread_or_lease():
     _pump(200)
     a.stop()
     assert ra.arbiter.owner() is None, "closing BABEL must leave the SDR free"
+
+
+def test_babel_live_no_binary_shows_standby_not_synth(monkeypatch):
+    """Live mode with the decoder binary absent must show an honest STANDBY and emit NO rows —
+    live never synthesises (that contract matches ATLAS/OPS)."""
+    from palisade_qt import babel
+    monkeypatch.setattr(babel, "_can_run", lambda mode: False)
+    w = babel.DecoderWorker(demo=False, mode="AIS")
+    w._mode_changed = True                               # exit the idle loop immediately
+    rows, status = [], []
+    w.row.connect(lambda r: rows.append(r))
+    w.status.connect(lambda s: status.append(s))
+    w._run_standby("AIS")
+    assert rows == [], "live mode must not fabricate decoder rows when no hardware is present"
+    assert any("STANDBY" in (s.get("sdr") or {}).get("text", "") for s in status)

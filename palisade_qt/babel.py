@@ -95,10 +95,13 @@ def _load_settings(name, defaults):
     return dict(defaults)
 
 
+# the capture binary each live radio mode needs on PATH
+_MODE_BINARY = {"AIS": "rtl_ais", "ACARS": "acarsdec", "POCSAG": "multimon-ng", "RDS": "redsea"}
+
+
 def _can_run(mode):
     """Check if the required binary for a mode is on PATH."""
-    needs = {"AIS": "rtl_ais", "ACARS": "acarsdec", "POCSAG": "multimon-ng", "RDS": "redsea"}
-    binary = needs.get(mode)
+    binary = _MODE_BINARY.get(mode)
     return binary is None or shutil.which(binary) is not None
 
 
@@ -296,8 +299,7 @@ class DecoderWorker(Worker):
             if self.demo or mode not in _LIVE_RUNNERS:
                 self._run_demo(mode)
             elif not _can_run(mode):
-                self.status.emit({"sdr": {"text": "%s DEMO (no binary)" % mode, "ok": False}})
-                self._run_demo(mode)
+                self._run_standby(mode)       # live + no decoder: honest standby, never synth
             else:
                 self._run_live(mode)
 
@@ -327,6 +329,14 @@ class DecoderWorker(Worker):
             self.msleep(2000)
         finally:
             radio_arbiter.arbiter.release(LEASE_NAME)
+
+    def _run_standby(self, mode):
+        """Live mode with the decoder binary absent: show an honest STANDBY and publish nothing.
+        Live never synthesises — demo mode (the SDR-DEMO chip) is the only synthetic path."""
+        binary = _MODE_BINARY.get(mode, "decoder")
+        self.status.emit({"sdr": {"text": "%s STANDBY — no %s" % (mode, binary), "ok": False}})
+        while not self._stop and not self._mode_changed:
+            self.msleep(50)
 
     def _run_demo(self, mode):
         while not self._stop and not self._mode_changed:
