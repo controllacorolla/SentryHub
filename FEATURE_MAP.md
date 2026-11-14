@@ -26,8 +26,12 @@ tacmap, geo, tiles, fieldcomp (map/trip/almanac).
   balloons, togglable layers + legend; selectable contact → detail (id, alt, speed, dist+brg)
 - ✅ every contact publishes a typed `contact` event to the event bus → renders on ATLAS's map
   AND the OPS PPI (one stream, two views); demo feed wired, flagged by the SDR-DEMO chip
-- ⬜ live engine adapters (sky_app ADS-B + skyintel + mlat, ais, aprs stations, dronewatch RID,
-  kraken DF, balloons) — stubbed behind AtlasLiveWorker; live mode publishes ZERO until wired
+- ◐ **live ADS-B WIRED** — reuses `sky_app.AdsbFeed` (readsb/dump1090 `aircraft.json`) as-is and
+  adapts its aircraft to typed `contact` events (`adsb_to_contact`, kind=aircraft, source=ADS-B,
+  7x00 squawk/emergency → alert). No 2nd radio and no lease (readsb owns its radio). Shows on the
+  ATLAS map AND the OPS PPI. **Device validation (real RTL capture) pending on the uConsole.**
+- ⬜ remaining live adapters (ais, aprs stations, dronewatch RID, kraken DF, balloons) — stubbed
+  behind AtlasLiveWorker; live mode publishes ZERO for them until wired (one source per PR)
 
 ## BABEL — universal decoder
 Absorbs: ais, signals (ACARS/VDL2), pager (POCSAG/FLEX), rds, cw, rtty, digimodes, tpms,

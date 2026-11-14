@@ -21,7 +21,7 @@ from .kit import MapPanel, FeedTable, DetailCard, micro
 from .worker import Worker
 
 # kind -> (legend label, theme colour token). Severity "alert" overrides the colour to red.
-KINDS = [("air", "AIRCRAFT", "accent"), ("ship", "SHIPS", "live"),
+KINDS = [("aircraft", "AIRCRAFT", "accent"), ("ship", "SHIPS", "live"),
          ("aprs", "APRS", "warn"), ("drone", "DRONES", "alert"),
          ("df", "DF", "text"), ("balloon", "BALLOONS", "muted")]
 KIND_LABEL = {k: lbl for k, lbl, _ in KINDS}
@@ -37,9 +37,9 @@ def _offset(lat, lon, d_nm, brg_deg):
 
 
 class _Track:
-    _SPD = {"air": (160, 480), "ship": (4, 22), "aprs": (0, 55), "drone": (8, 40),
+    _SPD = {"aircraft": (160, 480), "ship": (4, 22), "aprs": (0, 55), "drone": (8, 40),
             "df": (0, 0), "balloon": (6, 30)}
-    _ALT = {"air": (6000, 39000), "drone": (60, 400), "balloon": (30000, 90000)}
+    _ALT = {"aircraft": (6000, 39000), "drone": (60, 400), "balloon": (30000, 90000)}
 
     def __init__(self, kind):
         self.kind = kind
@@ -50,11 +50,11 @@ class _Track:
         self.spd = random.uniform(*self._SPD[kind])
         self.alt = random.randint(*self._ALT[kind]) if kind in self._ALT else None
         self.id = self._mkid(kind)
-        self.mil = kind == "air" and random.random() < 0.18
+        self.mil = kind == "aircraft" and random.random() < 0.18
 
     @staticmethod
     def _mkid(kind):
-        if kind == "air":
+        if kind == "aircraft":
             return random.choice(["UAL", "ASA", "DAL", "FDX", "N"]) + str(random.randint(100, 980))
         if kind == "ship":
             return str(random.randint(200000000, 775000000))        # MMSI
@@ -80,7 +80,7 @@ class _Track:
 
 class AtlasDemoWorker(Worker):
     """Synthetic multi-layer traffic, published to the bus (demo only)."""
-    _COUNT = {"air": 6, "ship": 4, "aprs": 3, "drone": 2, "df": 1, "balloon": 1}
+    _COUNT = {"aircraft": 6, "ship": 4, "aprs": 3, "drone": 2, "df": 1, "balloon": 1}
 
     def __init__(self, parent=None):
         super().__init__(demo=True, interval_ms=600, parent=parent)
@@ -96,33 +96,86 @@ class AtlasDemoWorker(Worker):
         self.status.emit({"sdr": {"text": "SDR DEMO", "state": "neutral"}})
 
 
+_EMERG_SQ = {"7500", "7600", "7700"}
+
+
+def adsb_to_contact(a):
+    """Adapt ONE sky_app aircraft dict -> a typed contact event. The decoding is sky_app's and is
+    left unchanged; this only reshapes its output. Returns None for an aircraft with no position."""
+    lat, lon = a.get("lat"), a.get("lon")
+    if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+        return None
+    cid = (a.get("flight") or "").strip() or str(a.get("hex", "")).upper()
+    alt = a.get("alt_baro")
+    if not isinstance(alt, (int, float)):
+        alt = a.get("alt_geom")
+    spd = a.get("gs")
+    sq = str(a.get("squawk") or "")
+    emerg = a.get("emergency")
+    sev = "alert" if (emerg and emerg not in ("", "none")) or sq in _EMERG_SQ else "live"
+    return eventbus.contact("ADS-B", cid, lat, lon,
+                            alt=int(alt) if isinstance(alt, (int, float)) else None,
+                            kind="aircraft", severity=sev,
+                            spd=int(spd) if isinstance(spd, (int, float)) else None,
+                            track=a.get("track"), hexid=a.get("hex"))
+
+
+def adsb_contacts(aircraft):
+    """Typed contact events for a sky_app aircraft snapshot (aircraft with a position only)."""
+    return [ev for ev in (adsb_to_contact(a) for a in aircraft) if ev is not None]
+
+
 class AtlasLiveWorker(Worker):
-    """Live mode: pull from the real engines and publish. Until the adapters are wired they
-    yield nothing, so a live ATLAS with no backend publishes zero contacts (honest standby)."""
+    """Live mode: pull real aircraft from sky_app's ADS-B engine (readsb/dump1090 aircraft.json)
+    and publish them as typed contacts. No radio is opened and no lease is taken — readsb runs as
+    its own service and owns its radio; we only read its output, so decoding/radio behaviour is
+    unchanged and the autopilot is undisturbed. Other layers (AIS/APRS/dronewatch/DF/balloons)
+    are still stubbed; with no engine up this publishes ZERO contacts. Device-only: real RTL
+    capture is validated on the uConsole."""
 
     def __init__(self, parent=None):
         super().__init__(demo=False, interval_ms=1000, parent=parent)
+        self._adsb = None
+        self._adsb_tried = False
+
+    def _ensure_adsb(self):
+        if self._adsb_tried:
+            return
+        self._adsb_tried = True
+        try:
+            import sky_app
+            srcs = sky_app.DEFAULT_SETTINGS.get("adsb_sources") or ["/run/readsb"]
+            self._adsb = sky_app.AdsbFeed(list(srcs))
+        except Exception as e:       # no engine / no deps in this env: stay at zero, surface once
+            self.error.emit("ADS-B engine unavailable: %s" % str(e)[:120])
+            self._adsb = None
 
     def step(self):
-        for ev in self._live_contacts():
+        self._ensure_adsb()
+        for ev in self._adsb_contacts():
             eventbus.bus.publish(ev)
 
-    def _live_contacts(self):
-        out = []
-        # TODO(wire-ui): adapters publishing real contacts, each on a dongle/service:
-        #   out += _adsb_from_sky_app()      # sky_app ADS-B + skyintel + mlat
-        #   out += _ships_from_ais()         # ais decoder
-        #   out += _aprs_stations()          # aprs.Stations
-        #   out += _drones_from_dronewatch() # dronewatch Remote-ID (first-class)
-        #   out += _df_from_kraken()         # kraken DF bearings
-        #   out += _balloons()               # balloons sondes
-        return out
+    def _adsb_contacts(self):
+        if self._adsb is None:
+            return []
+        try:
+            aircraft, _trails, _status, _rcv = self._adsb.snapshot()
+        except Exception:
+            return []
+        return adsb_contacts(aircraft)
+
+    def run(self):
+        super().run()
+        if self._adsb is not None:
+            self._adsb.stopped = True        # stop the feed's poll thread on close
 
 
 # ------------------------------------------------------------------ app
 class AtlasApp(PalisadeApp):
     TITLE = "ATLAS"
-    LEASE = "ATLAS"
+    # ADS-B reads readsb's aircraft.json (readsb owns its radio); no 2nd radio, no lease.
+    # A dongle-using layer (AIS on 162 MHz) will take the lease when it is wired.
+    LEASE = None
 
     def build_body(self):
         self._tok = theme.tokens(self.mode)

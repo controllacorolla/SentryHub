@@ -221,18 +221,19 @@ def test_atlas_demo_contacts_reach_both_map_and_ops():
     eventbus.bus.clear()
     from palisade_qt.shell import PalisadeHub
     hub = PalisadeHub(demo=True, mode="dark")
-    hub.show()
-    hub.open_callsign("ATLAS")              # starts ATLAS's demo feed
-    _pump(900)
-    atlas = hub.pages["ATLAS"]
-    assert len(atlas._contacts) > 0, "ATLAS demo feed should publish contacts"
-    assert len(hub.ops._contacts) > 0, "the same contacts must reach the OPS PPI"
-    # layers: all kinds present should include drones (first-class)
-    kinds = {c["kind"] for c in atlas._contacts.values()}
-    assert "drone" in kinds and "air" in kinds
-    a_worker, o_worker = atlas._worker, hub.ops._worker
-    hub.close()
-    _pump(200)
+    try:
+        hub.show()
+        hub.open_callsign("ATLAS")              # starts ATLAS's demo feed
+        _pump(900)
+        atlas = hub.pages["ATLAS"]
+        assert len(atlas._contacts) > 0, "ATLAS demo feed should publish contacts"
+        assert len(hub.ops._contacts) > 0, "the same contacts must reach the OPS PPI"
+        kinds = {c["kind"] for c in atlas._contacts.values()}
+        assert "drone" in kinds and "aircraft" in kinds   # drones first-class
+        a_worker, o_worker = atlas._worker, hub.ops._worker
+    finally:
+        hub.close()                              # always stop workers, even on a failed assert
+        _pump(200)
     assert not (a_worker and a_worker.isRunning())
     assert not (o_worker and o_worker.isRunning())
 
@@ -244,8 +245,32 @@ def test_atlas_live_mode_fabricates_zero_contacts():
     from palisade_qt.atlas import AtlasApp
     atlas = AtlasApp(demo=False, mode="dark")
     win = atlas.standalone()
-    win.show()
-    _pump(600)
-    assert len(atlas._contacts) == 0, "live ATLAS with no backend must not invent contacts"
-    win.close()
-    _pump(150)
+    try:
+        win.show()
+        _pump(600)
+        assert len(atlas._contacts) == 0, "live ATLAS with no backend must not invent contacts"
+    finally:
+        win.close()
+        _pump(150)
+
+
+def test_adsb_to_contact_shapes_a_real_aircraft():
+    from palisade_qt.atlas import adsb_to_contact
+    a = {"hex": "a1b2c3", "flight": "UAL123 ", "lat": 47.6, "lon": -122.3,
+         "alt_baro": 34000, "gs": 420, "track": 270, "squawk": "1200"}
+    ev = adsb_to_contact(a)
+    assert ev["type"] == "contact" and ev["source"] == "ADS-B"
+    p = ev["payload"]
+    assert p["kind"] == "aircraft" and p["id"] == "UAL123" and p["lat"] == 47.6
+    assert p["alt"] == 34000 and p["spd"] == 420 and ev["severity"] == "live"
+    assert adsb_to_contact({"hex": "x", "flight": "Y"}) is None        # no position -> dropped
+    assert adsb_to_contact(dict(a, squawk="7700"))["severity"] == "alert"   # emergency -> alert
+
+
+def test_atlas_adsb_contacts_converts_a_snapshot():
+    from palisade_qt.atlas import adsb_contacts
+    snap = [{"hex": "a1", "flight": "ASA9", "lat": 47.7, "lon": -122.4, "alt_baro": 12000, "gs": 300},
+            {"hex": "b2", "flight": "NOPOS"}]            # second has no position -> dropped
+    evs = adsb_contacts(snap)
+    assert len(evs) == 1 and evs[0]["payload"]["kind"] == "aircraft"
+    assert evs[0]["payload"]["id"] == "ASA9" and evs[0]["source"] == "ADS-B"
