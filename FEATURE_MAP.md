@@ -35,6 +35,7 @@ tacmap, geo, tiles, fieldcomp (map/trip/almanac), gnss.
 - 🔧 **cross-feed fusion** — correlate ADS-B + AIS + APRS + BLE + WiFi into unified tracks
 - 🔧 **pattern-of-life ledger** — time-series contact tracking with anomaly/change alerts
 - 🔧 **entity graph** — multi-radio identity resolution: WiFi+BLE+TPMS+APRS co-movement → single entity (see Platform Capabilities above)
+- 🔧 **OSINT enrichment layer** — auto-lookup detected identifiers against cached offline databases on NVMe: MAC → vendor (IEEE OUI), MMSI → vessel name/flag (ITU), tail number → aircraft registration (FAA), callsign → ham license (FCC ULS), BSSID → known AP mapping. Turns raw contacts into identified entities. Feeds the entity graph
 - 🔧 **geofenced alerts** — define areas, alert on contact enter/leave
 - 🔧 **temporal timeline view** — scrub through time across all radios: "at 14:32 this BLE appeared, at 14:35 this WiFi probed, at 14:37 this TPMS arrived" with correlation markers
 
@@ -73,6 +74,7 @@ Absorbs: rf_explorer, specan, waterfall, iqtool, noisefloor, classify, freqdb, r
 ## PROWL — scanner / tuner
 Absorbs: scanner, fm, freqdb, nwr.
 - ✅ scanner + FM tuner + NWR/SAME decode, all on arbiter, sub-mode tabs
+- 🔧 **DMR / P25 / TETRA / NXDN digital trunked radio** — decode digital police/fire/EMS/commercial/military radio via SDRTrunk or OP25. Majority of modern radio traffic is digital; without this PALISADE is deaf to it. Mature open-source tools, RTL-SDR compatible
 - ➕ memory banks + scan/hold + audio with the top-bar volume
 - ➕ CTCSS/DCS decoder
 
@@ -81,6 +83,7 @@ Absorbs: hwlab (serial/I2C/GPIO), devterm (serial/BLE/MQTT/SSH), buslab, canbus,
 flipper, usbhid, rollcode, replay, sensors (I2C).
 - ⬜ all — real serial/I2C/CAN/BLE consoles + tool integrations
 - ➕ one colored multiplexed console with per-device tabs
+- 🔧 **Inductive CAN bus sniffing via SDR** — contactless vehicle CAN data extraction using RTL-SDR + inductive probe, no physical OBD-II connection needed (per NEWSDR 2025 paper). Different from wired canbus.py
 - 🔧 **LoRa packet capture + replay** (AIO V2 SX1262) — raw LoRa sniff, record, decode, and replay (TX replay gated behind txguard). IoT/LoRaWAN security testing
 - 🔧 **Meshtastic packet analysis** (AIO V2 SX1262) — decode mesh traffic: node IDs, positions, messages, channel keys. Counter-mesh recon
 - 🔧 **Bias tee control** (AIO V2 RTL-SDR) — software toggle for 5V bias tee powering external LNAs/active antennas through coax
@@ -237,8 +240,9 @@ OPS ✅ → ATLAS ✅ → PRISM ✅ → PROWL ✅ → BABEL (in progress) → RE
 4. **OPSEC mode** — one-button RF-dark. Table stakes for professional field use.
 
 **Tier 2 — High field value (use your hardware, produce deliverables):**
-5. rtl_433 ISM (easiest win, massive device coverage)
-6. ACARS/VDL2 (aircraft data beyond ADS-B, mature tools)
+5. DMR/P25/TETRA/NXDN digital trunked radio (SDRTrunk/OP25 — hear modern radio traffic)
+6. rtl_433 ISM (easiest win, massive device coverage)
+7. ACARS/VDL2 (aircraft data beyond ADS-B, mature tools)
 7. Session record/replay to NVMe + ATAK/CoT export (field tool + team SA)
 8. Vehicle counter-surveillance mode (BLE/WiFi/TPMS persistence tracking while driving)
 9. Site survey / heatmap mode (GNSS-tagged RF measurements → heatmap deliverable)
@@ -251,7 +255,8 @@ OPS ✅ → ATLAS ✅ → PRISM ✅ → PROWL ✅ → BABEL (in progress) → RE
 16. TPMS vehicle fingerprinting (TPMS IDs + GNSS = vehicle tracking without LPR)
 
 **Tier 3 — Intelligence depth (algorithms + ML):**
-17. Cross-feed fusion + pattern-of-life + temporal timeline (the differentiator)
+18. OSINT enrichment layer (MAC/MMSI/tail/callsign/BSSID → identity from offline databases on NVMe)
+19. Cross-feed fusion + pattern-of-life + temporal timeline (the differentiator)
 18. AI signal classification (ML on known signals, flag unknowns)
 19. Spectral fingerprinting (physical-layer device identification from IQ)
 20. WiFi probe fingerprinting (passive device/person identification)
@@ -270,8 +275,9 @@ OPS ✅ → ATLAS ✅ → PRISM ✅ → PROWL ✅ → BABEL (in progress) → RE
 31. Nordic nRF BLE sniffer + BLE MITM/GATTack
 32. Iridium + DECT + SatDump (niche but powerful)
 33. TEMPEST + Ubertooth (experimental/hardware-gated)
-34. Second SDR + radio director (simultaneous operation)
-35. HackRF TX for BENCH (conducted self-test only)
+34. Inductive CAN bus sniffing via SDR (contactless vehicle data extraction)
+35. Second SDR + radio director (simultaneous operation)
+36. HackRF TX for BENCH (conducted self-test only)
 
 ## Guardrails
 All tools come in. Active assessment gated behind engagement.py (authorization), opprofile.py
