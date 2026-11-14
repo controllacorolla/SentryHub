@@ -15,6 +15,7 @@ Publishing is thread-safe: a worker QThread calls bus.publish(...), which append
 log (under a lock) and emits a Qt signal that Qt delivers on the GUI thread (queued connection),
 so subscribers touch widgets safely. Nothing here renders — consumers decide how to show it.
 """
+import math
 import threading
 import time
 from collections import deque
@@ -23,6 +24,25 @@ from PySide6 import QtCore
 
 TYPES = ("contact", "decode", "alert")
 SEVERITIES = ("info", "live", "warn", "alert")
+
+# Operator home position; every geo consumer converts contact lat/lon to local nm from here, so
+# the same contact event renders on ATLAS's map AND the OPS PPI in one shared frame.
+# TODO(settings): read from the operator's saved position instead of this default.
+HOME = (47.6, -122.3)
+_EARTH_NM = 3440.065
+
+
+def to_xy(lat, lon, home=None):
+    """(x east, y north) in nautical miles from home — the local frame for the map / PPI."""
+    hlat, hlon = home or HOME
+    p1, p2 = math.radians(hlat), math.radians(lat)
+    dl = math.radians(lon - hlon)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    d = 2 * _EARTH_NM * math.asin(min(1.0, math.sqrt(a)))
+    ex = math.sin(dl) * math.cos(p2)
+    ny = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    brg = math.atan2(ex, ny)
+    return d * math.sin(brg), d * math.cos(brg)
 
 
 def make_event(etype, source, payload, severity="info", ts=None):
@@ -33,9 +53,10 @@ def make_event(etype, source, payload, severity="info", ts=None):
 
 
 # typed constructors — keep payload shapes consistent across publishers
-def contact(source, cid, x_nm, y_nm, label=None, severity="live", **extra):
-    """A positioned emitter (aircraft/ship/APRS/drone/DF). x/y in nm from home."""
-    p = {"id": cid, "x": x_nm, "y": y_nm, "label": label or cid}
+def contact(source, cid, lat, lon, alt=None, kind="air", label=None, severity="live", **extra):
+    """A positioned emitter (aircraft/ship/APRS/drone/DF/balloon). Geo-native: carries lat/lon
+    (+ alt/kind); consumers convert to their local frame with to_xy()."""
+    p = {"id": cid, "lat": lat, "lon": lon, "alt": alt, "kind": kind, "label": label or cid}
     p.update(extra)
     return make_event("contact", source, p, severity)
 

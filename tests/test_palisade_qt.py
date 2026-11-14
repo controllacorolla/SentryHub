@@ -42,8 +42,11 @@ def test_ops_open_pump_close_no_leaked_thread(mode):
     _pump(900)
     worker = ops._worker
     assert worker is not None and worker.isRunning(), "worker should run while open"
-    # OPS consumes the event bus; the demo feed should have published contacts
-    assert len(ops._contacts) > 0, "demo feed should have published contacts to the bus"
+    # OPS consumes the event bus; a contact published to the bus must reach the PPI
+    from palisade_qt import eventbus
+    eventbus.bus.publish(eventbus.contact("ATLAS", "TST1", 47.7, -122.4))
+    _pump(120)
+    assert "TST1" in ops._contacts, "a bus contact should reach the OPS PPI"
     win.close()
     _pump(200)
     assert ops._worker is None, "stop() must clear the worker"
@@ -176,14 +179,15 @@ def test_eventbus_typed_contract():
     from palisade_qt import eventbus
     got = []
     eventbus.bus.published.connect(got.append)
-    c = eventbus.contact("ATLAS", "UAL1", 10, -5, mil=True)
+    c = eventbus.contact("ATLAS", "UAL1", 47.5, -122.3, alt=34000, kind="air", mil=True)
     d = eventbus.decode("BABEL", "ADS-B", "A1", "FL340")
     a = eventbus.alert("RECON", "Open AP", severity="warn")
     for e in (c, d, a):
         eventbus.bus.publish(e)
     for e in (c, d, a):
         assert set(e) == {"type", "source", "severity", "ts", "payload"}
-    assert c["type"] == "contact" and c["payload"]["x"] == 10 and c["payload"]["mil"] is True
+    assert c["type"] == "contact" and c["payload"]["lat"] == 47.5 and c["payload"]["lon"] == -122.3
+    assert c["payload"]["kind"] == "air" and c["payload"]["mil"] is True
     assert d["type"] == "decode" and d["payload"]["proto"] == "ADS-B"
     assert a["type"] == "alert" and a["severity"] == "warn"
     assert eventbus.bus.recent(etype="alert")[-1]["payload"]["text"] == "Open AP"
@@ -206,5 +210,42 @@ def test_ops_live_mode_shows_standby_not_fake_data():
     # PRISM card is standby until PRISM is up; no contacts invented in live mode
     assert ops.card_prism._live is False
     assert len(ops._contacts) == 0, "live OPS must not fabricate contacts"
+    win.close()
+    _pump(150)
+
+
+def test_atlas_demo_contacts_reach_both_map_and_ops():
+    """One stream, two views: ATLAS's demo feed populates its own map AND the OPS PPI."""
+    _app()
+    from palisade_qt import eventbus
+    eventbus.bus.clear()
+    from palisade_qt.shell import PalisadeHub
+    hub = PalisadeHub(demo=True, mode="dark")
+    hub.show()
+    hub.open_callsign("ATLAS")              # starts ATLAS's demo feed
+    _pump(900)
+    atlas = hub.pages["ATLAS"]
+    assert len(atlas._contacts) > 0, "ATLAS demo feed should publish contacts"
+    assert len(hub.ops._contacts) > 0, "the same contacts must reach the OPS PPI"
+    # layers: all kinds present should include drones (first-class)
+    kinds = {c["kind"] for c in atlas._contacts.values()}
+    assert "drone" in kinds and "air" in kinds
+    a_worker, o_worker = atlas._worker, hub.ops._worker
+    hub.close()
+    _pump(200)
+    assert not (a_worker and a_worker.isRunning())
+    assert not (o_worker and o_worker.isRunning())
+
+
+def test_atlas_live_mode_fabricates_zero_contacts():
+    _app()
+    from palisade_qt import eventbus
+    eventbus.bus.clear()
+    from palisade_qt.atlas import AtlasApp
+    atlas = AtlasApp(demo=False, mode="dark")
+    win = atlas.standalone()
+    win.show()
+    _pump(600)
+    assert len(atlas._contacts) == 0, "live ATLAS with no backend must not invent contacts"
     win.close()
     _pump(150)

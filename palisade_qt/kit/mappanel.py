@@ -134,10 +134,15 @@ class MapPanel(QtWidgets.QFrame):
         for lbl in self._cardinal_labels:
             lbl.setColor(text_color)
 
-    def set_contacts(self, points, labels=None):
-        """points: iterable of (x_nm, y_nm). labels: optional list of label strings."""
+    def set_contacts(self, points, labels=None, colors=None):
+        """points: iterable of (x_nm, y_nm). labels/colors: optional per-point lists."""
         pts = list(points)
-        self.scatter.setData([p[0] for p in pts], [p[1] for p in pts])
+        if colors:
+            spots = [{"pos": (p[0], p[1]), "brush": pg.mkBrush(c), "size": 7, "pen": None}
+                     for p, c in zip(pts, colors)]
+            self.scatter.setData(spots)
+        else:
+            self.scatter.setData([p[0] for p in pts], [p[1] for p in pts])
         for lbl in self._contact_labels:
             self.plot.removeItem(lbl)
         self._contact_labels.clear()

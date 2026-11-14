@@ -22,9 +22,12 @@ Absorbs: overwatch, astro, radio (SDR lease/autopilot), scout.
 ## ATLAS — the map
 Absorbs: sky_app (ADS-B), skyintel, mlat, balloons, aprs, dronewatch (Remote ID), kraken (DF),
 tacmap, geo, tiles, fieldcomp (map/trip/almanac).
-- ◐ map panel exists (dark/light/sat tiles, range rings) → wire real feeds
-- ⬜ real ADS-B (sky_app), APRS stations, **drone Remote ID (dronewatch)**, DF bearings (kraken)
-- ➕ **all contacts on ONE map** (aircraft + ships + APRS + drones + DF), selectable layers
+- ✅ **ONE layered map** — aircraft / ships / APRS / **drones (Remote-ID, first-class)** / DF /
+  balloons, togglable layers + legend; selectable contact → detail (id, alt, speed, dist+brg)
+- ✅ every contact publishes a typed `contact` event to the event bus → renders on ATLAS's map
+  AND the OPS PPI (one stream, two views); demo feed wired, flagged by the SDR-DEMO chip
+- ⬜ live engine adapters (sky_app ADS-B + skyintel + mlat, ais, aprs stations, dronewatch RID,
+  kraken DF, balloons) — stubbed behind AtlasLiveWorker; live mode publishes ZERO until wired
 
 ## BABEL — universal decoder
 Absorbs: ais, signals (ACARS/VDL2), pager (POCSAG/FLEX), rds, cw, rtty, digimodes, tpms,

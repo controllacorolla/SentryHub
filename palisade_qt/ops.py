@@ -36,44 +36,18 @@ STALE_S = 12.0          # a contact not refreshed within this drops off the scop
 
 
 # ---------------------------------------------------------------- demo / live feeds
-class _DemoTrack:
-    def __init__(self):
-        self.id = "%s%d" % (random.choice(["UAL", "ASA", "DAL", "FDX", "N"]),
-                            random.randint(100, 980))
-        self.r = random.uniform(8, 72)
-        self.brg = random.uniform(0, 360)
-        self.spd = random.uniform(180, 480)
-        self.mil = random.random() < 0.18
-
-    def step(self, dt):
-        self.brg = (self.brg + self.spd / 3600.0 * dt * 3) % 360
-
-    def xy(self):
-        a = math.radians(self.brg)
-        return self.r * math.sin(a), self.r * math.cos(a)
-
-
 class DemoFeedWorker(Worker):
-    """Stands in for the real backends in demo mode: publishes contact/decode/alert/status."""
+    """Demo stand-in for the NON-map backends: publishes decode / alert / telemetry to the bus.
+    Contacts are ATLAS's domain now (one stream, two views), so OPS no longer fabricates them."""
 
     def __init__(self, parent=None):
         super().__init__(demo=True, interval_ms=500, parent=parent)
-        self.tracks = [_DemoTrack() for _ in range(12)]
-        self._t = time.time()
         self._t0 = time.time()
         self._decodes = [("ADS-B", "DAL1241 · FL340"), ("AIS", "WAVE RUNNER · 8kn"),
                          ("POCSAG", "page · fire disp"), ("ACARS", "POS RPT"), ("RDS", "KEXP")]
 
     def step(self):
         now = time.time()
-        dt, self._t = now - self._t, now
-        for tk in self.tracks:
-            tk.step(dt)
-            x, y = tk.xy()
-            eventbus.bus.publish(eventbus.contact(
-                "ATLAS", tk.id, x, y, label=tk.id,
-                severity="alert" if tk.mil else "live",
-                rng=math.hypot(x, y), mil=tk.mil))
         if random.random() < 0.5:
             proto, summ = random.choice(self._decodes)
             eventbus.bus.publish(eventbus.decode("BABEL", proto,
@@ -281,9 +255,12 @@ class OpsHome(PalisadeApp):
     def _on_event(self, ev):
         et, src, pl = ev["type"], ev["source"], ev["payload"]
         if et == "contact":
-            pl["_ts"] = ev["ts"]
-            pl["severity"] = ev["severity"]
-            self._contacts[pl["id"]] = pl
+            # geo-native contact -> local nm frame shared with ATLAS's map
+            x, y = eventbus.to_xy(pl["lat"], pl["lon"])
+            self._contacts[pl["id"]] = {
+                "id": pl["id"], "x": x, "y": y, "label": pl.get("label", pl["id"]),
+                "severity": ev["severity"], "_ts": ev["ts"], "rng": math.hypot(x, y),
+                "mil": pl.get("mil", False)}
         elif et == "decode" and pl.get("kind") == "telemetry":
             self._telemetry(pl)
         elif et == "decode":

@@ -8,6 +8,7 @@ range rings and contacts.
 import math
 import threading
 from pathlib import Path
+import os
 from urllib.request import urlopen, Request
 
 import numpy as np
@@ -95,6 +96,10 @@ class TileLayer(QtCore.QObject):
         self._pending = None
 
     def fetch(self, style):
+        # Never hit the network under the offscreen test platform or when asked to stay offline;
+        # the map falls back to the scope (no tiles) style. Keeps the suite hermetic.
+        if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            return
         with self._lock:
             if self._busy:
                 self._pending = style
