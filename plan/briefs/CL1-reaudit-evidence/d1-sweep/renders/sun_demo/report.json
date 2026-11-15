@@ -1,0 +1,6951 @@
+{
+ "ops": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   397
+  ],
+  "hub_hint": [
+   1104,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   591,
+   345
+  ],
+  "page_hint": [
+   1054,
+   626
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ]
+  ]
+ },
+ "atlas-map": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   397
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   603,
+   281
+  ],
+  "page_hint": [
+   1149,
+   541
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "H_SCROLL",
+    "QTableView[] ''",
+    [
+     1,
+     447
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 19,
+     "row_h": 40,
+     "view_h": 248,
+     "cols": [
+      159,
+      105,
+      70,
+      100
+     ]
+    }
+   ],
+   [
+    "OVERLAP",
+    "PlotWidget[] ''  X  QComboBox[] ''",
+    [
+     566,
+     10,
+     104,
+     32
+    ]
+   ]
+  ]
+ },
+ "atlas-skydome": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   397
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   603,
+   281
+  ],
+  "page_hint": [
+   1149,
+   541
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 3,
+     "row_h": 40,
+     "view_h": 513,
+     "cols": [
+      126,
+      70,
+      247
+     ]
+    }
+   ]
+  ]
+ },
+ "atlas-passes": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   397
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   603,
+   281
+  ],
+  "page_hint": [
+   1149,
+   541
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 2,
+     "row_h": 40,
+     "view_h": 540,
+     "cols": [
+      234,
+      72,
+      85,
+      72,
+      670
+     ]
+    }
+   ]
+  ]
+ },
+ "prism": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   397
+  ],
+  "hub_hint": [
+   1161,
+   1162
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   1021,
+   258
+  ],
+  "page_hint": [
+   1021,
+   1110
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QDoubleSpinBox[] ''",
+    [
+     183,
+     36,
+     145,
+     41
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QDoubleSpinBox[] ''",
+    [
+     164,
+     36,
+     126,
+     41
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QSpinBox[] ''",
+    [
+     126,
+     36,
+     93,
+     41
+    ]
+   ]
+  ]
+ },
+ "prowl-scan": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   842,
+   484
+  ],
+  "page_hint": [
+   842,
+   547
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 8,
+     "row_h": 40,
+     "view_h": 486,
+     "cols": [
+      118,
+      170,
+      70,
+      496
+     ]
+    }
+   ],
+   [
+    "SQUEEZED",
+    "QProgressBar[] ''",
+    [
+     288,
+     14,
+     107,
+     25
+    ]
+   ]
+  ]
+ },
+ "prowl-fm": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   847,
+   484
+  ],
+  "page_hint": [
+   847,
+   547
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ]
+  ]
+ },
+ "prowl-nwr": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   847,
+   484
+  ],
+  "page_hint": [
+   847,
+   547
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "TABLE_CELL_ELIDED",
+    "QTableView[] ''",
+    [
+     "TIME",
+     "03:21:30",
+     86,
+     70
+    ]
+   ],
+   [
+    "TABLE_CELL_ELIDED",
+    "QTableView[] ''",
+    [
+     "EVENT",
+     "Severe Thunderstorm Warning",
+     292,
+     74
+    ]
+   ],
+   [
+    "TABLE_CELL_ELIDED",
+    "QTableView[] ''",
+    [
+     "AREAS",
+     "020013, 020014",
+     151,
+     74
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 3,
+     "row_h": 40,
+     "view_h": 491,
+     "cols": [
+      70,
+      74,
+      74,
+      463
+     ]
+    }
+   ]
+  ]
+ },
+ "prowl-decode": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   847,
+   484
+  ],
+  "page_hint": [
+   847,
+   547
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "TABLE_CELL_ELIDED",
+    "QTableView[] ''",
+    [
+     "TIME",
+     "03:21:31",
+     86,
+     70
+    ]
+   ],
+   [
+    "TABLE_CELL_ELIDED",
+    "QTableView[] ''",
+    [
+     "ID",
+     "237034919",
+     97,
+     70
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 2,
+     "row_h": 40,
+     "view_h": 491,
+     "cols": [
+      70,
+      74,
+      70,
+      640
+     ]
+    }
+   ]
+  ]
+ },
+ "sweep": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   1162
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   562,
+   134
+  ],
+  "page_hint": [
+   562,
+   268
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "TABLE_CELL_ELIDED",
+    "QTableView[] ''",
+    [
+     "TIME",
+     "03:21:31",
+     86,
+     70
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 1,
+     "row_h": 40,
+     "view_h": 546,
+     "cols": [
+      70,
+      107,
+      70,
+      995
+     ]
+    }
+   ]
+  ]
+ },
+ "recon-wifi": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   758,
+   425
+  ],
+  "page_hint": [
+   891,
+   425
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 5,
+     "row_h": 40,
+     "view_h": 544,
+     "cols": [
+      137,
+      202,
+      70,
+      70,
+      214
+     ]
+    }
+   ]
+  ]
+ },
+ "recon-ble": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   758,
+   425
+  ],
+  "page_hint": [
+   891,
+   425
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 5,
+     "row_h": 40,
+     "view_h": 544,
+     "cols": [
+      105,
+      202,
+      94,
+      105,
+      187
+     ]
+    }
+   ]
+  ]
+ },
+ "recon-net": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   758,
+   425
+  ],
+  "page_hint": [
+   891,
+   425
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ]
+  ]
+ },
+ "recon-rf": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   758,
+   425
+  ],
+  "page_hint": [
+   891,
+   425
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ]
+  ]
+ },
+ "forge-serial": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   1162
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   919,
+   334
+  ],
+  "page_hint": [
+   1094,
+   418
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QTabBar[]#qt_tabwidget_tabbar ''",
+    [
+     86,
+     35,
+     133,
+     35
+    ]
+   ]
+  ]
+ },
+ "forge-bus": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   919,
+   334
+  ],
+  "page_hint": [
+   1094,
+   384
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ]
+  ]
+ },
+ "forge-rfid": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   919,
+   334
+  ],
+  "page_hint": [
+   1094,
+   384
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ]
+  ]
+ },
+ "forge-radio": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   919,
+   334
+  ],
+  "page_hint": [
+   1094,
+   384
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ]
+  ]
+ },
+ "forge-sensors": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   919,
+   334
+  ],
+  "page_hint": [
+   1094,
+   384
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 1,
+     "row_h": 40,
+     "view_h": 571,
+     "cols": [
+      213,
+      96,
+      366
+     ]
+    }
+   ]
+  ]
+ },
+ "system-settings": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   1162
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   489,
+   339
+  ],
+  "page_hint": [
+   663,
+   339
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ]
+  ]
+ },
+ "system-doctor": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   1162
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   489,
+   339
+  ],
+  "page_hint": [
+   663,
+   339
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 0,
+     "row_h": 40,
+     "view_h": 505,
+     "cols": [
+      70,
+      74,
+      85,
+      894
+     ]
+    }
+   ]
+  ]
+ },
+ "system-assistant": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   1162
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   489,
+   339
+  ],
+  "page_hint": [
+   663,
+   339
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ]
+  ]
+ },
+ "system-mesh": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   1162
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   489,
+   339
+  ],
+  "page_hint": [
+   663,
+   339
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "H_SCROLL",
+    "QTableView[] ''",
+    [
+     1,
+     443
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 4,
+     "row_h": 40,
+     "view_h": 534,
+     "cols": [
+      70,
+      202,
+      70,
+      100
+     ]
+    }
+   ]
+  ]
+ },
+ "system-sitrep": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   489,
+   339
+  ],
+  "page_hint": [
+   663,
+   339
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ]
+  ]
+ },
+ "system-bench": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   536
+  ],
+  "hub_hint": [
+   1161,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   961,
+   369
+  ],
+  "page_hint": [
+   1076,
+   516
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 0,
+     "row_h": 40,
+     "view_h": 363,
+     "cols": [
+      74,
+      85,
+      487
+     ]
+    }
+   ]
+  ]
+ },
+ "ops-final": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   582
+  ],
+  "hub_hint": [
+   1174,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "page_size": [
+   1268,
+   668
+  ],
+  "page_min": [
+   700,
+   530
+  ],
+  "page_hint": [
+   1162,
+   626
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QWidget[] ''",
+    [
+     520,
+     623,
+     556,
+     485
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "RailCard[card2] ''",
+    [
+     520,
+     230,
+     556,
+     142
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     334,
+     21,
+     370,
+     17
+    ]
+   ],
+   [
+    "LABEL_TEXT_CLIPPED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     369,
+     334
+    ]
+   ]
+  ]
+ },
+ "panel-radios": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   582
+  ],
+  "hub_hint": [
+   1174,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QWidget[] ''",
+    [
+     520,
+     623,
+     556,
+     485
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "RailCard[card2] ''",
+    [
+     520,
+     230,
+     556,
+     142
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     334,
+     21,
+     370,
+     17
+    ]
+   ],
+   [
+    "LABEL_TEXT_CLIPPED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     369,
+     334
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 2,
+     "row_h": 40,
+     "view_h": 135,
+     "cols": [
+      202,
+      396,
+      74,
+      182
+     ]
+    }
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 0,
+     "row_h": 40,
+     "view_h": 171,
+     "cols": [
+      70,
+      74,
+      358
+     ]
+    }
+   ]
+  ],
+  "overlay": {
+   "geom": [
+    190,
+    100,
+    900,
+    560
+   ],
+   "min": [
+    592,
+    353
+   ],
+   "hint": [
+    634,
+    567
+   ],
+   "parent": [
+    1280,
+    720
+   ]
+  }
+ },
+ "panel-engagement": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   582
+  ],
+  "hub_hint": [
+   1174,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QWidget[] ''",
+    [
+     520,
+     623,
+     556,
+     485
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "RailCard[card2] ''",
+    [
+     520,
+     230,
+     556,
+     142
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     334,
+     21,
+     370,
+     17
+    ]
+   ],
+   [
+    "LABEL_TEXT_CLIPPED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     369,
+     334
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLineEdit[] ''",
+    [
+     411,
+     36,
+     38,
+     40
+    ]
+   ],
+   [
+    "LINEEDIT_PLACEHOLDER_CLIPPED",
+    "QLineEdit[] ''",
+    [
+     "comma-separated targets or wildcards (AA:BB:CC:*, Net-*)",
+     537,
+     411
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 0,
+     "row_h": 40,
+     "view_h": 253,
+     "cols": [
+      70,
+      85,
+      209
+     ]
+    }
+   ]
+  ],
+  "overlay": {
+   "geom": [
+    150,
+    100,
+    980,
+    560
+   ],
+   "min": [
+    656,
+    323
+   ],
+   "hint": [
+    697,
+    366
+   ],
+   "parent": [
+    1280,
+    720
+   ]
+  }
+ },
+ "panel-alerts": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1104,
+   582
+  ],
+  "hub_hint": [
+   1174,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1092,
+   1092
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QWidget[] ''",
+    [
+     520,
+     623,
+     556,
+     485
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "RailCard[card2] ''",
+    [
+     520,
+     230,
+     556,
+     142
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     334,
+     21,
+     370,
+     17
+    ]
+   ],
+   [
+    "LABEL_TEXT_CLIPPED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     369,
+     334
+    ]
+   ],
+   [
+    "INFO_TABLE",
+    "QTableView[] ''",
+    {
+     "rows": 9,
+     "row_h": 40,
+     "view_h": 366,
+     "cols": [
+      105,
+      74,
+      72,
+      85,
+      618
+     ]
+    }
+   ]
+  ],
+  "overlay": {
+   "geom": [
+    140,
+    100,
+    1000,
+    560
+   ],
+   "min": [
+    436,
+    206
+   ],
+   "hint": [
+    436,
+    340
+   ],
+   "parent": [
+    1280,
+    720
+   ]
+  }
+ },
+ "panel-keys": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1110,
+   582
+  ],
+  "hub_hint": [
+   1174,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1098,
+   1098
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QWidget[] ''",
+    [
+     520,
+     623,
+     566,
+     485
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "RailCard[card2] ''",
+    [
+     520,
+     230,
+     566,
+     142
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     324,
+     21,
+     370,
+     17
+    ]
+   ],
+   [
+    "LABEL_TEXT_CLIPPED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     369,
+     324
+    ]
+   ]
+  ],
+  "overlay": {
+   "geom": [
+    230,
+    80,
+    820,
+    600
+   ],
+   "min": [
+    222,
+    587
+   ],
+   "hint": [
+    500,
+    632
+   ],
+   "parent": [
+    1280,
+    720
+   ]
+  }
+ },
+ "panel-palette": {
+  "grab": [
+   1280,
+   720
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "hub_min": [
+   1110,
+   582
+  ],
+  "hub_hint": [
+   1174,
+   678
+  ],
+  "topbar": [
+   1268,
+   40,
+   1098,
+   1098
+  ],
+  "stack": [
+   1268,
+   668
+  ],
+  "issues": [
+   [
+    "SQUEEZED",
+    "NavKey[navkey_on] ''",
+    [
+     56,
+     36,
+     56,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall_on] '1 OPS'",
+    [
+     48,
+     19,
+     48,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '2 ATLAS'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '3 PRISM'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '4 PROWL'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     88,
+     36,
+     88,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '5 SWEEP'",
+    [
+     80,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     94,
+     36,
+     94,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '6 RECON'",
+    [
+     86,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     76,
+     36,
+     76,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '7 FORGE'",
+    [
+     68,
+     19,
+     68,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "NavKey[navkey] ''",
+    [
+     85,
+     36,
+     85,
+     38
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[navcall] '8 SYSTEM'",
+    [
+     77,
+     19,
+     77,
+     21
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QWidget[] ''",
+    [
+     520,
+     623,
+     566,
+     485
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "RailCard[card2] ''",
+    [
+     520,
+     230,
+     566,
+     142
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     324,
+     21,
+     370,
+     17
+    ]
+   ],
+   [
+    "LABEL_TEXT_CLIPPED",
+    "QLabel[micro] 'ALERTS \u00b7 PRESS A FOR HISTORY + ACKNOWLEDGE'",
+    [
+     369,
+     324
+    ]
+   ],
+   [
+    "SQUEEZED",
+    "QLineEdit[] ''",
+    [
+     724,
+     36,
+     38,
+     40
+    ]
+   ]
+  ],
+  "overlay": {
+   "geom": [
+    260,
+    160,
+    760,
+    440
+   ],
+   "min": [
+    241,
+    167
+   ],
+   "hint": [
+    292,
+    301
+   ],
+   "parent": [
+    1280,
+    720
+   ]
+  }
+ }
+}

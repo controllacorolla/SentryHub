@@ -1,0 +1,23 @@
+......F..                                                                [100%]
+=================================== FAILURES ===================================
+_________________ test_bench_gate_safe_with_ack_gated_without __________________
+
+    def test_bench_gate_safe_with_ack_gated_without():
+        _app()
+        from palisade_qt.bench_app import BenchApp
+        p = BenchApp(demo=False, mode="dark")
+        p.ack.setChecked(False)
+        p._refresh_gate()
+>       assert "GATED" in p.gate.text() and not p.tx_btn.isEnabled()
+E       assert ('GATED' in '○ TX GATED' and not True)
+E        +  where '○ TX GATED' = <built-in method text of PySide6.QtWidgets.QLabel object at 0x12f491240>()
+E        +    where <built-in method text of PySide6.QtWidgets.QLabel object at 0x12f491240> = <PySide6.QtWidgets.QLabel(0x7bfd3601c0) at 0x12f491240>.text
+E        +      where <PySide6.QtWidgets.QLabel(0x7bfd3601c0) at 0x12f491240> = <palisade_qt.bench_app.BenchApp(0x7bfa2a3d40, name="root") at 0x12f488800>.gate
+E        +  and   True = <built-in method isEnabled of PySide6.QtWidgets.QPushButton object at 0x12f491d40>()
+E        +    where <built-in method isEnabled of PySide6.QtWidgets.QPushButton object at 0x12f491d40> = <PySide6.QtWidgets.QPushButton(0x7bf9949340) at 0x12f491d40>.isEnabled
+E        +      where <PySide6.QtWidgets.QPushButton(0x7bf9949340) at 0x12f491d40> = <palisade_qt.bench_app.BenchApp(0x7bfa2a3d40, name="root") at 0x12f488800>.tx_btn
+
+tests/test_palisade_qt.py:1591: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_palisade_qt.py::test_bench_gate_safe_with_ack_gated_without
+1 failed, 8 passed, 160 deselected in 3.03s

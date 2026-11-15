@@ -1,0 +1,351 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.16, pytest-9.2.0, pluggy-1.7.0 -- /private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/bin/python
+rootdir: /private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks
+collecting ... collected 169 items
+
+tests/test_palisade_qt.py::test_ops_open_pump_close_no_leaked_thread[dark] PASSED [  0%]
+tests/test_palisade_qt.py::test_ops_open_pump_close_no_leaked_thread[light] PASSED [  1%]
+tests/test_palisade_qt.py::test_hub_builds_and_hosts_ops PASSED          [  1%]
+tests/test_palisade_qt.py::test_lease_skipped_in_demo PASSED             [  2%]
+tests/test_palisade_qt.py::test_prism_open_pump_close_no_leaked_thread[dark] PASSED [  2%]
+tests/test_palisade_qt.py::test_prism_open_pump_close_no_leaked_thread[light] PASSED [  3%]
+tests/test_palisade_qt.py::test_hub_embeds_prism_as_qt_page PASSED       [  4%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[ATLAS] PASSED [  4%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[PRISM] PASSED [  5%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[PROWL] PASSED [  5%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[SWEEP] PASSED [  6%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[RECON] PASSED [  7%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[FORGE] PASSED [  7%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[SYSTEM] PASSED [  8%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[OVERWATCH] PASSED [  8%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[BABEL] PASSED [  9%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[BENCH] PASSED [ 10%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[MORE] PASSED [ 10%]
+tests/test_palisade_qt.py::test_all_callsigns_build_in_both_themes[dark] PASSED [ 11%]
+tests/test_palisade_qt.py::test_all_callsigns_build_in_both_themes[light] PASSED [ 11%]
+tests/test_palisade_qt.py::test_hub_soak_open_all_callsigns_then_close_no_leaks PASSED [ 12%]
+tests/test_palisade_qt.py::test_launcher_main_is_importable PASSED       [ 13%]
+tests/test_palisade_qt.py::test_eventbus_typed_contract PASSED           [ 13%]
+tests/test_palisade_qt.py::test_ops_live_mode_shows_standby_not_fake_data PASSED [ 14%]
+tests/test_palisade_qt.py::test_atlas_demo_contacts_reach_both_map_and_ops PASSED [ 14%]
+tests/test_palisade_qt.py::test_atlas_live_mode_fabricates_zero_contacts PASSED [ 15%]
+tests/test_palisade_qt.py::test_adsb_to_contact_shapes_a_real_aircraft PASSED [ 15%]
+tests/test_palisade_qt.py::test_atlas_adsb_contacts_converts_a_snapshot PASSED [ 16%]
+tests/test_palisade_qt.py::test_rid_source_decodes_drone_and_operator PASSED [ 17%]
+tests/test_palisade_qt.py::test_aprs_source_acquires_via_arbiter_and_releases PASSED [ 17%]
+tests/test_palisade_qt.py::test_atlas_live_aprs_layer_toggles_the_lease_and_release_on_close PASSED [ 18%]
+tests/test_palisade_qt.py::test_atlas_live_default_has_aprs_layer_off PASSED [ 18%]
+tests/test_palisade_qt.py::test_radio_arbiter_single_owner PASSED        [ 19%]
+tests/test_palisade_qt.py::test_ais_source_decodes_vessels_via_arbiter PASSED [ 20%]
+tests/test_palisade_qt.py::test_arbiter_only_one_lease_layer_live_other_shows_busy PASSED [ 20%]
+tests/test_palisade_qt.py::test_adsb_goes_busy_when_a_lease_layer_holds_the_radio PASSED [ 21%]
+tests/test_palisade_qt.py::test_balloon_contacts_reads_sondes_cache PASSED [ 21%]
+tests/test_palisade_qt.py::test_df_contacts_zero_without_kraken PASSED   [ 22%]
+tests/test_palisade_qt.py::test_atlas_live_balloon_reaches_ops PASSED    [ 23%]
+tests/test_palisade_qt.py::test_prism_sweep_assembler_assembles_rtl_power PASSED [ 23%]
+tests/test_palisade_qt.py::test_prism_live_holds_radio_only_while_active PASSED [ 24%]
+tests/test_palisade_qt.py::test_prism_shows_busy_when_radio_held_by_atlas PASSED [ 24%]
+tests/test_palisade_qt.py::test_prism_live_no_rtl_power_shows_standby_not_synth PASSED [ 25%]
+tests/test_palisade_qt.py::test_prowl_freqdb_allocation_and_panel PASSED [ 26%]
+tests/test_palisade_qt.py::test_prowl_live_no_rtl_fm_shows_standby_not_synth PASSED [ 26%]
+tests/test_palisade_qt.py::test_babel_app_leases_per_mode_not_via_base_class PASSED [ 27%]
+tests/test_palisade_qt.py::test_babel_live_mode_acquires_and_releases_via_arbiter PASSED [ 27%]
+tests/test_palisade_qt.py::test_babel_live_mode_shows_busy_when_radio_held_elsewhere PASSED [ 28%]
+tests/test_palisade_qt.py::test_babel_runners_never_open_a_real_radio_offscreen PASSED [ 28%]
+tests/test_palisade_qt.py::test_babel_open_close_no_leaked_thread_or_lease PASSED [ 29%]
+tests/test_palisade_qt.py::test_babel_live_no_binary_shows_standby_not_synth PASSED [ 30%]
+tests/test_palisade_qt.py::test_prowl_off_base_lease_and_submode_labels PASSED [ 30%]
+tests/test_palisade_qt.py::test_prowl_scan_leases_and_releases_via_arbiter PASSED [ 31%]
+tests/test_palisade_qt.py::test_prowl_submodes_mutually_exclusive_on_the_radio PASSED [ 31%]
+tests/test_palisade_qt.py::test_prowl_fm_step_leases_but_opens_no_radio_offscreen PASSED [ 32%]
+tests/test_palisade_qt.py::test_prowl_fm_no_rtl_fm_shows_standby_no_lease PASSED [ 33%]
+tests/test_palisade_qt.py::test_prowl_nwr_decodes_same_and_publishes_alert PASSED [ 33%]
+tests/test_palisade_qt.py::test_prowl_nwr_skips_non_same_lines_zero_fabrication PASSED [ 34%]
+tests/test_palisade_qt.py::test_prowl_nwr_no_binary_standby PASSED       [ 34%]
+tests/test_palisade_qt.py::test_prowl_backgrounded_releases_the_radio PASSED [ 35%]
+tests/test_palisade_qt.py::test_prowl_submode_switch_updates_stack_and_worker_type PASSED [ 36%]
+tests/test_palisade_qt.py::test_prowl_open_pump_close_no_leaked_lease PASSED [ 36%]
+tests/test_palisade_qt.py::test_prowl_scan_stop_interrupts_blocking_listen_channel PASSED [ 37%]
+tests/test_palisade_qt.py::test_prowl_scan_offscreen_routes_to_standby_never_spawns PASSED [ 37%]
+tests/test_palisade_qt.py::test_prowl_scan_fatal_is_surfaced PASSED      [ 38%]
+tests/test_palisade_qt.py::test_prowl_fm_spawn_after_stop_drops_the_pipe PASSED [ 39%]
+tests/test_palisade_qt.py::test_prowl_nwr_spawn_after_stop_drops_the_proc PASSED [ 39%]
+tests/test_palisade_qt.py::test_babel_tpms_registered PASSED             [ 40%]
+tests/test_palisade_qt.py::test_babel_tpms_decodes_and_publishes_to_bus PASSED [ 40%]
+tests/test_palisade_qt.py::test_babel_tpms_live_no_rtl433_standby_not_synth PASSED [ 41%]
+tests/test_palisade_qt.py::test_babel_tpms_offscreen_opens_no_radio PASSED [ 42%]
+tests/test_palisade_qt.py::test_babel_cw_rtty_no_live_synth_only_practice PASSED [ 42%]
+tests/test_palisade_qt.py::test_babel_sstv_registered PASSED             [ 43%]
+tests/test_palisade_qt.py::test_babel_sstv_demo_emits_image PASSED       [ 43%]
+tests/test_palisade_qt.py::test_babel_sstv_live_leases_and_decodes PASSED [ 44%]
+tests/test_palisade_qt.py::test_babel_sstv_stop_joins_during_a_slow_decode PASSED [ 44%]
+tests/test_palisade_qt.py::test_babel_sstv_rtl_fm_death_reaps_and_retries PASSED [ 45%]
+tests/test_palisade_qt.py::test_babel_mode_switch_clears_stale_sstv_frame PASSED [ 46%]
+tests/test_palisade_qt.py::test_babel_sstv_no_rtl_fm_standby_no_lease PASSED [ 46%]
+tests/test_palisade_qt.py::test_babel_sstv_offscreen_opens_no_recorder PASSED [ 47%]
+tests/test_palisade_qt.py::test_sstv_image_panel_renders_ndarray PASSED  [ 47%]
+tests/test_palisade_qt.py::test_babel_switch_to_sstv_swaps_view_and_worker PASSED [ 48%]
+tests/test_palisade_qt.py::test_recon_active_tools_locked_without_engagement PASSED [ 49%]
+tests/test_palisade_qt.py::test_recon_gate_authorizes_in_scope_denies_out_of_scope PASSED [ 49%]
+tests/test_palisade_qt.py::test_recon_wifi_passive_demo_and_standby PASSED [ 50%]
+tests/test_palisade_qt.py::test_recon_counter_alert_reaches_bus_and_feed PASSED [ 50%]
+tests/test_palisade_qt.py::test_recon_demo_detectors_run_and_can_alert PASSED [ 51%]
+tests/test_palisade_qt.py::test_recon_counter_detectors_have_no_tx_path PASSED [ 52%]
+tests/test_palisade_qt.py::test_recon_engage_activate_deactivate_and_trail PASSED [ 52%]
+tests/test_palisade_qt.py::test_recon_open_pump_close_no_leaked_threads PASSED [ 53%]
+tests/test_palisade_qt.py::test_recon_demo_stays_off_the_shared_bus PASSED [ 53%]
+tests/test_palisade_qt.py::test_recon_passaudit_hashcat_authorizes_in_scope PASSED [ 54%]
+tests/test_palisade_qt.py::test_forge_engagement_tools_locked_without_engagement PASSED [ 55%]
+tests/test_palisade_qt.py::test_forge_canbus_tx_gated_by_engagement PASSED [ 55%]
+tests/test_palisade_qt.py::test_forge_proxmark_write_gated_and_reads_are_not PASSED [ 56%]
+tests/test_palisade_qt.py::test_forge_replay_is_txguard_gated PASSED     [ 56%]
+tests/test_palisade_qt.py::test_forge_serial_console_demo_populates_and_live_standby PASSED [ 57%]
+tests/test_palisade_qt.py::test_forge_can_monitor_demo_decodes PASSED    [ 57%]
+tests/test_palisade_qt.py::test_forge_open_pump_close_no_leaked_threads PASSED [ 58%]
+tests/test_palisade_qt.py::test_forge_serial_stop_does_not_reopen_reader PASSED [ 59%]
+tests/test_palisade_qt.py::test_forge_serial_write_queue_drains_atomically PASSED [ 59%]
+tests/test_palisade_qt.py::test_overwatch_sky_sun_moon_always_live PASSED [ 60%]
+tests/test_palisade_qt.py::test_overwatch_passes_demo_and_no_tle_standby PASSED [ 60%]
+tests/test_palisade_qt.py::test_overwatch_passes_predict_real_from_injected_tle PASSED [ 61%]
+tests/test_palisade_qt.py::test_overwatch_radio_director_tracks_arbiter_and_frees PASSED [ 62%]
+tests/test_palisade_qt.py::test_overwatch_next_pass_alerts_ops_for_real_passes PASSED [ 62%]
+tests/test_palisade_qt.py::test_overwatch_open_pump_close_no_leaked_threads PASSED [ 63%]
+tests/test_palisade_qt.py::test_overwatch_passworker_repredicts_on_cadence PASSED [ 63%]
+tests/test_palisade_qt.py::test_overwatch_predict_error_shows_warn_standby PASSED [ 64%]
+tests/test_palisade_qt.py::test_bench_gate_safe_with_ack_gated_without PASSED [ 65%]
+tests/test_palisade_qt.py::test_bench_software_selftests_pass PASSED     [ 65%]
+tests/test_palisade_qt.py::test_bench_conducted_tx_is_gated_and_hermetic PASSED [ 66%]
+tests/test_palisade_qt.py::test_bench_open_pump_close_no_leak PASSED     [ 66%]
+tests/test_palisade_qt.py::test_more_registered_as_a_callsign PASSED     [ 67%]
+tests/test_palisade_qt.py::test_more_doctor_runs_checks_and_skips_network_offscreen PASSED [ 68%]
+tests/test_palisade_qt.py::test_more_mesh_demo_nodes_and_live_standby PASSED [ 68%]
+tests/test_palisade_qt.py::test_more_assistant_answers_from_bus_and_offline_llm PASSED [ 69%]
+tests/test_palisade_qt.py::test_more_sitrep_from_bus_state PASSED        [ 69%]
+tests/test_palisade_qt.py::test_more_open_pump_close_no_leaked_threads PASSED [ 70%]
+tests/test_palisade_qt.py::test_more_settings_persists_home_and_theme_no_false_save PASSED [ 71%]
+tests/test_palisade_qt.py::test_more_doctor_stop_joins_during_a_blocking_check PASSED [ 71%]
+tests/test_cl1_screen.py::test_every_page_and_subtab_fits_1280x720[True-dark] PASSED [ 72%]
+tests/test_cl1_screen.py::test_every_page_and_subtab_fits_1280x720[True-light] PASSED [ 72%]
+tests/test_cl1_screen.py::test_every_page_and_subtab_fits_1280x720[True-sun] PASSED [ 73%]
+tests/test_cl1_screen.py::test_every_page_and_subtab_fits_1280x720[False-dark] PASSED [ 73%]
+tests/test_cl1_screen.py::test_every_page_and_subtab_fits_1280x720[False-light] PASSED [ 74%]
+tests/test_cl1_screen.py::test_every_page_and_subtab_fits_1280x720[False-sun] PASSED [ 75%]
+tests/test_cl1_screen.py::test_bench_long_reason_does_not_widen_the_window PASSED [ 75%]
+tests/test_cl1_screen.py::test_one_top_strip_no_rail_no_footer PASSED    [ 76%]
+tests/test_cl1_screen.py::test_detail_card_values_wrap_and_empty_card_collapses PASSED [ 76%]
+tests/test_cl1_screen.py::test_no_desktop_fixed_minimums PASSED          [ 77%]
+tests/test_cl1_screen.py::test_no_status_bearing_text_under_16px[dark] PASSED [ 78%]
+tests/test_cl1_screen.py::test_no_status_bearing_text_under_16px[light] PASSED [ 78%]
+tests/test_cl1_screen.py::test_no_status_bearing_text_under_16px[sun] PASSED [ 79%]
+tests/test_cl1_screen.py::test_type_scale_and_row_height PASSED          [ 79%]
+tests/test_cl1_screen.py::test_ui_scale_is_pinned_and_overridable PASSED [ 80%]
+tests/test_cl1_screen.py::test_four_fixed_status_slots_exist_with_word_and_shape PASSED [ 81%]
+tests/test_cl1_screen.py::test_pages_cannot_overwrite_the_status_slots PASSED [ 81%]
+tests/test_cl1_screen.py::test_slots_follow_engine_state PASSED          [ 82%]
+tests/test_cl1_screen.py::test_tx_safe_is_retired_and_bench_permit_shows_in_the_tx_slot PASSED [ 82%]
+tests/test_cl1_screen.py::test_demo_draws_a_border_and_live_does_not PASSED [ 83%]
+tests/test_cl1_screen.py::test_disabled_buttons_look_disabled PASSED     [ 84%]
+tests/test_cl1_screen.py::test_eight_keys_in_order_with_function_labels PASSED [ 84%]
+tests/test_cl1_screen.py::test_folded_pages_live_where_the_brief_put_them Fatal Python error: Segmentation fault
+
+Thread 0x000000016ee97000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016ee0b000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016ed7f000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016ecf3000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016ec67000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016ebdb000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016eb4f000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016eac3000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016ea37000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e9ab000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e91f000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e893000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016fd8b000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016fcff000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016fc73000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016fbe7000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016fb5b000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016facf000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016fa43000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016f9b7000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016f92b000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016f89f000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016f813000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e31b000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e77b000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e6ef000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e663000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e5d7000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e54b000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e4bf000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e433000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e3a7000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e28f000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e203000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e177000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016e0eb000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Current thread 0x000000016debb000 (most recent call first):
+  Garbage-collecting
+  File "/opt/homebrew/Cellar/python@3.12/3.12.16/Frameworks/Python.framework/Versions/3.12/lib/python3.12/statistics.py", line 239 in <genexpr>
+  File "/opt/homebrew/Cellar/python@3.12/3.12.16/Frameworks/Python.framework/Versions/3.12/lib/python3.12/statistics.py", line 239 in _ss
+  File "/opt/homebrew/Cellar/python@3.12/3.12.16/Frameworks/Python.framework/Versions/3.12/lib/python3.12/statistics.py", line 986 in pstdev
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/gnss.py", line 25 in cn0_stats
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/gnss.py", line 30 in jamming_check
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/recon.py", line 255 in _demo_detect
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/recon.py", line 209 in step
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 37 in run
+
+Thread 0x000000016de2f000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016dda3000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016dd17000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016da5b000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016d9cf000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016d943000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016d8b7000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016d82b000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016d687000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016d5fb000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016cff7000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016d56f000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016d4e3000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016d457000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x000000016d083000 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/palisade_qt/worker.py", line 42 in run
+
+Thread 0x00000002003d1300 (most recent call first):
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/tests/test_cl1_screen.py", line 78 in _hub
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/A_sweep_stop_leaks/tests/test_cl1_screen.py", line 417 in test_folded_pages_live_where_the_brief_put_them
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/python.py", line 187 in pytest_pyfunc_call
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_execution.py", line 147 in _multicall
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_manager.py", line 183 in _hookexec
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_caller.py", line 197 in __call__
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/python.py", line 1798 in runtest
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/runner.py", line 184 in pytest_runtest_call
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_execution.py", line 147 in _multicall
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_manager.py", line 183 in _hookexec
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_caller.py", line 197 in __call__
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/runner.py", line 250 in <lambda>
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/runner.py", line 361 in from_call
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/runner.py", line 249 in call_and_report
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/runner.py", line 139 in runtestprotocol
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/runner.py", line 118 in pytest_runtest_protocol
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_execution.py", line 147 in _multicall
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_manager.py", line 183 in _hookexec
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_caller.py", line 197 in __call__
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/main.py", line 411 in pytest_runtestloop
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_execution.py", line 147 in _multicall
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_manager.py", line 183 in _hookexec
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_caller.py", line 197 in __call__
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/main.py", line 387 in _main
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/main.py", line 333 in wrap_session
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/main.py", line 380 in pytest_cmdline_main
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_execution.py", line 147 in _multicall
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_manager.py", line 183 in _hookexec
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pluggy/_caller.py", line 197 in __call__
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/config/__init__.py", line 262 in _main
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/_pytest/config/__init__.py", line 286 in _console_main
+  File "/private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/pytest/__main__.py", line 9 in <module>
+  File "<frozen runpy>", line 88 in _run_code
+  File "<frozen runpy>", line 198 in _run_module_as_main
+
+Extension modules: shiboken6.Shiboken, numpy._core._multiarray_umath, numpy.linalg._umath_linalg, PySide6.QtCore, PySide6.QtGui, PySide6.QtWidgets, PySide6.QtSvg, PySide6.QtOpenGLWidgets, PySide6.QtTest, PySide6.QtOpenGL, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 19)
