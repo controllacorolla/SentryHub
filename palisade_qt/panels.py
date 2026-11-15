@@ -115,8 +115,25 @@ class RadiosPanel(Overlay):
                           "Power on/off and device selection arrive with CL6.")
         self.outer.addWidget(self.limit)
         radio_arbiter.arbiter.changed.connect(self._on_arbiter_change)
+        # re-read the kernel while the panel is open: a dongle unplugged or an rfkill switch
+        # flipped must show without closing and reopening (RA-CL1 N1). Stops when hidden.
+        self._poll = QtCore.QTimer(self)
+        self._poll.setInterval(self.REFRESH_MS)
+        self._poll.timeout.connect(self._refresh_holder)
+
+    REFRESH_MS = 2000
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        self._poll.start()
+
+    def hideEvent(self, ev):
+        if getattr(self, "_poll", None) is not None:      # the base hides before __init__ ends
+            self._poll.stop()
+        super().hideEvent(ev)
 
     def stop(self):
+        self._poll.stop()
         try:
             radio_arbiter.arbiter.changed.disconnect(self._on_arbiter_change)
         except (TypeError, RuntimeError):
@@ -179,7 +196,8 @@ class EngagePanel(Overlay):
     state, so it opens from the ENGAGEMENT slot in the top strip. The gate itself is the engine's
     (engagement.start / end); this only calls it."""
     TITLE = "ENGAGEMENT"
-    SIZE = (980, 560)
+    SIZE = (1040, 640)
+    MIN_EVIDENCE_ROWS = 3
     gate_changed = QtCore.Signal()
 
     def __init__(self, mode="dark", parent=None):
@@ -211,15 +229,20 @@ class EngagePanel(Overlay):
         fl.addRow(btns)
         self.eng_msg = note("")
         fl.addRow(self.eng_msg)
-        split.addWidget(form, 3)
+        split.addWidget(form, 2)
         right = QtWidgets.QVBoxLayout()
         self.eng_detail = DetailCard("ENGAGEMENT")
         self.eng_detail.set_hero("—", "no engagement")
-        right.addWidget(self.eng_detail, 1)
+        # the card takes the height its text needs (the whole scope list, wrapped — never clipped);
+        # the evidence table gets the rest but never fewer than three rows (RA-CL1)
+        self.eng_detail.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                      QtWidgets.QSizePolicy.Minimum)
+        right.addWidget(self.eng_detail)
         right.addWidget(micro("Authorized actions (evidence chain)"))
         self.eng_actions = FeedTable([("t", "TIME"), ("action", "ACTION"), ("target", "TARGET")])
-        right.addWidget(self.eng_actions, 2)
-        split.addLayout(right, 2)
+        self.eng_actions.view.setMinimumHeight(theme.ROW_H * (self.MIN_EVIDENCE_ROWS + 1) + 8)
+        right.addWidget(self.eng_actions, 1)
+        split.addLayout(right, 3)
         self.outer.addLayout(split, 1)
 
     def _prefill_operator(self):
@@ -253,10 +276,12 @@ class EngagePanel(Overlay):
     def refresh(self):
         info = _engagement().info()
         if info["active"]:
+            scope = list(info["scope"] or [])
+            # parity with main's RECON banner: name, operator, authorization, target count
             self.eng_detail.set_hero(info["name"], "active engagement")
             self.eng_detail.set_rows([
                 ("OPERATOR", info["operator"]), ("AUTHORIZATION", info["authorization"]),
-                ("SCOPE", ", ".join(info["scope"])),
+                ("TARGETS", "%d" % len(scope)), ("SCOPE", ", ".join(scope)),
                 ("STARTED", time.strftime("%H:%M:%S", time.localtime(info["started"])))])
         else:
             self.eng_detail.set_hero("—", "no engagement")
@@ -277,36 +302,59 @@ class EngagePanel(Overlay):
 
 class AlertStore(QtCore.QObject):
     """Every alert since launch, kept until acknowledged — not a 3-item card that scrolls away
-    (D10). It listens to the bus; it does not change what the bus retains."""
+    (D10). It listens to the bus; it does not change what the bus retains.
+
+    Each alert has a stable id; acknowledging is by id, never by list position, because a new
+    alert arriving shifts every position (RA-CL1: the drawer acked an alert the operator never
+    saw). The cap only ever drops ACKNOWLEDGED alerts, oldest first: an unacknowledged alert is
+    never discarded, however many arrive."""
     changed = QtCore.Signal()
 
     def __init__(self, parent=None, cap=500):
         super().__init__(parent)
-        self.items = []            # newest first: {ts, source, severity, text, acked}
+        self.items = []            # newest first: {id, ts, source, severity, text, acked}
         self._cap = cap
+        self._next_id = 1
         eventbus.bus.published.connect(self._on_event)
 
     def _on_event(self, ev):
         if ev.get("type") != "alert":
             return
-        self.items.insert(0, {"ts": ev.get("ts", time.time()), "source": ev.get("source", "?"),
+        self.items.insert(0, {"id": self._next_id, "ts": ev.get("ts", time.time()),
+                              "source": ev.get("source", "?"),
                               "severity": ev.get("severity", "info"),
                               "text": ev.get("payload", {}).get("text", ""), "acked": False})
-        del self.items[self._cap:]
+        self._next_id += 1
+        self._trim()
         self.changed.emit()
+
+    def _trim(self):
+        i = len(self.items) - 1
+        while len(self.items) > self._cap and i >= 0:
+            if self.items[i]["acked"]:
+                del self.items[i]
+            i -= 1
 
     def unacked(self):
         return sum(1 for a in self.items if not a["acked"])
 
-    def ack(self, index):
-        if 0 <= index < len(self.items) and not self.items[index]["acked"]:
-            self.items[index]["acked"] = True
+    def get(self, alert_id):
+        return next((a for a in self.items if a["id"] == alert_id), None)
+
+    def ack(self, alert_id):
+        a = self.get(alert_id)
+        if a is not None and not a["acked"]:
+            a["acked"] = True
+            self._trim()
             self.changed.emit()
+            return True
+        return False
 
     def ack_all(self):
         if self.unacked():
             for a in self.items:
                 a["acked"] = True
+            self._trim()
             self.changed.emit()
 
     def clear(self):
@@ -362,21 +410,44 @@ class AlertsDrawer(Overlay):
         self.store.changed.connect(self.refresh)
 
     def refresh(self):
+        keep = self.selected_id()
         sev_col = {"alert": self._tok["alert"], "warn": self._tok["warn"]}
         rows = []
         for a in self.store.items:
-            rows.append({"t": time.strftime("%H:%M:%S", time.localtime(a["ts"])),
+            rows.append({"_id": a["id"], "t": time.strftime("%H:%M:%S", time.localtime(a["ts"])),
                          "state": "acked" if a["acked"] else "NEW",
                          "sev": a["severity"].upper(), "source": a["source"], "text": a["text"],
                          "_colors": {"sev": sev_col.get(a["severity"], self._tok["muted"]),
                                      "state": self._tok["muted"] if a["acked"] else self._tok["warn"]}})
         self.table.model.set_rows(rows)
+        self.select_id(keep)            # the cursor stays on the same ALERT, not the same row
         n = self.store.unacked()
         self.count.setText("%d alert(s) since launch · %d unacknowledged" % (len(self.store.items), n)
                            if self.store.items else "No alerts since launch.")
 
+    def selected_id(self):
+        row = self.table.view.currentIndex().row()
+        rows = self.table.model.rows
+        return rows[row]["_id"] if 0 <= row < len(rows) else None
+
+    def select_id(self, alert_id):
+        if alert_id is None:
+            return
+        for i, r in enumerate(self.table.model.rows):
+            if r["_id"] == alert_id:
+                sm = self.table.view.selectionModel()
+                sm.blockSignals(True)
+                self.table.view.selectRow(i)
+                sm.blockSignals(False)
+                return
+        self.table.view.clearSelection()
+        self.table.view.setCurrentIndex(QtCore.QModelIndex())
+
     def ack_selected(self):
-        self.store.ack(self.table.view.currentIndex().row())
+        """Acknowledge the alert under the cursor — identified by id, so an alert that arrived
+        since the operator selected cannot be acknowledged in its place."""
+        alert_id = self.selected_id()
+        return self.store.ack(alert_id) if alert_id is not None else False
 
     def focus_first(self):
         self.table.view.setFocus()

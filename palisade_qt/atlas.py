@@ -249,7 +249,8 @@ def _open_aprs_pipe(gain):
         return None
     import aprs
     return subprocess.Popen(aprs.pipeline(gain), shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                            stderr=subprocess.DEVNULL, text=True, bufsize=1,
+                            start_new_session=True)     # PANIC stops the pipeline by group
 
 
 def _open_ais_pipe(gain):
@@ -261,7 +262,8 @@ def _open_ais_pipe(gain):
         return None
     import ais
     return subprocess.Popen(ais.pipeline(gain), shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                            stderr=subprocess.DEVNULL, text=True, bufsize=1,
+                            start_new_session=True)     # PANIC stops the pipeline by group
 
 
 def aprs_station_contacts(stations, now):

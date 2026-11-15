@@ -66,6 +66,28 @@ def main(out, mode, run):
         shot("panel-" + panel)
         hub.open_panel(panel)
         pump(50)
+    # stress (CL1-fix): an open engagement with a six-target scope, the radio held, a dozen alerts
+    import engagement
+    from palisade_qt import eventbus, radio_arbiter
+    engagement.start("Operation LONG NAME 2026", "ROE-17/B",
+                     ["192.168.100.0/24", "10.0.0.*", "AA:BB:CC:*", "Net-*", "172.16.0.0/12",
+                      "Corp-Guest"], "N0CALL")
+    radio_arbiter.arbiter.changed.emit("PROWL-SCAN")
+    for i in range(12):
+        eventbus.bus.publish(eventbus.alert("SWEEP", "stress alert %d — unknown emitter" % i,
+                                            severity="alert" if i % 3 == 0 else "warn"))
+    hub.state.poll()
+    hub.open_callsign("OPS")
+    pump(300)
+    shot("stress-ops")
+    for panel in ("engagement", "alerts", "radios"):
+        hub.open_panel(panel)
+        pump(250)
+        shot("stress-panel-" + panel)
+        hub.open_panel(panel)
+        pump(50)
+    engagement.end()
+    radio_arbiter.arbiter.changed.emit("")
     with open(os.path.join(out, "sizes_%s_%s.json" % (mode, run)), "w") as f:
         json.dump(sizes, f, indent=1)
     bad = {k: v for k, v in sizes.items() if v[0] != 1280 or v[1] != 720}

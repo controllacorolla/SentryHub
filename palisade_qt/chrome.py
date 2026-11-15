@@ -8,9 +8,16 @@ nothing in any engine or gate.
   MODE        LIVE | DEMO                      from the hub's own demo flag
   RADIO       FREE | HELD · <owner>            from radio_arbiter (its `changed` signal — never the
                                                arbiter lock, which can block during an acquire)
-  TX          OFF | PERMITTED | ARMED          txguard armed -> ARMED; else a page-reported permit
-                                               (BENCH's conducted gate passing) -> PERMITTED; else OFF
-  ENGAGEMENT  NONE | ACTIVE · <scope>          from engagement.info()
+  TX          OFF | PERMITTED | ARMED | UNKNOWN
+                                               txguard armed -> ARMED; else a page-reported permit
+                                               (BENCH's conducted gate passing) -> PERMITTED; else OFF.
+                                               UNKNOWN if txguard cannot be read.
+  ENGAGEMENT  NONE | <scope> | UNKNOWN         from engagement.info(); the strip paints the scope
+                                               summary as the word (amber diamond = active);
+                                               UNKNOWN if it cannot be read
+
+A reader that raises never falls back to the all-clear word (OFF / NONE): it reports UNKNOWN, which
+the strip draws amber with its own shape (RA-CL1).
 
 txguard and engagement expose no change signals (that is audit finding G12, cluster CL2), so those
 two are polled on a short GUI-thread timer; both reads are plain dict lookups.
@@ -35,32 +42,46 @@ def tx_permit_sources():
 
 
 def reset():
+    """Test isolation only. PANIC does not call this: clearing the registry would make the TX slot
+    read OFF while a page's own gate still passes."""
     _permits.clear()
 
 
 def read_tx():
-    """'ARMED' | 'PERMITTED' | 'OFF' — read-only view of the engines."""
+    """'ARMED' | 'PERMITTED' | 'OFF' | 'UNKNOWN' — read-only view of the engines."""
     try:
         import txguard
-        if txguard.is_armed():
-            return "ARMED"
+        armed = txguard.is_armed()
     except Exception:
-        pass
+        return "UNKNOWN"
+    if armed:
+        return "ARMED"
     return "PERMITTED" if _permits else "OFF"
 
 
+SCOPE_CHARS = 10          # a single target this short is shown as itself; longer -> the count
+
+
+def scope_summary(scope):
+    """Short, never-elided scope text for the strip: the target itself when there is one short
+    target, else the count. The full list is in the ENGAGEMENT panel."""
+    scope = [str(s) for s in scope or []]
+    if len(scope) == 1 and len(scope[0]) <= SCOPE_CHARS:
+        return scope[0]
+    return "%d target%s" % (len(scope), "" if len(scope) == 1 else "s")
+
+
 def read_engagement():
-    """('ACTIVE', scope summary, name) or ('NONE', '', '')."""
+    """('ACTIVE', scope summary, name) | ('NONE', '', '') | ('UNKNOWN', '', '')."""
     try:
         import engagement
         info = engagement.info()
+        active = bool(info.get("active"))
     except Exception:
+        return "UNKNOWN", "", ""
+    if not active:
         return "NONE", "", ""
-    if not info.get("active"):
-        return "NONE", "", ""
-    scope = [str(s) for s in info.get("scope") or []]
-    summary = scope[0] if len(scope) == 1 else "%s +%d" % (scope[0], len(scope) - 1) if scope else "?"
-    return "ACTIVE", summary, str(info.get("name") or "")
+    return "ACTIVE", scope_summary(info.get("scope")), str(info.get("name") or "")
 
 
 class ChromeState(QtCore.QObject):

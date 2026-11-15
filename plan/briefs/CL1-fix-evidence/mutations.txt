@@ -1,0 +1,19 @@
+rail-returns | KILLED | 1 failed in 0.82s
+no-wrap | KILLED | 1 failed in 0.37s
+horizontal-rail | KILLED | 1 failed in 1.05s
+no-r-key | KILLED | 1 failed in 0.95s
+panic-dead-with-panel | SURVIVED | 1 passed in 1.17s
+no-bracket | KILLED | 1 failed in 1.40s
+detectors-never-start | KILLED | 1 failed in 1.28s
+armed-green | KILLED | 1 failed in 0.38s
+active-green | KILLED | 1 failed in 0.38s
+ops-card-empty | KILLED | 1 failed in 0.99s
+babel-dark-colours | KILLED | 1 failed, 2 passed in 0.40s
+panic-clears-permit | KILLED | 1 failed in 1.23s
+caption-13 | KILLED | 1 failed in 3.65s
+header-10 | KILLED | 1 failed in 3.80s
+axis-9 | KILLED | 1 failed in 3.71s
+# rerun after replacing the one-route PANIC mutation with one that makes PANIC inert:
+panic-dead-with-panel | KILLED | 1 failed in 1.14s
+ops-ghost-rows | KILLED | 1 failed in 1.06s
+card-never-collapses | KILLED | 1 failed in 4.82s

@@ -13,6 +13,12 @@ from .. import theme
 
 
 class PpiScope(QtWidgets.QFrame):
+    resized = QtCore.Signal()       # the host keeps the scope square (no dead well either side)
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self.resized.emit()
+
     def __init__(self, span_nm=80, mode="dark", parent=None):
         super().__init__(parent)
         self.setProperty("class", "well")
@@ -29,8 +35,8 @@ class PpiScope(QtWidgets.QFrame):
         self.plot.setMouseEnabled(False, False)
         self.plot.hideAxis("left")
         self.plot.hideAxis("bottom")
-        self.plot.setXRange(-span_nm, span_nm)
-        self.plot.setYRange(-span_nm, span_nm)
+        self.plot.setXRange(-span_nm, span_nm, padding=0.02)
+        self.plot.setYRange(-span_nm, span_nm, padding=0.02)
         lay.addWidget(self.plot)
 
         for r in (span_nm / 3, span_nm * 2 / 3, span_nm):

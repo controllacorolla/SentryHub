@@ -137,13 +137,21 @@ class ControlBar(QtWidgets.QFrame):
 
 class DetailCard(QtWidgets.QFrame):
     """The selected-contact / detail panel: a hero numeral plus labelled key/value rows. Every value
-    wraps (a long value must never widen the window), and a card with nothing selected collapses to
-    its one-line hint instead of holding a 100 px dash."""
+    wraps (a long value must never widen the window). With nothing to show, the drawn card shrinks
+    to its title + hint at the top of its slot: no 200-600 px empty framed box (RA-CL1 / D10), and
+    the page's other widgets do not move, because the card keeps the slot it was given."""
 
     def __init__(self, title="DETAIL", parent=None):
         super().__init__(parent)
-        self.setProperty("class", "card")
-        self.lay = QtWidgets.QVBoxLayout(self)
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self.box = QtWidgets.QFrame()              # the drawn card
+        self.box.setProperty("class", "card")
+        outer.addWidget(self.box)
+        outer.addStretch(0)
+        self._outer = outer
+        self.lay = QtWidgets.QVBoxLayout(self.box)
         self.lay.setContentsMargins(12, 10, 12, 10)
         self.lay.setSpacing(4)
         self.lay.addWidget(micro(title))
@@ -172,6 +180,19 @@ class DetailCard(QtWidgets.QFrame):
     def _sync_collapsed(self):
         # a dash is not information: never spend a 40 px hero line on it
         self.hero.setVisible(self.hero.text().strip() not in ("", "—"))
+        self.sub.setVisible(bool(self.sub.text()))
+        empty = self.is_empty()
+        # empty: the box takes only its content height and the rest of the slot is page
+        # background; otherwise the box fills the slot
+        self.box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                               QtWidgets.QSizePolicy.Maximum if empty
+                               else QtWidgets.QSizePolicy.Preferred)
+        self._outer.setStretch(0, 0 if empty else 1)
+        self._outer.setStretch(1, 1 if empty else 0)
+
+    def drawn_height(self):
+        """Height of the drawn card (tests: an empty card must be short)."""
+        return self.box.height()
 
     def set_hero(self, value, sub=""):
         self.hero.setText(str(value))

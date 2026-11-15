@@ -86,6 +86,8 @@ class MapPanel(QtWidgets.QFrame):
         self._combo.setStyleSheet(
             "QComboBox { background: rgba(0,0,0,170); color: #DDD; "
             "border: 1px solid #555; font-size: 16px; padding: 2px 4px; }"
+            # the map is dark in every theme, so the focus ring is white on it (RA-CL1)
+            "QComboBox:focus { border: 3px solid #FFFFFF; }"
             "QComboBox::drop-down { border: none; }"
             "QComboBox QAbstractItemView { background: #181C22; color: #DDD; "
             "selection-background-color: #2A2F38; }")

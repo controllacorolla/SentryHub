@@ -116,8 +116,19 @@ class SkyDome(QtWidgets.QFrame):
             p.setPen(QtCore.Qt.NoPen)
             p.drawEllipse(QtCore.QPointF(x, y), 5, 5)
             p.setPen(QtGui.QColor(self._tok["text"]))
-            p.drawText(QtCore.QRectF(x + 7, y - 8, 120, 16), QtCore.Qt.AlignLeft, s["label"])
+            p.drawText(self.label_rect(x, y, s["label"], p.fontMetrics()),
+                       QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, s["label"])
         p.end()
+
+    def label_rect(self, x, y, label, fm):
+        """Where a satellite's label goes: sized from the font (a fixed 16 px box clipped the 18 px
+        text, RA-CL1), right of the dot unless that runs off the dome, then left of it, and kept
+        inside the widget top and bottom."""
+        tw, th = fm.horizontalAdvance(label) + 2, fm.height()
+        lx = x + 7 if x + 7 + tw <= self.width() - 2 else x - 7 - tw
+        lx = max(2, lx)
+        ly = min(max(2, y - th / 2), self.height() - th - 2)
+        return QtCore.QRectF(lx, ly, tw, th)
 
 
 # ======================= workers =======================

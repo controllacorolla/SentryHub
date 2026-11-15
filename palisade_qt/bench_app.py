@@ -151,6 +151,12 @@ class BenchApp(PalisadeApp):
         self.card.set_rows([("TXGUARD", "PERMITTED — conducted" if ok else "GATED"),
                             ("REASON", why), ("RESULT", "—")])
 
+    def on_gate_changed(self):
+        """The shell says a gate changed (PANIC, engagement): re-read bench's own gate so the TX
+        slot shows its real answer, not what it was before."""
+        if not self._stopped:
+            self._refresh_gate()
+
     def make_worker(self):
         return None             # the self-test runs on demand, not continuously
 

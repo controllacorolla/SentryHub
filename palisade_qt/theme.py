@@ -10,11 +10,11 @@ from PySide6 import QtGui, QtWidgets
 
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Type scale (CL1 / D2), in physical pixels on the 1280x720 ~294 ppi panel. Nothing that carries
-# state is under FONT_STATUS; captions (static, never state) may use FONT_CAPTION.
+# Type scale (CL1 / D2), in physical pixels on the 1280x720 ~294 ppi panel. Nothing on screen is
+# under 16 px — captions included (CL1-fix: 13 px captions were 1.1 mm on the 5" panel).
 FONT_BODY = 18
 FONT_STATUS = 16
-FONT_CAPTION = 13
+FONT_CAPTION = 16
 ROW_H = 40
 
 DARK = {
@@ -128,7 +128,8 @@ QPlainTextEdit {{ background: {well}; color: {text}; border: {bw} solid {hairlin
                   border-radius: 6px; font-size: {status}px; }}
 QPlainTextEdit:focus {{ border: {focus_w} solid {focus}; }}
 
-/* tables */
+/* tables (the header's own font is set too, so its rendered size is measurable) */
+QHeaderView {{ font-size: {status}px; }}
 QHeaderView::section {{ background: {p1}; color: {muted}; border: none;
                         border-bottom: {bw} solid {hairline}; padding: 6px 8px;
                         font-size: {status}px; }}
@@ -170,6 +171,7 @@ QPushButton.navkey:hover {{ background: {row_hover}; }}
 QPushButton.navkey:focus {{ border: {focus_w} solid {focus}; }}
 QPushButton.navkey_on {{ background: {check_bg}; border: {bw} solid {accent}; border-radius: 5px;
                          padding: 0; min-height: 0; text-align: left; }}
+QPushButton.navkey_on:focus {{ border: {focus_w} solid {focus}; }}
 QLabel.navcall {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QLabel.navcall_on {{ color: {check_fg}; font-size: {status}px; font-weight: 600; }}
 QLabel.navlabel {{ color: {muted}; font-size: {status}px; }}
@@ -189,6 +191,7 @@ QSlider#vol:disabled::handle:horizontal {{ background: {disabled}; }}
 /* ---- vertical sub-tab rail at the page's left edge ---- */
 QFrame#subtab_rail {{ background: transparent; border: none; }}
 QPushButton.subtab {{ text-align: left; padding: 6px 10px; min-height: 28px; }}
+QPushButton.subtab:focus {{ border: {focus_w} solid {focus}; }}
 
 /* page-owned status row (pages may write this; they may never write the top strip) */
 QFrame#page_status {{ background: transparent; border: none; border-top: {bw} solid {hairline}; }}

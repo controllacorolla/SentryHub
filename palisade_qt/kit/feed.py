@@ -3,6 +3,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..theme import ROW_H
 
+COL_PAD = 22          # cell padding (QSS item padding 6 + 6) + room for the sort/edge
+
 
 class FeedModel(QtCore.QAbstractTableModel):
     def __init__(self, columns, parent=None):
@@ -72,8 +74,18 @@ class FeedTable(QtWidgets.QFrame):
         hdr = self.view.horizontalHeader()
         hdr.setStretchLastSection(True)
         hdr.setMinimumSectionSize(70)
+        # real column widths, measured from the header and the data at the table's own font:
+        # ResizeToContents did not run for rows prepended while the table was hidden, so TIME / ID
+        # / EVENT were elided to a few characters at 18 px (RA-CL1). Every column but the last
+        # (which stretches) is as wide as its widest value; a wide table scrolls, it never elides.
         for i in range(len(columns) - 1):
-            hdr.setSectionResizeMode(i, QtWidgets.QHeaderView.ResizeToContents)
+            hdr.setSectionResizeMode(i, QtWidgets.QHeaderView.Interactive)
+        self._fit = QtCore.QTimer(self)
+        self._fit.setSingleShot(True)
+        self._fit.setInterval(0)
+        self._fit.timeout.connect(self.fit_columns)
+        self.model.modelReset.connect(self._fit.start)
+        self.model.rowsInserted.connect(lambda *_: self._fit.start())
         self.view.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.view.setWordWrap(False)
         self.view.setTabKeyNavigation(False)
@@ -85,6 +97,24 @@ class FeedTable(QtWidgets.QFrame):
         self.model.modelAboutToBeReset.connect(self._remember_row)
         self.model.modelReset.connect(self._restore_row)
         lay.addWidget(self.view)
+
+    def fit_columns(self, sample=200):
+        """Size every column but the last to its widest header / value (first `sample` rows)."""
+        hdr = self.view.horizontalHeader()
+        self.view.ensurePolished()
+        hdr.ensurePolished()
+        fm, hfm = self.view.fontMetrics(), hdr.fontMetrics()
+        rows = self.model.rows[:sample]
+        for i, (key, title) in enumerate(self.model.columns[:-1]):
+            need = hfm.horizontalAdvance(title) + COL_PAD
+            for r in rows:
+                need = max(need, fm.horizontalAdvance(str(r.get(key, ""))) + COL_PAD)
+            if hdr.sectionSize(i) < need:
+                hdr.resizeSection(i, need)
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        self.fit_columns()
 
     def _remember_row(self):
         self._keep_row = self.view.currentIndex().row()

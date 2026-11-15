@@ -186,3 +186,192 @@ Suite on this machine (Python 3.13.18, xvfb, no `tkinter`):
 `xvfb-run -a python3 -m pytest -q tests` → **912 passed, 1 failed, 4 skipped, 7 errors** (9:16). Two failures are pre-existing on `main` and unrelated to CL1:
 `tests/test_audit_tiles.py::test_undecodable_tile_is_marked_failed` (fails on `main` too) and
 the seven `tests/test_shell.py` errors (`No module named 'tkinter'` in this container).
+
+---
+
+## CL1-fix (after RA-CL1: DO NOT MERGE)
+
+Brief: `plan/briefs/CL1-fix.md`. Same branch, no PR change. RA-CL1's evidence (result JSON + PoC
+scripts) is committed at `plan/briefs/CL1-reaudit-evidence/` (`fd4d320`); PNGs and the 64 source
+trees the auditors copied for mutation are not.
+
+**Branch:** `fix/cl1-screen-structure` · code + tests in the commit after `fd4d320` (hash in the
+push message below).
+
+### Fail-first and teeth
+
+All new tests are in `tests/test_cl1_fix.py` (38 tests). I ran that file against the pre-fix tree
+(`git archive fd4d320`, the new test file copied in): **32 failed, 6 passed**. The 6 that passed
+pin behaviour that was already right (items 11, 13-rail, 17, 18), and a few base failures were for
+an API reason rather than the defect (items 14 slot colours, 15 OPS card). Every one of those got a
+mutation check instead: break the fix in a copy of the fixed tree, run the test, expect a failure.
+**17 of 17 mutations killed** (two added after the render check below). Script and raw output: `plan/briefs/CL1-fix-evidence/`
+(`mutate.py`, `mutations.txt`, and `base_failfirst.txt` for the pre-fix run).
+
+| Mutation | Test that fails |
+|---|---|
+| a 150 px rail beside the page stack | `test_no_rail_the_page_starts_at_the_window_edge` |
+| detail values `setWordWrap(False)` | `test_detail_values_wrap_instead_of_widening` |
+| sub-tab rail laid out horizontally | `test_sub_tabs_are_a_vertical_rail_left_of_the_page` |
+| `R` key removed | `test_r_e_m_keys_and_panic_with_a_panel_open` |
+| PANIC does nothing while a panel is open | `test_r_e_m_keys_and_panic_with_a_panel_open` |
+| PROWL FM `[` `]` removed | `test_bracket_keys_step_prowl_scan_bank_and_fm_frequency` |
+| SWEEP detectors never `start()` | `test_detectors_start_when_sweep_opens_and_not_before` |
+| ARMED slot painted `live` (green) | `test_armed_and_active_slots_are_never_green` |
+| ENG ACTIVE slot painted `live` | `test_armed_and_active_slots_are_never_green` |
+| OPS alert card shows nothing | `test_ops_alert_card_shows_newest_unacknowledged_alerts` |
+| a dark BABEL colour under 4.5:1 | `test_babel_protocol_colours_are_readable[dark]` |
+| PANIC calls `chrome.reset()` again | `test_panic_leaves_tx_slot_on_the_real_bench_gate_and_says_ack_not_revoked` |
+| `FONT_CAPTION = 13` | `test_rendered_text_is_16px_or_more_everywhere_…` |
+| table header 10 px | `test_rendered_text_is_16px_or_more_everywhere_…` |
+| plot axis ticks 9 px | `test_rendered_text_is_16px_or_more_everywhere_…` |
+
+(A first version of the PANIC-with-panel mutation broke only one of PANIC's two routes and
+survived; the route it left intact still fired PANIC, so it was not a real break. The mutation
+above makes PANIC inert and is killed.)
+
+### Status per item
+
+| # | Item | Status | Where | Tests |
+|---|---|---|---|---|
+| 1 | PANIC kill: whole tree, verified count | CLOSED | `palisade_qt/procs.py` (`stop_tree`, `alive`, `describe`); `shell.py` `panic()`; `start_new_session=True` added to ATLAS APRS/AIS and PRISM `rtl_power` spawns (PROWL and BABEL already had it) | `test_panic_stops_every_pipeline_member_and_counts_only_verified[True/False]` (real `sh -c 'sleep \| sleep'`, with and without its own session), `test_panic_never_counts_a_signal_as_a_kill`, `test_decoder_pipelines_start_in_their_own_session`, `test_panic_never_signals_its_own_process_group` |
+| 2 | PANIC TX display reads the real gate | CLOSED (display); revocation handed to CL2 | `shell.py` `panic()` no longer calls `chrome.reset()`; `bench_app.py` `on_gate_changed` re-reads `bench.preflight`; banner adds "BENCH ack not revoked — TX still PERMITTED" | `test_panic_leaves_tx_slot_on_the_real_bench_gate_and_says_ack_not_revoked` |
+| 3 | Mute / volume honest, off the UI thread | CLOSED (unverified on device) | `kit/audio.py` `AudioController` (one daemon thread, every set followed by a read-back); `kit/topbar.py` `_mute_clicked`, `_on_mixer`, `_show_audio` | `test_mute_shows_muted_only_after_the_read_back_says_so`, `test_failed_mixer_command_shows_a_fault_and_the_true_state`, `test_unreadable_mixer_shows_unknown_never_zero_and_unmuted`, `test_a_hanging_mixer_does_not_freeze_the_ui` (2 s hang: GUI timer keeps ticking, click returns < 0.3 s) |
+| 4 | Alerts drawer acts by alert id | CLOSED | `panels.py` `AlertStore` ids + `ack(id)`; `AlertsDrawer.selected_id/select_id/ack_selected` | `test_alert_arriving_while_drawer_open_does_not_get_acked_in_place_of_the_selected_one` |
+| 5 | Slots never elide the varying part | CLOSED | `kit/topbar.py` `StatusSlot` (no character cap; `painted_text()`); `chrome.scope_summary` (one target ≤ 10 chars shown as itself, else "N targets") | `test_slots_paint_the_whole_owner_and_scope_never_an_ellipsis` (asserts the painted text for every owner label and scope form, and that all owners paint differently); `test_every_page_and_subtab_fits_1280x720` now uses the real worst case |
+| 6 | Readers fail to UNKNOWN | CLOSED | `chrome.read_tx` / `read_engagement`; `topbar` `unknown` shape (dashed ring + bar), amber | `test_unreadable_engines_show_unknown_not_the_all_clear` |
+| 7 | PANIC through popups and modifiers | CLOSED | `shell.py` `eventFilter` checks PANIC before the focus/target test, accepts a popup opened from the hub, closes it | `test_panic_works_with_a_combo_dropdown_open`, `test_panic_works_with_a_context_menu_open_and_with_modifiers_held` |
+| 8 | ENGAGEMENT panel | CLOSED | `panels.py` `EngagePanel`: 1040×640, card sized to its text, evidence table ≥ 3 rows, TARGETS row | `test_engagement_panel_shows_whole_scope_three_evidence_rows_and_banner_parity` |
+| 9 | Alert cap never drops unacknowledged | CLOSED | `panels.py` `AlertStore._trim` drops acknowledged alerts only | `test_alert_cap_never_drops_an_unacknowledged_alert` |
+| 10a | Sky-dome labels | CLOSED | `overwatch.py` `SkyDome.label_rect` (font-sized, kept inside the dome) | `test_sky_dome_labels_are_font_sized_and_stay_inside_the_dome` |
+| 10b | Focus ring: active nav key, map style combo | CLOSED | `theme.py` `navkey_on:focus`, `subtab:focus`; `kit/mappanel.py` combo `:focus` | `test_focus_ring_is_visible_on_the_active_nav_key_and_the_map_style_combo` (compares rendered pixels with and without focus) |
+| 10c | No green on PROWL demo data | CLOSED | `prowl.py` DEMO statuses neutral; hot rows accent in demo | `test_prowl_demo_data_is_never_painted_green` |
+| 10d | Feed columns not elided | CLOSED | `kit/feed.py` `fit_columns` (measured widths; a wide table scrolls) | `test_feed_columns_get_real_widths_even_when_filled_while_hidden` |
+| 11 | D1 pins | CLOSED | (behaviour unchanged) | `test_no_rail_the_page_starts_at_the_window_edge`, `test_detail_values_wrap_instead_of_widening` |
+| 12 | D2 measured on real widgets | CLOSED | `theme.py` `FONT_CAPTION = 16`, `QHeaderView` font set | `test_rendered_text_is_16px_or_more_everywhere_including_captions_headers_and_plots`; `test_no_status_bearing_text_under_16px` now exempts nothing |
+| 13 | D3: OPS scope, vertical rail test | CLOSED | `ops.py` `_fit_scope` keeps the scope column square; `kit/ppi.py` padding 0.02 | `test_ops_scope_has_at_most_24px_dead_space_each_side` (measured ~10 px), `test_sub_tabs_are_a_vertical_rail_left_of_the_page` |
+| 14 | D9: never-green test; BABEL colours | CLOSED | `babel.py` `proto_colors()` per theme | `test_armed_and_active_slots_are_never_green[*]`, `test_babel_protocol_colours_are_readable[*]` |
+| 15 | D10: empty cards collapse; OPS card test | CLOSED | `kit/components.py` `DetailCard`: the card keeps its slot, the drawn box (`.box`) shrinks to title + hint when empty; `ops.py` `RailCard.clear_body` hides old rows before deleting them | `test_empty_detail_cards_collapse_in_live_pages` (every live page/sub-tab: no empty drawn card over 110 px, was 214–636; and none shorter than its own content), `test_ops_alert_card_shows_newest_unacknowledged_alerts` (incl. no stale rows painted underneath) |
+| 16 | RADIOS refresh while visible | CLOSED | `panels.py` `RadiosPanel` 2 s poll while shown, stopped when hidden | `test_radios_panel_rereads_the_kernel_while_visible` |
+| 17 | Keys R E M `[` `]`, PANIC with a panel open | CLOSED | (behaviour unchanged) | `test_r_e_m_keys_and_panic_with_a_panel_open`, `test_bracket_keys_step_prowl_scan_bank_and_fm_frequency` |
+| 18 | Detectors start when SWEEP opens | CLOSED, **intended** | `sweep.py` (unchanged): detectors start on SWEEP's first show; RECON no longer starts them. On `main` they started on RECON's first show; nothing starts them at launch on either. | `test_detectors_start_when_sweep_opens_and_not_before` (also asserts the four threads are joined when the hub closes) |
+
+"CLOSED" here is my claim; RA-CL1b decides.
+
+### Item 12: why the earlier test passed with 10 / 11 / 13 px on screen
+
+`test_no_status_bearing_text_under_16px` did measure real widgets, but it skipped every label whose
+class was in `CAPTION_CLASSES = {"micro", "navlabel", "navlabel_on", "slotcap"}` — exactly the
+classes the audit measured at 13, 11 and 10 px. It could not fail on them by construction. And
+`test_type_scale_and_row_height` asserted module constants against literals, not widgets. Now the
+set is empty, captions are 16 px, the header's own font is set so its size is measurable, and the
+new test reads `QFontInfo` of every visible label, button, input and header on every page plus the
+pyqtgraph axis tick fonts.
+
+### Decisions I had to make (flag if wrong)
+
+- **ENG slot word is the scope, not "ACTIVE · scope".** With both, the worst case strip was
+  1325 px. Following the planner's RADIO-slot rule (the owner *is* the word), the ENG slot paints
+  the scope summary — `ENG ◆ 10.0.0.*`, `ENG ◆ 6 targets` — with the amber diamond meaning
+  active; "ACTIVE" and the engagement name are in the tooltip and the panel. A single target is
+  shown as itself up to 10 characters (`chrome.SCOPE_CHARS`), else the count. Worst-case strip is
+  now within 1280 − 12 px (demo border) in all three themes.
+- **Strip spacing tightened by a few px** (layout spacing 2 → 1, nav key inner margin 2 → 1, slot
+  spacing 4 → 3) to make that fit. Nothing under 16 px.
+- **Mixer worker is a daemon `threading.Thread`, not a `QThread`.** A hung mixer call must not
+  hold up exit, and a QThread that outlives its join aborts the process (A2). The controller and
+  thread are retained for the process (the `_retain` rule), results come back over a queued Qt
+  signal.
+- **PANIC process stop blocks the GUI for up to ~2.5 s** (SIGTERM, 1.5 s wait, SIGKILL, 1 s wait),
+  only when something refuses to die. A stop key that returns before it knows is the defect being
+  fixed.
+- **An empty detail card keeps its slot; only the drawn card shrinks** to title + hint at the top
+  of it. My first version shrank the whole widget, and the render check showed what that does:
+  on PROWL FM the page layout spread the freed height between the remaining widgets, so the tune
+  bar floated mid-page, and on PROWL DECODE the collapsed MESSAGE card clipped its own title (its
+  height was computed before the 16 px stylesheet font applied). Both fixed; see "Render check".
+
+### Hand to CL2
+
+- **PANIC cannot revoke the BENCH conducted-TX acknowledgement.** `txguard.arm(False)` does not
+  affect `bench.preflight` (bench policy does not consult arm), and there is no gate API to clear
+  the ack. Per the brief I added none: the TX slot keeps showing PERMITTED from the real gate, and
+  the banner says "BENCH ack not revoked — TX still PERMITTED".
+- PANIC's kill list is still "every child of this process"; CL2's registry should make it explicit.
+
+### Found, not fixed
+
+- **ATLAS's own stop still terminates only the `sh` wrapper** of its APRS/AIS pipelines
+  (`atlas.py` `_proc.terminate()`), so a normal page stop can leave `rtl_fm`/`multimon-ng`
+  running. PANIC now stops them; ordinary stop is CL5 (R-class).
+- **Side effect of `start_new_session=True`:** a decoder in its own session does not get the
+  terminal's SIGHUP if PALISADE crashes, so it can outlive a crash. PROWL and BABEL already
+  behaved this way; ATLAS and PRISM now do too. CL5 should own decoder cleanup on abnormal exit.
+- The ~25 Low items from RA-CL1 are skipped per the brief. The 19 that were never independently
+  verified: see `reaudit_result.json` → each group's `new_low_unverified`.
+
+### Not checked here (owner, on the device)
+
+Python 3.13, the uConsole itself, a real window manager (`main()` calls `show()`, not
+`showFullScreen()`, so a title bar could push the bottom status row off the 720 px panel), and real
+map tiles. None of these is claimed. One command on the uConsole:
+
+```
+cd ~/SentryHub && git fetch && git checkout fix/cl1-screen-structure && git pull && xvfb-run -a python3 -m pytest -q tests && python3 -m palisade_qt.shell
+```
+
+(the suite on 3.13, then the app on the real panel: check the bottom row is visible, press `M`,
+open `R` with the dongle in and out, and press Shift+Esc with a dropdown open.)
+
+### Render check (1280×720, dark / light / sun × live / demo)
+
+`plan/briefs/CL1-renders/render.py` now also renders a stress pass (engagement with a six-target
+scope, radio held by PROWL SCAN, 12 alerts: `stress-ops`, `stress-panel-{engagement,alerts,radios}`),
+34 views per theme/mode. A sonnet agent ran all six sets and looked at 30 images. What it found,
+and what I did:
+
+| Found | Cause | Action |
+|---|---|---|
+| OPS alerts card: first row drawn over an older row (all themes) | `RailCard.clear_body` only `deleteLater()`-ed old rows; they stayed painted until the event loop deleted them. Pre-existing, made visible by the stress render | Fixed (hide + unparent first); test + mutation |
+| PROWL FM: tune bar floating mid-page between gaps | my first card-collapse | Fixed (card keeps its slot) |
+| PROWL DECODE: collapsed MESSAGE card clips its title | my first card-collapse | Fixed; test asserts no collapsed card is shorter than its content |
+| RADIOS table: Wi-Fi/Bluetooth OWNER cell "not arbitra…" | last (stretched) column of a 900 px panel | Not fixed: static text, not state. Found-not-fixed (Low) |
+| ATLAS contact table scrolls sideways; ALT at the right edge | measured column widths (item 10d): a wide table now scrolls instead of eliding | Intended trade-off; flag if the owner prefers fewer columns |
+| ATLAS map labels overlap at the centre (demo) | RA-CL1 Low (`kit/mappanel.py`), skipped per brief | Found-not-fixed |
+| Nav keys sit close together; slider next to the clock | strip spacing tightened to fit the scope in the ENG slot | Cosmetic; flag |
+
+No "…" in any top-strip slot in the 30 images. Every PNG is exactly 1280×720 (script check, all six
+sets). The re-render after the fixes is listed below with the final suite run. PNGs are git-ignored;
+`render.py` regenerates them.
+
+### Suite, lint, renders (final tree, this Mac: Python 3.12.16, PySide6 6.12, Qt offscreen)
+
+```
+QT_QPA_PLATFORM=offscreen python -m pytest -q tests
+951 passed, 12 skipped, 2 warnings in 227.97s (0:03:47)
+```
+
+(913 before this work + the 38 tests in `tests/test_cl1_fix.py`. No xvfb on this Mac; the
+offscreen platform is the headless equivalent. Not run on Python 3.13 — see "Not checked".)
+
+`pyflakes palisade_qt tests/test_cl1_fix.py tests/test_cl1_screen.py plan/briefs/CL1-renders/render.py`
+→ clean. `tests/test_palisade_qt.py` still has its three pre-existing warnings (lines 181, 202,
+1490), untouched.
+
+Re-render after the fixes (all six sets, `render.py` with `HOME` redirected): every line
+`<theme> <mode> 34 shots; not 1280x720: none`. I looked at `stress-ops` (sun live),
+`prowl-fm` (light live), `prowl-decode` (sun live) and `stress-panel-engagement` (dark demo)
+after the fix: no overlapping row, the FM page packs to the top, the MESSAGE card shows its
+title, and the ENGAGEMENT panel shows name, operator, authorization, 6 targets, the whole scope
+and five evidence rows. Regenerate with
+`python3 plan/briefs/CL1-renders/render.py <outdir> <dark|light|sun> <live|demo>`.
+
+### Model tiers used (owner rule)
+
+| Stage | Model |
+|---|---|
+| Implementation, tests, verdicts in this report | session model (Opus 5.5) |
+| Suite, pyflakes, fail-first and mutation runs | no agent — run directly in the shell |
+| Render sweep (6 runs) + visual check of 30 views | sonnet (1 agent) |
+| Re-render after the fixes + check of the 4 affected views | session model, directly (no agent) |
+| Inventory / search | none needed |

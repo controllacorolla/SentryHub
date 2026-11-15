@@ -146,6 +146,10 @@ class RailCard(QtWidgets.QFrame):
             it = self.body.takeAt(0)
             w = it.widget()
             if w:
+                # hide now: deleteLater only runs when the event loop gets to it, and until then
+                # the old label was painted under the new one (RA-CL1 render: overlapping alert row)
+                w.hide()
+                w.setParent(None)
                 w.deleteLater()
 
     def standby(self, msg="STANDBY · no feed"):
@@ -197,11 +201,15 @@ class OpsHome(PalisadeApp):
         self.ppi = PpiScope(span_nm=80, mode=self.mode)
         hv.addWidget(self.ppi, 1)
         row.addWidget(hero, 1)
+        # the scope is round: keep its column only as wide as it is tall, and give the rest of
+        # the width to the rail instead of a dead well either side (D3 / RA-CL1)
+        self._hero = hero
+        self.ppi.resized.connect(self._fit_scope)
 
         # rail: PRISM / BABEL / ALERTS / minis
         rail = QtWidgets.QWidget()
         rail.setMinimumWidth(380)
-        rail.setMaximumWidth(520)
+        rail.setMaximumWidth(16777215)
         rv = QtWidgets.QVBoxLayout(rail)
         rv.setContentsMargins(0, 0, 0, 0)
         rv.setSpacing(9)
@@ -266,6 +274,11 @@ class OpsHome(PalisadeApp):
         batt = pl.get("batt")
         if batt is not None:
             self.mini_pwr[1].setText("%d%%" % batt)
+
+    def _fit_scope(self):
+        side = self.ppi.height()
+        if side > 0 and self._hero.maximumWidth() != max(360, side):
+            self._hero.setMaximumWidth(max(360, side))
 
     def _refresh_ppi(self):
         now = time.time()
