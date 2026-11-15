@@ -37,9 +37,18 @@ SERIAL_LOG = os.path.join(os.path.expanduser("~"), ".local", "share", "uconsole-
 
 
 def record(event, **fields):
-    """# CL3: single evidence hook (issue / spawn / write / exit, with exit_code on exit).
-    No-op until the CL3 evidence chain lands; do not design the chain here."""
-    return None
+    """The single evidence hook (CL3): issue / spawn / write / exit (with the real exit code) /
+    kill go to the open engagement's chain, or to the per-process session chain when no engagement
+    is open (a conducted bench run is still evidence). A failure to record an ISSUE refuses the
+    ticket (fail closed: no durable record, no capability); spawn/exit/write/kill records are
+    best-effort because by then the process exists and must still be tracked and killable."""
+    import chain
+    try:
+        return chain.record(event, **fields)
+    except Exception as e:
+        if event == "issue":
+            raise TicketRefused("evidence chain write failed (%s) — no ticket" % e)
+        return None
 
 
 def _mono():
@@ -159,12 +168,15 @@ def issue(argv=None, recheck=None, label="", binding="scoped", reason="", files=
         if not ok:
             raise TicketRefused(why)
     t = Ticket(kind, argv, payload, files, label, binding, reason, meta)
+    # CL3 (G6): the durable record comes BEFORE the capability exists; a failed record raises
+    # TicketRefused and nothing is minted.
+    record("issue", ticket=t.id, label=label, binding=binding, reason=reason,
+           argv=list(t.argv) if t.argv else None, issuer=caller, emitter=emitter,
+           target=str((meta or {}).get("target", "")))
     with _LOCK:
         _ISSUED[t.id] = {"ticket": t, "digest": _digest(kind, t.argv, t.payload, t.files),
                          "expires": _mono() + float(TICKET_TTL_S if ttl is None else ttl),
                          "recheck": recheck, "used": False, "emitter": emitter}
-    record("issue", ticket=t.id, label=label, binding=binding, reason=reason,
-           argv=list(t.argv) if t.argv else None)
     return t
 
 
@@ -278,6 +290,8 @@ class Handle:
     def stop(self, reason="stopped"):
         if self.stopped is None:
             self.stopped = reason
+            record("kill", ticket=self.ticket.id, label=self.ticket.label, reason=reason,
+                   pid=getattr(self.proc, "pid", None))
         _kill_group(self.proc)
         self._done.wait(3.0)
 

@@ -45,7 +45,9 @@ BOUND_KINDS = ("ip", "host", "mac", "oui", "can", "zigbee", "uid")
 LABEL_ONLY = "label-only"
 
 _ENG = {"active": False, "name": None, "authorization": None, "scope": [], "entries": [],
-        "operator": None, "started": None, "expires": None, "expiry_notified": False}
+        "operator": None, "started": None, "expires": None, "expiry_notified": False,
+        "chain": None}
+_CHAIN = {"obj": None}             # the open engagement's evidence chain (chain.Chain), CL3
 _ACTIONS = []                      # in-session audit trail (also mirrored to the evidence chain)
 _LISTENERS = []
 
@@ -435,7 +437,7 @@ def _eng():
             rec = {"active": True, "name": e.get("name"), "authorization": e.get("authorization"),
                    "scope": list(e.get("scope", [])), "entries": entries,
                    "operator": e.get("operator"), "started": float(e.get("started")),
-                   "expires": float(e.get("expires"))}
+                   "expires": float(e.get("expires")), "chain": e.get("chain")}
         except Exception:
             rec = {"active": False, "name": None, "authorization": None, "scope": [],
                    "entries": [], "operator": None, "started": None, "expires": None}
@@ -449,7 +451,8 @@ def export_state():
         return None
     return {"name": _ENG["name"], "authorization": _ENG["authorization"],
             "scope": list(_ENG["scope"]), "entries": [e.to_json() for e in _ENG["entries"]],
-            "operator": _ENG["operator"], "started": _ENG["started"], "expires": _ENG["expires"]}
+            "operator": _ENG["operator"], "started": _ENG["started"], "expires": _ENG["expires"],
+            "chain": _ENG.get("chain")}
 
 
 def _expired(e):
@@ -484,9 +487,20 @@ def start(name, authorization, scope, operator=None, hours=ENGAGEMENT_HOURS_DEFA
     if not ok:
         return False, why
     t = _now()
+    # CL3 (G6/G7): the durable evidence chain is opened FIRST; no chain, no engagement.
+    import chain as _chain
+    try:
+        ch = _chain.Chain.create(name=name.strip())
+        ch.record("engagement.open", name=name.strip(), authorization=str(authorization).strip(),
+                  scope=[e.text for e in entries], operator=str(prof).strip(), started=t,
+                  expires=t + float(h) * 3600.0, hours=float(h))
+    except _chain.ChainError as e:
+        return False, "cannot open the evidence chain (%s) — refusing to start (fail closed)" % e
     _ENG.update(active=True, name=name.strip(), authorization=str(authorization).strip(),
                 scope=[e.text for e in entries], entries=entries, operator=str(prof).strip(),
-                started=t, expires=t + float(h) * 3600.0, expiry_notified=False)
+                started=t, expires=t + float(h) * 3600.0, expiry_notified=False, chain=ch.id)
+    _CHAIN["obj"] = ch
+    _chain.set_open(ch)
     _ACTIONS.clear()
     _notify()
     return True, "engagement '%s' active (%d targets in scope, expires in %g h)" % (
@@ -498,10 +512,19 @@ def end():
         return None
     was = _ENG["name"]
     changed = _ENG["active"]
+    ch = _CHAIN["obj"]
     _ENG.update(active=False, name=None, authorization=None, scope=[], entries=[], operator=None,
-                started=None, expires=None, expiry_notified=False)
+                started=None, expires=None, expiry_notified=False, chain=None)
     if changed:
-        _notify()
+        _notify()                       # the executor kills registered processes here; their
+    if changed and ch is not None:      # kill records land in THIS chain, before it closes
+        try:
+            ch.record("engagement.close", name=was, actions=len(_ACTIONS))
+        except Exception:
+            pass                        # closing never blocks END (it is the kill path)
+    _CHAIN["obj"] = None
+    import chain as _chain
+    _chain.set_open(None)
     return was
 
 
@@ -572,21 +595,76 @@ def authorize_action(action, target, evidence_chain=None, kind=None, binding=Non
     binding when the caller knows the command is less bound than the target (e.g. "label-only"
     for written content the scope cannot bind — CL2-fix2 R5)."""
     ok, why, chk_binding = check(action, target, kind)
+    e = _eng()
     if not ok:
+        _record_soft("refuse", action=action, target=str(target), reason=why,
+                     engagement=e.get("name"))
         return False, why
     binding = binding or chk_binding
-    e = _eng()
     rec = {"t": _now(), "action": action, "target": str(target), "engagement": e["name"],
            "operator": e["operator"], "binding": binding}
+    # CL3 (G6): the record is written durably BEFORE the authorization exists. If it cannot be
+    # written, there is no authorization. A legacy per-page EvidenceChain is no longer consulted.
+    ch = _active_chain()
+    if ch is None:
+        return False, ("no evidence chain is open for this engagement — refusing (no durable "
+                       "record, no authorization)")
+    try:
+        ch.record("authorize", action=action, target=str(target), binding=binding,
+                  engagement=e["name"], operator=e["operator"], authorization=e["authorization"])
+    except Exception as ex:
+        return False, "evidence chain write failed (%s) — refusing (no durable record, no " \
+                      "authorization)" % ex
     _ACTIONS.append(rec)
-    if evidence_chain is not None:
-        try:
-            evidence_chain.add("%s:%s" % (action, target),
-                               data=("%s|%s|%s" % (action, target, e["authorization"])).encode(),
-                               meta=rec)
-        except Exception:
-            pass
     return True, why
+
+
+def _active_chain():
+    """The open engagement's chain: this process's own, or (bound child) the hub's by id."""
+    if _CHAIN["obj"] is not None:
+        return _CHAIN["obj"]
+    e = _eng()
+    cid = e.get("chain") if isinstance(e, dict) else None
+    if not cid:
+        return None
+    import chain as _chain
+    try:
+        ch = _chain.Chain.open(cid)
+    except _chain.ChainError:
+        return None
+    _CHAIN["obj"] = ch
+    return ch
+
+
+def _record_soft(event, **fields):
+    """Record something that must never block (a refusal, a close). Errors are dropped."""
+    try:
+        ch = _active_chain()
+        if ch is not None:
+            ch.record(event, **fields)
+    except Exception:
+        pass
+
+
+def chain_states():
+    """H9 view: rows with AUTHORIZED / ISSUED / RUNNING / EXECUTED / KILLED / REFUSED / FAILED."""
+    ch = _active_chain()
+    if ch is None:
+        return []
+    try:
+        ch.verify()
+    except Exception:
+        return []
+    return ch.states()
+
+
+def chain_info():
+    """(id, path, records, verified) for the open chain, or None."""
+    ch = _active_chain()
+    if ch is None:
+        return None
+    ok, why = ch.verify()
+    return {"id": ch.id, "path": ch.path, "records": len(ch.records), "verified": ok, "why": why}
 
 
 # CL2-fix2 R1: argv[0] basenames the engagement gate never runs, whatever a module declares —
@@ -677,9 +755,11 @@ def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=Non
             if not x[0]:
                 return x[0], x[1]
         return r[0], r[1]
+    m = dict(meta or {})
+    m.setdefault("target", str(target))
     try:
         t = executor.issue(argv=argv, payload=payload, recheck=recheck, label=label or action,
-                           binding=binding, reason=why, files=files, meta=meta)
+                           binding=binding, reason=why, files=files, meta=m)
     except executor.TicketRefused as e:
         return False, "refused: %s" % e, None
     return True, why, t
@@ -694,6 +774,7 @@ def reset():
     if _shared() is None:
         end()
     _ACTIONS.clear()
+    _CHAIN["obj"] = None
     _SHARED_CACHE.update(key=None, eng=None)
 
 
