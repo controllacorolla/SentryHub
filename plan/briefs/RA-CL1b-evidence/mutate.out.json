@@ -1,0 +1,14 @@
+{
+ "m1_no_sigkill_escalation": "SURVIVED 89 passed in 166.48s (0:02:46)",
+ "m2_no_killpg": "SURVIVED 89 passed in 166.08s (0:02:46)",
+ "m3_no_descendants": "CAUGHT FAILED tests/test_cl1_fix.py::test_panic_stops_every_pipeline_member_and_counts_only_verified[False] | 1 failed, 1 passed in 1.94s",
+ "m4_popup_not_closed": "CAUGHT FAILED tests/test_cl1_fix.py::test_panic_works_with_a_combo_dropdown_open - A... | 1 failed, 13 passed in 8.20s",
+ "m5_drawer_no_select_id": "CAUGHT FAILED tests/test_cl1_fix.py::test_alert_arriving_while_drawer_open_does_not_get_acked_in_place_of_the_selected_one | 1 failed, 10 passed in 5.87s",
+ "m6_trim_drops_unacked": "CAUGHT FAILED tests/test_cl1_fix.py::test_alert_cap_never_drops_an_unacknowledged_alert | 1 failed, 16 passed in 9.20s",
+ "m7_mute_optimistic": "CAUGHT FAILED tests/test_cl1_fix.py::test_mute_shows_muted_only_after_the_read_back_says_so | 1 failed, 6 passed in 2.99s",
+ "m8_fault_not_shown": "CAUGHT FAILED tests/test_cl1_fix.py::test_failed_mixer_command_shows_a_fault_and_the_true_state | 1 failed, 7 passed in 3.09s",
+ "m9_bench_no_reread": "SURVIVED 89 passed in 164.55s (0:02:44)",
+ "m10_unknown_as_off": "CAUGHT FAILED tests/test_cl1_fix.py::test_unreadable_engines_show_unknown_not_the_all_clear | 1 failed, 12 passed in 7.10s",
+ "m11_panic_no_banner_survivors": "CAUGHT FAILED tests/test_cl1_fix.py::test_panic_never_counts_a_signal_as_a_kill - As... | 1 failed, 2 passed in 2.27s",
+ "m12_mixer_on_gui_thread": "CAUGHT FAILED tests/test_cl1_fix.py::test_a_hanging_mixer_does_not_freeze_the_ui - A... | 1 failed, 9 passed in 5.07s"
+}

@@ -1,12 +1,10 @@
-"""OVERWATCH — sky dome, satellite passes, and the radio-director dashboard.
+"""OVERWATCH — sky dome and satellite passes. Since CL1 these are sub-tabs of ATLAS (key 2); the
+radio-director view moved to the shell's RADIOS panel (panels.RadiosPanel), unchanged.
 
-Sub-views: SKY DOME / RADIO / PASSES.
+Sub-views: SKY DOME / PASSES.
   * SKY DOME — a polar dome (zenith centre, horizon rim) with the sun + moon (pure astro math,
     always live) and satellite positions / pass arcs. Reuses overwatch.project/dome_r/compass and
     astro.sun_azel/moon_azel AS-IS.
-  * RADIO — the operator's view into the one-owner dongle: who holds the radio_arbiter lease, the
-    acquire/release history (from the arbiter's `changed` signal), and a manual HAND-OVER that frees
-    the current holder so the next layer can take it. This is the seed of the radio director.
   * PASSES — upcoming satellite passes from wxsat.predict (skyfield + TLE), scheduled via
     passsched.schedule/next_pass AS-IS; the next pass raises an alert on the OPS strip.
 
@@ -22,16 +20,17 @@ import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .app import PalisadeApp
-from . import theme, eventbus, radio_arbiter
-from .kit import FeedTable, DetailCard, micro
+from .app import PalisadeApp, _retain
+from . import theme, eventbus
+from .kit import FeedTable, micro
+from .kit.components import note
 from .worker import Worker
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-SUBVIEWS = ("SKY DOME", "RADIO", "PASSES")
+SUBVIEWS = ("SKY DOME", "PASSES")
 HOME_LAT, HOME_LON = eventbus.HOME
 
 
@@ -50,7 +49,7 @@ class SkyDome(QtWidgets.QFrame):
         super().__init__(parent)
         self.setProperty("class", "well")
         self._tok = tok
-        self.setMinimumSize(360, 360)
+        self.setMinimumSize(160, 160)            # sized from the space it is given
         self._sun = None          # (az, el)
         self._moon = None         # (az, el, lit)
         self._sats = []           # [{label, az, el, demo}]
@@ -117,8 +116,19 @@ class SkyDome(QtWidgets.QFrame):
             p.setPen(QtCore.Qt.NoPen)
             p.drawEllipse(QtCore.QPointF(x, y), 5, 5)
             p.setPen(QtGui.QColor(self._tok["text"]))
-            p.drawText(QtCore.QRectF(x + 7, y - 8, 120, 16), QtCore.Qt.AlignLeft, s["label"])
+            p.drawText(self.label_rect(x, y, s["label"], p.fontMetrics()),
+                       QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, s["label"])
         p.end()
+
+    def label_rect(self, x, y, label, fm):
+        """Where a satellite's label goes: sized from the font (a fixed 16 px box clipped the 18 px
+        text, RA-CL1), right of the dot unless that runs off the dome, then left of it, and kept
+        inside the widget top and bottom."""
+        tw, th = fm.horizontalAdvance(label) + 2, fm.height()
+        lx = x + 7 if x + 7 + tw <= self.width() - 2 else x - 7 - tw
+        lx = max(2, lx)
+        ly = min(max(2, y - th / 2), self.height() - th - 2)
+        return QtCore.QRectF(lx, ly, tw, th)
 
 
 # ======================= workers =======================
@@ -236,13 +246,19 @@ def _remap(p):
 
 class OverwatchApp(PalisadeApp):
     TITLE = "OVERWATCH"
-    LEASE = None            # OVERWATCH directs the arbiter; it never holds a lease of its own
+    LEASE = None            # never holds a lease of its own
+    SUBTABS = SUBVIEWS
 
-    def __init__(self, demo=False, mode="dark", parent=None):
+    def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._view = "SKY DOME"
-        self._history = []
         self._next_alerted = None
-        super().__init__(demo=demo, mode=mode, parent=parent)
+        super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
+
+    def current_subtab(self):
+        return self._view
+
+    def switch_subtab(self, name):
+        self._switch(name)
 
     def build_body(self):
         self._tok = theme.tokens(self.mode)
@@ -250,25 +266,8 @@ class OverwatchApp(PalisadeApp):
         lay = QtWidgets.QVBoxLayout(body)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
-        top = QtWidgets.QHBoxLayout()
-        top.setSpacing(8)
-        self._view_btns = {}
-        for v in SUBVIEWS:
-            b = QtWidgets.QPushButton(v)
-            b.setCheckable(True)
-            b.setFixedWidth(110)
-            b.clicked.connect(lambda _=False, vv=v: self._switch(vv))
-            self._view_btns[v] = b
-            top.addWidget(b)
-        top.addStretch(1)
-        self.sky_chip = QtWidgets.QLabel("")
-        self.sky_chip.setProperty("class", "micro")
-        top.addWidget(self.sky_chip)
-        lay.addLayout(top)
-
         self.stack = QtWidgets.QStackedWidget()
-        self._pages = {"SKY DOME": self._dome_page(), "RADIO": self._radio_page(),
-                       "PASSES": self._passes_page()}
+        self._pages = {"SKY DOME": self._dome_page(), "PASSES": self._passes_page()}
         for v in SUBVIEWS:
             self.stack.addWidget(self._pages[v])
         lay.addWidget(self.stack, 1)
@@ -283,30 +282,12 @@ class OverwatchApp(PalisadeApp):
         self.dome = SkyDome(self._tok)
         pl.addWidget(self.dome, 3)
         right = QtWidgets.QVBoxLayout()
+        self.sky_chip = note("")
+        right.addWidget(self.sky_chip)
         right.addWidget(micro("OVERHEAD"))
         self.obj_feed = FeedTable([("name", "OBJECT"), ("el", "EL"), ("az", "AZ")])
         right.addWidget(self.obj_feed, 1)
         pl.addLayout(right, 2)
-        return page
-
-    def _radio_page(self):
-        page = QtWidgets.QWidget()
-        pl = QtWidgets.QVBoxLayout(page)
-        pl.setContentsMargins(0, 0, 0, 0)
-        pl.setSpacing(10)
-        self.holder = DetailCard("RADIO DIRECTOR · single-SDR owner")
-        self.holder.set_hero("—", "radio free")
-        pl.addWidget(self.holder)
-        row = QtWidgets.QHBoxLayout()
-        row.addWidget(micro("Hand over / free"))
-        self.takeover_btn = QtWidgets.QPushButton("FREE THE RADIO (release holder)")
-        self.takeover_btn.clicked.connect(self._free_radio)
-        row.addWidget(self.takeover_btn)
-        row.addStretch(1)
-        pl.addLayout(row)
-        pl.addWidget(micro("Acquire / release history"))
-        self.hist_feed = FeedTable([("t", "TIME"), ("event", "EVENT"), ("owner", "LAYER")])
-        pl.addWidget(self.hist_feed, 1)
         return page
 
     def _passes_page(self):
@@ -314,8 +295,7 @@ class OverwatchApp(PalisadeApp):
         pl = QtWidgets.QVBoxLayout(page)
         pl.setContentsMargins(0, 0, 0, 0)
         pl.setSpacing(10)
-        self.pass_note = QtWidgets.QLabel("")
-        self.pass_note.setProperty("class", "micro")
+        self.pass_note = note("")
         pl.addWidget(self.pass_note)
         self.pass_feed = FeedTable([("sat", "SATELLITE"), ("aos", "AOS"), ("max", "MAX EL"),
                                     ("freq", "FREQ"), ("decoder", "DECODER")])
@@ -327,48 +307,15 @@ class OverwatchApp(PalisadeApp):
         self._view = view
         self.stack.setCurrentWidget(self._pages[view])
         self._sync_views()
-        if view == "RADIO":
-            self._refresh_holder()
 
     def _sync_views(self):
-        for v, b in self._view_btns.items():
-            b.setChecked(v == self._view)
-
-    # ---- radio director ----
-    def _on_arbiter_change(self, owner):
-        now = time.strftime("%H:%M:%S")
-        if owner:
-            lbl = radio_arbiter.OWNER_LABELS.get(owner, owner)
-            self._history.insert(0, {"t": now, "event": "ACQUIRE", "owner": lbl})
-        else:
-            self._history.insert(0, {"t": now, "event": "RELEASE", "owner": "—"})
-        self._history = self._history[:200]
-        self.hist_feed.model.set_rows(self._history)
-        self._refresh_holder()
-
-    def _refresh_holder(self):
-        owner = radio_arbiter.arbiter.owner()
-        if owner:
-            self.holder.set_hero(radio_arbiter.owner_label() or owner, "holds the single SDR")
-            self.holder.set_rows([("LEASE", owner), ("STATE", "BUSY — one owner at a time")])
-            self.takeover_btn.setEnabled(True)
-        else:
-            self.holder.set_hero("—", "radio free")
-            self.holder.set_rows([("STATE", "FREE — any layer may acquire")])
-            self.takeover_btn.setEnabled(False)
-
-    def _free_radio(self):
-        owner = radio_arbiter.arbiter.owner()
-        if owner:
-            radio_arbiter.arbiter.release(owner)      # free the dongle; the next layer acquires it
-        self._refresh_holder()
+        self._sync_rail()
 
     # ---- lifecycle ----
     def start(self):
         if self._started:
             return
         super().start()
-        radio_arbiter.arbiter.changed.connect(self._on_arbiter_change)
         self._workers = []
         self._sky = SkyWorker(demo=self.demo)
         self._sky.row.connect(self._on_sky)
@@ -379,19 +326,15 @@ class OverwatchApp(PalisadeApp):
         self._passw.error.connect(self.on_error)
         self._passw.start()
         self._workers.append(self._passw)
-        self._refresh_holder()
 
     def stop(self):
         if self._stopped:
             return
-        try:
-            radio_arbiter.arbiter.changed.disconnect(self._on_arbiter_change)
-        except (TypeError, RuntimeError):
-            pass
         for w in getattr(self, "_workers", []):
             w.stop()
             w.quit()
             w.wait(3000)
+            _retain(w)
         self._workers = []
         super().stop()
 

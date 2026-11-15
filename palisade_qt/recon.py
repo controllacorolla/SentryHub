@@ -1,16 +1,19 @@
-"""RECON — network + RF survey / pentest callsign.
+"""RECON — survey + assess: Wi-Fi / BLE / network (key 6).
+
+Since CL1 the counter-surveillance detectors live on their own page (SWEEP, sweep.py — the
+DetectorWorker class stays here and is imported there, unchanged) and ENGAGE is global chrome: the
+ENGAGEMENT slot in the top strip opens panels.EngagePanel.
 
 Two tiers, wired to the legacy engines AS-IS:
 
-  * PASSIVE (no gate): wifisurvey, blescan, rffinger, scout, and the COUNTER detectors
-    (bugsweep, jammer, imsicatch, gnss) — receive-only, ungated by design.
+  * PASSIVE (no gate): wifisurvey, blescan, rffinger, scout — receive-only, ungated by design.
   * ACTIVE (gated): wifipent, blepent, netpent, passaudit — every action goes through the engine's
     `prepare(...)` which calls `engagement.authorize_action(...)`. The gate is enforced by the
     ENGINE, not this UI: with no active engagement (or an out-of-scope target) prepare() returns no
     argv. This UI only reflects gate state and passes the shared evidence chain through — it NEVER
     routes around the gate, and it wires no new TX/attack path.
 
-The ENGAGE tab is the governance keystone: operator identity (opprofile), engagement scope
+The ENGAGEMENT panel is the governance keystone: operator identity (opprofile), engagement scope
 (engagement.start/end), the authorized-action trail, and the tamper-evident evidence chain.
 
 Honesty: passive tools show real scan results or an honest standby when no adapter is present;
@@ -22,20 +25,19 @@ import random
 import shutil
 import subprocess
 import sys
-import time
 
 from PySide6 import QtCore, QtWidgets
 
-from .app import PalisadeApp
+from .app import PalisadeApp, _retain
 from . import theme, eventbus
-from .kit import ControlBar, FeedTable, DetailCard, micro, card
+from .kit import ControlBar, FeedTable, micro, card
 from .worker import Worker
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-SUBTABS = ("WIFI", "BLE", "NET", "RF", "COUNTER", "ENGAGE")
+SUBTABS = ("WIFI", "BLE", "NET", "RF")
 
 
 def _offscreen():
@@ -61,39 +63,6 @@ def _run_cmd(argv, timeout=12):
 def _engagement():
     import engagement
     return engagement
-
-
-class GateBanner(QtWidgets.QFrame):
-    """One shared strip showing the engagement state the gated tools depend on."""
-
-    def __init__(self, tok, parent=None):
-        super().__init__(parent)
-        self.setProperty("class", "card")
-        self._tok = tok
-        lay = QtWidgets.QHBoxLayout(self)
-        lay.setContentsMargins(12, 7, 12, 7)
-        self.dot = QtWidgets.QLabel("●")
-        lay.addWidget(self.dot)
-        self.text = QtWidgets.QLabel("")
-        self.text.setProperty("class", "value")
-        lay.addWidget(self.text)
-        lay.addStretch(1)
-        self.scope = QtWidgets.QLabel("")
-        self.scope.setProperty("class", "micro")
-        lay.addWidget(self.scope)
-        self.refresh()
-
-    def refresh(self):
-        info = _engagement().info()
-        if info["active"]:
-            self.dot.setStyleSheet("color:%s;" % self._tok["live"])
-            self.text.setText("ENGAGEMENT ACTIVE — %s" % info["name"])
-            self.scope.setText("operator %s · %d target(s) · auth %s" % (
-                info["operator"], len(info["scope"]), info["authorization"]))
-        else:
-            self.dot.setStyleSheet("color:%s;" % self._tok["muted"])
-            self.text.setText("NO ENGAGEMENT — active tools locked")
-            self.scope.setText("activate in the ENGAGE tab")
 
 
 class GatedTool(QtWidgets.QFrame):
@@ -130,7 +99,7 @@ class GatedTool(QtWidgets.QFrame):
         brow.addStretch(1)
         lay.addLayout(brow)
         self.result = QtWidgets.QLabel("")
-        self.result.setProperty("class", "micro")
+        self.result.setProperty("class", "note")
         self.result.setWordWrap(True)
         self.result.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         lay.addWidget(self.result)
@@ -143,11 +112,11 @@ class GatedTool(QtWidgets.QFrame):
         self.target.setEnabled(active)
         if active:
             info = _engagement().info()
-            self.state.setStyleSheet("color:%s;" % self._tok["live"])
-            self.state.setText("authorized scope: %s" % ", ".join(info["scope"][:4]))
+            self.state.setStyleSheet("color:%s;" % self._tok["warn"])     # amber: armed, not healthy
+            self.state.setText("◆ authorized scope: %s" % ", ".join(info["scope"][:4]))
         else:
-            self.state.setStyleSheet("color:%s;" % self._tok["warn"])
-            self.state.setText("REQUIRES ENGAGEMENT — activate in the ENGAGE tab")
+            self.state.setStyleSheet("color:%s;" % self._tok["muted"])
+            self.state.setText("○ REQUIRES ENGAGEMENT — open ENGAGEMENT in the top strip (E)")
             self.result.setText("")
 
     def _authorize(self, action):
@@ -158,10 +127,10 @@ class GatedTool(QtWidgets.QFrame):
         # the ENGINE gates this (engagement.authorize_action); we pass the shared evidence chain
         ok, why, argv = self._prepare(action, target, evidence_chain=self._app.evidence)
         if not ok:
-            self.result.setStyleSheet("color:%s;" % self._tok["warn"])
+            self.result.setStyleSheet("color:%s;" % self._tok["muted"])
             self.result.setText("DENIED: %s" % why)
             return
-        self.result.setStyleSheet("color:%s;" % self._tok["live"])
+        self.result.setStyleSheet("color:%s;" % self._tok["warn"])        # AUTHORIZED is amber (D9)
         self.result.setText("AUTHORIZED: %s\n$ %s" % (why, " ".join(argv)))
         self._app.on_authorized(self._domain, action, target, argv)
 
@@ -322,12 +291,23 @@ class ReconApp(PalisadeApp):
     TITLE = "RECON"
     LEASE = None          # RECON uses wifi/BLE/network adapters, not the SDR dongle
 
-    def __init__(self, demo=False, mode="dark", parent=None):
+    SUBTABS = SUBTABS
+
+    def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._subtab = "WIFI"
         self._gated = []                                 # cards to refresh on gate change
         import evidence
         self.evidence = evidence.EvidenceChain()        # one tamper-evident chain per session
-        super().__init__(demo=demo, mode=mode, parent=parent)
+        super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
+
+    def current_subtab(self):
+        return self._subtab
+
+    def switch_subtab(self, name):
+        self._switch(name)
+
+    def on_gate_changed(self):
+        self._refresh_gate()             # the ENGAGEMENT panel (or PANIC) changed the gate
 
     # ---- layout ----
     def build_body(self):
@@ -337,26 +317,10 @@ class ReconApp(PalisadeApp):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
 
-        top = QtWidgets.QHBoxLayout()
-        top.setSpacing(8)
-        self._tab_btns = {}
-        for t in SUBTABS:
-            b = QtWidgets.QPushButton(t)
-            b.setCheckable(True)
-            b.setFixedWidth(96)
-            b.clicked.connect(lambda _=False, tt=t: self._switch(tt))
-            self._tab_btns[t] = b
-            top.addWidget(b)
-        top.addStretch(1)
-        lay.addLayout(top)
-
-        self.gate_banner = GateBanner(self._tok)
-        lay.addWidget(self.gate_banner)
-
         self.stack = QtWidgets.QStackedWidget()
         self._pages = {
             "WIFI": self._wifi_page(), "BLE": self._ble_page(), "NET": self._net_page(),
-            "RF": self._rf_page(), "COUNTER": self._counter_page(), "ENGAGE": self._engage_page()}
+            "RF": self._rf_page()}
         for t in SUBTABS:
             self.stack.addWidget(self._pages[t])
         lay.addWidget(self.stack, 1)
@@ -453,7 +417,7 @@ class ReconApp(PalisadeApp):
         cl.addWidget(micro("RFFINGER · RF device fingerprinting (passive)"))
         self.rf_note = QtWidgets.QLabel("No capture feed — fingerprinting runs on IQ from PRISM / a "
                                         "capture file. Standby until a feed is wired on-device.")
-        self.rf_note.setProperty("class", "micro")
+        self.rf_note.setProperty("class", "note")
         self.rf_note.setWordWrap(True)
         cl.addWidget(self.rf_note)
         pl.addWidget(c)
@@ -462,151 +426,43 @@ class ReconApp(PalisadeApp):
         c2l.addWidget(micro("SCOUT · site survey (passive)"))
         self.scout_note = QtWidgets.QLabel("Network / Wi-Fi site survey (own-subnet probing only). "
                                            "Device-only; standby on the dev host.")
-        self.scout_note.setProperty("class", "micro")
+        self.scout_note.setProperty("class", "note")
         self.scout_note.setWordWrap(True)
         c2l.addWidget(self.scout_note)
         pl.addWidget(c2)
         pl.addStretch(1)
         return page
 
-    def _counter_page(self):
-        page = QtWidgets.QWidget()
-        pl = QtWidgets.QVBoxLayout(page)
-        pl.setContentsMargins(0, 0, 0, 0)
-        pl.setSpacing(10)
-        pl.addWidget(micro("COUNTER-SURVEILLANCE · all passive/defensive detectors · NO TX"))
-        self.counter_feed = FeedTable([("time", "TIME"), ("det", "DETECTOR"),
-                                       ("sev", "SEV"), ("text", "FINDING")])
-        pl.addWidget(self.counter_feed, 1)
-        return page
-
-    def _engage_page(self):
-        page = QtWidgets.QWidget()
-        pl = QtWidgets.QVBoxLayout(page)
-        pl.setContentsMargins(0, 0, 0, 0)
-        pl.setSpacing(10)
-        split = QtWidgets.QHBoxLayout()
-        split.setSpacing(10)
-
-        # operator identity (opprofile) + engagement scope (engagement)
-        form = card(2)
-        fl = QtWidgets.QFormLayout(form)
-        fl.setContentsMargins(12, 10, 12, 10)
-        self.eng_operator = QtWidgets.QLineEdit()
-        self.eng_name = QtWidgets.QLineEdit()
-        self.eng_auth = QtWidgets.QLineEdit()
-        self.eng_scope = QtWidgets.QLineEdit()
-        self.eng_scope.setPlaceholderText("comma-separated targets or wildcards (AA:BB:CC:*, Net-*)")
-        self._prefill_operator()
-        fl.addRow(micro("Operator"), self.eng_operator)
-        fl.addRow(micro("Engagement"), self.eng_name)
-        fl.addRow(micro("Authorization"), self.eng_auth)
-        fl.addRow(micro("Scope"), self.eng_scope)
-        btns = QtWidgets.QHBoxLayout()
-        self.eng_start = QtWidgets.QPushButton("ACTIVATE ENGAGEMENT")
-        self.eng_start.clicked.connect(self._activate)
-        self.eng_end = QtWidgets.QPushButton("END")
-        self.eng_end.clicked.connect(self._deactivate)
-        btns.addWidget(self.eng_start)
-        btns.addWidget(self.eng_end)
-        fl.addRow(btns)
-        self.eng_msg = QtWidgets.QLabel("")
-        self.eng_msg.setProperty("class", "micro")
-        self.eng_msg.setWordWrap(True)
-        fl.addRow(self.eng_msg)
-        split.addWidget(form, 3)
-
-        right = QtWidgets.QVBoxLayout()
-        self.eng_detail = DetailCard("ENGAGEMENT")
-        self.eng_detail.set_hero("—", "no engagement")
-        right.addWidget(self.eng_detail, 1)
-        right.addWidget(micro("Authorized actions (evidence chain)"))
-        self.eng_actions = FeedTable([("t", "TIME"), ("action", "ACTION"), ("target", "TARGET")])
-        right.addWidget(self.eng_actions, 2)
-        split.addLayout(right, 2)
-        pl.addLayout(split, 1)
-        return page
-
-    def _prefill_operator(self):
-        try:
-            import opprofile
-            import suite
-            prof = opprofile.load(suite.settings)
-            self.eng_operator.setText(prof.get("callsign") or prof.get("name") or "")
-            self.eng_auth.setText(prof.get("authorization") or "")
-        except Exception:
-            pass        # no suite/profile on the dev host: leave blank, never invent an identity
-
-    # ---- engagement governance ----
-    def _activate(self):
-        eng = _engagement()
-        scope = [s.strip() for s in self.eng_scope.text().split(",") if s.strip()]
-        ok, why = eng.start(self.eng_name.text().strip(), self.eng_auth.text().strip(),
-                            scope, self.eng_operator.text().strip())
-        self.eng_msg.setStyleSheet("color:%s;" % (self._tok["live"] if ok else self._tok["warn"]))
-        self.eng_msg.setText(why)
-        self._refresh_gate()
-
-    def _deactivate(self):
-        _engagement().end()
-        self.eng_msg.setStyleSheet("color:%s;" % self._tok["muted"])
-        self.eng_msg.setText("engagement ended")
-        self._refresh_gate()
-
     def _refresh_gate(self):
-        self.gate_banner.refresh()
         for g in self._gated:
             g.refresh()
-        info = _engagement().info()
-        if info["active"]:
-            self.eng_detail.set_hero(info["name"], "active engagement")
-            self.eng_detail.set_rows([
-                ("OPERATOR", info["operator"]), ("AUTHORIZATION", info["authorization"]),
-                ("SCOPE", ", ".join(info["scope"])),
-                ("STARTED", time.strftime("%H:%M:%S", time.localtime(info["started"])))])
-        else:
-            self.eng_detail.set_hero("—", "no engagement")
-            self.eng_detail.set_rows([])
-        self._render_actions()
-
-    def _render_actions(self):
-        rows = [{"t": time.strftime("%H:%M:%S", time.localtime(a["t"])),
-                 "action": a["action"], "target": a["target"]}
-                for a in reversed(_engagement().actions())]
-        self.eng_actions.model.set_rows(rows)
 
     def on_authorized(self, domain, action, target, argv):
-        """An active tool produced an authorized command. Record it + refresh the trail. Execution
-        of the argv is device-only (hermetic seam); nothing is spawned here."""
+        """An active tool produced an authorized command. Announce it; the trail is in the
+        ENGAGEMENT panel. Execution of the argv is device-only; nothing is spawned here."""
         eventbus.bus.publish(eventbus.alert(
             "RECON", "authorized %s:%s on %s" % (domain, action, target), severity="warn",
             action=action, target=target))
-        self._render_actions()
+        self.request.emit("gate_changed", None)
 
     # ---- sub-tab switching ----
     def _switch(self, tab):
         self._subtab = tab
         self.stack.setCurrentWidget(self._pages[tab])
         self._sync_tabs()
-        if tab == "ENGAGE":
-            self._refresh_gate()
 
     def _sync_tabs(self):
-        for t, b in self._tab_btns.items():
-            b.setChecked(t == self._subtab)
+        self._sync_rail()
 
     # ---- lifecycle: passive scan + counter detector workers ----
     def start(self):
         if self._started:
             return
         super().start()        # base starts make_worker() (None here) + lease (none)
-        # RECON runs several light workers (wifi/ble scans + counter demo); start them here
+        # RECON runs the passive wifi/ble scans (the detectors moved to SWEEP with CL1)
         self._workers = []
         self._workers.append(self._spawn(WifiScanWorker(demo=self.demo), self._on_wifi))
         self._workers.append(self._spawn(BleScanWorker(demo=self.demo), self._on_ble))
-        for kind in ("bugsweep", "jammer", "imsicatch", "gnss"):   # all passive/defensive detectors
-            self._workers.append(self._spawn(DetectorWorker(demo=self.demo, kind=kind),
-                                             self._on_counter))
         self._refresh_gate()
 
     def _spawn(self, worker, on_row):
@@ -623,6 +479,7 @@ class ReconApp(PalisadeApp):
             w.stop()
             w.quit()
             w.wait(3000)
+            _retain(w)
         self._workers = []
         super().stop()
 
@@ -655,16 +512,3 @@ class ReconApp(PalisadeApp):
         if not msg.get("demo"):                        # real decodes only on the bus
             for d in devs:
                 eventbus.bus.publish(eventbus.decode("RECON", "BLE", d["address"], d["name"]))
-
-    def _on_counter(self, msg):
-        alert = msg.get("alert")
-        if not alert:
-            return
-        det, text = alert
-        sev = "alert" if det in ("imsi", "gnss") else "warn"
-        self.counter_feed.model.prepend({"time": time.strftime("%H:%M:%S"), "det": det.upper(),
-                                         "sev": sev.upper(), "text": text,
-                                         "_colors": {"sev": self._tok["warn"]}}, cap=200)
-        if not msg.get("demo"):                        # a real detector finding reaches the OPS strip
-            eventbus.bus.publish(eventbus.alert("RECON", "%s: %s" % (det.upper(), text),
-                                                severity=sev))

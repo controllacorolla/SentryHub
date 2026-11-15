@@ -1,0 +1,14 @@
+dark live 999->'999 targets' hub_min=1260 | 1000->'999+ tgts' hub_min=1241 | 100000->'999+ tgts' hub_min=1241
+dark demo 999->'999 targets' hub_min=1272 | 1000->'999+ tgts' hub_min=1253 | 100000->'999+ tgts' hub_min=1253
+light live 999->'999 targets' hub_min=1260 | 1000->'999+ tgts' hub_min=1241 | 100000->'999+ tgts' hub_min=1241
+light demo 999->'999 targets' hub_min=1272 | 1000->'999+ tgts' hub_min=1253 | 100000->'999+ tgts' hub_min=1253
+sun live 999->'999 targets' hub_min=1267 | 1000->'999+ tgts' hub_min=1248 | 100000->'999+ tgts' hub_min=1248
+sun demo 999->'999 targets' hub_min=1279 | 1000->'999+ tgts' hub_min=1260 | 100000->'999+ tgts' hub_min=1260
+F4 selected                     selected='X1' cursor_row=0 hero='N12345' sub='AIRCRAFT' rows=['CONTACT', 'N12345', 'AIRCRAFT', 'TYPE', 'AIRCRAFT', 'ALTITUDE', '123456 ft', 'SPEED', '400 kt', 'RANGE', '5 nm', 'BEARING', '037°']
+F4 after vanish                 selected=None cursor_row=-1 hero='N12345' sub='LOST · NO LONGER REPORTED' rows=['CONTACT', 'N12345', 'LOST · NO LONGER REPORTED', 'STATUS', 'LOST']
+F4 next refresh                 selected=None cursor_row=-1 hero='N12345' sub='LOST · NO LONGER REPORTED' rows=['CONTACT', 'N12345', 'LOST · NO LONGER REPORTED', 'STATUS', 'LOST']
+F4 X1 reported again            selected=None cursor_row=-1 hero='N12345' sub='LOST · NO LONGER REPORTED' rows=['CONTACT', 'N12345', 'LOST · NO LONGER REPORTED', 'STATUS', 'LOST']
+F4 reselected                   selected='X1' cursor_row=1 hero='N12345' sub='AIRCRAFT' rows=['CONTACT', 'N12345', 'AIRCRAFT', 'TYPE', 'AIRCRAFT', 'ALTITUDE', '123456 ft', 'SPEED', '400 kt', 'RANGE', '5 nm', 'BEARING', '037°']
+F4 aircraft layer hidden        selected=None cursor_row=-1 hero='N12345' sub='LOST · NO LONGER REPORTED' rows=['CONTACT', 'N12345', 'LOST · NO LONGER REPORTED', 'STATUS', 'LOST']
+F4 aircraft layer shown         selected=None cursor_row=-1 hero='N12345' sub='LOST · NO LONGER REPORTED' rows=['CONTACT', 'N12345', 'LOST · NO LONGER REPORTED', 'STATUS', 'LOST']
+F4 X1 stale (STALE_S)           selected=None cursor_row=-1 hero='N12345' sub='LOST · NO LONGER REPORTED' rows=['CONTACT', 'N12345', 'LOST · NO LONGER REPORTED', 'STATUS', 'LOST']

@@ -34,6 +34,9 @@ def _isolate_qt():
         from palisade_qt import radio_arbiter
         radio_arbiter.arbiter._owner = None
         radio_arbiter.arbiter._lease = None
+        from palisade_qt import chrome, panels
+        chrome.reset()
+        panels.reset_alert_store()
     except Exception:
         pass
     import gc
@@ -137,7 +140,11 @@ def test_hub_embeds_prism_as_qt_page():
     assert not (prism_worker and prism_worker.isRunning())
 
 
-ALL_CALLSIGNS = ["OVERWATCH", "ATLAS", "BABEL", "PRISM", "PROWL", "FORGE", "RECON", "BENCH", "MORE"]
+# the seven page keys besides OPS, plus the four callsigns CL1 folded into them (still openable by
+# their old names: they land on their new page's sub-tab)
+PAGE_KEYS = ["ATLAS", "PRISM", "PROWL", "SWEEP", "RECON", "FORGE", "SYSTEM"]
+FOLDED_CALLSIGNS = ["OVERWATCH", "BABEL", "BENCH", "MORE"]
+ALL_CALLSIGNS = PAGE_KEYS + FOLDED_CALLSIGNS
 
 
 @pytest.mark.parametrize("name", ALL_CALLSIGNS)
@@ -146,10 +153,9 @@ def test_every_callsign_opens_pumps_closes_clean(name):
     from palisade_qt.shell import PalisadeHub
     hub = PalisadeHub(demo=True, mode="dark")
     hub.show()
-    hub.open_callsign(name)             # migrated -> embedded Qt page, no subprocess
+    page = hub.page_app(name)           # the app behind the key (or behind the folded callsign)
     _pump(600)
     assert name in hub.pages
-    page = hub.pages[name]
     worker = page._worker
     assert worker is None or worker.isRunning(), "%s worker should be live if present" % name
     hub.close()
@@ -176,13 +182,12 @@ def test_hub_soak_open_all_callsigns_then_close_no_leaks():
     hub = PalisadeHub(demo=True, mode="dark")
     hub.show()
     workers = []
-    for name in QT_PAGES:
-        hub.open_callsign(name)
+    for name in ALL_CALLSIGNS:
+        w = hub.page_app(name)._worker
         _pump(250)
-        w = hub.pages[name]._worker
         if w is not None:
             workers.append((name, w))
-    assert len(hub.pages) == len(QT_PAGES) + 1          # +OPS
+    assert hub.stack.count() == len(QT_PAGES) + 1       # one stacked page per key (+OPS)
     running = [n for n, w in workers if w.isRunning()]
     assert running, "workers should be live while open"
     hub.close()
@@ -248,7 +253,7 @@ def test_atlas_demo_contacts_reach_both_map_and_ops():
         hub.show()
         hub.open_callsign("ATLAS")              # starts ATLAS's demo feed
         _pump(900)
-        atlas = hub.pages["ATLAS"]
+        atlas = hub.page_app("ATLAS")
         assert len(atlas._contacts) > 0, "ATLAS demo feed should publish contacts"
         assert len(hub.ops._contacts) > 0, "the same contacts must reach the OPS PPI"
         kinds = {c["kind"] for c in atlas._contacts.values()}
@@ -511,7 +516,7 @@ def test_atlas_live_balloon_reaches_ops(monkeypatch, tmp_path):
         hub.show()
         hub.open_callsign("ATLAS")
         _pump(1300)
-        assert any(c["kind"] == "balloon" for c in hub.pages["ATLAS"]._contacts.values())
+        assert any(c["kind"] == "balloon" for c in hub.page_app("ATLAS")._contacts.values())
         assert "V7" in hub.ops._contacts   # the same balloon reached the OPS PPI (one stream)
     finally:
         hub.close()
@@ -1224,14 +1229,15 @@ def test_recon_wifi_passive_demo_and_standby(monkeypatch):
 
 def test_recon_counter_alert_reaches_bus_and_feed():
     _app()
-    from palisade_qt import recon, eventbus
+    from palisade_qt import eventbus
     eventbus.bus.clear()
     alerts = []
     eventbus.bus.published.connect(lambda e: alerts.append(e) if e["type"] == "alert" else None)
-    p = recon.ReconApp(demo=True, mode="dark")
+    from palisade_qt.sweep import SweepApp          # CL1: COUNTER promoted to its own page (key 5)
+    p = SweepApp(demo=True, mode="dark")
     p._on_counter({"kind": "gnss", "alert": ("gnss", "GPS jamming suspected (low C/N0)")})
     assert p.counter_feed.model.rowCount() == 1
-    assert alerts and alerts[-1]["source"] == "RECON" and alerts[-1]["severity"] == "alert"
+    assert alerts and alerts[-1]["source"] == "SWEEP" and alerts[-1]["severity"] == "alert"
 
 
 def test_recon_demo_detectors_run_and_can_alert():
@@ -1261,8 +1267,8 @@ def test_recon_engage_activate_deactivate_and_trail():
     _app()
     _reset_engagement()
     import engagement
-    from palisade_qt.recon import ReconApp
-    p = ReconApp(demo=False, mode="dark")
+    from palisade_qt.panels import EngagePanel       # CL1: ENGAGE is shell chrome, not a RECON tab
+    p = EngagePanel("dark")
     p.eng_name.setText("NightWatch")
     p.eng_auth.setText("ROE-42")
     p.eng_scope.setText("10.0.0.*, Corp-*")
@@ -1297,7 +1303,9 @@ def test_recon_demo_stays_off_the_shared_bus():
     p._on_wifi({"aps": recon._demo_aps(), "demo": True})
     p._on_ble({"devs": [{"address": "a", "name": "x", "vendor": "v", "kind": "k", "rssi": -50}],
                "demo": True})
-    p._on_counter({"kind": "bugsweep", "alert": ("bug", "2 suspect"), "demo": True})
+    from palisade_qt.sweep import SweepApp
+    SweepApp(demo=True, mode="dark")._on_counter(
+        {"kind": "bugsweep", "alert": ("bug", "2 suspect"), "demo": True})
     assert evs == [], "demo synthetic RECON data must not publish to the shared bus"
 
 
@@ -1500,12 +1508,11 @@ def test_overwatch_passes_predict_real_from_injected_tle(tmp_path):
 
 def test_overwatch_radio_director_tracks_arbiter_and_frees(monkeypatch):
     _app()
-    from palisade_qt import overwatch, radio_arbiter as ra
+    from palisade_qt import panels, radio_arbiter as ra
     ra.arbiter._owner = None
     ra.arbiter._lease = None
     monkeypatch.setattr(ra, "_make_lease", lambda n: None)
-    p = overwatch.OverwatchApp(demo=True, mode="dark")
-    p.start()
+    p = panels.RadiosPanel("dark")      # CL1: OVERWATCH's RADIO view is the shell's RADIOS panel
     _pump(100)
     ra.arbiter.request("ATLAS-APRS")
     _pump(100)
@@ -1584,7 +1591,8 @@ def test_bench_gate_safe_with_ack_gated_without():
     assert "GATED" in p.gate.text() and not p.tx_btn.isEnabled()
     p.ack.setChecked(True)
     p._refresh_gate()
-    assert "TX SAFE" in p.gate.text() and p.tx_btn.isEnabled()
+    # "TX SAFE" is retired (it meant two things); a passing gate reads PERMITTED (D4)
+    assert "TX PERMITTED" in p.gate.text() and "SAFE" not in p.gate.text() and p.tx_btn.isEnabled()
 
 
 def test_bench_software_selftests_pass():
@@ -1633,7 +1641,10 @@ def test_bench_open_pump_close_no_leak():
 def test_more_registered_as_a_callsign():
     from palisade_qt.shell import QT_PAGES
     from palisade_qt.ops import CALLSIGNS
-    assert "MORE" in QT_PAGES and any(n == "MORE" for n, _ in CALLSIGNS)
+    from palisade_qt.shell import FOLDED
+    # CL1: MORE is folded into the SYSTEM key (8); the old callsign still resolves to it
+    assert "SYSTEM" in QT_PAGES and any(n == "SYSTEM" for n, _ in CALLSIGNS)
+    assert FOLDED["MORE"][0] == "SYSTEM" and FOLDED["BENCH"][0] == "SYSTEM"
 
 
 def test_more_doctor_runs_checks_and_skips_network_offscreen(monkeypatch):

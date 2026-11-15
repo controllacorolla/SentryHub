@@ -34,6 +34,11 @@ class ScopePanel(QtWidgets.QFrame):
         self.spectrum.getAxis("bottom").setTextPen(tok["muted"])
         self.spectrum.getAxis("left").setStyle(tickLength=-5)
         self.spectrum.getAxis("bottom").setStyle(tickLength=-5)
+        tick_font = pg.QtGui.QFont()
+        tick_font.setPixelSize(16)                      # axis numbers are readings: status-size
+        for ax in ("left", "bottom"):
+            self.spectrum.getAxis(ax).setTickFont(tick_font)
+        self.spectrum.getAxis("left").setWidth(56)
 
         accent_rgb = tuple(int(tok["accent"][i:i + 2], 16) for i in (1, 3, 5))
         fill_brush = pg.mkBrush(accent_rgb[0], accent_rgb[1], accent_rgb[2], 25)

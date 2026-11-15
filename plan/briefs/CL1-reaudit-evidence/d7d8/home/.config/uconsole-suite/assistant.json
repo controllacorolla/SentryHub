@@ -1,0 +1,22 @@
+{
+  "hosts": [
+    {
+      "name": "Desktop",
+      "url": "http://desktop:11434",
+      "model": ""
+    },
+    {
+      "name": "uConsole",
+      "url": "http://127.0.0.1:11434",
+      "model": "llama3.2:3b"
+    }
+  ],
+  "local_threads": 2,
+  "live_context": true,
+  "whisper_model": "base.en",
+  "tts": "auto",
+  "piper_voice": "",
+  "espeak_voice": "en-us",
+  "espeak_rate": 170,
+  "system": "You are a voice assistant running on a handheld Linux computer (ClockworkPi uConsole). Replies are read aloud through a headset, so answer in plain spoken sentences: short, direct, no markdown, no lists unless asked, no code blocks unless asked. If unsure, say so."
+}

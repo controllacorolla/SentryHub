@@ -20,7 +20,7 @@ import time
 
 from PySide6 import QtWidgets
 
-from .app import PalisadeApp
+from .app import PalisadeApp, _retain
 from . import theme, eventbus
 from .kit import ControlBar, FeedTable, DetailCard, micro, card
 from .worker import Worker
@@ -135,10 +135,23 @@ class MeshWorker(Worker):
 class MoreApp(PalisadeApp):
     TITLE = "MORE"
     LEASE = None
+    SUBTABS = SUBTABS
 
-    def __init__(self, demo=False, mode="dark", parent=None):
+    def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._subtab = "SETTINGS"
-        super().__init__(demo=demo, mode=mode, parent=parent)
+        super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
+
+    def current_subtab(self):
+        return self._subtab
+
+    def switch_subtab(self, name):
+        self._switch(name)
+
+    def primary_action(self):
+        actions = {"SETTINGS": self._save_settings, "DOCTOR": self._run_doctor,
+                   "ASSISTANT": self._ask, "MESH": self._mesh_send, "SITREP": self._gen_sitrep}
+        actions[self._subtab]()
+        return True
 
     def build_body(self):
         self._tok = theme.tokens(self.mode)
@@ -146,18 +159,6 @@ class MoreApp(PalisadeApp):
         lay = QtWidgets.QVBoxLayout(body)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
-        top = QtWidgets.QHBoxLayout()
-        top.setSpacing(8)
-        self._tab_btns = {}
-        for t in SUBTABS:
-            b = QtWidgets.QPushButton(t)
-            b.setCheckable(True)
-            b.setFixedWidth(104)
-            b.clicked.connect(lambda _=False, tt=t: self._switch(tt))
-            self._tab_btns[t] = b
-            top.addWidget(b)
-        top.addStretch(1)
-        lay.addLayout(top)
         self.stack = QtWidgets.QStackedWidget()
         self._pages = {"SETTINGS": self._settings_page(), "DOCTOR": self._doctor_page(),
                        "ASSISTANT": self._assistant_page(), "MESH": self._mesh_page(),
@@ -180,7 +181,7 @@ class MoreApp(PalisadeApp):
         self.set_home = QtWidgets.QLineEdit()
         self.set_home.setText("%.4f, %.4f" % eventbus.HOME)
         self.set_theme = QtWidgets.QComboBox()
-        self.set_theme.addItems(["dark", "light"])
+        self.set_theme.addItems(["dark", "light", "sun"])
         self.set_theme.setCurrentText(self.mode)
         self.set_retention = QtWidgets.QSpinBox()
         self.set_retention.setRange(100, 5000)
@@ -191,7 +192,8 @@ class MoreApp(PalisadeApp):
         fl.addRow(micro("Theme"), self.set_theme)
         fl.addRow(micro("Event-bus retention"), self.set_retention)
         self.set_msg = QtWidgets.QLabel("")
-        self.set_msg.setProperty("class", "micro")
+        self.set_msg.setProperty("class", "note")
+        self.set_msg.setWordWrap(True)
         fl.addRow(self.set_msg)
         save = QtWidgets.QPushButton("SAVE SETTINGS")
         save.clicked.connect(self._save_settings)
@@ -258,7 +260,7 @@ class MoreApp(PalisadeApp):
         if persisted:                               # operator + theme take effect via the store
             parts.append("persisted: operator, theme" +
                          (" (theme applies on restart)" if theme_changed else ""))
-            self.set_msg.setStyleSheet("color:%s;" % self._tok["live"])
+            self.set_msg.setStyleSheet("color:%s;" % self._tok["text"])   # saved is not "receiving"
         else:                                       # honest: do NOT claim saved for discarded fields
             parts.append("NOT persisted (no settings store on this host): operator, theme")
             self.set_msg.setStyleSheet("color:%s;" % self._tok["warn"])
@@ -310,7 +312,6 @@ class MoreApp(PalisadeApp):
         pl.setSpacing(10)
         self.asst_log = QtWidgets.QPlainTextEdit()
         self.asst_log.setReadOnly(True)
-        self.asst_log.setStyleSheet("font-family:monospace;")
         self.asst_log.setPlainText("Ask about the live picture: 'what's on the map?', 'any alerts?',"
                                    " 'recent decodes?'. Full LLM replies need a reachable Ollama host.")
         pl.addWidget(self.asst_log, 1)
@@ -388,7 +389,6 @@ class MoreApp(PalisadeApp):
         right.addWidget(micro("MESSAGES"))
         self.mesh_log = QtWidgets.QPlainTextEdit()
         self.mesh_log.setReadOnly(True)
-        self.mesh_log.setStyleSheet("font-family:monospace;")
         right.addWidget(self.mesh_log, 1)
         srow = QtWidgets.QHBoxLayout()
         self.mesh_input = QtWidgets.QLineEdit()
@@ -472,8 +472,7 @@ class MoreApp(PalisadeApp):
         self._sync_tabs()
 
     def _sync_tabs(self):
-        for t, b in self._tab_btns.items():
-            b.setChecked(t == self._subtab)
+        self._sync_rail()
 
     def start(self):
         if self._started:
@@ -498,6 +497,9 @@ class MoreApp(PalisadeApp):
             docw.stop()
             docw.quit()
             docw.wait(3000)
+            _retain(docw)
+        for w in getattr(self, "_workers", []):
+            _retain(w)
         self._workers = []
         super().stop()
 

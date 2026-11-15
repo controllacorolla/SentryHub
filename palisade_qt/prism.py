@@ -19,7 +19,7 @@ import threading
 import time
 
 import numpy as np
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtWidgets
 
 from .app import PalisadeApp
 from . import theme, radio_arbiter
@@ -75,7 +75,8 @@ def _open_rtl_power(lo_mhz, hi_mhz, gain):
     argv = waterfall.rtl_power_sweep_argv(int(lo_mhz * 1e6), int(hi_mhz * 1e6), bin_hz, "-",
                                           gain, "1")
     return subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            text=True, bufsize=1)
+                            text=True, bufsize=1,
+                            start_new_session=True)     # PANIC stops it by group
 
 
 class SweepWorker(Worker):
@@ -185,9 +186,38 @@ class PrismApp(PalisadeApp):
     TITLE = "PRISM"
     LEASE = None                 # the SweepWorker takes the radio via the arbiter, not the base lease
 
-    def __init__(self, demo=False, mode="dark", parent=None):
+    def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._lo, self._hi = 430.0, 440.0
-        super().__init__(demo=demo, mode=mode, parent=parent)
+        self._peak_mhz = None
+        super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
+
+    # ---- keyboard (D8): [ ] step the band by one span, + / - narrow / widen the span ----
+    def handle_key(self, text):
+        if text in "[]":
+            step = self.span.value() * (1 if text == "]" else -1)
+            self.centre.setValue(self.centre.value() + step)
+            return True
+        if text in "+=":
+            self.span.setValue(max(self.span.minimum(), self.span.value() / 2.0))
+            return True
+        if text in "-_":
+            self.span.setValue(min(self.span.maximum(), self.span.value() * 2.0))
+            return True
+        return False
+
+    def primary_action(self):
+        return self._send_peak()
+
+    def tune(self, mhz):
+        """Palette: centre the analyzer on a frequency."""
+        self.centre.setValue(float(mhz))
+
+    def _send_peak(self):
+        """'Send to' (D10): hand the current peak to the PROWL FM tuner."""
+        if self._peak_mhz is None:
+            return False
+        self.request.emit("tune_fm", self._peak_mhz)
+        return True
 
     def build_body(self):
         body = QtWidgets.QWidget()
@@ -217,13 +247,19 @@ class PrismApp(PalisadeApp):
         self.readout.setProperty("class", "value")
         self.bar.lay.addWidget(micro("PEAK"))
         self.bar.lay.addWidget(self.readout)
+        self.send_btn = QtWidgets.QPushButton("PEAK → PROWL FM")
+        self.send_btn.setToolTip("Tune the PROWL FM receiver to the current peak (Enter)")
+        self.send_btn.setEnabled(False)
+        self.send_btn.clicked.connect(self._send_peak)
+        self.bar.lay.addWidget(self.send_btn)
         self.centre.valueChanged.connect(self._retune)
         self.span.valueChanged.connect(self._retune)
         self.gain.valueChanged.connect(self._retune)
         lay.addWidget(self.bar)
 
         self.busy = QtWidgets.QLabel("")
-        self.busy.setProperty("class", "micro")
+        self.busy.setProperty("class", "note")
+        self.busy.setWordWrap(True)
         self.busy.setStyleSheet("color:%s;" % theme.tokens(self.mode)["warn"])
         self.busy.hide()
         lay.addWidget(self.busy)
@@ -270,3 +306,5 @@ class PrismApp(PalisadeApp):
         peak = float(np.max(power))
         pf = float(freqs[int(np.argmax(power))])
         self.readout.setText("%.0f dBm @ %.2f MHz" % (peak, pf))
+        self._peak_mhz = pf
+        self.send_btn.setEnabled(True)

@@ -1,0 +1,6 @@
+PRISM '3 PRISM' 'spectrum' key 79 x 36 label geom (1, 12, 77, 20) test text rects [(6, 3, 67, 12), (1, 17, 77, 15)]
+  label tight (1, -11, 76, 15) ascent 16 descent 4
+  overpainted ink (x,y,unfocused colour): [(9, 1, '#e8e8e8'), (10, 1, '#dbdbdb'), (11, 1, '#f5f5f5'), (57, 1, '#f4f4f4'), (58, 1, '#dbdbdb'), (59, 1, '#f7f7f7')]
+SYSTEM '8 SYSTEM' 'settings' key 79 x 36 label geom (1, 13, 77, 20) test text rects [(1, 3, 77, 12), (1, 17, 77, 16)]
+  label tight (1, -12, 75, 16) ascent 16 descent 4
+  overpainted ink (x,y,unfocused colour): [(4, 1, '#f8f8f8'), (5, 1, '#dddddd'), (6, 1, '#e7e7e7'), (7, 1, '#fefefe'), (23, 1, '#fbfbfb'), (24, 1, '#dfdfdf'), (25, 1, '#ebebeb'), (42, 1, '#fbfbfb'), (43, 1, '#dfdfdf'), (44, 1, '#ebebeb')]

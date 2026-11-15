@@ -21,7 +21,7 @@ from PySide6 import QtCore, QtWidgets
 
 from .app import PalisadeApp
 from . import theme, eventbus, radio_arbiter
-from .kit import MapPanel, FeedTable, DetailCard, micro
+from .kit import MapPanel, FeedTable, DetailCard
 from .worker import Worker
 
 # kind -> (legend label, theme colour token). Severity "alert" overrides the colour to red.
@@ -249,7 +249,8 @@ def _open_aprs_pipe(gain):
         return None
     import aprs
     return subprocess.Popen(aprs.pipeline(gain), shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                            stderr=subprocess.DEVNULL, text=True, bufsize=1,
+                            start_new_session=True)     # PANIC stops the pipeline by group
 
 
 def _open_ais_pipe(gain):
@@ -261,7 +262,8 @@ def _open_ais_pipe(gain):
         return None
     import ais
     return subprocess.Popen(ais.pipeline(gain), shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                            stderr=subprocess.DEVNULL, text=True, bufsize=1,
+                            start_new_session=True)     # PANIC stops the pipeline by group
 
 
 def aprs_station_contacts(stations, now):
@@ -587,13 +589,16 @@ class AtlasApp(PalisadeApp):
         right.setSpacing(10)
         right.addWidget(self._legend())
         self._busy_label = QtWidgets.QLabel("")       # "RADIO BUSY — held by X" (live only)
-        self._busy_label.setProperty("class", "micro")
+        self._busy_label.setProperty("class", "note")
         self._busy_label.setStyleSheet("color:%s;" % self._tok["warn"])
         self._busy_label.setWordWrap(True)
         self._busy_label.hide()
         right.addWidget(self._busy_label)
-        self.feed = FeedTable([("label", "CONTACT"), ("kind", "TYPE"),
-                               ("rng", "NM"), ("alt", "ALT")])
+        # TYPE is not a column: it is on the map (colour + label), the layer chips and the detail
+        # card. Four columns did not fit 1280x720 and cut altitudes off at the edge (RA-CL1b N1);
+        # the three that remain always fit, and a value too wide elides with its full text as tooltip
+        self.feed = FeedTable([("label", "CONTACT"), ("rng", "NM"), ("alt", "ALT")],
+                              fit_viewport=True)
         self.feed.selected.connect(self._show)
         right.addWidget(self.feed, 3)
         self.detail = DetailCard("CONTACT")
@@ -610,24 +615,29 @@ class AtlasApp(PalisadeApp):
     def _legend(self):
         f = QtWidgets.QFrame()
         f.setProperty("class", "card2")
-        lay = QtWidgets.QHBoxLayout(f)
-        lay.setContentsMargins(10, 6, 10, 6)
-        lay.setSpacing(6)
-        lay.addWidget(micro("Layers"))
+        lay = QtWidgets.QGridLayout(f)
+        lay.setContentsMargins(8, 6, 8, 6)
+        lay.setHorizontalSpacing(6)
+        lay.setVerticalSpacing(6)
         self._layer_btns = {}
-        for k, lbl, tok in KINDS:
+        for i, (k, lbl, tok) in enumerate(KINDS):
             b = QtWidgets.QPushButton(lbl)
             b.setCheckable(True)
             b.setChecked(k in self._layers)      # APRS starts off in live (opt-in lease)
-            b.setStyleSheet("QPushButton { color:%s; padding:2px 7px; font-size:10px;"
-                            " border:1px solid %s; border-radius:6px; }"
-                            " QPushButton:!checked { color:%s; border-color:%s; }"
-                            % (self._tok[tok], self._tok["hairline"],
-                               self._tok["muted"], self._tok["hairline"]))
+            # a layer that is ON is filled; OFF is a dashed outline with the name struck out by
+            # colour AND shape, so on/off never rests on colour alone (D4/D9)
+            b.setStyleSheet("QPushButton { color:%s; padding:2px 8px; font-size:%dpx; min-height:24px;"
+                            " border:%s solid %s; border-radius:5px; background:%s; }"
+                            " QPushButton:!checked { color:%s; border:%s dashed %s;"
+                            " background:transparent; }"
+                            " QPushButton:focus { border:%s solid %s; }"
+                            % (self._tok[tok], theme.FONT_STATUS, self._tok["bw"], self._tok[tok],
+                               self._tok["p2"], self._tok["disabled"], self._tok["bw"],
+                               self._tok["disabled"], self._tok["focus_w"], self._tok["focus"]))
+            b.setFocusPolicy(QtCore.Qt.TabFocus)
             b.clicked.connect(lambda on, kk=k: self._toggle(kk, on))
-            lay.addWidget(b)
+            lay.addWidget(b, i // 4, i % 4)
             self._layer_btns[k] = b
-        lay.addStretch(1)
         return f
 
     LEASE_NAME = {"station": "ATLAS-APRS", "vessel": "ATLAS-AIS"}
@@ -665,10 +675,13 @@ class AtlasApp(PalisadeApp):
                               colors=[self._color(c["kind"], c["severity"]) for c in shown])
         rows = []
         for c in sorted(shown, key=lambda c: c["rng"]):
-            rows.append({"label": c["label"], "kind": KIND_LABEL.get(c["kind"], c["kind"]),
+            rows.append({"_id": c["id"], "label": c["label"],
+                         "kind": KIND_LABEL.get(c["kind"], c["kind"]),
                          "rng": "%.0f" % c["rng"], "alt": "%d" % c["alt"] if c["alt"] else "—",
                          "_src": c, "_colors": {"rng": self._color(c["kind"], c["severity"])}})
         self.feed.model.set_rows(rows)
+        if self._selected is not None and self._selected not in {c["id"] for c in shown}:
+            self._show_lost()
         self.set_chip("sdr", ("%d CONTACTS" % len(shown)) if (self.demo or shown) else "NO FEED",
                       state="neutral")
         self._update_busy()
@@ -709,6 +722,14 @@ class AtlasApp(PalisadeApp):
             ("SPEED", "%d kt" % c["spd"] if c.get("spd") else "—"),
             ("RANGE", "%.0f nm" % c.get("rng", 0)),
             ("BEARING", "%03d°" % c.get("brg", 0))])
+
+    def _show_lost(self):
+        """The selected contact is gone (stale or its layer hidden): say so, and drop its last fix
+        so the card never reads as a current position (RA-CL1c F4)."""
+        label = self.detail.hero.text()
+        self._selected = None
+        self.detail.set_hero(label, "LOST · no longer reported")
+        self.detail.set_rows([("STATUS", "LOST")])
 
     def stop(self):
         try:

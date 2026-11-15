@@ -17,7 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .app import PalisadeApp
 from . import theme, radio_arbiter, eventbus
-from .kit import ControlBar, FeedTable, DetailCard, micro
+from .kit import ControlBar, FeedTable, DetailCard
 from .worker import Worker
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -463,12 +463,14 @@ class SstvImagePanel(QtWidgets.QFrame):
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(10, 10, 10, 10)
         lay.setSpacing(6)
-        self.caption = micro("SSTV — no frame yet")
+        self.caption = QtWidgets.QLabel("SSTV — no frame yet")     # reports state -> not a caption
+        self.caption.setProperty("class", "note")
+        self.caption.setWordWrap(True)
         lay.addWidget(self.caption)
         self.view = QtWidgets.QLabel("listening…")
         self.view.setAlignment(QtCore.Qt.AlignCenter)
         self.view.setStyleSheet("color:%s;" % tok["muted"])
-        self.view.setMinimumHeight(240)
+        self.view.setMinimumHeight(80)              # sized from the space it is given
         lay.addWidget(self.view, 1)
         self._buf = None
 
@@ -650,10 +652,24 @@ class BabelApp(PalisadeApp):
     TITLE = "BABEL"
     LEASE = None          # the radio is leased per-mode via radio_arbiter, not by the base class
 
+    # protocol tints per theme (D9 / RA-CL1): the dark set was unreadable on LIGHT's pale table and
+    # meaningless in SUN. LIGHT keeps >= 4.5:1 on its table, SUN is black (>= 7:1) — the protocol
+    # is a word in its own column, so the tint never carries meaning on its own.
     PROTO_COLORS = {
         "AIS": "#4DA6FF", "ACARS": "#66D9A0", "POCSAG": "#FFB74D",
         "RDS": "#CE93D8", "TPMS": "#80DEEA", "CW": "#F06292", "RTTY": "#90CAF9",
     }
+    PROTO_COLORS_LIGHT = {
+        "AIS": "#0B4F8A", "ACARS": "#0B5E3C", "POCSAG": "#7A4A00",
+        "RDS": "#6A2C80", "TPMS": "#0B5F6B", "CW": "#9C1E50", "RTTY": "#2B4A8C",
+    }
+
+    def proto_colors(self):
+        if self.mode == "sun":
+            return {k: "#000000" for k in self.PROTO_COLORS}
+        if self.mode == "light":
+            return self.PROTO_COLORS_LIGHT
+        return self.PROTO_COLORS
 
     def build_body(self):
         self._tok = theme.tokens(self.mode)      # self.mode stays the theme string (not the combo)
@@ -669,10 +685,11 @@ class BabelApp(PalisadeApp):
         self.mode_combo.addItems(MODES)
         self.mode_combo.currentTextChanged.connect(self._set_mode)
         self.bar.add_field("mode", self.mode_combo, "Decoder")
-        self.bar.add_stretch()
         self.busy = QtWidgets.QLabel("")        # "RADIO BUSY — held by X" when another layer owns it
+        self.busy.setProperty("class", "note")
+        self.busy.setWordWrap(True)
         self.busy.setStyleSheet("color: %s;" % self._tok["warn"])
-        self.bar.lay.addWidget(self.busy)
+        self.bar.lay.addWidget(self.busy, 1)
         self.count = QtWidgets.QLabel("0 msgs")
         self.count.setProperty("class", "value")
         self.bar.lay.addWidget(self.count)
@@ -749,7 +766,7 @@ class BabelApp(PalisadeApp):
             self._on_sstv(row)
             return
         proto = row.get("proto", "")
-        color = self.PROTO_COLORS.get(proto)
+        color = self.proto_colors().get(proto)
         if color:
             row["_colors"] = {"proto": color}
         self.feed.model.prepend(row, cap=400)

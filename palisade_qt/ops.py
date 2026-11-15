@@ -18,20 +18,17 @@ from PySide6 import QtCore, QtWidgets
 from .app import PalisadeApp
 from . import theme, eventbus
 from .kit import card, micro, PpiScope
+from .kit.components import note
 from .worker import Worker
 
-# callsigns + nav grouping (the shell builds the rail from GROUPS)
+# The eight page keys, in key order (1-8), each with the function label shown beside the callsign
+# in the top strip (owner decision 2026-11-15, plan/audit/AUDIT_INDEX.md · D7). BABEL is folded into
+# PROWL, OVERWATCH's sky views into ATLAS, BENCH into SYSTEM; SWEEP is promoted from RECON/COUNTER.
 CALLSIGNS = [
-    ("OPS", "Situational home"), ("OVERWATCH", "Sky dome + autopilot"),
-    ("ATLAS", "Live map"), ("BABEL", "Universal decoder"),
-    ("PRISM", "Spectrum + waterfall"), ("PROWL", "Scanner / tuner"),
-    ("FORGE", "Hardware & IO bench"), ("RECON", "Network + RF survey"),
-    ("BENCH", "Conducted TX self-test"), ("MORE", "Settings + system"),
+    ("OPS", "home"), ("ATLAS", "map"), ("PRISM", "spectrum"), ("PROWL", "listen"),
+    ("SWEEP", "sweep"), ("RECON", "survey"), ("FORGE", "hardware"),
+    ("SYSTEM", "settings"),
 ]
-GROUPS = [("OVERVIEW", ["OPS", "OVERWATCH"]),
-          ("SENSE", ["ATLAS", "BABEL", "PRISM", "PROWL"]),
-          ("FIELD", ["FORGE", "RECON", "BENCH"]),
-          ("SYSTEM", ["MORE"])]
 
 STALE_S = 12.0          # a contact not refreshed within this drops off the scope
 
@@ -130,15 +127,14 @@ class RailCard(QtWidgets.QFrame):
         head.addWidget(micro(title))
         head.addStretch(1)
         self.note = QtWidgets.QLabel("")
-        self.note.setProperty("class", "micro")
+        self.note.setProperty("class", "note")
         head.addWidget(self.note)
         v.addLayout(head)
         self.body = QtWidgets.QVBoxLayout()
         self.body.setSpacing(3)
         v.addLayout(self.body)
         v.addStretch(1)
-        self._standby = QtWidgets.QLabel("STANDBY · no feed")
-        self._standby.setProperty("class", "micro")
+        self._standby = note("STANDBY · no feed")
         self.body.addWidget(self._standby)
         self._live = False
 
@@ -150,13 +146,15 @@ class RailCard(QtWidgets.QFrame):
             it = self.body.takeAt(0)
             w = it.widget()
             if w:
+                # hide now: deleteLater only runs when the event loop gets to it, and until then
+                # the old label was painted under the new one (RA-CL1 render: overlapping alert row)
+                w.hide()
+                w.setParent(None)
                 w.deleteLater()
 
     def standby(self, msg="STANDBY · no feed"):
         self.clear_body()
-        lbl = QtWidgets.QLabel(msg)
-        lbl.setProperty("class", "micro")
-        self.body.addWidget(lbl)
+        self.body.addWidget(note(msg))
         self.set_note("")
         self._live = False
 
@@ -172,7 +170,6 @@ class OpsHome(PalisadeApp):
         self._contacts = {}
         self._selected = None
         self._decodes = []
-        self._alerts = []
 
         body = QtWidgets.QWidget()
         row = QtWidgets.QHBoxLayout(body)
@@ -185,10 +182,6 @@ class OpsHome(PalisadeApp):
         hv.setContentsMargins(0, 0, 0, 0)
         hv.setSpacing(8)
         hhead = QtWidgets.QHBoxLayout()
-        tick = QtWidgets.QLabel("◆")
-        tick.setProperty("class", "accent")
-        tick.setStyleSheet("font-size:8px;")
-        hhead.addWidget(tick)
         hhead.addWidget(micro("Situation · all feeds"))
         hhead.addStretch(1)
         hv.addLayout(hhead)
@@ -200,7 +193,7 @@ class OpsHome(PalisadeApp):
         col.setSpacing(1)
         col.addWidget(micro("Contacts live"))
         self.sub = QtWidgets.QLabel("standby")
-        self.sub.setProperty("class", "micro")
+        self.sub.setProperty("class", "note")
         col.addWidget(self.sub)
         stat.addLayout(col)
         stat.addStretch(1)
@@ -208,19 +201,24 @@ class OpsHome(PalisadeApp):
         self.ppi = PpiScope(span_nm=80, mode=self.mode)
         hv.addWidget(self.ppi, 1)
         row.addWidget(hero, 1)
+        # the scope is round: keep its column only as wide as it is tall, and give the rest of
+        # the width to the rail instead of a dead well either side (D3 / RA-CL1)
+        self._hero = hero
+        self.ppi.resized.connect(self._fit_scope)
 
         # rail: PRISM / BABEL / ALERTS / minis
         rail = QtWidgets.QWidget()
-        rail.setFixedWidth(372)
+        rail.setMinimumWidth(380)
+        rail.setMaximumWidth(16777215)
         rv = QtWidgets.QVBoxLayout(rail)
         rv.setContentsMargins(0, 0, 0, 0)
         rv.setSpacing(9)
         self.card_prism = RailCard("PRISM · SPECTRUM", self.mode)
         self.card_prism.standby("PRISM offline · open PRISM")
         rv.addWidget(self.card_prism)
-        self.card_babel = RailCard("BABEL · LATEST DECODES", self.mode)
+        self.card_babel = RailCard("DECODES · latest", self.mode)
         rv.addWidget(self.card_babel, 1)
-        self.card_alert = RailCard("ALERTS · EVENT BUS", self.mode)
+        self.card_alert = RailCard("ALERTS · press A for history + acknowledge", self.mode)
         rv.addWidget(self.card_alert, 1)
         two = QtWidgets.QHBoxLayout()
         two.setSpacing(9)
@@ -232,6 +230,10 @@ class OpsHome(PalisadeApp):
         row.addWidget(rail)
 
         eventbus.bus.published.connect(self._on_event)
+        from . import panels
+        self._alert_store = panels.alert_store()          # history kept until acknowledged (D10)
+        self._alert_store.changed.connect(self._render_alerts)
+        self._render_alerts()
         self._prune = QtCore.QTimer(self)
         self._prune.timeout.connect(self._refresh_ppi)
         self._prune.start(700)
@@ -245,7 +247,6 @@ class OpsHome(PalisadeApp):
         v.addWidget(micro(label))
         val = QtWidgets.QLabel(value)
         val.setProperty("class", "value")
-        val.setStyleSheet("font-size:15px;")
         v.addWidget(val)
         return f, val
 
@@ -268,15 +269,16 @@ class OpsHome(PalisadeApp):
             self._decodes.insert(0, (src, pl.get("proto", ""), pl.get("summary", "")))
             self._decodes = self._decodes[:3]
             self._render_decodes()
-        elif et == "alert":
-            self._alerts.insert(0, (src, ev["severity"], pl.get("text", "")))
-            self._alerts = self._alerts[:3]
-            self._render_alerts()
 
     def _telemetry(self, pl):
         batt = pl.get("batt")
         if batt is not None:
             self.mini_pwr[1].setText("%d%%" % batt)
+
+    def _fit_scope(self):
+        side = self.ppi.height()
+        if side > 0 and self._hero.maximumWidth() != max(360, side):
+            self._hero.setMaximumWidth(max(360, side))
 
     def _refresh_ppi(self):
         now = time.time()
@@ -303,7 +305,7 @@ class OpsHome(PalisadeApp):
             a = QtWidgets.QLabel(proto)
             a.setStyleSheet("color:%s;" % self._tok["text"])
             b = QtWidgets.QLabel(summ)
-            b.setProperty("class", "micro")
+            b.setProperty("class", "note")
             r.addWidget(a)
             r.addStretch(1)
             r.addWidget(b)
@@ -312,29 +314,41 @@ class OpsHome(PalisadeApp):
             self.card_babel.body.addWidget(w)
 
     def _render_alerts(self):
+        """The newest alerts, unacknowledged first. Nothing scrolls away: the full history and the
+        acknowledge action are in the alerts drawer (A). Severity is a word and a shape, not only a
+        colour."""
+        items = self._alert_store.items
         self.card_alert.clear_body()
-        self.card_alert.set_note("%d new" % len(self._alerts))
+        if not items:
+            self.card_alert.standby("no alerts since launch")
+            return
+        n = self._alert_store.unacked()
+        self.card_alert.set_note("%d unacknowledged" % n if n else "all acknowledged")
         sevc = {"alert": self._tok["alert"], "warn": self._tok["warn"],
                 "info": self._tok["accent"], "live": self._tok["live"]}
-        for src, sev, text in self._alerts:
-            r = QtWidgets.QHBoxLayout()
-            dot = QtWidgets.QLabel("●")
-            dot.setStyleSheet("color:%s; font-size:9px;" % sevc.get(sev, self._tok["muted"]))
-            t = QtWidgets.QLabel(text)
-            s = QtWidgets.QLabel(src)
-            s.setProperty("class", "micro")
-            r.addWidget(dot)
-            r.addWidget(t)
-            r.addStretch(1)
-            r.addWidget(s)
-            w = QtWidgets.QWidget()
-            w.setLayout(r)
-            self.card_alert.body.addWidget(w)
+        mark = {"alert": "■", "warn": "▲", "info": "●", "live": "●"}
+        shown = sorted(items, key=lambda a: a["acked"])[:4]
+        for a in shown:
+            col = self._tok["muted"] if a["acked"] else sevc.get(a["severity"], self._tok["muted"])
+            t = QtWidgets.QLabel("%s %s  %s · %s" % (mark.get(a["severity"], "●"),
+                                                    a["severity"].upper(), a["text"], a["source"]))
+            t.setProperty("class", "note")
+            t.setWordWrap(True)
+            t.setStyleSheet("color:%s;" % col)
+            self.card_alert.body.addWidget(t)
+
+    def primary_action(self):
+        self.request.emit("open_panel", "alerts")
+        return True
 
     def stop(self):
         try:
             eventbus.bus.published.disconnect(self._on_event)
         except (RuntimeError, TypeError):
+            pass
+        try:
+            self._alert_store.changed.disconnect(self._render_alerts)
+        except (RuntimeError, TypeError, AttributeError):
             pass
         if hasattr(self, "_prune"):
             self._prune.stop()
