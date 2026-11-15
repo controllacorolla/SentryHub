@@ -1,0 +1,207 @@
+{
+ "c1_cmd": {
+  "-oKnownHostsCommand": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  },
+  "space -F": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  },
+  "tab -F": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  },
+  "newline -F": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  },
+  "CR -F": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  },
+  "NBSP -F": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  },
+  "--": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  },
+  "-- -F": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  },
+  "en dash": {
+   "issued": true,
+   "why": "authorized: devterm:ssh on 192.0.2.10 (engagement 'job') \u2014 remote command is label-only (r",
+   "argv_tail": [
+    "--",
+    "192.0.2.10",
+    "\u2013F/tmp/ra_cl2d_x/cfg"
+   ],
+   "ssh_G_rc": 0,
+   "ssh_G_injected": {},
+   "real_rc": 255,
+   "local_marker": false
+  },
+  "minus sign": {
+   "issued": true,
+   "why": "authorized: devterm:ssh on 192.0.2.10 (engagement 'job') \u2014 remote command is label-only (r",
+   "argv_tail": [
+    "--",
+    "192.0.2.10",
+    "\u2212F/tmp/ra_cl2d_x/cfg"
+   ],
+   "ssh_G_rc": 0,
+   "ssh_G_injected": {},
+   "real_rc": 255,
+   "local_marker": false
+  },
+  "fullwidth": {
+   "issued": true,
+   "why": "authorized: devterm:ssh on 192.0.2.10 (engagement 'job') \u2014 remote command is label-only (r",
+   "argv_tail": [
+    "--",
+    "192.0.2.10",
+    "\uff0dF/tmp/ra_cl2d_x/cfg"
+   ],
+   "ssh_G_rc": 0,
+   "ssh_G_injected": {},
+   "real_rc": 255,
+   "local_marker": false
+  },
+  "cmd then -F": {
+   "issued": true,
+   "why": "authorized: devterm:ssh on 192.0.2.10 (engagement 'job') \u2014 remote command is label-only (r",
+   "argv_tail": [
+    "--",
+    "192.0.2.10",
+    "uname -F/tmp/ra_cl2d_x/cfg"
+   ],
+   "ssh_G_rc": 0,
+   "ssh_G_injected": {},
+   "real_rc": 255,
+   "local_marker": false
+  },
+  "cmd newline -F": {
+   "issued": true,
+   "why": "authorized: devterm:ssh on 192.0.2.10 (engagement 'job') \u2014 remote command is label-only (r",
+   "argv_tail": [
+    "--",
+    "192.0.2.10",
+    "uname\n-F/tmp/ra_cl2d_x/cfg"
+   ],
+   "ssh_G_rc": 0,
+   "ssh_G_injected": {},
+   "real_rc": 255,
+   "local_marker": false
+  },
+  "cmd CR -oKHC": {
+   "issued": true,
+   "why": "authorized: devterm:ssh on 192.0.2.10 (engagement 'job') \u2014 remote command is label-only (r",
+   "argv_tail": [
+    "--",
+    "192.0.2.10",
+    "uname\r-oKnownHostsCommand=/usr/bin/touch"
+   ],
+   "ssh_G_rc": 0,
+   "ssh_G_injected": {},
+   "real_rc": 255,
+   "local_marker": false
+  },
+  "-GoKHC": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  },
+  "empty": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  },
+  "spaces": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option an"
+  }
+ },
+ "c1_host": {
+  "-x": "host '-x' is not valid",
+  " -F/tmp/ra_cl2d_x/cfg": "host ' -F/tmp/ra_cl2d_x/cfg' is not valid",
+  "a@b.example": "refused: 'a@b.example' is not an address or hostname",
+  "b.example:22": "refused: 'b.example:22' is not an address or hostname",
+  "%h.example": "refused: '%h.example' is not an address or hostname",
+  "ssh://b.example": "refused: 'ssh://b.example' is not an address or hostname",
+  "\u2013oFoo": "refused: '\u2013oFoo' is not an address or hostname",
+  "192.0.2.10%x": "refused: '192.0.2.10%x' is not an address or hostname",
+  "[192.0.2.10]": "PASSES self-target",
+  "192.0.2.10": "PASSES self-target",
+  "fe80::2%;touch$IFS.m": "PASSES self-target",
+  "fe80::2%en0|touch": "PASSES self-target",
+  "b.example\n-F/tmp/ra_cl2d_x/cfg": "host 'b.example\\n-F/tmp/ra_cl2d_x/cfg' is not valid"
+ },
+ "d1_ssh_open": {
+  "fe80::2%;touch$IFS.ra_cl2d_marker": [
+   true,
+   "authorized: devterm:ssh-open on fe80::2%;touch$IFS.ra_cl2d_marker (engagement 'job')"
+  ],
+  "fe80::2%`touch$IFS.m`": [
+   true,
+   "authorized: devterm:ssh-open on fe80::2%`touch$IFS.m` (engagement 'job')"
+  ],
+  "fe80::2%$(touch$IFS.m)": [
+   true,
+   "authorized: devterm:ssh-open on fe80::2%$(touch$IFS.m) (engagement 'job')"
+  ],
+  "fe80::2%en0&&touch$IFS.m": [
+   true,
+   "authorized: devterm:ssh-open on fe80::2%en0&&touch$IFS.m (engagement 'job')"
+  ],
+  "xterm fallback sh -c 'ssh fe80::2%;touch$IFS.ra_cl2d_marker' -> marker": true
+ },
+ "own_addresses_count": 14,
+ "own_addresses_scoped_forms": [],
+ "own_v6_linklocal_count": 8,
+ "c2c3": {
+  "own scoped LL": "REFUSED",
+  "own LL unscoped": "REFUSED",
+  "own LL wrong scope": "REFUSED",
+  "own LL [scoped]": "REFUSED",
+  "::127.0.0.1": "REFUSED",
+  "::7f00:1": "REFUSED",
+  "::own4": "REFUSED",
+  "::8.8.8.8 (compat)": "REFUSED",
+  "::ffff:0:127.0.0.1": "REFUSED",
+  "::ffff:0:own4": "REFUSED",
+  "::ffff:0:8.8.8.8": "REFUSED",
+  "64:ff9b::127.0.0.1": "REFUSED",
+  "64:ff9b::own4": "REFUSED",
+  "64:ff9b::0.0.0.0": "REFUSED",
+  "::ffff:127.0.0.1": "REFUSED",
+  "::ffff:own4": "REFUSED",
+  "64:ff9b::8.8.8.8 (real NAT64)": "passes",
+  "64:ff9b:1::127.0.0.1 (local-use NAT64)": "passes",
+  "fe80::2 foreign": "passes",
+  "localhost": "REFUSED",
+  "hostname": "REFUSED"
+ },
+ "c4": {
+  "plain read 'device_info'": null,
+  "plain 'led r 0'": null,
+  "storage list": null,
+  "subghz tx": "serial-rf",
+  "CR chain": "serial-rf",
+  "LF chain": "serial-rf",
+  "NUL": "serial-rf",
+  "TAB": "serial-rf",
+  "ESC": "serial-rf",
+  "DEL": "serial-rf",
+  "leading CR": "serial-rf",
+  "leading LF then read": "serial-rf",
+  "trailing \\r\\n\\r\\n": null,
+  "trailing CR then verb": "serial-rf",
+  "Ctrl-C prefix": "serial-rf",
+  "NEL U+0085": null,
+  "LS U+2028": null,
+  "C1 0x85 raw": null,
+  "0x9b CSI raw": "serial-rf"
+ }
+}
