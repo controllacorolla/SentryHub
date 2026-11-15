@@ -11,6 +11,9 @@ import os
 import sys
 
 import engagement
+import opsec
+
+opsec.register("USBHID", "active-tx", "USB-HID keystroke injection — engagement-gated")
 
 # HID usage IDs (US keyboard).
 _KEYS = {**{chr(c): 0x04 + (c - ord('a')) for c in range(ord('a'), ord('z') + 1)},

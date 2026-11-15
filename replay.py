@@ -10,6 +10,10 @@ module builds the command and authorizes it; it does not auto-key. Pure gating i
 import os
 import sys
 
+import opsec
+
+opsec.register("REPLAY", "rf-tx", "IQ replay on ISM bands (txguard-gated)")
+
 
 def replay_argv(iq_file, freq_hz, sample_rate, tx_gain=0):
     """The hackrf_transfer command to replay an IQ file as TX (built only after authorization)."""

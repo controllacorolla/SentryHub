@@ -21,6 +21,9 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite as S  # noqa: E402
 import txguard  # noqa: E402
+import opsec  # noqa: E402
+
+opsec.register("BENCH", "rf-tx", "conducted HackRF key-up (txguard-gated)")
 
 TX_GAIN_MAX = 47          # hackrf_transfer -x range is 0..47 dB
 TX_GAIN_DEFAULT = 0       # floored: conducted paths use external attenuation, not chip gain

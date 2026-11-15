@@ -34,6 +34,12 @@ def _isolate_qt():
         from palisade_qt import radio_arbiter
         radio_arbiter.arbiter._owner = None
         radio_arbiter.arbiter._lease = None
+        import opsec
+        opsec.reset()                    # never let an armed OPSEC posture leak between tests
+        import txguard
+        txguard.reset_session()
+        import engagement
+        engagement.reset()               # clear the action + posture-event trails too
     except Exception:
         pass
     import gc
@@ -1748,3 +1754,132 @@ def test_more_doctor_stop_joins_during_a_blocking_check(monkeypatch):
     w.quit()
     assert w.wait(3000), "DoctorWorker must join within 3s even though a check blocks for 10s"
     assert _t.time() - t1 < 3.0
+
+
+# ===================================================================================
+# OPSEC Mode — one-button RF-dark: the shared top-bar control + persistent indicator,
+# the bus announcement OPS consumes, the gated-tool display, and the watcher lifecycle.
+# ===================================================================================
+def test_opsec_chip_shows_armed_on_every_page():
+    """The OPSEC indicator lives in the one app-wide top bar, so arming it is visible on every
+    page by construction — switch across all callsigns and the chip stays ARMED."""
+    _app()
+    import opsec
+    from palisade_qt.shell import PalisadeHub
+    hub = PalisadeHub(demo=True, mode="dark")
+    hub.show()
+    _pump(300)
+    assert hub.topbar._opsec_btn.text() == "OPSEC OFF"
+    opsec.arm(operator="KD0ABC")
+    _pump(80)
+    assert hub.topbar._opsec_btn.text() == "OPSEC ARMED"
+    for name in ("OVERWATCH", "BABEL", "FORGE", "BENCH", "MORE", "OPS"):
+        hub.open_callsign(name)
+        _pump(60)
+        assert hub.topbar._opsec_btn.text() == "OPSEC ARMED", \
+            "OPSEC must read ARMED on %s (shared top bar)" % name
+    opsec.disarm()
+    _pump(80)
+    assert hub.topbar._opsec_btn.text() == "OPSEC OFF"
+    hub.close()
+    _pump(150)
+
+
+def test_topbar_shield_toggles_opsec_and_announces_on_bus():
+    """Clicking the shield arms/disarms OPSEC and publishes an info alert the OPS strip consumes."""
+    _app()
+    import opsec
+    from palisade_qt import eventbus
+    from palisade_qt.shell import PalisadeHub
+    hub = PalisadeHub(demo=True, mode="dark")
+    hub.show()
+    _pump(200)
+    got = []
+    eventbus.bus.published.connect(lambda ev: got.append(ev))
+    hub.topbar._opsec_btn.click()
+    _pump(80)
+    assert opsec.is_armed()
+    alerts = [e for e in got if e["type"] == "alert" and e["source"] == "OPSEC"]
+    assert alerts and alerts[0]["severity"] == "info"
+    hub.topbar._opsec_btn.click()
+    _pump(80)
+    assert not opsec.is_armed()
+    hub.close()
+    _pump(150)
+
+
+def test_bench_page_shows_tx_blocked_by_opsec_when_armed():
+    """A gated tool reflects the posture honestly: BENCH's gate reads TX BLOCKED BY OPSEC."""
+    _app()
+    import opsec
+    from palisade_qt.bench_app import BenchApp
+    a = BenchApp(demo=True, mode="dark")
+    a.ack.setChecked(True)                      # conducted-only ack: would be TX SAFE but for OPSEC
+    a._refresh_gate()
+    assert a.gate.text() == "TX SAFE · conducted"
+    opsec.arm()
+    _pump(60)
+    assert a.gate.text() == "TX BLOCKED BY OPSEC", "armed OPSEC must dominate the gate display"
+    assert not a.tx_btn.isEnabled()
+    opsec.disarm()
+    _pump(60)
+    assert a.gate.text() == "TX SAFE · conducted", "disarming restores the prior gate state"
+    a.stop()
+
+
+def test_hub_opsec_watcher_starts_and_joins_on_close():
+    """The background OPSEC watcher is a kit worker: runs while open, joined on close (no leak)."""
+    _app()
+    from palisade_qt.shell import PalisadeHub
+    hub = PalisadeHub(demo=True, mode="dark")
+    hub.show()
+    _pump(300)
+    watch = hub._opsec_watch
+    assert watch is not None and watch.isRunning()
+    hub.close()
+    _pump(200)
+    assert hub._opsec_watch is None
+    assert not watch.isRunning(), "watcher QThread must be joined on close"
+
+
+def test_hub_injects_bus_and_evidence_into_opsec():
+    """Opening the hub wires OPSEC's sinks so toggles land on OPS and in a tamper-evident chain."""
+    _app()
+    import opsec
+    from palisade_qt import eventbus
+    from palisade_qt.shell import PalisadeHub
+    hub = PalisadeHub(demo=True, mode="dark")
+    hub.show()
+    _pump(200)
+    assert opsec._bus is eventbus.bus
+    opsec.arm(operator="KD0ABC")
+    _pump(60)
+    names = [r["name"] for r in hub._opsec_evidence.records]
+    assert "opsec:armed" in names
+    hub.close()
+    _pump(150)
+
+
+def test_forge_gate_cards_show_tx_blocked_by_opsec_when_armed():
+    """Review fix #1/#7: FORGE's engagement-gated injection cards (CAN/Proxmark/USB-HID) and the
+    txguard-gated REPLAY card must all read TX BLOCKED BY OPSEC with fire buttons disabled when armed
+    — not 'actions authorized' — and recover live on disarm (FORGE subscribes to opsec)."""
+    _app()
+    import opsec
+    from palisade_qt.forge import ForgeApp, ReplayTxCard, EngagementCard
+    a = ForgeApp(demo=True, mode="dark")
+    a.start()
+    _pump(120)
+    replay_cards = [c for c in a._cards if isinstance(c, ReplayTxCard)]
+    eng_cards = [c for c in a._cards if isinstance(c, EngagementCard)]
+    assert replay_cards and eng_cards, "FORGE should expose the replay + engagement gate cards"
+    opsec.arm()                                   # live subscription re-renders every gate card
+    _pump(80)
+    assert "TX BLOCKED BY OPSEC" in replay_cards[0].state.text()
+    for c in eng_cards:
+        assert "TX BLOCKED BY OPSEC" in c.state.text(), "engagement card must reflect OPSEC"
+        assert not c._btn.isEnabled(), "fire button must be disabled while RF-dark"
+    opsec.disarm()
+    _pump(80)
+    assert "TX BLOCKED BY OPSEC" not in replay_cards[0].state.text(), "card recovers on disarm"
+    a.stop()
