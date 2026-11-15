@@ -86,6 +86,15 @@ zigbee, zwave, nwr, sstv/sstvdec, wxsat (LRPT/APT), classify.
 - 🔧 **GR-GSM** — passive GSM decode + cell mapping
 - 🔧 **406 MHz COSPAS-SARSAT** — emergency beacon decode
 - 🔧 **SatDump integration** — NOAA APT, Meteor LRPT, GOES satellite imagery
+zigbee, zwave, nwr, sstv/sstvdec, wxsat (LRPT/APT).
+- ✅ ais, signals, pager, rds wired
+- ✅ **single-SDR via the shared radio arbiter** (PR-B1 foundation) — BABEL's radio modes
+  (AIS/ACARS/POCSAG/RDS) lease the one dongle through `radio_arbiter` under NAME `BABEL`
+  (no longer the base-class lease), so it coexists with ATLAS/PRISM — one owner at a time; a
+  held radio renders "RADIO BUSY — held by X" and, being live, decodes nothing. The live
+  runners gained the `_open_pipe` offscreen/offline seam so tests/CI never open a real radio.
+- ⬜ TPMS, CW, RTTY, digimodes, Zigbee, Z-Wave, NWR
+- ⬜ **406 MHz COSPAS-SARSAT** (new decoder), SSTV, weather-sat imagery (wxsat)
 - ➕ protocol filter + per-source coloring + one searchable decode log
 - ➕ number station / spy station database + tuner integration
 
