@@ -1,3 +1,5 @@
-# lane  ID        model    — the runner runs each new ID once, in order, per lane
-A       RA-CL1c   opus
-B       RA-CL2c   opus
+# lane  ID         model    — the runner runs each new ID once, in order, per lane
+A       RA-CL1c    opus
+B       RA-CL2c    opus
+A       CL1-fix3   opus
+A       RA-CL1d    opus
