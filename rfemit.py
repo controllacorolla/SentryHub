@@ -122,7 +122,11 @@ def _payload_class(payload, meta):
     if cls in SERIAL_RF_CLASSES:
         return "serial-rf"
     if cls == "flipper":
-        line = bytes(payload or b"").decode("utf-8", "replace").strip()
+        raw = bytes(payload or b"")
+        body = raw.rstrip(b"\r\n")
+        if any(b < 0x20 or b == 0x7F for b in body):
+            return "serial-rf"       # RA-CL2c C4: a chained / control-laden line: fail closed
+        line = raw.decode("utf-8", "replace").strip()
         try:
             import flipper
             if flipper.classify_command(line) == "read":

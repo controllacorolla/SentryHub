@@ -174,6 +174,33 @@ def own_addresses():
     return out
 
 
+def _canon(a):
+    """An address with its IPv6 scope id dropped and an IPv4-mapped form unwrapped (RA-CL2c C2)."""
+    import ipaddress
+    ip = ipaddress.ip_address(str(a).split("%")[0].strip("[]"))
+    if getattr(ip, "ipv4_mapped", None):
+        ip = ip.ipv4_mapped
+    return ip
+
+
+_V4_EMBED = ("::/96", "::ffff:0:0:0/96", "64:ff9b::/96")   # compat, SIIT-translated, NAT64
+
+
+def _embeds_v4(ip, mine):
+    """True when an IPv6 address carries an IPv4 address in its low 32 bits under one of the
+    translation / compatibility prefixes and that IPv4 is loopback, unspecified or ours
+    (RA-CL2c C3). Fail closed for the whole ::/96 and ::ffff:0:0:0/96 ranges too."""
+    import ipaddress
+    if ip.version != 6:
+        return False
+    for pre in _V4_EMBED:
+        if ip in ipaddress.ip_network(pre):
+            v4 = ipaddress.ip_address(int(ip) & 0xFFFFFFFF)
+            if pre != "64:ff9b::/96" or v4.is_loopback or v4.is_unspecified or v4 in mine:
+                return True
+    return False
+
+
 def _self_target(host):
     """(addresses, refusal): the addresses `host` resolves to, or a refusal when it is this device
     — loopback, unspecified, localhost, or any address on this device's own interfaces (CL2-fix2
@@ -198,11 +225,10 @@ def _self_target(host):
         mine = own_addresses()
     except OSError as e:
         return None, "refused: cannot list this device's addresses (%s) — fail closed" % e
+    mine = {_canon(m) for m in mine}
     for a in addrs:
-        ip = ipaddress.ip_address(a)
-        if getattr(ip, "ipv4_mapped", None):
-            ip = ip.ipv4_mapped
-        if ip.is_loopback or ip.is_unspecified or ip in mine:
+        ip = _canon(a)
+        if ip.is_loopback or ip.is_unspecified or ip in mine or _embeds_v4(ip, mine):
             return None, ("refused: %s resolves to %s, which is this device — SSH only reaches "
                           "other hosts (a command here would bypass the TX gate)" % (h, ip))
     return addrs, ""
@@ -230,10 +256,16 @@ def prepare_ssh(host, cmd):
     if refusal:
         return False, refusal, None
     h = str(host).strip()
+    c = str(cmd)
+    if not c.strip() or c.lstrip().startswith("-"):
+        return False, ("refused: the remote command must not start with '-' (OpenSSH would read it "
+                       "as an option and could run it on this device)"), None
+    # RA-CL2c C1: '--' ends option parsing so nothing after it (host or command) is ever read as
+    # an ssh option such as -F / -oKnownHostsCommand / -oPKCS11Provider.
     ok, why, t = engagement.issue(
         "devterm:ssh", addrs[0],
         argv=["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "HostName=" + addrs[0],
-              "-o", "ProxyCommand=none", "-o", "ProxyJump=none", h, str(cmd)],
+              "-o", "ProxyCommand=none", "-o", "ProxyJump=none", "--", h, c],
         kind="ip", label="devterm:ssh", also=tuple((a, "ip") for a in addrs[1:]))
     if ok:
         why += " — remote command is label-only (runs on the target, not this device's radios)"

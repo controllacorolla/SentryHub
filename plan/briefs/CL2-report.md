@@ -289,3 +289,38 @@ Not run on Python 3.13 or on the uConsole. No UI layout changed, so no renders. 
 2. **SSH ProxyJump:** `ProxyCommand=none` and `ProxyJump=none` break any engagement host that is only reachable through a jump host in `~/.ssh/config`. Accept that, or allow a declared jump host that is also self-checked?
 
 Stop. **RA-CL2c** follows.
+
+---
+
+## CL2-fix3 — close RA-CL2c (planner, cloud session, 2026-11-15)
+
+Written directly by the planner (owner decision 13:27: planner writes fixes, runner audits).
+Branch `fix/cl2-gates`, on top of `488f31e`.
+
+| ID | Status | Fix | Test (`tests/test_cl2_fix3.py`) |
+|---|---|---|---|
+| **C1** ssh option injection | CLOSED | `devterm.prepare_ssh`: argv is now `ssh -o … -o ProxyJump=none -- <host> <cmd>`; a remote command that is empty or starts with `-` is refused at issue. | `test_c1_remote_command_starting_with_dash_is_refused_poc[6]`, `test_c1_argv_ends_option_parsing_before_the_host`, `test_c1_a_dash_token_after_the_host_is_impossible_by_construction`, `test_c1_openssh_does_not_parse_the_command_as_an_option` (real `ssh -G`, OpenSSH installed here; skips where it is not) |
+| C2 scoped own link-local | CLOSED | `_canon()` strips the `%scope` and unwraps IPv4-mapped before comparing with own addresses (own addresses canonicalised too). | `test_c2_*` (2) |
+| C3 embedded IPv4 | CLOSED | `_embeds_v4()`: `::/96` and `::ffff:0:0:0/96` refused outright; `64:ff9b::/96` refused when the embedded IPv4 is loopback / unspecified / ours, allowed for a foreign IPv4 (real NAT64). | `test_c3_embedded_loopback_or_own_v4_is_this_device[7]`, `test_c3_a_real_nat64_remote_still_passes` |
+| C4 multi-line Flipper payload | CLOSED | `rfemit._payload_class`: any control byte in the payload body → `serial-rf` (fail closed) before verb classification. | `test_c4_*` (5) |
+| C5 `-x` not bound to power cap | DEFERRED | Already listed; follow-up. | — |
+| C6 Flipper `update`/`storage` under lock | OPEN (owner) | Non-RF by themselves; owner's call. | — |
+
+Fail-first: on `488f31e` with the new test file, **19 failed, 5 passed, 1 skipped** (the 5 are
+the sanity/positive cases). After: 24 passed, 1 skipped (ssh -G where OpenSSH is absent).
+
+Suite here (Linux container, **Python 3.13.18**, PySide6 6.12, xvfb, no `tkinter`):
+```
+$ QT_QPA_PLATFORM=offscreen xvfb-run -a python3 -m pytest -q tests \
+    --deselect tests/test_palisade_qt.py::test_all_callsigns_build_in_both_themes
+1 failed, 1135 passed, 4 skipped, 2 deselected, 7 errors in 458s
+```
+- `FAILED test_audit_tiles::test_undecodable_tile_is_marked_failed` — known baseline failure on `main`.
+- 7 `ERROR tests/test_shell.py` — no `tkinter` in this container (known; passes on the Mac).
+- `test_all_callsigns_build_in_both_themes` segfaults on 3.13 here: the shiboken page-GC crash
+  fixed by CL1 commit `1e0993c` (`app._retain`), which this branch predates. It will disappear when
+  CL2 rebases onto merged CL1; not a CL2 change. (Listed under "found, not fixed".)
+- `pyflakes devterm.py rfemit.py tests/test_cl2_fix3.py`: clean.
+
+Stage → model: everything in the planner's session (Claude Mythos 5.1 / Opus 5.5), no subagents.
+Not run: Python 3.12 on the Mac for this commit (RA-CL2d will), the uConsole.
