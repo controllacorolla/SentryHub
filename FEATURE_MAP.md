@@ -103,8 +103,13 @@ zigbee, zwave, nwr, sstv/sstvdec, wxsat (LRPT/APT).
   DSP — out of the UI-only mandate — so they stay practice/demo until a demod backend exists.
 - ⬜ **classify** — pure `classify(iq, fs)` modulation triage, but BABEL has no live IQ feed to run
   it on; it belongs where an IQ source exists (PRISM/file), not a BABEL live tab.
-- ⬜ **SSTV / wxsat — real image decoders, pending an image panel** (own PR): sstv `rec_cmd`→WAV→
-  `sstvdec.decode_wav`→RGB image (SDR); wxsat drives SatDump (APT/LRPT) → PNGs, pass-scheduled.
+- ✅ **SSTV** (PR-B3) — ISS SSTV image decoder: `sstv.Recorder` (rtl_fm→WAV) under the `BABEL-SSTV`
+  lease, re-running `sstvdec.decode_wav` on the growing WAV until a frame decodes (both reused
+  AS-IS). A stacked **image panel** renders the RGB frame (numpy→QImage); honest standby (no
+  `rtl_fm`/numpy → "SSTV STANDBY"), a frame shown only on a real decode (ISS SSTV is rare →
+  listening is the norm); offscreen seam opens no radio. Decodes publish to the bus.
+- ⬜ **wxsat — image decoder, own PR** (device-only): drives SatDump (APT/LRPT) → PNGs,
+  pass-scheduled; a SatDump subprocess + filesystem harvest, not a pure reuse.
 - NWR is wired under **PROWL** (SAME/EAS), not duplicated here.
 - ⬜ **406 MHz COSPAS-SARSAT** (new decoder), Zigbee / Z-Wave (engagement-gated, future)
 - ➕ protocol filter + per-source coloring + one searchable decode log
