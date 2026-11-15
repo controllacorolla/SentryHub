@@ -205,6 +205,8 @@ def _redeem(ticket, argv=None, payload=None, kind="proc"):
     except Exception as e:                      # a gate that cannot answer is a no
         ok, why = False, "gate re-check failed: %s" % e
     if not ok:
+        record("refuse_ticket", ticket=ticket.id, label=ticket.label, reason=why,
+               target=str(ticket.meta.get("target", "")))          # RA-CL3 N10: visible in the trail
         raise TicketRefused("gate no longer passes: %s" % why)
     return entry
 

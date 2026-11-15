@@ -58,3 +58,32 @@ Mac, the uConsole.
 
 1. Automate head signing (gpg, timer) in v0.1, or leave manual?
 2. Session-chain files for TX-only runs accumulate one per process; prune policy?
+
+---
+
+## CL3-fix — close RA-CL3 (planner, 2026-11-15)
+
+| ID | Status | Fix | Test (`tests/test_cl3_fix.py`) |
+|---|---|---|---|
+| **B1** child executions off-chain | CLOSED | `chain.current()` now asks `engagement.current_chain_id()` — the id of the engagement in force in THIS process (own or hub-published) — and opens/caches by id (`chain.for_id`). No process-global set only by the hub. | `test_b1_bound_child_executions_land_in_the_engagement_chain` (real bound child: issue/spawn/exit with exit code in the engagement chain; no session chain created) |
+| **B2** stale chain on rollover | CLOSED | `_active_chain()` re-derives the id every call; `end()` keeps the engagement routable (expired) while the executor kills + records, then closes. | `test_b2_child_follows_an_engagement_rollover` (child authorizes against alpha, then bravo, each in its own chain), `test_b2_hub_rollover_routes_executor_records_to_the_new_chain` |
+| N1 unkeyed head | CLOSED | `.head` = `"<n> <h> <mac>"`, `mac = HMAC(key, id|n|h)`. | `test_n1_truncate_plus_head_rewrite_without_key_fails` |
+| N2 id not bound | CLOSED | chain id is part of every record HMAC and the head MAC. | `test_n2_whole_chain_swap_fails_under_the_other_id` |
+| N3 orphan line bricks chain | CLOSED | append rolls back to the previous length on any failure after the write (`ftruncate` + fsync). | `test_n3_failed_append_is_rolled_back_and_the_chain_still_verifies` |
+| N4 unlocked readers | CLOSED | `_load_and_verify` takes `LOCK_SH`; writers `LOCK_EX`. | `test_n4_concurrent_readers_never_see_spurious_tamper` (3 readers × 150 appends, 0 spurious) |
+| N5 pid overwritten | CLOSED | writer pid is `wpid`; a caller's `pid` (spawn/kill) is kept. | `test_n5_spawn_and_kill_records_carry_the_child_pid` |
+| N6 key length / perms | CLOSED | key must be ≥ 32 bytes; jsonl + head + key must be 0600, owned, not symlinks. | `test_n6_short_key_and_loose_permissions_are_refused` |
+| N7 start raises | CLOSED | `start()` catches any exception from chain creation → `(False, why)`; `canonical()` uses `surrogatepass`. | `test_n7_start_never_raises_on_an_unencodable_name` |
+| N8 path traversal | CLOSED | `valid_id()` (`^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$`, no `..`) enforced in `Chain.__init__`, `for_id`, `exists`. | `test_n8_*` (2) |
+| N9 refusals w/o engagement | CLOSED | `_record_soft` routes to the session chain when none is open. | covered by `_record_soft` path; prune policy still owner Q2 |
+| N10 two rows / silent redeem refusal | CLOSED | `states()` folds a ticket into its AUTHORIZED row; `executor._redeem` records `refuse_ticket`. | `test_n10_one_row_per_action_and_redeem_refusals_are_visible` |
+| H9 memory on tamper | CLOSED | `verify()` drops `records` on failure. | RA PoC `test_DEFECT_chain_states_served_from_memory_when_tampered` now passes as OK (not re-run here) |
+| N11 h-scroll under stress | OPEN → follow-up | FeedTable `fit_viewport` exists on main (CL1-fix2); wiring the ENGAGEMENT trail to it is a UI change for RA-CL3b to confirm or CL4. | — |
+
+Also merged `main` (CL1 + CL2) into the branch; the ENGAGEMENT panel keeps CL1's wrapped scope card
++ ≥3 evidence rows and gains CL3's STATE/RESULT columns (1220×640).
+
+Fail-first: `tests/test_cl3_fix.py` on the previous tip → **16 failed, 3 passed**; after → 19 passed.
+Suite here (Linux 3.13, xvfb, known exclusions as before): green except the two Linux-font strip
+tests (`test_every_page_and_subtab_fits_1280x720`, `test_strip_fits_1280_with_a_huge_scope`: 1284 px —
+pre-existing on `main`, see RA-MAIN-1). pyflakes clean.

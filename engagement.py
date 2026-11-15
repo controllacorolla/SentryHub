@@ -494,7 +494,7 @@ def start(name, authorization, scope, operator=None, hours=ENGAGEMENT_HOURS_DEFA
         ch.record("engagement.open", name=name.strip(), authorization=str(authorization).strip(),
                   scope=[e.text for e in entries], operator=str(prof).strip(), started=t,
                   expires=t + float(h) * 3600.0, hours=float(h))
-    except _chain.ChainError as e:
+    except Exception as e:                     # RA-CL3 N7: never raise out of start()
         return False, "cannot open the evidence chain (%s) — refusing to start (fail closed)" % e
     _ENG.update(active=True, name=name.strip(), authorization=str(authorization).strip(),
                 scope=[e.text for e in entries], entries=entries, operator=str(prof).strip(),
@@ -512,19 +512,22 @@ def end():
         return None
     was = _ENG["name"]
     changed = _ENG["active"]
-    ch = _CHAIN["obj"]
+    ch = _active_chain() if changed else None
+    if changed:
+        # the executor kills registered processes on _notify(); their kill/exit records must land
+        # in THIS chain, so the engagement stays routable (active, expired) until that is done
+        _ENG["expires"] = _now()
+        _notify()
     _ENG.update(active=False, name=None, authorization=None, scope=[], entries=[], operator=None,
                 started=None, expires=None, expiry_notified=False, chain=None)
-    if changed:
-        _notify()                       # the executor kills registered processes here; their
-    if changed and ch is not None:      # kill records land in THIS chain, before it closes
+    if ch is not None:
         try:
             ch.record("engagement.close", name=was, actions=len(_ACTIONS))
         except Exception:
             pass                        # closing never blocks END (it is the kill path)
     _CHAIN["obj"] = None
-    import chain as _chain
-    _chain.set_open(None)
+    if changed:
+        _notify()                       # listeners now see NONE
     return was
 
 
@@ -619,29 +622,35 @@ def authorize_action(action, target, evidence_chain=None, kind=None, binding=Non
     return True, why
 
 
-def _active_chain():
-    """The open engagement's chain: this process's own, or (bound child) the hub's by id."""
-    if _CHAIN["obj"] is not None:
-        return _CHAIN["obj"]
+def current_chain_id():
+    """The chain id of the engagement in force RIGHT NOW — this process's own engagement, or the
+    hub's as published to a bound child — or None. Always re-derived; never a cached object, so an
+    engagement rollover (END alpha, START bravo) can never route a record to alpha (RA-CL3 B2)."""
     e = _eng()
-    cid = e.get("chain") if isinstance(e, dict) else None
+    if not isinstance(e, dict) or not e.get("active"):
+        return None
+    cid = e.get("chain")
+    return cid if cid else None
+
+
+def _active_chain():
+    """The open engagement's chain, by its CURRENT id (RA-CL3 B1/B2), or None."""
+    cid = current_chain_id()
     if not cid:
         return None
     import chain as _chain
     try:
-        ch = _chain.Chain.open(cid)
+        return _chain.for_id(cid)
     except _chain.ChainError:
         return None
-    _CHAIN["obj"] = ch
-    return ch
 
 
 def _record_soft(event, **fields):
-    """Record something that must never block (a refusal, a close). Errors are dropped."""
+    """Record something that must never block (a refusal, a close). With no engagement the record
+    goes to the session chain (RA-CL3 N9). Errors are dropped."""
     try:
-        ch = _active_chain()
-        if ch is not None:
-            ch.record(event, **fields)
+        import chain as _chain
+        _chain.record(event, **fields)
     except Exception:
         pass
 

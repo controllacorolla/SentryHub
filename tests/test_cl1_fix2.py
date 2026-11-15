@@ -340,6 +340,8 @@ def test_engagement_panel_shows_unknown_when_the_engine_read_raises(monkeypatch)
         raise RuntimeError("engagement store unreadable")
     monkeypatch.setattr(engagement, "info", boom)
     monkeypatch.setattr(engagement, "actions", boom)
+    monkeypatch.setattr(engagement, "chain_info", boom)      # CL3: the trail is the chain
+    monkeypatch.setattr(engagement, "chain_states", boom)
     panel.open()                                     # used to raise
     hero = panel.eng_detail.hero.text()
     assert "UNKNOWN" in hero

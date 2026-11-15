@@ -193,7 +193,7 @@ def test_g7_open_records_scope_in_force_and_files_are_private():
     assert o["operator"] == OP and o["authorization"] == "ROE-1" and o["expires"] > o["started"]
     for p in (ch.path, ch.key_path, ch.head_path):
         assert os.stat(p).st_mode & 0o077 == 0, p
-    assert "mono_ns" in o and "pid" in o and o["seq"] == 0
+    assert "mono_ns" in o and "wpid" in o and o["seq"] == 0
 
 
 def test_g7_one_chain_shared_by_recon_and_forge_pages():
@@ -209,6 +209,7 @@ def test_g7_one_chain_shared_by_recon_and_forge_pages():
     assert E.authorize_action("net:portscan", "10.0.0.5")[0]
     rows = E.chain_states()
     assert [r["state"] for r in rows] == ["AUTHORIZED", "REFUSED"]
+    assert rows[1]["detail"] == "scope"
 
 
 # ============================================================================ G6: fail closed
@@ -260,8 +261,8 @@ def test_h9_authorized_and_executed_are_different_states_poc():
     ok, why, t = netpent.prepare("portscan", "10.0.0.5")
     assert ok
     rows = E.chain_states()
-    states = {(r["action"], r["state"]) for r in rows}
-    assert ("net:portscan", "AUTHORIZED") in states and ("net:portscan", "ISSUED") in states
+    # RA-CL3 N10: the ticket folds into its AUTHORIZED row — one row per action, now ISSUED
+    assert [(r["action"], r["state"]) for r in rows] == [("net:portscan", "ISSUED")]
     assert not any(r["state"] == "EXECUTED" for r in rows)       # nothing ran yet
     executor.run(t, spawner=lambda argv: subprocess.Popen(
         [sys.executable, "-c", "pass"], start_new_session=True, stdout=subprocess.PIPE,
@@ -363,7 +364,7 @@ def test_chain_is_shared_with_a_bound_child_process(tmp_path):
         pub.close()
     recs = chain.Chain.open(info["id"]).records
     child = [r for r in recs if r["event"] == "authorize" and r["target"] == "10.0.0.9"]
-    assert child and child[0]["pid"] != os.getpid()
+    assert child and child[0]["wpid"] != os.getpid()
     assert chain.Chain.open(info["id"]).verify()[0]
     # and the parent continues after the child's append without a fork in the chain
     assert E.authorize_action("net:portscan", "10.0.0.8")[0]

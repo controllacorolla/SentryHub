@@ -415,7 +415,10 @@ class EngagePanel(Overlay):
             info = eng.chain_info()
             rows = eng.chain_states()
         except Exception as e:
-            info, rows = {"id": "?", "records": 0, "verified": False, "why": str(e)}, []
+            info = {"id": "?", "records": 0, "verified": False, "why": str(e)}
+            rows = [{"t": 0, "state": "UNKNOWN", "action": "UNKNOWN — evidence trail unreadable",
+                     "target": str(e)[:40], "detail": "",
+                     "_colors": {"state": self._tok["warn"], "action": self._tok["warn"]}}]
         if info is None:
             self.eng_chain.setText("Evidence chain — none open")
         elif info["verified"]:
@@ -425,8 +428,8 @@ class EngagePanel(Overlay):
             self.eng_chain.setText("Evidence chain %s — NOT VERIFIED: %s" % (
                 info["id"][:17], info.get("why", "")[:60]))
         self.eng_actions.model.set_rows([
-            {"t": time.strftime("%H:%M:%S", time.localtime(r["t"])), "state": r["state"],
-             "action": r["action"], "target": r["target"], "detail": r["detail"]} for r in rows])
+            dict(r, t=(time.strftime("%H:%M:%S", time.localtime(r["t"])) if r["t"] else "—"))
+            for r in rows])
 
     def focus_first(self):
         self.eng_name.setFocus()
