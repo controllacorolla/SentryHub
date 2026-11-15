@@ -1,0 +1,9 @@
+qt.qpa.fonts: Populating font family aliases took 32 ms. Replace uses of missing font family "DejaVu Sans Mono" with one that exists to avoid this cost. 
+A before: PERMITTED ack True
+A after:  OFF ack False btn False | PANIC — TX disarmed · no engagement was open · BENCH ack revoked · no child processes were running · TX OFF
+B before: ARMED None
+B after:  OFF | PANIC — TX disarmed · no engagement was open · BENCH ack revoked · no child processes were running · TX OFF
+C re-ack: PERMITTED
+D count line: 6 alert(s) since launch · 6 unacknowledged · 1 arrived since opened (not in ACK ALL SEEN; reopen to include)
+D acked 5 left ['late']
+E ATLAS widgets <16px: []

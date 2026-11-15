@@ -1,0 +1,13 @@
+longest owner label 'PROWL SC'
+sun 999 targets PROWL SC hub_min 1279 hub_w 1280 strip_w 1268 panic_btn_right 1180
+sun 999 targets PROWL SC hub_min 1279 hub_w 1280 strip_w 1268 panic_btn_right 1180
+sun 1000 targets PROWL SC hub_min 1289 hub_w 1289 strip_w 1277 panic_btn_right 1189
+sun 1000 targets PROWL SC hub_min 1289 hub_w 1289 strip_w 1277 panic_btn_right 1189
+sun 12345 targets PROWL SC hub_min 1298 hub_w 1298 strip_w 1286 panic_btn_right 1198
+sun 12345 targets PROWL SC hub_min 1298 hub_w 1298 strip_w 1286 panic_btn_right 1198
+dark 999 targets PROWL SC hub_min 1272 hub_w 1280 strip_w 1268 panic_btn_right 1180
+dark 999 targets PROWL SC hub_min 1272 hub_w 1280 strip_w 1268 panic_btn_right 1180
+dark 1000 targets PROWL SC hub_min 1282 hub_w 1282 strip_w 1270 panic_btn_right 1182
+dark 1000 targets PROWL SC hub_min 1282 hub_w 1282 strip_w 1270 panic_btn_right 1182
+dark 12345 targets PROWL SC hub_min 1291 hub_w 1291 strip_w 1279 panic_btn_right 1191
+dark 12345 targets PROWL SC hub_min 1291 hub_w 1291 strip_w 1279 panic_btn_right 1191

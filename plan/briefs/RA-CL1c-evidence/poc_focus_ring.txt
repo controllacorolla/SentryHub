@@ -1,0 +1,3 @@
+dark focus_w=2 glyph-cols-under-ring / glyph-pixels-overpainted: OPS:1/65px ATLAS:2/4px PRISM:1/0px PROWL:2/4px SWEEP:1/3px RECON:1/5px FORGE:1/0px SYSTEM:0/2px
+light focus_w=2 glyph-cols-under-ring / glyph-pixels-overpainted: OPS:1/66px ATLAS:2/4px PRISM:1/0px PROWL:2/4px SWEEP:1/3px RECON:1/5px FORGE:1/0px SYSTEM:0/2px
+sun focus_w=4 glyph-cols-under-ring / glyph-pixels-overpainted: OPS:5/0px ATLAS:6/23px PRISM:5/27px PROWL:6/14px SWEEP:5/26px RECON:5/28px FORGE:4/34px SYSTEM:8/39px
