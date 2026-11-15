@@ -20,12 +20,14 @@ the implementer. You write no fixes. You may not read `plan/briefs/CL1-report.md
    - every map is DARK or SAT only, default DARK, in all three themes (`kit/mappanel.py`);
    - nothing rendered in the top strip is under 16 px (`tests/test_cl1_screen.py::test_strip_has_no_text_under_16px_at_all`
      exists — try to break it: open every panel, widest slot states, SUN theme).
-6. Write `plan/briefs/RA-CL1-report.md` **on the `fix/cl1-screen-structure` branch**, commit,
+6. Follow "Model tiers and fan-out" in `plan/briefs/README.md`: PoC reproduction may run on
+   `sonnet`, every verdict stays on the session model, ≤10 parallel subagents per stage.
+7. Write `plan/briefs/RA-CL1-report.md` **on the `fix/cl1-screen-structure` branch**, commit,
    push, open no PR. Format: the REAUDIT_PROMPT table, new findings with severity, one-line
    verdict MERGE / DO NOT MERGE. Tell the owner **done**.
 
 Commit trailer:
 ```
-Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01DNwALPN1Ydsu8Kidx4CrT4
 ```

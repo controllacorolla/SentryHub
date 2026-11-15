@@ -34,3 +34,15 @@ message each other. This directory is the channel.
 - Render every touched page at 1280×720 in dark / light / sun × live / demo before reporting.
 - The implementer's own review does not close a cluster; the cold re-audit does.
 - Commits end with the trailer the brief specifies.
+
+## Model tiers and fan-out (owner rule, 2026-11-15 — applies to every brief)
+
+- **Session model (top tier)** for: implementation, gate/safety/TX auditing, severity judgement,
+  and every CLOSED / OPEN / PARTIAL / REGRESSED verdict.
+- **`sonnet`** for mechanical stages: render sweeps, suite and pyflakes runs, single-claim PoC
+  *reproduction* (does it still reproduce — the verdict on it stays on the session model).
+- **`haiku`** for pure search / file inventory.
+- **Fan-out cap: at most ~10 parallel subagents per stage** unless the brief says otherwise.
+- In the report, list which stages ran on which model.
+- Owner guidance on the chat itself: start `RA-*`, `CL2`, `CL3` on Mythos with `ultrathink`;
+  `CL4`–`CL9` on Opus without it.
