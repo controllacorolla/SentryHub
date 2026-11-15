@@ -325,9 +325,9 @@ def test_slots_follow_engine_state():
         txguard.arm(False)
         hub.state.poll()
         assert hub.topbar.slots["tx"].text() == "OFF"
-        engagement.start("Op", "ROE-1", ["10.0.0.0/24"], "KD0ABC")
+        engagement.start("Op", "ROE-1", ["10.0.0.5"], "KD0ABC")        # CL2: typed scope, no globs
         hub.state.poll()
-        assert hub.topbar.slots["engagement"].text() == "10.0.0.*"     # the scope is the word
+        assert hub.topbar.slots["engagement"].text() == "10.0.0.5"     # the scope is the word
         assert hub.topbar.slots["engagement"].glyph.shape() == "diamond"
         assert "ACTIVE" in hub.topbar.slots["engagement"].toolTip()
         ra.arbiter.changed.emit("ATLAS-APRS")
@@ -859,13 +859,13 @@ def test_engagement_panel_opens_from_its_slot_and_refreshes_recon_cards():
         assert panel.isVisible()
         panel.eng_name.setText("NightWatch")
         panel.eng_auth.setText("ROE-42")
-        panel.eng_scope.setText("10.0.0.0/24")
+        panel.eng_scope.setText("10.0.0.5")                      # CL2: typed scope, no globs
         panel._activate()
         _pump(40)
         assert engagement.is_active()
         assert recon.net_gated.target.isEnabled(), "RECON cards unlock when the engagement opens"
         hub.state.poll()
-        assert hub.topbar.slots["engagement"].text() == "10.0.0.*"
+        assert hub.topbar.slots["engagement"].text() == "10.0.0.5"
         panel._deactivate()
         _pump(40)
         assert not engagement.is_active() and not recon.net_gated.target.isEnabled()
