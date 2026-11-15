@@ -16,6 +16,9 @@ import os
 import sys
 
 import engagement
+import opsec
+
+opsec.register("WIFIPENT", "active-tx", "Wi-Fi capture / targeted deauth — engagement-gated")
 
 DEAUTH_MAX = 10          # hard cap: enough to force a re-handshake, never a denial-of-service
 

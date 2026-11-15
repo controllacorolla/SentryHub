@@ -11,6 +11,9 @@ import os
 import sys
 
 import engagement
+import opsec
+
+opsec.register("BLEPENT", "active-tx", "BLE GATT connect / read / write — engagement-gated")
 
 
 def gatt_argv(address, op, handle=None, value=None, adapter="hci0"):

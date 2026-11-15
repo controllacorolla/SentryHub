@@ -105,6 +105,11 @@ class BenchApp(PalisadeApp):
         split.addWidget(self._wrap(right), 2)
         lay.addLayout(split, 1)
         self._refresh_gate()
+        try:
+            import opsec
+            opsec.subscribe(self._refresh_gate)      # reflect OPSEC arm/disarm live
+        except Exception:
+            pass
         return body
 
     def _wrap(self, lay):
@@ -124,18 +129,23 @@ class BenchApp(PalisadeApp):
         s["tx_gain"] = 0                       # conducted paths use external attenuation
         return s
 
-    def _refresh_gate(self):
+    def _refresh_gate(self, *_):
         import bench
+        import opsec
         ok, why = bench.preflight(self._settings(), self._band_freq())
+        opsec_armed = opsec.is_armed()
         self.tx_btn.setEnabled(ok)
         if ok:
             self.gate.setText("TX SAFE · conducted")
             self.gate.setStyleSheet("color:%s; font-weight:600;" % self._tok["live"])
+        elif opsec_armed:
+            self.gate.setText("TX BLOCKED BY OPSEC")
+            self.gate.setStyleSheet("color:%s; font-weight:700;" % self._tok["alert"])
         else:
             self.gate.setText("TX GATED")
             self.gate.setStyleSheet("color:%s; font-weight:600;" % self._tok["warn"])
-        self.card.set_rows([("TXGUARD", "SAFE — conducted" if ok else "GATED"),
-                            ("REASON", why), ("RESULT", "—")])
+        txg = "SAFE — conducted" if ok else ("BLOCKED — OPSEC" if opsec_armed else "GATED")
+        self.card.set_rows([("TXGUARD", txg), ("REASON", why), ("RESULT", "—")])
 
     def make_worker(self):
         return None             # the self-test runs on demand, not continuously
@@ -168,6 +178,11 @@ class BenchApp(PalisadeApp):
     def stop(self):
         if self._stopped:
             return
+        try:
+            import opsec
+            opsec.unsubscribe(self._refresh_gate)
+        except Exception:
+            pass
         stw = getattr(self, "_stw", None)
         if stw is not None:
             stw.stop()

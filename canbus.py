@@ -16,6 +16,9 @@ import shutil
 import sys
 
 import engagement
+import opsec
+
+opsec.register("CANBUS", "active-tx", "CAN frame injection — engagement-gated")
 
 # ---- OBD-II mode 01 live PIDs (SAE J1979). (name, n_bytes, decoder(data_bytes)->(value, unit)) ----
 def _obd_rpm(d):      return ((d[0] << 8) + d[1]) / 4.0, "rpm"

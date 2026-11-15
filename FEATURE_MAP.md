@@ -18,14 +18,14 @@ Absorbs: field_status, sensors, powergov, doctor (status), sitrep (summary), liv
 ## OVERWATCH — sky dome + radio director + power manager + SENTINEL
 Absorbs: overwatch, astro, radio (SDR lease/autopilot), scout, passsched.
 - ⬜ sky dome (sun/moon/sat passes via astro), pass scheduling
-- 🔧 **SENTINEL autonomous watch mode** — unattended RF monitoring + baseline diffing + alerting (see Platform Capabilities above)
+- ◐ **SENTINEL autonomous watch mode** — unattended RF monitoring + baseline diffing + alerting, wired under OVERWATCH (see Platform Capabilities above)
 - 🔧 **radio director** — autopilot time-sharing the dongle across active layers (rotation)
 - 🔧 **remote sensor nodes** — distributed PALISADE instances feeding one OPS dashboard
 - 🔧 **GPIO power manager** (AIO V2) — individual SDR/GPS/LoRa/USB power on/off via GPIO for load shedding + hardware control
 - 🔧 **OPSEC mode** — one-button RF-dark confirmation: kill all TX, pure monitor WiFi, no BLE advertising, visual OPS indicator (see Operational Modes above)
 ## OVERWATCH — sky dome + radio director
 Absorbs: overwatch, astro, skyintel(ADS-B, NOT sat), wxsat(passes), passsched, radio arbiter.
-- ◐ **OVERWATCH page wired** — sub-views SKY DOME / RADIO / PASSES, all backends AS-IS.
+- ◐ **OVERWATCH page wired** — sub-views SKY DOME / RADIO / PASSES / SENTINEL, all backends AS-IS.
   - **SKY DOME** — a QPainter polar dome (zenith centre, horizon rim, N/E/S/W, elevation rings)
     with the sun + moon from pure `astro.sun_azel`/`moon_azel` (always live — deterministic math)
     and satellite positions + pass arcs; projection reuses `overwatch.project`/`dome_r`/`compass`.
@@ -270,7 +270,7 @@ Absorbs: settings_ui, doctor, assistant (AI), sitrep (spoken), transcriber, mesh
 
 ## Platform capabilities (the big three — what makes PALISADE a platform, not a tool)
 
-### 🔧 SENTINEL — Autonomous RF Watch Mode
+### ◐ SENTINEL — Autonomous RF Watch Mode
 Drop the uConsole in a room, vehicle, or on a rooftop. SENTINEL runs unattended: continuous
 baseline spectrum capture across all bands (RTL-SDR + SX1262), WiFi/BLE device inventory
 (MT7921AUN), cellular tower mapping, LoRa traffic logging — and **diffs against itself over
