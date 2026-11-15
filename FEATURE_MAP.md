@@ -98,6 +98,12 @@ Absorbs: rf_explorer, specan, waterfall, iqtool, noisefloor, classify, freqdb, r
 - 🔧 **AI signal classification** — ML model trained on known signal types, flags unknowns for human review. "This doesn't match anything in the database" = potential covert transmitter
 - 🔧 **Spectral fingerprinting** — capture physical-layer manufacturing imperfections of individual radios from IQ data. Same model WiFi router, different fingerprint. Identifies devices even after MAC change
 - 🔧 **TEMPEST** — EM emanation monitoring (gr-tempest, experimental)
+- ◐ **live spectrum + waterfall WIRED** — PyQtGraph spectrum line + peak-hold over a rolling
+  violet→green waterfall (ScopePanel). Real engine reused AS-IS: `waterfall.rtl_power_sweep_argv`
+  + `noisefloor.parse_rtl_power_row`, assembled into a full sweep per pass. SDR via the shared
+  **radio arbiter** ("PRISM"), held only while the page is active (release on page-leave + close);
+  shows RADIO BUSY when ATLAS holds the dongle. **Device validation (real RTL sweep) pending.**
+- ⬜ IQ record/replay (iqtool), noise-floor baseline tracking (noisefloor), signal classifier (classify)
 - ➕ click-to-tune into PROWL/BABEL from a spectrum peak
 
 ## PROWL — scanner / tuner

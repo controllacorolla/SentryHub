@@ -516,3 +516,69 @@ def test_atlas_live_balloon_reaches_ops(monkeypatch, tmp_path):
     finally:
         hub.close()
         _pump(200)
+def test_prism_sweep_assembler_assembles_rtl_power():
+    from palisade_qt.prism import _SweepAssembler
+    a = _SweepAssembler()
+    rows = ["d,t,430000000,435000000,10000,100,-100,-98,-45",     # segment 1
+            "d,t,435000000,440000000,10000,100,-96,-95,-94",      # segment 2
+            "d,t,430000000,435000000,10000,100,-100,-98,-45"]     # wrap -> emit the pass
+    done = [o for o in (a.feed(r) for r in rows) if o is not None]
+    assert done, "a full rtl_power pass must assemble into one sweep"
+    f, p = done[0]
+    assert len(f) == 6 and abs(float(p.max()) - (-45)) < 0.1
+
+
+def test_prism_live_holds_radio_only_while_active(monkeypatch):
+    _app()
+    from palisade_qt import prism, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    monkeypatch.setattr(prism, "_open_rtl_power", lambda lo, hi, g: None)   # no real radio
+    w = prism.SweepWorker(demo=False, lo=430, hi=440)
+    w.set_active(True)
+    w.step()
+    assert ra.arbiter.owner() == "PRISM"          # active -> PRISM takes the radio
+    w.set_active(False)
+    w.step()
+    assert ra.arbiter.owner() is None             # page left -> release
+    w.set_active(True)
+    w.step()
+    assert ra.arbiter.owner() == "PRISM"
+    w.stop()
+    w.run()                                        # close -> release
+    assert ra.arbiter.owner() is None
+
+
+def test_prism_shows_busy_when_radio_held_by_atlas(monkeypatch):
+    _app()
+    from palisade_qt import prism, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    monkeypatch.setattr(prism, "_open_rtl_power", lambda lo, hi, g: None)
+    assert ra.arbiter.request("ATLAS-APRS") is True      # ATLAS holds the radio
+    w = prism.SweepWorker(demo=False, lo=430, hi=440)
+    seen = []
+    w.status.connect(seen.append)
+    w.set_active(True)
+    w.step()
+    assert ra.arbiter.owner() == "ATLAS-APRS"            # PRISM did NOT grab it
+    assert any(s.get("busy") == "APRS" for s in seen), "PRISM must report RADIO BUSY"
+    ra.arbiter.release("ATLAS-APRS")
+
+
+def test_prism_live_no_rtl_power_shows_standby_not_synth(monkeypatch):
+    """Live + no rtl_power: PRISM holds the radio (seam-nulled here) but emits NO synthetic sweep
+    and reports STANDBY — the scope stays empty, nothing is fabricated."""
+    from palisade_qt import prism, radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda name: None)
+    monkeypatch.setattr(prism, "_open_rtl_power", lambda lo, hi, g: None)
+    monkeypatch.setattr(prism.shutil, "which", lambda b: None)      # rtl_power absent
+    w = prism.SweepWorker(demo=False, lo=430, hi=440)
+    rows, seen = [], []
+    w.row.connect(lambda r: rows.append(r))
+    w.status.connect(lambda s: seen.append(s))
+    w.set_active(True)
+    w.step()
+    assert rows == [], "live mode must not synthesise a sweep when rtl_power is absent"
+    assert any(s.get("standby") for s in seen), "PRISM must report STANDBY without rtl_power"
+    w.set_active(False)
+    w.step()
+    assert ra.arbiter.owner() is None, "leaving PRISM releases the radio"
