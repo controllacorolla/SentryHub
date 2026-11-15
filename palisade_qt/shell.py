@@ -19,15 +19,17 @@ from .babel import BabelApp
 from .atlas import AtlasApp
 from .prowl import ProwlApp
 from .forge import ForgeApp
-from .more import BenchApp
 from .recon import ReconApp
 from .overwatch import OverwatchApp
+from .bench_app import BenchApp
+from .system import MoreApp
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 QT_PAGES = {
     "OVERWATCH": OverwatchApp, "ATLAS": AtlasApp, "BABEL": BabelApp, "PRISM": PrismApp,
     "PROWL": ProwlApp, "FORGE": ForgeApp, "RECON": ReconApp, "BENCH": BenchApp,
+    "MORE": MoreApp,
 }
 TK_HOSTS = {}
 
