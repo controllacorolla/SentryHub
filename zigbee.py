@@ -14,6 +14,11 @@ import engagement
 CHANNELS = list(range(11, 27))          # 2.4 GHz 802.15.4 channels 11..26
 
 
+# CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("zbstumbler", "zbreplay"))
+
+
 def channel_to_mhz(ch):
     return 2405 + 5 * (int(ch) - 11) if 11 <= int(ch) <= 26 else None
 

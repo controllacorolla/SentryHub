@@ -52,10 +52,12 @@ RX_ONLY_PROGRAMS = frozenset((
     "zbwardrive", "zwave-sniffer",
 ))
 
-# Flipper CLI verbs (first token) that do NOT radiate. Every other non-read Flipper command does
+# Flipper CLI verbs (first token) that do NOT radiate. `input` is NOT here (CL2-fix2 R4): it presses
+# buttons, so it can drive a radio app (Sub-GHz / NFC / RFID / BT) to transmit; neither are
+# loader / js / subghz / nfc / rfid / bt. Every other non-read Flipper command does
 # (subghz / nfc / rfid / bt / loader open … — fail closed on unknown verbs).
 FLIPPER_NON_RF = frozenset((
-    "gpio", "storage", "led", "vibro", "power", "date", "input", "badusb", "ibutton", "ir",
+    "gpio", "storage", "led", "vibro", "power", "date", "badusb", "ibutton", "ir",
     "infrared", "update", "log", "help", "?", "device_info", "info", "uptime", "free",
     "free_blocks", "ps", "music_player", "buzzer", "crypto", "onewire", "i2c",
 ))

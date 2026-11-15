@@ -17,6 +17,11 @@ REGION_FREQ = {"US": 908_420_000, "EU": 868_420_000, "ANZ": 921_420_000, "HK": 9
 SEC_RANK = {"none": 0, "S0": 1, "S2_unauth": 2, "S2_auth": 3, "S2_access": 3}
 
 
+# CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("zwave-query", "zwave-map"))
+
+
 def region_freq(region):
     return REGION_FREQ.get(str(region).upper())
 

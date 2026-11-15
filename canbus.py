@@ -18,6 +18,11 @@ import sys
 import engagement
 
 # ---- OBD-II mode 01 live PIDs (SAE J1979). (name, n_bytes, decoder(data_bytes)->(value, unit)) ----
+# CL2-fix2 R1: the only program this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("cansend",))
+
+
 def _obd_rpm(d):      return ((d[0] << 8) + d[1]) / 4.0, "rpm"
 def _obd_speed(d):    return float(d[0]), "km/h"
 def _obd_coolant(d):  return d[0] - 40.0, "C"

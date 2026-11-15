@@ -35,6 +35,10 @@ def test_active_discover_gated():
 
 
 def test_inject_out_of_scope_blocked():
-    E.start("iot audit", "self-owned", ["pan:0x1A2B@15"], "KD0ABC")
-    assert Z.prepare("inject", pan=0x9999, channel=15)[0] is False
-    assert Z.prepare("inject", pan=0x1A2B, channel=20)[0] is False
+    assert E.start("iot audit", "self-owned", ["pan:0x1A2B@15"], "KD0ABC")[0]
+    txguard.arm(True)    # CL2-fix2 R2: armed + unlocked, so only SCOPE can refuse (not the RF gate)
+    txguard.unlock_session(True)
+    for pan, ch in ((0x9999, 15), (0x1A2B, 20)):
+        ok, why, t = Z.prepare("inject", pan=pan, channel=ch)
+        assert not ok and t is None and "not in the engagement scope" in why, why
+    assert Z.prepare("inject", pan=0x1A2B, channel=15)[0] is True

@@ -47,5 +47,9 @@ def test_write_requires_handle_and_value():
 
 
 def test_out_of_scope_blocked():
-    E.start("j", "roe", ["AA:BB:CC:DD:EE:FF"], "KD0ABC")
-    assert B.prepare("write", "11:22:33:44:55:66", handle="0x1", value="ff")[0] is False
+    assert E.start("j", "roe", ["AA:BB:CC:DD:EE:FF"], "KD0ABC")[0]
+    txguard.arm(True)    # CL2-fix2 R2: armed + unlocked, so only SCOPE can refuse (not the RF gate)
+    txguard.unlock_session(True)
+    ok, why, t = B.prepare("write", "11:22:33:44:55:66", handle="0x1", value="ff")
+    assert not ok and t is None and "not in the engagement scope" in why, why
+    assert B.prepare("write", "AA:BB:CC:DD:EE:FF", handle="0x1", value="ff")[0] is True

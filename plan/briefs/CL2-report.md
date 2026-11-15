@@ -153,7 +153,14 @@ Evidence: `plan/briefs/CL2-fix-evidence/before_dcb7c4f.txt` and `after.txt`.
 | **N7** Tk hub has no UNLOCK | **DEFERRED** (owner decision 3) | Unchanged: the Tk gated tools stay permanently blocked and no unlock control was added. Listed for retirement in CL8 below. | (existing `test_g8_*` keep them blocked) |
 | **N9b** Scout fallback scanner runs outside the executor | **OPEN — found, not fixed** (not trivial) | When nmap is absent, `scout.py`'s connect-scan runs in in-process threads. It is gated before start, but `executor.kill_all` cannot stop it; only its stop flag can. A fix would move it into a subprocess under the executor, or register its stop flag with `kill_all`. | — |
 
-## Test changes to existing files (no denial weakened)
+## Test changes to existing files
+
+> **Correction (CL2-fix2, after RA-CL2b R2):** an earlier version of this heading said "no denial
+> weakened". **That was false.** No assertion text changed, but 4 unchanged out-of-scope tests
+> (`test_wifipent::test_out_of_scope_blocked`, `test_blepent::test_out_of_scope_blocked`,
+> `test_zigbee::test_inject_out_of_scope_blocked`, `test_proxmark::test_active_op_blocked_out_of_scope`)
+> were left disarmed. They then passed on the RF gate's refusal even with scope enforcement removed.
+> Fixed in CL2-fix2: they now arm and unlock, then assert the scope reason (see below).
 
 - These tests drive an RF emitter, so they now arm the kill switch after opening the engagement (owner decision 2). Every refusal assertion is kept:
   - `test_cl2_gates.py`: g2, g3-allowlisted, g5 pmkid, g5 deauth, g5 zigbee, g5 proxmark, g5 unbindable
@@ -174,7 +181,7 @@ Evidence: `plan/briefs/CL2-fix-evidence/before_dcb7c4f.txt` and `after.txt`.
 | Sev | Finding | Status |
 |---|---|---|
 | Medium | `proxmark.prepare` put caller parameters raw into a `pm3 -c` string, and pm3 runs `;`-separated commands. A parameter like `data="…; lf hid clone -r <any>"` smuggled a second, unchecked command. | **Fixed** with N4 (`_PARAM_RE`), test `test_n4_second_pm3_command_cannot_be_smuggled_in_a_parameter` |
-| Low | `lf_t55_write`, `hf_mf_restore` and `hf_iclass_clone` write content that is not an identity parameter. It cannot be scope-bound; the reason and trail now say "written content is not bound to the scope". | Labelled. Owner may prefer to refuse these. |
+| Low | `lf_t55_write`, `hf_mf_restore` and `hf_iclass_clone` write content that is not an identity parameter. It cannot be scope-bound; the reason now says "written content is not bound to the scope". **Correction (CL2-fix2):** the trail and the ticket still said `scoped` until CL2-fix2 R5. | Labelled. Owner may prefer to refuse these. |
 | Low (fails safe) | With an engagement open and the kill switch OFF, the RECON / FORGE cards show emitter buttons as available. The engine refuses with "RF silenced …" on press. G12-style: the UI should reflect `txguard.emit_allowed()`. UI work, so not done here. | Open, for CL1/CL4 UI |
 | Info | `netpent` trail entries for a hostname now carry the pinned address as the target; the name goes into the label (`net:portscan:nas.lan`). | By design (N5) |
 
@@ -219,3 +226,66 @@ All 3 warnings are pre-existing: the same warnings appear on `dcb7c4f`, at line 
 3. **N9b:** fix Scout's fallback scanner in CL2, or defer it to the Scout cluster?
 
 Stop. **RA-CL2b** follows.
+
+---
+
+# CL2-fix2 — closes what RA-CL2b found
+
+**Branch:** `fix/cl2-gates`, base `18770be` (RA-CL2b). Brief: `plan/briefs/CL2-fix2.md`. The owner decisions on R1 and R5 are implemented as written.
+New regression file: `tests/test_cl2_fix2.py`, 65 tests. **54 of the 65 fail on `18770be`.** The 11 that pass there are sanity checks: shipped commands still issue, Flipper verbs that were already emitters, an R2 scope test that was already armed, an R6 matching argv, and an R5 bound op.
+Evidence is in `plan/briefs/CL2-fix2-evidence/`: `before_18770be.txt`, `after.txt` and `mutation_all_in_scope.txt`.
+
+| ID | Verdict | Fix (file:line) | Regression test(s) |
+|---|---|---|---|
+| **R1** allowlist | **CLOSED** | `engagement.issue` (`engagement.py:648`) reads the **calling** module's `ALLOWED_PROGRAMS` and refuses any argv whose argv[0] is not in that set. argv[0] must be a bare name, so a path or a renamed or symlinked binary is refused. `NEVER_PROGRAMS` and the interpreter pattern (`engagement.py:594-622`) refuse shells, interpreters and wrappers even when a module declares them. `rfemit.is_sdr_tx` still runs first, as defence in depth and to give the clearer reason. Declared sets: blepent, wifipent, zigbee, zwave, proxmark, netpent, passaudit, buslab, canbus, devterm (`ssh`). Payload tickets (Flipper, USB-HID) are not programs, so the allowlist does not apply to them. | `test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc` (×20: quoting, glob, ANSI-C, `${var}`, `python -c`, `python3.13`, perl, env/sudo/xargs, renamed binary, a declared name given as a path, Cyrillic, `tune`, `sendook`, `tx_waveforms`, `urh_cli`, flowgraph, whitespace, empty); `test_r1_a_module_cannot_declare_a_shell_or_interpreter`; `test_r1_undeclared_module_runs_nothing`; `test_r1_every_shipped_module_real_commands_still_issue` (15 real commands); static `test_r1_static_every_argv_issuer_declares_allowed_programs` |
+| **R1** DEVTERM SSH | **CLOSED** | `devterm._self_target` (`devterm.py:177`) refuses `localhost`, loopback, unspecified, IPv4-mapped loopback, and any address on this device's interfaces. It checks after resolution, and refuses the whole command if any address matches. Interface addresses come from `getifaddrs` through ctypes (`devterm.py:138`); if they cannot be listed, it refuses (fail closed). `prepare_ssh` (`devterm.py:219`) pins `-o HostName=<checked address>` and adds `-o ProxyCommand=none -o ProxyJump=none`, so ssh cannot be redirected back to this device. The remote command is label-only and is **not** subject to the RF hard lock (owner decision). A literal transmitter name in the remote command is still refused. `authorize_ssh_host` (interactive open) gets the same self-target refusal. | `test_r1_ssh_to_loopback_refused_at_issue_poc` (×8, including the RA PoC `127.0.0.1` + `hackrf_trans''fer`); `test_r1_ssh_to_an_own_interface_address_refused`; `test_r1_ssh_fails_closed_when_own_addresses_unknown`; `test_r1_ssh_remote_host_is_pinned_label_only_and_not_rf_locked`; `test_r1_ssh_ra_poc_never_spawns` |
+| **R2** weakened tests | **CLOSED** | The 4 tests now arm and unlock, assert `"not in the engagement scope"`, and show that the in-scope twin issues. RA mutation re-run (`engagement._match` forced in scope, same 7 files): **17 tests catch it, the same set as `211fa0c`** (`mutation_all_in_scope.txt`). | `test_wifipent::test_out_of_scope_blocked`, `test_blepent::test_out_of_scope_blocked`, `test_zigbee::test_inject_out_of_scope_blocked`, `test_proxmark::test_active_op_blocked_out_of_scope`, plus `test_r2_scope_refusals_hold_when_armed_and_unlocked` |
+| **R4** Flipper `input` | **CLOSED** | `input` was removed from `FLIPPER_NON_RF` (`rfemit.py:55`). `loader`, `js`, `subghz`, `nfc`, `rfid` and `bt` were already absent. Allowlisted Flipper reads (e.g. `bt hci_info`) stay reads. | `test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc` (×8: refused while disarmed and under the lock, issued when armed); `test_r4_input_not_in_non_rf_list` |
+| **R6** argv frequency | **CLOSED** | `txguard.issue_ticket` (`txguard.py:502`) calls `argv_matches_freq`. `TX_ARGV_GRAMMAR` (`txguard.py:443`) gives the exact option grammar per TX program; today that is `hackrf_transfer`: `-t -f -s -x` with a value, and `-R`. It refuses: an argv[0] that is not in the grammar (wrappers and paths included), an unknown option, the attached form `-f1090000000`, a missing or repeated `-f`, a non-ASCII-digit value, and any frequency that is not exactly the authorized one. | `test_r6_argv_1090_on_a_915_authorization_refused_poc`; `test_r6_unparseable_or_ambiguous_tx_argv_refused` (×12); `test_r6_matching_argv_still_issues_and_builders_agree` |
+| **R5** unbound Proxmark writes | **KEPT, label now real** | Owner: keep `lf_t55_write`, `hf_mf_restore` and `hf_iclass_clone` allowed and label-only. Confirming it showed that **the label was only in the reason**: the trail and the ticket said `scoped`, so FORGE showed no LABEL-ONLY tag. `authorize_action` and `issue` take a `binding` override (`engagement.py:569`), and proxmark passes `"label-only"` for these ops (`proxmark.py:125`). | `test_r5_unbound_proxmark_writes_are_label_only_in_trail_ticket_and_ui` (×3); `test_r5_bound_proxmark_ops_are_not_marked_label_only` |
+
+## Behaviour changes to existing tests (all stricter)
+
+- `test_digimodes::test_prepare_authorizes_with_gate_and_tool` → `…_refused_even_with_gate_and_tool_freq_unverifiable`. The argv for `wsjtx`, `js8call` and `fldigi` carries no frequency (it is set inside the app), so R6 as written refuses it. Digimodes is a Tk-only tool, already blocked (owner decision 3) and on the CL8 retirement list. **Owner question 1.**
+- The 4 R2 tests are as above. No assertion was removed or loosened. Mutation: 17 catch the scope mutation, compared with 13 on `18770be`.
+
+## Found, not fixed
+
+| Sev | Finding |
+|---|---|
+| Low | `executor.issue` itself does not check `ALLOWED_PROGRAMS`. Of its issuers, only `engagement` runs argvs from many modules; `txguard` is now grammar-bound (R6), and `flipper` mints payloads only. Enforcing the allowlist in `engagement.issue` covers every argv path the engagement gate has. |
+| Low | The R6 grammar checks the frequency only. `-s` and `-x` are parsed but not compared with the authorized sample rate or the gain cap. `authorize`/`check_gain` validate those inputs, and every builder derives `-s`/`-x` from them. |
+| Low | The SSH self-target check runs at issue, not at spawn. If this device's addresses change within the 120 s ticket TTL (a DHCP lease), the pinned address is not re-checked against them. |
+| Info | `own_addresses()` was tested on macOS (real `getifaddrs`). The Linux `sockaddr` layout (`u16` family, native order) was reviewed but **not run on Linux or on the uConsole.** |
+
+## Suite, lint
+
+```text
+$ QT_QPA_PLATFORM=offscreen python -m pytest -q tests      # Py 3.12, venv: PySide6 pyqtgraph flask numpy, macOS
+FAILED tests/test_audit_tiles.py::test_undecodable_tile_is_marked_failed          # known main failure
+FAILED tests/test_hwlab.py::test_doctor_hwbench_check - assert (None is True)     # env, fails on dcb7c4f too
+FAILED tests/test_sstvdec.py::test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone   # known: no skyfield
+3 failed, 1108 passed, 14 skipped in 258.64s
+```
+`test_hwlab::test_doctor_hwbench_check` fails the same way on `dcb7c4f` and `18770be` in this venv (RA-CL2b). It comes from a missing optional dependency, not from CL2-fix2.
+```text
+$ pyflakes engagement.py txguard.py rfemit.py devterm.py blepent.py wifipent.py zigbee.py zwave.py proxmark.py \
+    netpent.py passaudit.py buslab.py canbus.py tests/test_cl2_fix2.py tests/test_digimodes.py tests/test_wifipent.py \
+    tests/test_blepent.py tests/test_zigbee.py tests/test_proxmark.py
+(no output, rc=0)
+```
+Not run on Python 3.13 or on the uConsole. No UI layout changed, so no renders. The only UI-visible change is that FORGE now shows the existing LABEL-ONLY tag for the three unbound Proxmark writes, through the existing `_ticket_text` path.
+
+## Stage → model
+
+| Stage | Model |
+|---|---|
+| Gate code, tests, mutation, every verdict | session model (Opus 5.5), inline |
+| Suite / pyflakes | run directly in the shell; no subagents |
+
+## Open questions (owner)
+
+1. **Digimodes (R6):** the frequency cannot be verified from `wsjtx`/`js8call`/`fldigi` argv, so they are now refused at issue. Keep them refused until CL8 retires them (recommended), or add a rig-control path that sets and reads back the dial frequency?
+2. **SSH ProxyJump:** `ProxyCommand=none` and `ProxyJump=none` break any engagement host that is only reachable through a jump host in `~/.ssh/config`. Accept that, or allow a declared jump host that is also self-checked?
+
+Stop. **RA-CL2c** follows.

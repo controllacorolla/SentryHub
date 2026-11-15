@@ -28,6 +28,11 @@ JEDEC_MFR = {
 }
 
 
+# CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("flashrom", "openocd"))
+
+
 def printable_ratio(sample):
     """Fraction of bytes that are printable ASCII or common whitespace — the autobaud score."""
     if not sample:

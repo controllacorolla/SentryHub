@@ -20,6 +20,11 @@ import engagement
 DEAUTH_MAX = 10          # hard cap: enough to force a re-handshake, never a denial-of-service
 
 
+# CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("airodump-ng", "hcxdumptool", "aireplay-ng"))
+
+
 def monitor_argv(iface, enable=True):
     return ["airmon-ng", "start" if enable else "stop", iface]
 

@@ -13,6 +13,11 @@ import sys
 import engagement
 
 
+# CL2-fix2 R1: the only program this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("gatttool",))
+
+
 def _gatt_argv(address, op, handle=None, value=None, adapter="hci0"):
     """Build a gatttool command for one GATT operation against a device."""
     base = ["gatttool", "-i", adapter, "-b", address]

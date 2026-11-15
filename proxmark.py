@@ -37,6 +37,11 @@ UNBOUND_CONTENT = ("lf_t55_write", "hf_mf_restore", "hf_iclass_clone")
 _PARAM_RE = __import__("re").compile(r"^[0-9A-Za-z_.:-]{1,64}$")
 
 
+# CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("pm3", "proxmark3"))
+
+
 def is_active(op):
     return bool(OPS.get(op, (False,))[0])
 
@@ -115,7 +120,9 @@ def prepare(op, target=None, evidence_chain=None, read_uid=None, port="/dev/ttyA
     ok, why, ticket = engagement.issue("proxmark:" + op, "uid:" + want,
                                        argv=client_argv(cmd, port), kind="uid",
                                        evidence_chain=evidence_chain, label="proxmark:" + op,
-                                       also=also)
+                                       also=also,
+                                       # CL2-fix2 R5: content not bound -> trail + ticket + UI say so
+                                       binding="label-only" if op in UNBOUND_CONTENT else None)
     if ok and op in UNBOUND_CONTENT:
         why += " — written content is not bound to the scope (label-only for the data)"
     return ok, why, ticket

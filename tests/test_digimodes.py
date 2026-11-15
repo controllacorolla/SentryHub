@@ -39,13 +39,16 @@ def test_prepare_blocked_until_armed_and_unlocked():
     assert not ok and "kill switch" in why.lower() and argv is None
 
 
-def test_prepare_authorizes_with_gate_and_tool():
+def test_prepare_refused_even_with_gate_and_tool_freq_unverifiable():
+    # CL2-fix2 R6: txguard issues only for a command whose frequency it can read and match to the
+    # authorization. `wsjtx` takes its dial frequency inside the app, so the gate cannot verify
+    # it: refused even armed + unlocked + installed (stricter than before; Tk tool, CL8 retirement).
     txguard.arm(True)
     txguard.unlock_session(True)
     ok, why, argv = digimodes.prepare("wspr", callsign="KD0ABC",
                                       settings={"tx_enabled": True, "callsign": "KD0ABC"},
                                       which=_which({"wsjtx"}))
-    assert ok and argv.argv == ("wsjtx",) and "WSPR" in why        # a single-use ticket (CL2/G11)
+    assert not ok and argv is None and "cannot verify the frequency" in why, why
 
 
 def test_prepare_rejects_unknown_mode():

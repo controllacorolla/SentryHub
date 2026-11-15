@@ -28,6 +28,11 @@ DEFAULTS = {"broker": "127.0.0.1", "port": 1883, "topic": "#", "hosts": [],
 
 
 # ---- pure helpers (tested) ------------------------------------------------------------------
+# CL2-fix2 R1: the only program this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("ssh",))
+
+
 def fmt_rssi(rssi):
     """RSSI dBm -> a short strength word + bar glyph. None -> unknown."""
     if rssi is None:
@@ -130,21 +135,109 @@ def authorize_mqtt_publish(broker):
     return engagement.authorize_action("devterm:mqtt-publish", broker, kind="ip")
 
 
+def own_addresses():
+    """Every IP address on this device's interfaces (getifaddrs), as ipaddress objects. Raises
+    OSError when they cannot be listed — callers fail closed (CL2-fix2 R1)."""
+    import ctypes
+    import ctypes.util
+    import ipaddress
+    import socket
+
+    class _IfAddrs(ctypes.Structure):
+        pass
+    _IfAddrs._fields_ = [("ifa_next", ctypes.POINTER(_IfAddrs)), ("ifa_name", ctypes.c_char_p),
+                         ("ifa_flags", ctypes.c_uint), ("ifa_addr", ctypes.c_void_p),
+                         ("ifa_netmask", ctypes.c_void_p), ("ifa_dstaddr", ctypes.c_void_p),
+                         ("ifa_data", ctypes.c_void_p)]
+    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    head = ctypes.POINTER(_IfAddrs)()
+    if libc.getifaddrs(ctypes.byref(head)) != 0:
+        raise OSError(ctypes.get_errno(), "getifaddrs failed")
+    bsd = sys.platform == "darwin" or "bsd" in sys.platform     # sockaddr starts with sa_len
+    out = set()
+    try:
+        p = head
+        while p:
+            sa = p.contents.ifa_addr
+            if sa:
+                raw = ctypes.string_at(sa, 2)
+                fam = raw[1] if bsd else int.from_bytes(raw, sys.byteorder)
+                if fam == socket.AF_INET:
+                    out.add(ipaddress.ip_address(ctypes.string_at(sa + 4, 4)))
+                elif fam == socket.AF_INET6:
+                    out.add(ipaddress.ip_address(ctypes.string_at(sa + 8, 16)))
+            p = p.contents.ifa_next
+    finally:
+        libc.freeifaddrs(head)
+    if not out:
+        raise OSError("no interface addresses found")
+    return out
+
+
+def _self_target(host):
+    """(addresses, refusal): the addresses `host` resolves to, or a refusal when it is this device
+    — loopback, unspecified, localhost, or any address on this device's own interfaces (CL2-fix2
+    R1, owner decision: a remote command must not be a way to run tools on this device)."""
+    import engagement
+    import ipaddress
+    h = str(host or "").strip()
+    if not h or h.startswith("-") or any(c.isspace() for c in h):
+        return None, "host %r is not valid" % (host,)
+    if h.lower().rstrip(".") in ("localhost", "localhost.localdomain", "ip6-localhost"):
+        return None, "refused: %s is this device — SSH only reaches other hosts" % h
+    try:
+        addrs = engagement.pin_host(h)
+    except ValueError as e:
+        return None, "refused: %s" % e
+    if addrs is None:                               # a literal address
+        try:
+            addrs = [str(ipaddress.ip_address(h.strip("[]")))]
+        except ValueError:
+            return None, "refused: %r is not an address or hostname" % h
+    try:
+        mine = own_addresses()
+    except OSError as e:
+        return None, "refused: cannot list this device's addresses (%s) — fail closed" % e
+    for a in addrs:
+        ip = ipaddress.ip_address(a)
+        if getattr(ip, "ipv4_mapped", None):
+            ip = ip.ipv4_mapped
+        if ip.is_loopback or ip.is_unspecified or ip in mine:
+            return None, ("refused: %s resolves to %s, which is this device — SSH only reaches "
+                          "other hosts (a command here would bypass the TX gate)" % (h, ip))
+    return addrs, ""
+
+
 def authorize_ssh_host(host):
     import engagement
+    _a, refusal = _self_target(host)
+    if refusal:
+        return False, refusal
     return engagement.authorize_action("devterm:ssh-open", host, kind="ip")
 
 
 def prepare_ssh(host, cmd):
     """Gate a one-shot remote command. Returns (ok, reason, ticket) for
-    ssh -o BatchMode=yes -o ConnectTimeout=8 <host> <cmd>, run only through the executor."""
+    ssh -o BatchMode=yes -o ConnectTimeout=8 -o HostName=<pinned> -o ProxyCommand=none
+    -o ProxyJump=none <host> <cmd>, run only through the executor.
+
+    CL2-fix2 R1 (owner decision): the target is resolved once and must not be this device; ssh is
+    pinned to that checked address with no proxy hop, so it cannot be redirected back here. The
+    remote command runs on the other host — label-only, and not subject to this device's RF hard
+    lock (none of the suite's radios are involved)."""
     import engagement
-    h = str(host or "").strip()
-    if not h or h.startswith("-"):
-        return False, "host %r is not valid" % (host,), None
-    return engagement.issue("devterm:ssh", h,
-                            argv=["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", h,
-                                  str(cmd)], kind="ip", label="devterm:ssh")
+    addrs, refusal = _self_target(host)
+    if refusal:
+        return False, refusal, None
+    h = str(host).strip()
+    ok, why, t = engagement.issue(
+        "devterm:ssh", addrs[0],
+        argv=["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "HostName=" + addrs[0],
+              "-o", "ProxyCommand=none", "-o", "ProxyJump=none", h, str(cmd)],
+        kind="ip", label="devterm:ssh", also=tuple((a, "ip") for a in addrs[1:]))
+    if ok:
+        why += " — remote command is label-only (runs on the target, not this device's radios)"
+    return ok, why, t
 
 
 def term_launcher():

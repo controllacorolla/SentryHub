@@ -437,6 +437,57 @@ def authorize(mode, freq_hz=None, power_dbm=None, callsign="", settings=None, sa
     return True, "%s: %s — authorized (<= %s dBm)" % (prof["label"], why, want), want
 
 
+# CL2-fix2 R6: TX programs txguard can issue for, with the exact option grammar their argv may
+# use: {program: (frequency flag, {flag: takes_value})}. Anything outside it cannot be parsed, so
+# its frequency cannot be verified, so it is refused (fail closed).
+TX_ARGV_GRAMMAR = {
+    "hackrf_transfer": ("-f", {"-t": True, "-f": True, "-s": True, "-x": True, "-R": False}),
+}
+
+
+def argv_freq_hz(argv):
+    """The frequency (whole Hz) a TX argv keys, or (None, reason) when it cannot be read exactly:
+    unknown program, a path or wrapper as argv[0], an option outside the grammar, a missing,
+    repeated or non-numeric frequency. Returns (hz_or_None, reason)."""
+    toks = [str(a) for a in (argv or ())]
+    if not toks or toks[0] not in TX_ARGV_GRAMMAR:
+        return None, ("cannot verify the frequency of %r — txguard issues only for %s"
+                      % ((toks or ["?"])[0], ", ".join(sorted(TX_ARGV_GRAMMAR))))
+    fflag, grammar = TX_ARGV_GRAMMAR[toks[0]]
+    found, i = [], 1
+    while i < len(toks):
+        t = toks[i]
+        if t not in grammar:
+            return None, "cannot parse %r in the TX command — refusing" % t
+        if grammar[t]:
+            if i + 1 >= len(toks):
+                return None, "%s has no value in the TX command — refusing" % t
+            if t == fflag:
+                found.append(toks[i + 1])
+            i += 2
+        else:
+            i += 1
+    if len(found) != 1:
+        return None, "the TX command must give exactly one %s frequency (found %d)" % (fflag,
+                                                                                    len(found))
+    v = found[0]
+    if not (v.isascii() and v.isdigit()):
+        return None, "TX command frequency %r is not a whole number of Hz — refusing" % v
+    return int(v), ""
+
+
+def argv_matches_freq(argv, freq_hz):
+    """(ok, reason): does the TX argv key exactly the authorized freq_hz?"""
+    hz, why = argv_freq_hz(argv)
+    if hz is None:
+        return False, "TX blocked: " + why
+    want = as_hz(freq_hz)
+    if want is None or hz != want:
+        return False, ("TX blocked: the command keys %d Hz but %s Hz was authorized — refusing"
+                       % (hz, freq_hz))
+    return True, ""
+
+
 def issue_ticket(mode, argv, freq_hz=None, power_dbm=None, callsign="", settings=None,
                  sample_rate=None, label=None, files=None, live=None):
     """authorize() and, on success, a single-use executor ticket bound to exactly this argv. The
@@ -446,6 +497,11 @@ def issue_ticket(mode, argv, freq_hz=None, power_dbm=None, callsign="", settings
     ok, why, power = authorize(mode, freq_hz, power_dbm, callsign, settings, sample_rate)
     if not ok:
         return False, why, None, 0
+    # CL2-fix2 R6: the command must key exactly the frequency that was authorized — a 1090 MHz
+    # argv on a 915 MHz authorization is refused, and so is any argv whose frequency cannot be read.
+    f_ok, f_why = argv_matches_freq(argv, freq_hz)
+    if not f_ok:
+        return False, f_why, None, 0
     import executor
 
     def recheck():

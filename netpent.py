@@ -12,6 +12,11 @@ import sys
 import engagement
 
 
+# CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("nmap", "arp-scan"))
+
+
 def _ping_sweep_argv(cidr):
     return ["nmap", "-sn", cidr]
 

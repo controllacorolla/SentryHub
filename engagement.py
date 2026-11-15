@@ -566,12 +566,15 @@ def check(action, target, kind=None):
         binding
 
 
-def authorize_action(action, target, evidence_chain=None, kind=None):
+def authorize_action(action, target, evidence_chain=None, kind=None, binding=None):
     """Gate one active action against `target`. Returns (ok, reason). On success, records the action
-    to the in-session trail and, if given, to the evidence chain."""
-    ok, why, binding = check(action, target, kind)
+    to the in-session trail and, if given, to the evidence chain. `binding` overrides the recorded
+    binding when the caller knows the command is less bound than the target (e.g. "label-only"
+    for written content the scope cannot bind — CL2-fix2 R5)."""
+    ok, why, chk_binding = check(action, target, kind)
     if not ok:
         return False, why
+    binding = binding or chk_binding
     e = _eng()
     rec = {"t": _now(), "action": action, "target": str(target), "engagement": e["name"],
            "operator": e["operator"], "binding": binding}
@@ -586,8 +589,38 @@ def authorize_action(action, target, evidence_chain=None, kind=None):
     return True, why
 
 
+# CL2-fix2 R1: argv[0] basenames the engagement gate never runs, whatever a module declares —
+# each can execute an arbitrary second program the allowlist would never see.
+NEVER_PROGRAMS = frozenset((
+    "sh", "bash", "zsh", "dash", "ash", "ksh", "csh", "tcsh", "fish", "busybox", "env", "sudo",
+    "doas", "su", "pkexec", "runuser", "xargs", "nohup", "timeout", "stdbuf", "nice", "ionice",
+    "setsid", "chrt", "taskset", "exec", "command", "perl", "ruby", "node", "nodejs", "php",
+    "lua", "tclsh", "wish", "osascript", "awk", "gawk", "mawk", "find", "script", "watch",
+))
+_INTERP = re.compile(r"^(python|pypy|perl|ruby|node|php|lua)[0-9.]*$", re.I)
+
+
+def program_allowed(argv, allowed, module="?"):
+    """(ok, reason): may the engagement gate run argv? argv[0]'s basename must be in `allowed`
+    (the calling module's ALLOWED_PROGRAMS) and must not be a shell / interpreter / wrapper."""
+    toks = [str(a) for a in (argv or ())]
+    if not toks or not toks[0].strip():
+        return False, "refused: empty command"
+    prog = toks[0]
+    if os.sep in prog or "/" in prog or not prog or prog != prog.strip():
+        # a bare name only: a path (or a renamed / symlinked binary) is never what a module declared
+        return False, "refused: program %r is not a bare declared tool name" % (toks[0],)
+    if prog.lower() in NEVER_PROGRAMS or _INTERP.match(prog):
+        return False, ("refused: %s is a shell, interpreter or wrapper — the engagement gate runs "
+                       "only a module's declared tools, never a program that runs another" % prog)
+    if not isinstance(allowed, (frozenset, set, tuple, list)) or prog not in allowed:
+        return False, ("refused: %s is not a program %s may run (ALLOWED_PROGRAMS) — the "
+                       "engagement gate runs declared tools only" % (prog, module))
+    return True, ""
+
+
 def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=None, label=None,
-          files=None, meta=None, also=()):
+          files=None, meta=None, also=(), binding=None):
     """authorize_action() and, on success, a single-use executor ticket for exactly this argv (or
     device payload), re-checked against this gate at spawn. Returns (ok, reason, ticket).
 
@@ -597,13 +630,25 @@ def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=Non
 
     Before anything is recorded (CL2-fix, owner decisions 1 and 2): a command that keys an SDR
     transmitter is refused outright — only txguard may authorize those — and a command that
-    radiates (rfemit) is refused while the env hard lock or the TX kill switch silences RF."""
+    radiates (rfemit) is refused while the env hard lock or the TX kill switch silences RF.
+
+    CL2-fix2 R1 (owner decision): a process ticket is minted only for a program the CALLING module
+    declares in its ALLOWED_PROGRAMS (basename of argv[0]), and never for a shell, interpreter or
+    wrapper — an allowlist, so quoting / globbing / renamed binaries / unknown transmitters cannot
+    reach the executor through this gate. rfemit stays as defence in depth (checked first, so a
+    named transmitter gets the clearer txguard reason)."""
     import rfemit
     emitter = rfemit.classify(argv=argv, payload=payload, meta=meta)
     if emitter == rfemit.SDR_TX:
         return False, ("refused: %s keys an SDR transmitter — only the TX gate (txguard: band "
                        "plan, protected ranges, power cap) may authorize it, never an engagement"
                        % (str((argv or ["?"])[0]),)), None
+    if argv is not None:
+        caller = sys._getframe(1).f_globals
+        ok_prog, why_prog = program_allowed(argv, caller.get("ALLOWED_PROGRAMS"),
+                                            caller.get("__name__", "?"))
+        if not ok_prog:
+            return False, why_prog, None
     pre_ok, pre_why, _b = check(action, target, kind)        # scope first: the clearer reason
     if not pre_ok:
         return False, pre_why, None
@@ -617,7 +662,7 @@ def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=Non
         xok, xwhy, _b = check(action, xt, xk)
         if not xok:
             return False, xwhy, None
-    ok, why = authorize_action(action, target, evidence_chain, kind)
+    ok, why = authorize_action(action, target, evidence_chain, kind, binding=binding)
     if not ok:
         return False, why, None
     import executor

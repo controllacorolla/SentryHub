@@ -29,9 +29,13 @@ def test_handshake_capture_in_scope():
 
 
 def test_out_of_scope_blocked():
-    E.start("own-net audit", "self-owned", ["AA:BB:CC:*"], "KD0ABC")
+    assert E.start("own-net audit", "self-owned", ["AA:BB:CC:*"], "KD0ABC")[0]
+    txguard.arm(True)    # CL2-fix2 R2: armed + unlocked, so only SCOPE can refuse (not the RF gate)
+    txguard.unlock_session(True)
     ok, why, argv = W.prepare("deauth", "99:99:99:99:99:99", client="AA:BB:CC:00:00:01")
-    assert not ok and argv is None
+    assert not ok and argv is None and "not in the engagement scope" in why, why
+    ok, why, argv = W.prepare("deauth", "AA:BB:CC:00:00:02", client="AA:BB:CC:00:00:01")
+    assert ok, why                                    # same gate state, in scope: issued
 
 
 def test_deauth_is_capped_not_a_flood():

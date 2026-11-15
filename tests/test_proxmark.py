@@ -37,10 +37,12 @@ def test_active_op_allowed_in_scope():
 
 
 def test_active_op_blocked_out_of_scope():
-    E.start("badge audit", "ROE-7", ["uid:2006F623AE"], "KD0ABC")
+    assert E.start("badge audit", "ROE-7", ["uid:2006F623AE"], "KD0ABC")[0]
+    txguard.arm(True)    # CL2-fix2 R2: armed + unlocked, so only SCOPE can refuse (not the RF gate)
+    txguard.unlock_session(True)
     ok, why, cmd = P.prepare("hf_mf_sim", target="uid:DEADBEEF", uid="DEADBEEF",
                              read_uid=lambda: "DEADBEEF")
-    assert not ok and cmd is None
+    assert not ok and cmd is None and "not in the engagement scope" in why, why
 
 
 def test_command_formatting_and_missing_param():

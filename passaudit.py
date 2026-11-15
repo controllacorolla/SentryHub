@@ -16,6 +16,11 @@ import engagement
 HASHCAT_MODES = {"wpa_eapol": 22000, "pmkid": 22000, "wpa_pmk": 2500}
 
 
+# CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("hcxpcapngtool", "hashcat", "aircrack-ng"))
+
+
 def hcx_convert_argv(pcapng, out_hc22000):
     """Convert a capture to the hashcat 22000 format."""
     return ["hcxpcapngtool", "-o", out_hc22000, pcapng]
