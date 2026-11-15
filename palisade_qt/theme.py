@@ -172,11 +172,11 @@ QPushButton.navkey_on {{ background: {check_bg}; border: {bw} solid {accent}; bo
                          padding: 0; min-height: 0; text-align: left; }}
 QLabel.navcall {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QLabel.navcall_on {{ color: {check_fg}; font-size: {status}px; font-weight: 600; }}
-QLabel.navlabel {{ color: {muted}; font-size: 11px; }}
-QLabel.navlabel_on {{ color: {check_fg}; font-size: 11px; }}
+QLabel.navlabel {{ color: {muted}; font-size: {status}px; }}
+QLabel.navlabel_on {{ color: {check_fg}; font-size: {status}px; }}
 QFrame.slot {{ background: transparent; border: none; border-left: {bw} solid {hairline}; }}
 QFrame.slot:focus {{ border: {focus_w} solid {focus}; }}
-QLabel.slotcap {{ color: {muted}; font-size: 10px; }}
+QLabel.slotcap {{ color: {muted}; font-size: {status}px; letter-spacing: 1px; }}
 QLabel.slotval {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QLabel#dtg {{ color: {text}; font-size: {status}px; }}
 QSlider#vol::groove:horizontal {{ height: 4px; background: {hairline}; border-radius: 2px; }}

@@ -149,3 +149,40 @@ python3 plan/briefs/CL1-renders/render.py <outdir> <dark|light|sun> <live|demo>
    transmit-capable children once CL2 registers them?
 6. **Bus source rename.** Detector alerts now come from `"SWEEP"` instead of `"RECON"`. Keep, or
    revert until CL7?
+
+---
+
+## Planner follow-up (commit after `a716e2f`, run here on Python 3.13.18 / PySide6 6.12 / xvfb)
+
+Decisions on the open questions, applied in this commit so the re-audit sees one branch:
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Force-add 220 PNGs? | **No.** Binary renders stay out of the repo. Before/after contact sheets were sent to the owner directly; `render.py` regenerates the set. |
+| 2 | PANIC key | **Shift+Esc is the primary PANIC chord** (no Fn layer, one hand, top-left of the uConsole keyboard); F12 stays as an alias. |
+| 3 | 11 px nav labels | **Rejected — nothing in the strip may be under 16 px.** At ~294 ppi an 11 px caption is under 1 mm tall. Nav keys are now one line, `<n> CALLSIGN` at 16 px; the function word is in the tooltip, the key map (`?`) and the palette (`/`). Status-slot captions are inline at 16 px (`SDR`, `TX`, `ENG`); MODE and ALERTS need none (the word / the triangle is the caption). Worst-case strip width 1268 px. |
+| 4 | UI scale 1.0 | **Correct.** The brief's sizes are physical pixels on the 1280×720 panel; Qt's DPI auto-scaling would shrink the canvas. Keep `PALISADE_UI_SCALE` as the override. |
+| 5 | PANIC and receive decoders | **PANIC stops everything, receive included.** That is the point of a panic key; CL2's registry will make the kill list explicit, not narrower. |
+| 6 | Bus source `"SWEEP"` | **Keep.** The source is the key the operator will look at. |
+
+Also in this commit:
+
+- **Owner rule (2026-11-15): all maps are DARK or SAT.** `kit/mappanel.py` offers only those two
+  (`STYLES = ["dark", "satellite"]`), defaults to DARK in every theme including light and SUN,
+  and the offline fallback is black, never a light scope. Test: `test_maps_are_dark_or_satellite_only`.
+- `OWNER_LABELS` shortened to ≤ 8 characters (`PROWL SC`, `PROWL FM`, `PROWL WX`, `SSTV`) so
+  the owner is the SDR slot's state word; `HELD` is in the tooltip.
+- **Reliability fix found while running on 3.13:** `test_all_callsigns_build_in_both_themes`
+  segfaulted 1 run in 3 (`Shiboken::BindingManager::runDeletionInMainThread`). A page that
+  becomes cyclic garbage is collected by whichever thread triggers the GC — a worker QThread —
+  and shiboken then deletes a QWidget off the GUI thread. Pages and their joined workers are
+  now retained for the life of the process (`app._retain`), which is what the running app does
+  anyway. Reproducer `/tmp/crash.py`-style loop (40 × build/start/stop of every page) went
+  from crashing by iteration ≤ 3 to 4 × 40 clean. This is R-class territory and should be
+  re-checked under CL2.
+- New tests: `test_maps_are_dark_or_satellite_only`, `test_strip_has_no_text_under_16px_at_all`.
+
+Suite on this machine (Python 3.13.18, xvfb, no `tkinter`):
+`xvfb-run -a python3 -m pytest -q tests` → **912 passed, 1 failed, 4 skipped, 7 errors** (9:16). Two failures are pre-existing on `main` and unrelated to CL1:
+`tests/test_audit_tiles.py::test_undecodable_tile_is_marked_failed` (fails on `main` too) and
+the seven `tests/test_shell.py` errors (`No module named 'tkinter'` in this container).

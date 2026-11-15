@@ -20,7 +20,7 @@ import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .app import PalisadeApp
+from .app import PalisadeApp, _retain
 from . import theme, eventbus
 from .kit import FeedTable, micro
 from .kit.components import note
@@ -323,6 +323,7 @@ class OverwatchApp(PalisadeApp):
             w.stop()
             w.quit()
             w.wait(3000)
+            _retain(w)
         self._workers = []
         super().stop()
 

@@ -22,7 +22,7 @@ import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .app import PalisadeApp
+from .app import PalisadeApp, _retain
 from . import theme, eventbus
 from .kit import ControlBar, FeedTable, DetailCard, micro, card
 from .worker import Worker
@@ -640,6 +640,7 @@ class ForgeApp(PalisadeApp):
             w.stop()
             w.quit()
             w.wait(3000)
+            _retain(w)
         self._workers = []
         super().stop()
 

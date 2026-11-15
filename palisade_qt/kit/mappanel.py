@@ -1,7 +1,8 @@
 """Map panel — PyQtGraph scatter with range rings and optional tile backgrounds.
 
-Supports three map styles: scope (plain dark/light), dark (CartoDB dark_nolabels),
-and satellite (Esri World Imagery). Tiles are fetched in a background thread and
+Map styles are DARK (CartoDB dark_nolabels) or SAT (Esri World Imagery) only — owner rule
+(2026-11-15): "all maps need to be satellite or dark", in every theme including light and sun.
+The plain black "scope" background is only the offline fallback until tiles arrive. Tiles are fetched in a background thread and
 cached locally under ~/.cache/palisade/tiles/.
 """
 import pyqtgraph as pg
@@ -10,8 +11,9 @@ from PySide6 import QtWidgets, QtCore
 from .. import theme
 from .tiles import TileLayer
 
-STYLES_DARK = ["scope", "dark", "satellite"]
-STYLES_LIGHT = ["scope", "light", "satellite"]
+STYLES = ["dark", "satellite"]          # owner rule: satellite or dark, nothing else
+STYLES_DARK = STYLES
+STYLES_LIGHT = STYLES
 
 
 class MapPanel(QtWidgets.QFrame):
@@ -76,37 +78,29 @@ class MapPanel(QtWidgets.QFrame):
         self._label_color = tok["text"]          # legible on every theme (was a fixed light grey)
         lay.addWidget(self.plot)
 
-        self._styles = STYLES_DARK if mode == "dark" else STYLES_LIGHT
+        self._styles = STYLES
         self._combo = QtWidgets.QComboBox(self)
-        tile_label = "DARK" if mode == "dark" else "LIGHT"
-        self._combo.addItems(["SCOPE", tile_label, "SAT"])
+        self._combo.addItems(["DARK", "SAT"])
         self._combo.setFixedWidth(104)
-        if mode == "dark":
-            self._combo.setStyleSheet(
-                "QComboBox { background: rgba(0,0,0,160); color: #AAB; "
-                "border: 1px solid #333; font-size: 16px; padding: 2px 4px; }"
-                "QComboBox::drop-down { border: none; }"
-                "QComboBox QAbstractItemView { background: #181C22; color: #AAB; "
-                "selection-background-color: #2A2F38; }")
-        else:
-            self._combo.setStyleSheet(
-                "QComboBox { background: rgba(255,255,255,200); color: #334; "
-                "border: 1px solid #CCC; font-size: 16px; padding: 2px 4px; }"
-                "QComboBox::drop-down { border: none; }"
-                "QComboBox QAbstractItemView { background: #F4F5F7; color: #334; "
-                "selection-background-color: #DEE1E6; }")
+        self._combo.setToolTip("map tiles: dark or satellite (owner rule)")
+        self._combo.setStyleSheet(
+            "QComboBox { background: rgba(0,0,0,170); color: #DDD; "
+            "border: 1px solid #555; font-size: 16px; padding: 2px 4px; }"
+            "QComboBox::drop-down { border: none; }"
+            "QComboBox QAbstractItemView { background: #181C22; color: #DDD; "
+            "selection-background-color: #2A2F38; }")
         self._combo.currentIndexChanged.connect(self._style_changed)
         self._combo.raise_()
 
         self._tiles = TileLayer(home_lat=home_lat, home_lon=home_lon,
                                 span_nm=span_nm, parent=self)
         self._tiles.ready.connect(self._on_tiles)
-        self._current_style = "scope"
-
-        if mode == "dark":
-            self._combo.setCurrentIndex(1)
-        else:
-            self._combo.setCurrentIndex(0)
+        self._current_style = "dark"
+        # black until tiles land: the offline fallback is dark in every theme, never light
+        self.plot.setBackground("#000000")
+        self._set_overlay_colors((255, 255, 255, 50), "#888")
+        self._combo.setCurrentIndex(0)
+        self._style_changed(0)
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
@@ -115,13 +109,10 @@ class MapPanel(QtWidgets.QFrame):
     def _style_changed(self, idx):
         style = self._styles[idx]
         self._current_style = style
-        if style == "scope":
-            self._tile_img.clear()
-            tok = theme.tokens(self._mode)
-            self.plot.setBackground(tok["well"])
-            self._set_overlay_colors(tok["hairline"], tok["muted"])
-        else:
-            self._tiles.fetch(style)
+        self._tiles.fetch(style)
+
+    def current_style(self):
+        return self._current_style
 
     def _on_tiles(self, arr, x0, y0, x1, y1):
         self._tile_img.setImage(arr)

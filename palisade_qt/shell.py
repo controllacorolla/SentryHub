@@ -49,7 +49,8 @@ FOLDED = {
     "MORE": ("SYSTEM", "SETTINGS", MoreApp),
 }
 _INNER = {"ATLAS": AtlasApp, "PROWL": ProwlApp}        # the app behind a composite's first part
-PANIC_KEY = "F12"
+PANIC_KEY = "F12"                    # alias
+PANIC_CHORD = "Shift+Esc"            # primary: no Fn layer on the uConsole keyboard, one hand
 SCREEN = (1280, 720)
 
 _TEXT_INPUTS = (QtWidgets.QLineEdit, QtWidgets.QAbstractSpinBox, QtWidgets.QPlainTextEdit,
@@ -341,7 +342,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
             isinstance(focus, QtWidgets.QComboBox) and focus.isEditable())
         overlay = self.top_overlay()
 
-        if key == QtGui.QKeySequence(PANIC_KEY)[0].key():      # works everywhere, even while typing
+        if key == QtGui.QKeySequence(PANIC_KEY)[0].key() or (
+                key == K.Key_Escape and mods & K.ShiftModifier):   # works everywhere, even while typing
             self.panic()
             return True
         if key == K.Key_Escape:

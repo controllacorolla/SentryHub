@@ -401,7 +401,7 @@ KEYMAP = [
     ("A", "alerts drawer"),
     ("M", "mute"),
     ("?", "this key map"),
-    ("F12", "PANIC — disarm TX, end the engagement, kill child processes"),
+    ("Shift+Esc  (or F12)", "PANIC — disarm TX, end the engagement, kill child processes"),
     ("Tab", "move focus between controls"),
 ]
 

@@ -83,22 +83,20 @@ class StatusSlot(QtWidgets.QFrame):
         self.caption = caption
         self._max = max_chars
         self._full = ""
-        v = QtWidgets.QVBoxLayout(self)
-        v.setContentsMargins(5, 2, 3, 2)
-        v.setSpacing(0)
-        top = QtWidgets.QHBoxLayout()
-        top.setContentsMargins(0, 0, 0, 0)
-        top.setSpacing(4)
+        # one row: CAPTION glyph VALUE, every character at status size (16 px). A caption that
+        # the value already implies (MODE: LIVE/DEMO, ALERTS: the triangle) is passed as "".
+        row = QtWidgets.QHBoxLayout(self)
+        row.setContentsMargins(5, 0, 4, 0)
+        row.setSpacing(4)
+        self.cap = QtWidgets.QLabel(caption)
+        self.cap.setProperty("class", "slotcap")
+        self.cap.setVisible(bool(caption))
+        row.addWidget(self.cap)
         self.glyph = ShapeGlyph()
-        top.addWidget(self.glyph)
-        cap = QtWidgets.QLabel(caption)
-        cap.setProperty("class", "slotcap")
-        top.addWidget(cap)
-        top.addStretch(1)
-        v.addLayout(top)
+        row.addWidget(self.glyph)
         self.value = QtWidgets.QLabel("—")
         self.value.setProperty("class", "slotval")
-        v.addWidget(self.value)
+        row.addWidget(self.value, 1)
 
     def set(self, word, shape, color, detail=""):
         """word is the state; detail (owner / scope) is appended and elided, full text in the tip."""
@@ -125,7 +123,9 @@ class StatusSlot(QtWidgets.QFrame):
 
 
 class NavKey(QtWidgets.QPushButton):
-    """A numbered page key: '<n> CALLSIGN' with the function label under it, always visible."""
+    """A numbered page key: '<n> CALLSIGN' at status size. The function word lives in the
+    tooltip, the key map (?) and the palette (/): on a 5" ~294 ppi panel an 11 px caption is
+    under 1 mm tall, so the owner ruled out any strip text below 16 px (planner decision, CL1)."""
 
     def __init__(self, number, callsign, label, parent=None):
         super().__init__(parent)
@@ -134,16 +134,17 @@ class NavKey(QtWidgets.QPushButton):
         self.setFocusPolicy(QtCore.Qt.TabFocus)
         self.setFixedHeight(STRIP_H - 4)
         v = QtWidgets.QVBoxLayout(self)
-        v.setContentsMargins(4, 1, 4, 1)
+        v.setContentsMargins(2, 1, 2, 1)
         v.setSpacing(0)
         self.call = QtWidgets.QLabel("%d %s" % (number, callsign))
         self.call.setProperty("class", "navcall")
-        self.label = QtWidgets.QLabel(label)
-        self.label.setProperty("class", "navlabel")
-        for w in (self.call, self.label):
-            w.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-            v.addWidget(w)
+        self.call.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        v.addStretch(1)
+        v.addWidget(self.call)
+        v.addStretch(1)
+        self.function = label
         self.setToolTip("%d — %s: %s" % (number, callsign, label))
+        self.setAccessibleName("%s %s" % (callsign, label))
 
     def sizeHint(self):
         return self.layout().sizeHint()
@@ -155,8 +156,7 @@ class NavKey(QtWidgets.QPushButton):
         suffix = "_on" if on else ""
         self.setProperty("class", "navkey" + suffix)
         self.call.setProperty("class", "navcall" + suffix)
-        self.label.setProperty("class", "navlabel" + suffix)
-        for w in (self, self.call, self.label):
+        for w in (self, self.call):
             w.style().unpolish(w)
             w.style().polish(w)
 
@@ -206,13 +206,13 @@ class TopBar(QtWidgets.QFrame):
 
         # the four fixed, shell-owned status slots
         self.slots = {}
-        for key, cap, width in (("mode", "MODE", 5), ("radio", "RADIO", 10),
-                                ("tx", "TX", 9), ("engagement", "ENGAGE", 9)):
+        for key, cap, width in (("mode", "", 4), ("radio", "SDR", 8),
+                                ("tx", "TX", 9), ("engagement", "ENG", 6)):
             s = StatusSlot(cap, max_chars=width)
             s.clicked.connect(lambda k=key: self.slot_clicked.emit(k))
             self.slots[key] = s
             lay.addWidget(s)
-        self.alerts = StatusSlot("ALERTS", max_chars=6)
+        self.alerts = StatusSlot("", max_chars=3)
         self.alerts.clicked.connect(lambda: self.slot_clicked.emit("alerts"))
         lay.addWidget(self.alerts)
 
@@ -226,7 +226,7 @@ class TopBar(QtWidgets.QFrame):
 
         # audio: mute + volume, wired to the real sink; disabled (and saying why) when there is none
         self.audio = audio if audio is not None else AudioSink()
-        self.mute = QtWidgets.QPushButton("MUTE")
+        self.mute = QtWidgets.QPushButton("♪")
         self.mute.setCheckable(True)
         self.mute.setFocusPolicy(QtCore.Qt.TabFocus)
         self.mute.setFixedHeight(STRIP_H - 10)
@@ -303,9 +303,12 @@ class TopBar(QtWidgets.QFrame):
             self.slots["mode"].set("LIVE", "dot", t["text"])
         word, owner = radio
         if word == "HELD":
-            self.slots["radio"].set("HELD", "dot", t["accent"], owner)
+            # the owner IS the state word (8 chars max: OWNER_LABELS); HELD is in the tooltip
+            self.slots["radio"].set(owner or "HELD", "dot", t["accent"])
+            self.slots["radio"].setToolTip("SDR: HELD by %s" % owner)
         elif word == "ACQUIRING":
-            self.slots["radio"].set("ACQUIRING", "half", t["warn"], owner)
+            self.slots["radio"].set("ACQUIR…", "half", t["warn"])
+            self.slots["radio"].setToolTip("SDR: ACQUIRING for %s" % owner)
         else:
             self.slots["radio"].set("FREE", "ring", t["muted"])
         if tx == "ARMED":
@@ -316,14 +319,15 @@ class TopBar(QtWidgets.QFrame):
             self.slots["tx"].set("OFF", "ring", t["muted"])
         eword, scope = engagement[0], engagement[1]
         if eword == "ACTIVE":
-            self.slots["engagement"].set("ACTIVE", "diamond", t["warn"], scope)
+            self.slots["engagement"].set("ACTIVE", "diamond", t["warn"])
+            self.slots["engagement"].setToolTip("ENGAGEMENT: ACTIVE · %s" % scope)
         else:
             self.slots["engagement"].set("NONE", "ring", t["muted"])
 
     def set_alerts(self, unacked):
         t = self._tok
         if unacked:
-            self.alerts.set("%d NEW" % unacked if unacked < 100 else "99+", "tri", t["warn"])
+            self.alerts.set("%d" % unacked if unacked < 100 else "99+", "tri", t["warn"])
             self.alerts.setToolTip("ALERTS: %d unacknowledged" % unacked)
         else:
             self.alerts.set("0", "ring", t["muted"])
