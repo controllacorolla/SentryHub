@@ -1,42 +1,390 @@
-"""FORGE — hardware & IO bench (archetype: serial/console + controls).
+"""FORGE — hardware & IO bench (the physical-layer pentest callsign).
 
-Absorbs hwlab, buslab, canbus, proxmark, flipper. Built from the kit: StatusHeader, ControlBar
-(port + baud + send), a console well (read-only stream) + a value readout. No SDR lease — this
-is the serial/I2C/GPIO bench. The worker streams device lines; demo synthesises an ESP32-style
-boot + sensor stream, on-device it reads the real serial port (engine unchanged).
+Sub-tabs: SERIAL / BUS / RFID / RADIO / SENSORS. Every backend is reused AS-IS — UI + wiring only.
+
+Two gate types, same model as RECON (the engine enforces them, the UI only reflects state):
+  * engagement-gated (touch-the-target): canbus TX (`canbus.prepare_send`), proxmark write/clone/sim
+    (`proxmark.prepare`), usbhid inject (`usbhid.prepare`), flipper emit, buslab flash/JTAG write —
+    all call `engagement.authorize_action(...)` and produce no command without an active, in-scope
+    engagement (opened in RECON's ENGAGE tab).
+  * txguard-gated (RF TX): replay (`replay.prepare_replay` → `txguard.authorize`) — needs an explicit
+    per-burst confirm AND txguard armed/unlocked/band. Shown as a "TX GATED" banner.
+
+Passive read/monitor is always available: the hwlab serial console, canbus monitor, proxmark/flipper
+reads, rollcode RX analysis, sensors readout. No device → an honest "NO DEVICE" standby per tab; demo
+is the only synthetic path (flagged). Offscreen/offline seams mean tests never open real serial/USB/CAN.
+This UI never spawns a produced write/TX command and wires no new TX/inject path.
 """
-import random
+import os
+import sys
+import threading
+import time
 
-from PySide6 import QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from .app import PalisadeApp
-from . import theme
-from .kit import ControlBar, micro
+from . import theme, eventbus
+from .kit import ControlBar, FeedTable, DetailCard, micro, card
 from .worker import Worker
 
-BOOT = ["ets Jun  8 2016 00:22:57", "rst:0x1 (POWERON_RESET)", "mode:DIO, clock div:1",
-        "[boot] FORGE bench firmware v0.4 (demo)", "[i2c] BME280 @ 0x76", "ready >"]
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 
+SUBTABS = ("SERIAL", "BUS", "RFID", "RADIO", "SENSORS")
+
+
+def _offscreen():
+    return bool(os.environ.get("PALISADE_OFFLINE") or
+                os.environ.get("QT_QPA_PLATFORM") == "offscreen")
+
+
+def _engagement():
+    import engagement
+    return engagement
+
+
+def _tx_state():
+    """(armed, unlocked) for the TX GATED banner — read-only view of txguard's kill switch."""
+    try:
+        import txguard
+        st = txguard._STATE
+        return bool(st.get("armed")), bool(st.get("unlocked"))
+    except Exception:
+        return False, False
+
+
+# ======================= colored console (the multiplexer pane) =======================
+
+class ConsolePane(QtWidgets.QFrame):
+    """One device's console: colored scrollback + an optional input line. The 'colored multiplexed
+    console' is a tab of these, one per connected device."""
+
+    KIND_TOKEN = {"tx": "accent", "rx": "text", "sys": "muted", "ok": "live", "deny": "warn"}
+
+    def __init__(self, tok, on_input=None, parent=None):
+        super().__init__(parent)
+        self.setProperty("class", "well")
+        self._tok = tok
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
+        self.view = QtWidgets.QPlainTextEdit()
+        self.view.setReadOnly(True)
+        self.view.setMaximumBlockCount(600)
+        self.view.setStyleSheet("background:transparent; border:none; font-family:monospace;")
+        lay.addWidget(self.view, 1)
+        if on_input is not None:
+            self.input = QtWidgets.QLineEdit()
+            self.input.setPlaceholderText("send to device…")
+            self.input.returnPressed.connect(lambda: self._send(on_input))
+            lay.addWidget(self.input)
+        else:
+            self.input = None
+
+    def _send(self, on_input):
+        text = self.input.text()
+        if not text:
+            return
+        self.append(text, "tx")
+        on_input(text)
+        self.input.clear()
+
+    def append(self, text, kind="rx"):
+        cursor = self.view.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        fmt = cursor.charFormat()
+        fmt.setForeground(QtGui.QColor(self._tok[self.KIND_TOKEN.get(kind, "text")]))
+        prefix = {"tx": "⟶ ", "sys": "· ", "ok": "✓ ", "deny": "✗ "}.get(kind, "  ")
+        cursor.insertText(prefix + text + "\n", fmt)
+        self.view.setTextCursor(cursor)
+        self.view.ensureCursorVisible()
+
+    def clear(self):
+        self.view.clear()
+
+
+def _no_device(tok, text):
+    """A standby panel for a tab whose device is absent."""
+    f = QtWidgets.QFrame()
+    f.setProperty("class", "well")
+    v = QtWidgets.QVBoxLayout(f)
+    v.addStretch(1)
+    lbl = QtWidgets.QLabel("NO DEVICE")
+    lbl.setAlignment(QtCore.Qt.AlignCenter)
+    lbl.setStyleSheet("color:%s; font-size:18px; letter-spacing:2px;" % tok["muted"])
+    v.addWidget(lbl)
+    hint = QtWidgets.QLabel(text)
+    hint.setAlignment(QtCore.Qt.AlignCenter)
+    hint.setProperty("class", "micro")
+    v.addWidget(hint)
+    v.addStretch(1)
+    return f
+
+
+# ======================= workers (hermetic) =======================
 
 class SerialWorker(Worker):
-    def __init__(self, demo=True, parent=None):
-        super().__init__(demo=demo, interval_ms=500, parent=parent)
-        self._boot = list(BOOT)
-        self._n = 0
+    """hwlab serial console — DemoSerial in demo, SerialReader live (via a seam). Reuses read_lines
+    / write / clean_text AS-IS. No device -> standby; tests never open a real port."""
+
+    def __init__(self, demo=True, port=None, baud=115200, parent=None):
+        super().__init__(demo=demo, interval_ms=300, parent=parent)
+        self.port, self.baud = port, baud
+        self._reader = None
+        self._pending = []
+        self._lock = threading.Lock()           # guards _pending across GUI/worker threads
+
+    def _open(self):
+        import hwlab
+        if self.demo:
+            return hwlab.DemoSerial()           # pure synthetic ESP32, safe offscreen
+        if _offscreen() or not self.port:
+            return None
+        try:
+            return hwlab.SerialReader(self.port, self.baud)
+        except Exception:
+            return None
+
+    def write(self, text):
+        with self._lock:
+            self._pending.append(text)
 
     def step(self):
-        if self._boot:
-            self.row.emit({"line": self._boot.pop(0), "kind": "sys"})
-            return
-        self._n += 1
-        self.row.emit({"line": "[%6d] temp=%.1fC hum=%d%% pres=%.1fhPa" % (
-            self._n * 1000, 21 + random.random() * 2, 40 + self._n % 8,
-            1012 + random.random()), "kind": "rx", "temp": 21 + random.random() * 2})
+        import hwlab
+        if self._reader is None:
+            if self._stop:                      # don't re-open a port while shutting down (leak)
+                return
+            self._reader = self._open()
+            if self._reader is None:
+                self.status.emit({"standby": True,
+                                  "sdr": {"text": "NO DEVICE — plug a USB-serial adapter", "ok": False}})
+                return
+            self.row.emit({"kind": "sys", "line": "connected %s" % (self.port or "demo ESP32")})
+            if not self.demo:
+                eventbus.bus.publish(eventbus.decode("FORGE", "SERIAL", self.port or "demo",
+                                                     "serial device connected"))
+        with self._lock:                        # atomic drain -> no lost keystroke on the swap
+            pending, self._pending = self._pending, []
+        for text in pending:
+            try:
+                self._reader.write((text + "\r\n").encode())
+            except Exception:
+                pass
+        try:
+            for line in self._reader.read_lines():
+                self.row.emit({"kind": "rx", "line": hwlab.clean_text(line)})
+        except Exception:
+            pass
 
+    def run(self):
+        try:
+            super().run()
+        finally:                                # close the reader on the WORKER thread, after the
+            self._close_reader()                # loop has exited — no stop()/step() reopen race
+
+    def stop(self):
+        super().stop()                          # set _stop; the run() finally closes the reader
+        if not self.isRunning():                # direct-step tests (no run loop) still clean up
+            self._close_reader()
+
+    def _close_reader(self):
+        if self._reader is not None:
+            try:
+                self._reader.close()
+            except Exception:
+                pass
+            self._reader = None
+
+
+class CanWorker(Worker):
+    """canbus monitor — candump stream parsed + decoded AS-IS (parse_candump/decode). Demo uses
+    canbus.Demo(); live needs SocketCAN (device-only) -> standby here. Receive-only."""
+
+    def __init__(self, demo=True, iface="can0", parent=None):
+        super().__init__(demo=demo, interval_ms=500, parent=parent)
+        self.iface = iface
+        self._demo = None
+        self._bus = None
+
+    def step(self):
+        import canbus
+        if self._bus is None:
+            self._bus = canbus.Bus()
+        if not self.demo:
+            if _offscreen() or not canbus.detect():
+                self.status.emit({"standby": True,
+                                  "sdr": {"text": "NO DEVICE — bring up SocketCAN (can0)", "ok": False}})
+                return
+            return                               # live candump streaming is device-only
+        if self._demo is None:
+            self._demo = canbus.Demo()
+        for _ in range(3):
+            frame = canbus.parse_candump(self._demo.line())
+            if not frame:
+                continue
+            self._bus.add(frame) if hasattr(self._bus, "add") else None
+            dec = canbus.decode(frame)
+            self.row.emit({"frame": frame, "decode": dec, "demo": True})
+
+
+class SensorWorker(Worker):
+    """sensors readout — rtl_433 ISM decode (parse_report) AS-IS. Demo uses demo_report(); live
+    needs rtl_433 + the SDR (device-only) -> standby. Receive-only."""
+
+    def __init__(self, demo=True, parent=None):
+        super().__init__(demo=demo, interval_ms=1500, parent=parent)
+        self._t0 = time.time()
+
+    def step(self):
+        import sensors
+        if not self.demo:
+            import shutil
+            if _offscreen() or not shutil.which("rtl_433"):
+                self.status.emit({"standby": True,
+                                  "sdr": {"text": "NO DEVICE — rtl_433 + SDR for ISM sensors", "ok": False}})
+                return
+            return                               # live rtl_433 streaming is device-only
+        rep = sensors.parse_report(sensors.demo_report(self._t0))
+        if rep:
+            key, title, data = rep
+            self.row.emit({"key": key, "title": title, "reading": sensors.primary_reading(data),
+                           "data": data, "demo": True})
+
+
+# ======================= gate cards =======================
+
+class _GateCardBase(QtWidgets.QFrame):
+    """Shared chrome for a gated action: a title, a status line reflecting the gate, and a result
+    line. Subclasses add inputs + an action that calls the engine's prepare() AS-IS."""
+
+    def __init__(self, title, app, tok, parent=None):
+        super().__init__(parent)
+        self.setProperty("class", "card")
+        self._app = app
+        self._tok = tok
+        self.lay = QtWidgets.QVBoxLayout(self)
+        self.lay.setContentsMargins(12, 10, 12, 10)
+        self.lay.setSpacing(6)
+        self.lay.addWidget(micro(title))
+        self.state = QtWidgets.QLabel("")
+        self.state.setWordWrap(True)
+        self.lay.addWidget(self.state)
+        self._controls = []
+
+    def _add(self, w):
+        self.lay.addWidget(w)
+        self._controls.append(w)
+        return w
+
+    def _result_label(self):
+        self.result = QtWidgets.QLabel("")
+        self.result.setProperty("class", "micro")
+        self.result.setWordWrap(True)
+        self.result.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.lay.addWidget(self.result)
+
+    def _show_result(self, ok, reason, payload=None):
+        self.result.setStyleSheet("color:%s;" % (self._tok["live"] if ok else self._tok["warn"]))
+        if ok:
+            tail = ("\n$ %s" % (" ".join(payload) if isinstance(payload, list) else payload)
+                    if payload else "")
+            self.result.setText("AUTHORIZED: %s%s" % (reason, tail))
+            self._app.on_authorized(reason)
+        else:
+            self.result.setText("DENIED: %s" % reason)
+
+
+class EngagementCard(_GateCardBase):
+    """A card whose action is gated by engagement.authorize_action (via the tool's own prepare()).
+    Locked with 'REQUIRES ENGAGEMENT' when no engagement is active."""
+
+    def __init__(self, title, app, tok, fields, run_label, run_fn, parent=None):
+        super().__init__(title, app, tok, parent)
+        self._run_fn = run_fn
+        self._inputs = {}
+        for key, hint in fields:
+            e = QtWidgets.QLineEdit()
+            e.setPlaceholderText(hint)
+            self._add(e)
+            self._inputs[key] = e
+        self._btn = QtWidgets.QPushButton(run_label)
+        self._btn.clicked.connect(self._run)
+        self._add(self._btn)
+        self._result_label()
+        self.refresh()
+
+    def values(self):
+        return {k: e.text().strip() for k, e in self._inputs.items()}
+
+    def refresh(self):
+        active = _engagement().is_active()
+        self._btn.setEnabled(active)
+        for e in self._inputs.values():
+            e.setEnabled(active)
+        if active:
+            self.state.setStyleSheet("color:%s;" % self._tok["live"])
+            self.state.setText("engagement active — actions authorized against the scope")
+        else:
+            self.state.setStyleSheet("color:%s;" % self._tok["warn"])
+            self.state.setText("REQUIRES ENGAGEMENT — open one in RECON's ENGAGE tab")
+            self.result.setText("")
+
+    def _run(self):
+        ok, reason, payload = self._run_fn(self.values(), self._app.evidence)
+        self._show_result(ok, reason, payload)
+
+
+class ReplayTxCard(_GateCardBase):
+    """Signal replay — RF TX gated by txguard (via replay.prepare_replay). Needs an explicit
+    per-burst confirm AND txguard armed/unlocked/band. The built argv is shown, never executed."""
+
+    def __init__(self, app, tok, parent=None):
+        super().__init__("REPLAY · RF TX — txguard-gated", app, tok)
+        self.freq = QtWidgets.QDoubleSpinBox()
+        self.freq.setRange(1.0, 6000.0)
+        self.freq.setValue(433.92)
+        self.freq.setSuffix(" MHz")
+        self.freq.setDecimals(3)
+        self._add(self.freq)
+        self.confirm = QtWidgets.QCheckBox("I confirm this single authorized burst")
+        self._add(self.confirm)
+        self._btn = QtWidgets.QPushButton("AUTHORIZE REPLAY")
+        self._btn.clicked.connect(self._run)
+        self._add(self._btn)
+        self._result_label()
+        self.refresh()
+
+    def refresh(self):
+        armed, unlocked = _tx_state()
+        if armed and unlocked:
+            self.state.setStyleSheet("color:%s;" % self._tok["live"])
+            self.state.setText("TX armed + unlocked — a burst still passes per-band txguard policy")
+        else:
+            self.state.setStyleSheet("color:%s;" % self._tok["warn"])
+            self.state.setText("TX GATED — kill switch %s, session %s (arm/unlock in the hub)" % (
+                "armed" if armed else "OFF", "unlocked" if unlocked else "locked"))
+
+    def _run(self):
+        import replay
+        ok, reason, argv = replay.prepare_replay(
+            "capture.iq", int(self.freq.value() * 1e6), 2_000_000, self.confirm.isChecked())
+        self._show_result(ok, reason, argv)
+        self.refresh()
+
+
+# ======================= the app =======================
 
 class ForgeApp(PalisadeApp):
     TITLE = "FORGE"
-    LEASE = None            # serial/I2C/GPIO bench — never holds the SDR
+    LEASE = None            # serial/I2C/CAN/USB bench — never holds the SDR
+
+    def __init__(self, demo=False, mode="dark", parent=None):
+        self._subtab = "SERIAL"
+        self._cards = []
+        import evidence
+        self.evidence = evidence.EvidenceChain()
+        super().__init__(demo=demo, mode=mode, parent=parent)
 
     def build_body(self):
         self._tok = theme.tokens(self.mode)
@@ -45,55 +393,287 @@ class ForgeApp(PalisadeApp):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
 
-        self.bar = ControlBar()
-        port = QtWidgets.QComboBox()
-        port.addItems(["/dev/ttyUSB0 (demo)", "/dev/ttyACM0", "I2C bus 1", "CAN can0"])
-        self.bar.add_field("port", port, "Port")
-        baud = QtWidgets.QComboBox()
-        baud.addItems(["115200", "9600", "57600", "250000"])
-        self.bar.add_field("baud", baud, "Baud")
-        self.bar.add_stretch()
-        self.bar.lay.addWidget(micro("Last temp"))
-        self.readout = QtWidgets.QLabel("—")
-        self.readout.setProperty("class", "value")
-        self.bar.lay.addWidget(self.readout)
-        self._lines = QtWidgets.QLabel("0 lines")
-        self._lines.setProperty("class", "micro")
-        self.bar.lay.addSpacing(12)
-        self.bar.lay.addWidget(self._lines)
-        lay.addWidget(self.bar)
+        top = QtWidgets.QHBoxLayout()
+        top.setSpacing(8)
+        self._tab_btns = {}
+        for t in SUBTABS:
+            b = QtWidgets.QPushButton(t)
+            b.setCheckable(True)
+            b.setFixedWidth(98)
+            b.clicked.connect(lambda _=False, tt=t: self._switch(tt))
+            self._tab_btns[t] = b
+            top.addWidget(b)
+        top.addStretch(1)
+        self.lines_lbl = QtWidgets.QLabel("")
+        self.lines_lbl.setProperty("class", "micro")
+        top.addWidget(self.lines_lbl)
+        lay.addLayout(top)
 
-        well = QtWidgets.QFrame()
-        well.setProperty("class", "well")
-        wl = QtWidgets.QVBoxLayout(well)
-        wl.setContentsMargins(8, 8, 8, 8)
-        self.console = QtWidgets.QPlainTextEdit()
-        self.console.setReadOnly(True)
-        self.console.setStyleSheet("background:transparent; border:none;")
-        self.console.setMaximumBlockCount(500)
-        wl.addWidget(self.console)
-        lay.addWidget(well, 1)
+        self.stack = QtWidgets.QStackedWidget()
+        self._pages = {"SERIAL": self._serial_page(), "BUS": self._bus_page(),
+                       "RFID": self._rfid_page(), "RADIO": self._radio_page(),
+                       "SENSORS": self._sensors_page()}
+        for t in SUBTABS:
+            self.stack.addWidget(self._pages[t])
+        lay.addWidget(self.stack, 1)
         self._line_count = 0
+        self._sync_tabs()
         return body
 
-    def make_worker(self):
-        return SerialWorker(demo=self.demo)
+    # ---- SERIAL: the multiplexed console ----
+    def _serial_page(self):
+        page = QtWidgets.QWidget()
+        pl = QtWidgets.QVBoxLayout(page)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.setSpacing(10)
+        bar = ControlBar()
+        self.ser_port = QtWidgets.QComboBox()
+        self.ser_port.addItems(self._serial_ports())
+        bar.add_field("port", self.ser_port, "Port")
+        self.ser_baud = QtWidgets.QComboBox()
+        self.ser_baud.addItems(["115200", "9600", "57600", "250000"])
+        bar.add_field("baud", self.ser_baud, "Baud")
+        bar.add_stretch()
+        bar.lay.addWidget(micro("console multiplexer"))
+        pl.addWidget(bar)
+        # the colored multiplexed console: a tab per connected device
+        self.console_mux = QtWidgets.QTabWidget()
+        self.serial_console = ConsolePane(self._tok, on_input=self._serial_send)
+        self.console_mux.addTab(self.serial_console, "serial")
+        pl.addWidget(self.console_mux, 1)
+        return page
 
-    def on_row(self, msg):
-        prefix = "" if msg["kind"] == "sys" else "  "
-        line = prefix + msg["line"]
-        cursor = self.console.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        fmt = cursor.charFormat()
-        if msg["kind"] == "sys":
-            fmt.setForeground(QtGui.QColor(self._tok["muted"]))
+    def _serial_ports(self):
+        try:
+            import hwlab
+            ports = [p for p, _ in hwlab.list_serial_ports()]
+            if ports:
+                return ports
+        except Exception:
+            pass
+        return ["demo"]
+
+    def _serial_send(self, text):
+        w = getattr(self, "_serial_worker", None)
+        if w is not None:
+            w.write(text)
+
+    # ---- BUS: CAN monitor + gated TX ----
+    def _bus_page(self):
+        page = QtWidgets.QWidget()
+        pl = QtWidgets.QVBoxLayout(page)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.setSpacing(10)
+        split = QtWidgets.QHBoxLayout()
+        split.setSpacing(10)
+        left = QtWidgets.QVBoxLayout()
+        left.addWidget(micro("CANBUS · monitor (passive) · OBD/UDS decoded"))
+        self.can_console = ConsolePane(self._tok)
+        left.addWidget(self.can_console, 1)
+        split.addLayout(left, 3)
+        import canbus
+        can_tx = EngagementCard(
+            "CANBUS TX / inject", self, self._tok,
+            [("id", "arbitration ID (hex, e.g. 7DF)"), ("data", "data bytes (hex)"),
+             ("target", "engagement target label")], "SEND FRAME",
+            lambda v, ev: self._can_send(canbus, v, ev))
+        self._cards.append(can_tx)
+        split.addWidget(can_tx, 2)
+        pl.addLayout(split, 1)
+        return page
+
+    def _can_send(self, canbus, v, ev):
+        try:
+            can_id = int(v.get("id", ""), 16)
+            data = bytes.fromhex(v.get("data", "").replace(" ", ""))
+        except ValueError:
+            return False, "id/data must be hex", None
+        # prepare_send gates via engagement.authorize_action and returns (ok, why, argv) AS-IS
+        return canbus.prepare_send("can0", can_id, data, v.get("target", ""), evidence_chain=ev)
+
+    # ---- RFID: proxmark read + gated write ----
+    def _rfid_page(self):
+        page = QtWidgets.QWidget()
+        pl = QtWidgets.QVBoxLayout(page)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.setSpacing(10)
+        split = QtWidgets.QHBoxLayout()
+        split.setSpacing(10)
+        left = QtWidgets.QVBoxLayout()
+        left.addWidget(micro("PROXMARK3 · reads (passive) + gated clone/write/sim"))
+        self.rfid_console = ConsolePane(self._tok)
+        left.addWidget(self.rfid_console, 1)
+        import proxmark
+        reads = QtWidgets.QHBoxLayout()
+        for op in [o for o, v in proxmark.OPS.items() if not v[0]][:4]:
+            b = QtWidgets.QPushButton(op)
+            b.clicked.connect(lambda _=False, o=op: self._pm_read(proxmark, o))
+            reads.addWidget(b)
+        reads.addStretch(1)
+        left.addLayout(reads)
+        split.addLayout(left, 3)
+        # active ops with no template {param} work from the single op field; parameterised ops
+        # (clone/write/sim needing an id/uid/block) are device-only and fail-closed as 'missing
+        # parameter' until a per-op param UI is added.
+        noparam = [o for o, v in proxmark.OPS.items() if v[0] and "{" not in v[1]]
+        pm_write = EngagementCard(
+            "PROXMARK write / clone / sim", self, self._tok,
+            [("op", "active op: %s" % " / ".join(noparam)), ("target", "tag/engagement target")],
+            "AUTHORIZE", lambda v, ev: self._pm_write(proxmark, v, ev))
+        self._cards.append(pm_write)
+        split.addWidget(pm_write, 2)
+        pl.addLayout(split, 1)
+        return page
+
+    def _pm_read(self, proxmark, op):
+        self.rfid_console.append("pm3 → %s" % proxmark.pm3_command(op), "tx")
+        if self.demo:
+            self.rfid_console.append("[+] UID 04 A2 2B 3C  SAK 08  (demo)", "rx")
+        elif _offscreen() or not proxmark.detect():
+            self.rfid_console.append("NO DEVICE — attach a Proxmark3", "sys")
         else:
-            fmt.setForeground(QtGui.QColor(self._tok["text"]))
-        cursor.insertText(line + "\n", fmt)
-        self.console.setTextCursor(cursor)
-        self.console.ensureCursorVisible()
+            self.rfid_console.append("(reading… device-only)", "sys")
+            eventbus.bus.publish(eventbus.decode("FORGE", "RFID", op, "proxmark read"))
+
+    def _pm_write(self, proxmark, v, ev):
+        op = v.get("op", "")
+        ok, reason, cmd = proxmark.prepare(op, v.get("target", ""), evidence_chain=ev)
+        return ok, reason, cmd
+
+    # ---- RADIO: rollcode (RX) + replay (txguard) + usbhid (engagement) ----
+    def _radio_page(self):
+        page = QtWidgets.QWidget()
+        pl = QtWidgets.QVBoxLayout(page)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.setSpacing(10)
+        top = QtWidgets.QHBoxLayout()
+        top.setSpacing(10)
+        self.replay_card = ReplayTxCard(self, self._tok)
+        self._cards.append(self.replay_card)
+        top.addWidget(self.replay_card, 1)
+        import usbhid
+        hid = EngagementCard(
+            "USB-HID inject (BadUSB)", self, self._tok,
+            [("target", "target HOST in scope")], "AUTHORIZE INJECT",
+            lambda v, ev: self._hid(usbhid, v, ev))
+        self._cards.append(hid)
+        top.addWidget(hid, 1)
+        pl.addLayout(top)
+        # rollcode RX analyzer (passive)
+        c = card(2)
+        cl = QtWidgets.QVBoxLayout(c)
+        cl.addWidget(micro("ROLLCODE · keyfob RX analysis (no TX, no key recovery)"))
+        self.roll_note = QtWidgets.QLabel("Load several captured presses of one remote to classify "
+                                          "FIXED vs ROLLING and flag replay risk. Analysis only — "
+                                          "standby until captures are loaded on-device.")
+        self.roll_note.setProperty("class", "micro")
+        self.roll_note.setWordWrap(True)
+        cl.addWidget(self.roll_note)
+        pl.addWidget(c)
+        pl.addStretch(1)
+        return page
+
+    def _hid(self, usbhid, v, ev):
+        ok, reason, actions = usbhid.prepare(usbhid.DEMO_PAYLOAD, v.get("target", ""),
+                                             evidence_chain=ev)
+        detail = "%d actions" % len(actions) if ok and actions else None
+        return ok, reason, detail
+
+    # ---- SENSORS ----
+    def _sensors_page(self):
+        page = QtWidgets.QWidget()
+        pl = QtWidgets.QVBoxLayout(page)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.setSpacing(10)
+        split = QtWidgets.QHBoxLayout()
+        split.setSpacing(10)
+        self.sensor_feed = FeedTable([("title", "DEVICE"), ("reading", "READING"),
+                                      ("age", "AGE")])
+        split.addWidget(self.sensor_feed, 3)
+        self.sensor_detail = DetailCard("SENSOR")
+        self.sensor_detail.set_hero("—", "no reports")
+        split.addWidget(self.sensor_detail, 2)
+        pl.addLayout(split, 1)
+        return page
+
+    # ---- gate reflection ----
+    def refresh_gates(self):
+        for c in self._cards:
+            c.refresh()
+
+    def on_authorized(self, reason):
+        eventbus.bus.publish(eventbus.alert("FORGE", "authorized: %s" % reason, severity="warn"))
+
+    # ---- sub-tab switching ----
+    def _switch(self, tab):
+        self._subtab = tab
+        self.stack.setCurrentWidget(self._pages[tab])
+        self._sync_tabs()
+        self.refresh_gates()
+
+    def _sync_tabs(self):
+        for t, b in self._tab_btns.items():
+            b.setChecked(t == self._subtab)
+
+    # ---- lifecycle ----
+    def start(self):
+        if self._started:
+            return
+        super().start()
+        self._workers = []
+        self._serial_worker = self._spawn(SerialWorker(demo=self.demo,
+                                                       port=None if self.demo else
+                                                       self.ser_port.currentText()), self._on_serial)
+        self._workers.append(self._serial_worker)
+        self._workers.append(self._spawn(CanWorker(demo=self.demo), self._on_can))
+        self._workers.append(self._spawn(SensorWorker(demo=self.demo), self._on_sensor))
+        self.refresh_gates()
+
+    def _spawn(self, worker, on_row):
+        worker.row.connect(on_row)
+        worker.status.connect(self.on_status)
+        worker.error.connect(self.on_error)
+        worker.start()
+        return worker
+
+    def stop(self):
+        if self._stopped:
+            return
+        for w in getattr(self, "_workers", []):
+            w.stop()
+            w.quit()
+            w.wait(3000)
+        self._workers = []
+        super().stop()
+
+    def on_status(self, status):
+        super().on_status(status)
+        if status.get("standby"):
+            self.header.set_chip("sdr", status.get("sdr", {}).get("text", "NO DEVICE"),
+                                 state="neutral")
+
+    # ---- worker outputs ----
+    def _on_serial(self, msg):
+        self.serial_console.append(msg["line"], msg.get("kind", "rx"))
         self._line_count += 1
-        self._lines.setText("%d lines" % self._line_count)
-        self.header.set_chip("sdr", "%d LINES" % self._line_count, state="neutral")
-        if "temp" in msg:
-            self.readout.setText("%.1f °C" % msg["temp"])
+        self.lines_lbl.setText("%d lines" % self._line_count)
+
+    def _on_can(self, msg):
+        frame, dec = msg["frame"], msg.get("decode") or {}
+        fid = frame.get("id")
+        label = dec.get("name") or dec.get("service") or "frame"
+        data = frame.get("data", b"")
+        hexd = data.hex(" ") if isinstance(data, (bytes, bytearray)) else str(data)
+        kind = "ok" if dec.get("name") else ("deny" if dec.get("writes") else "rx")
+        self.can_console.append("%03X  %-18s %s" % (fid or 0, label, hexd), kind)
+        if not msg.get("demo"):
+            eventbus.bus.publish(eventbus.decode("FORGE", "CAN", "%03X" % (fid or 0), label))
+
+    def _on_sensor(self, msg):
+        rows = [{"title": msg["title"], "reading": msg["reading"], "age": "now"}]
+        self.sensor_feed.model.set_rows(rows)
+        self.sensor_detail.set_hero(msg["reading"], msg["title"])
+        self.sensor_detail.set_rows([(k.upper(), str(v)) for k, v in
+                                     list(msg.get("data", {}).items())[:6]])
+        if not msg.get("demo"):
+            eventbus.bus.publish(eventbus.decode("FORGE", "SENSOR", msg["key"], msg["reading"]))

@@ -166,6 +166,21 @@ flipper, usbhid, rollcode, replay, sensors (I2C).
 - 🔧 **Bias tee control** (AIO V2 RTL-SDR) — software toggle for 5V bias tee powering external LNAs/active antennas through coax
 - 🔧 **Ubertooth integration** — raw Bluetooth Classic sniffing (beyond BLE)
 - 🔧 **Nordic nRF sniffer** — protocol-aware BLE packet capture (GATT endpoints, pairing, keys) vs raw BLE scan
+flipper, usbhid, rollcode, replay, sensors.
+- ◐ **FORGE page wired** — sub-tabs SERIAL / BUS / RFID / RADIO / SENSORS, all backends AS-IS.
+  - **One colored multiplexed console** (`ConsolePane`): per-device scrollback + input line +
+    tx/rx/sys/ok/deny coloring. SERIAL = hwlab console (`SerialReader`/`DemoSerial` via a seam);
+    the same pane serves the CAN monitor and Proxmark reads.
+  - **Two gate types, same model as RECON** (engine-enforced, UI only reflects): engagement-gated
+    (canbus `prepare_send`, proxmark `prepare` write/clone/sim, usbhid `prepare` inject) show
+    "REQUIRES ENGAGEMENT"; txguard-gated (replay `prepare_replay`) shows a live **TX GATED** banner
+    (armed/unlocked). The UI never spawns a produced write/TX argv and wires no new TX path.
+  - **Passive always on**: hwlab serial console + I2C/GPIO read, canbus monitor (OBD/UDS decoded),
+    proxmark/flipper reads, rollcode RX analysis, sensors ISM readout — honest "NO DEVICE" standby,
+    demo flagged, bus publishes device/CAN/RFID/sensor reads as `decode(source=FORGE)`.
+- ➕ gated-action authorizations + flipper NFC-relay alerts → OPS strip.
+- ⬜ live device I/O (real serial/CAN/USB/Proxmark/Flipper) + buslab flash/JTAG write + per-op
+  Proxmark/Flipper param UIs are device-only follow-ups.
 
 ## RECON — network + RF survey + pentest (authorized)
 Absorbs: wifisurvey, wifipent, netpent, blescan, blepent, passaudit, scout, rffinger,
