@@ -1,0 +1,59 @@
+# tests/test_cl2_fix.py run against fix/cl2-gates@dcb7c4f (pre-fix code), Py 3.12.16 PySide6, offscreen
+        """PoC (ra_cl2_poc3): sample_rate="2e6" passed the gate, then int("2e6") crashed."""
+FAILED tests/test_cl2_fix.py::test_n1_engagement_cannot_issue_hackrf_1090_poc
+FAILED tests/test_cl2_fix.py::test_n1_wrapped_and_lookalike_transmitters_refused_at_issue[argv0]
+FAILED tests/test_cl2_fix.py::test_n1_wrapped_and_lookalike_transmitters_refused_at_issue[argv1]
+FAILED tests/test_cl2_fix.py::test_n1_wrapped_and_lookalike_transmitters_refused_at_issue[argv2]
+FAILED tests/test_cl2_fix.py::test_n1_wrapped_and_lookalike_transmitters_refused_at_issue[argv3]
+FAILED tests/test_cl2_fix.py::test_n1_wrapped_and_lookalike_transmitters_refused_at_issue[argv4]
+FAILED tests/test_cl2_fix.py::test_n1_wrapped_and_lookalike_transmitters_refused_at_issue[argv5]
+FAILED tests/test_cl2_fix.py::test_n1_wrapped_and_lookalike_transmitters_refused_at_issue[argv6]
+FAILED tests/test_cl2_fix.py::test_n1_wrapped_and_lookalike_transmitters_refused_at_issue[argv7]
+FAILED tests/test_cl2_fix.py::test_n1_executor_refuses_sdr_tx_from_every_issuer_but_txguard
+FAILED tests/test_cl2_fix.py::test_n1_static_no_non_txguard_issuer_names_a_transmitter
+FAILED tests/test_cl2_fix.py::test_n2_kill_switch_off_refuses_every_emitter_at_issue_poc[_wifi_deauth]
+FAILED tests/test_cl2_fix.py::test_n2_kill_switch_off_refuses_every_emitter_at_issue_poc[_wifi_pmkid]
+FAILED tests/test_cl2_fix.py::test_n2_kill_switch_off_refuses_every_emitter_at_issue_poc[_zigbee_inject]
+FAILED tests/test_cl2_fix.py::test_n2_kill_switch_off_refuses_every_emitter_at_issue_poc[_zigbee_discover]
+FAILED tests/test_cl2_fix.py::test_n2_kill_switch_off_refuses_every_emitter_at_issue_poc[_ble_write]
+FAILED tests/test_cl2_fix.py::test_n2_kill_switch_off_refuses_every_emitter_at_issue_poc[_flipper_subghz]
+FAILED tests/test_cl2_fix.py::test_n2_kill_switch_off_refuses_every_emitter_at_issue_poc[_esp32_line]
+FAILED tests/test_cl2_fix.py::test_n2_kill_switch_off_refuses_every_emitter_at_issue_poc[_proxmark_sim]
+FAILED tests/test_cl2_fix.py::test_n2_kill_switch_off_refuses_every_emitter_at_issue_poc[_zwave_query]
+FAILED tests/test_cl2_fix.py::test_n2_env_hard_lock_refuses_every_emitter_at_issue_poc[_wifi_deauth]
+FAILED tests/test_cl2_fix.py::test_n2_env_hard_lock_refuses_every_emitter_at_issue_poc[_wifi_pmkid]
+FAILED tests/test_cl2_fix.py::test_n2_env_hard_lock_refuses_every_emitter_at_issue_poc[_zigbee_inject]
+FAILED tests/test_cl2_fix.py::test_n2_env_hard_lock_refuses_every_emitter_at_issue_poc[_zigbee_discover]
+FAILED tests/test_cl2_fix.py::test_n2_env_hard_lock_refuses_every_emitter_at_issue_poc[_ble_write]
+FAILED tests/test_cl2_fix.py::test_n2_env_hard_lock_refuses_every_emitter_at_issue_poc[_flipper_subghz]
+FAILED tests/test_cl2_fix.py::test_n2_env_hard_lock_refuses_every_emitter_at_issue_poc[_esp32_line]
+FAILED tests/test_cl2_fix.py::test_n2_env_hard_lock_refuses_every_emitter_at_issue_poc[_proxmark_sim]
+FAILED tests/test_cl2_fix.py::test_n2_env_hard_lock_refuses_every_emitter_at_issue_poc[_zwave_query]
+FAILED tests/test_cl2_fix.py::test_n2_every_emitter_refused_at_spawn_after_disarm_or_lock[_wifi_deauth]
+FAILED tests/test_cl2_fix.py::test_n2_every_emitter_refused_at_spawn_after_disarm_or_lock[_wifi_pmkid]
+FAILED tests/test_cl2_fix.py::test_n2_every_emitter_refused_at_spawn_after_disarm_or_lock[_zigbee_inject]
+FAILED tests/test_cl2_fix.py::test_n2_every_emitter_refused_at_spawn_after_disarm_or_lock[_zigbee_discover]
+FAILED tests/test_cl2_fix.py::test_n2_every_emitter_refused_at_spawn_after_disarm_or_lock[_ble_write]
+FAILED tests/test_cl2_fix.py::test_n2_every_emitter_refused_at_spawn_after_disarm_or_lock[_flipper_subghz]
+FAILED tests/test_cl2_fix.py::test_n2_every_emitter_refused_at_spawn_after_disarm_or_lock[_esp32_line]
+FAILED tests/test_cl2_fix.py::test_n2_every_emitter_refused_at_spawn_after_disarm_or_lock[_proxmark_sim]
+FAILED tests/test_cl2_fix.py::test_n2_every_emitter_refused_at_spawn_after_disarm_or_lock[_zwave_query]
+FAILED tests/test_cl2_fix.py::test_n2_disarm_kills_a_running_deauth_poc - Ass...
+FAILED tests/test_cl2_fix.py::test_n2_env_lock_mid_run_kills_a_running_emitter
+FAILED tests/test_cl2_fix.py::test_n2_classifier_table - ModuleNotFoundError:...
+FAILED tests/test_cl2_fix.py::test_n3_live_pid_with_wrong_start_time_is_locked_recycled_pid
+FAILED tests/test_cl2_fix.py::test_n3_stale_file_after_hub_crash_is_locked - ...
+FAILED tests/test_cl2_fix.py::test_n3_file_from_another_hub_is_locked - Attri...
+FAILED tests/test_cl2_fix.py::test_n3_missing_start_time_is_locked - TypeErro...
+FAILED tests/test_cl2_fix.py::test_n3_forged_file_naming_a_live_pid_is_not_trusted_by_a_child_poc
+FAILED tests/test_cl2_fix.py::test_n4_sim_out_of_scope_emulated_id_refused_poc
+FAILED tests/test_cl2_fix.py::test_n4_clone_out_of_scope_written_id_refused
+FAILED tests/test_cl2_fix.py::test_n4_in_scope_emulated_id_allowed_and_bound_into_the_command
+FAILED tests/test_cl2_fix.py::test_n4_second_pm3_command_cannot_be_smuggled_in_a_parameter
+FAILED tests/test_cl2_fix.py::test_n5_hostname_target_is_pinned_to_its_checked_address_poc
+FAILED tests/test_cl2_fix.py::test_n5_every_resolved_address_is_pinned_and_checked
+FAILED tests/test_cl2_fix.py::test_n6_float_format_sample_rate_does_not_crash_and_is_bounded_poc
+FAILED tests/test_cl2_fix.py::test_n8_recheck_reads_live_settings_not_a_snapshot_poc
+FAILED tests/test_cl2_fix.py::test_n8_bench_saved_opt_in_is_live - TypeError:...
+FAILED tests/test_cl2_fix.py::test_n9a_demo_ticket_only_writes_to_the_synthetic_port
+56 failed, 3 passed in 15.57s

@@ -268,6 +268,32 @@ def _ip_targets(target):
     return None
 
 
+def pin_host(target):
+    """CL2-fix N5: the addresses a HOSTNAME target resolves to right now (sorted strings), so a
+    command can be given the checked addresses instead of the name (no second, unchecked lookup by
+    the tool — DNS rebinding). None when target is not a hostname (an address / network / range
+    is already literal). Raises ValueError when the name does not resolve."""
+    t = str(target).strip()
+    if t.lower().startswith("host:"):
+        t = t[5:]
+    if not t or _GLOB & set(t) or any(c.isspace() for c in t):
+        return None
+    try:
+        if _parse_ip_text(t, False) is not None:
+            return None
+    except ValueError:
+        return None
+    if not _HOST.match(t):
+        return None
+    try:
+        addrs = sorted({str(ipaddress.ip_address(a)) for a in _resolve(t)})
+    except (OSError, ValueError) as e:
+        raise ValueError("%r does not resolve (%s)" % (t, e))
+    if not addrs:
+        raise ValueError("%r does not resolve" % t)
+    return addrs
+
+
 def _ip_ok(intervals, entries):
     for lo, hi in intervals:
         hit = False
@@ -561,9 +587,36 @@ def authorize_action(action, target, evidence_chain=None, kind=None):
 
 
 def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=None, label=None,
-          files=None, meta=None):
+          files=None, meta=None, also=()):
     """authorize_action() and, on success, a single-use executor ticket for exactly this argv (or
-    device payload), re-checked against this gate at spawn. Returns (ok, reason, ticket)."""
+    device payload), re-checked against this gate at spawn. Returns (ok, reason, ticket).
+
+    `also` lists further (target, kind) pairs that must ALSO be in scope, at issue and on every
+    re-check (e.g. the identity a Proxmark emulates — CL2-fix N4, or the pinned addresses of a
+    hostname — N5).
+
+    Before anything is recorded (CL2-fix, owner decisions 1 and 2): a command that keys an SDR
+    transmitter is refused outright — only txguard may authorize those — and a command that
+    radiates (rfemit) is refused while the env hard lock or the TX kill switch silences RF."""
+    import rfemit
+    emitter = rfemit.classify(argv=argv, payload=payload, meta=meta)
+    if emitter == rfemit.SDR_TX:
+        return False, ("refused: %s keys an SDR transmitter — only the TX gate (txguard: band "
+                       "plan, protected ranges, power cap) may authorize it, never an engagement"
+                       % (str((argv or ["?"])[0]),)), None
+    pre_ok, pre_why, _b = check(action, target, kind)        # scope first: the clearer reason
+    if not pre_ok:
+        return False, pre_why, None
+    if emitter is not None:
+        import txguard
+        rf_ok, rf_why = txguard.emit_allowed()
+        if not rf_ok:
+            return False, rf_why, None
+    extra = [(t, k) for t, k in (also or ())]
+    for xt, xk in extra:
+        xok, xwhy, _b = check(action, xt, xk)
+        if not xok:
+            return False, xwhy, None
     ok, why = authorize_action(action, target, evidence_chain, kind)
     if not ok:
         return False, why, None
@@ -572,9 +625,18 @@ def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=Non
 
     def recheck():
         r = check(action, target, kind)
+        if not r[0]:
+            return r[0], r[1]
+        for xt, xk in extra:
+            x = check(action, xt, xk)
+            if not x[0]:
+                return x[0], x[1]
         return r[0], r[1]
-    t = executor.issue(argv=argv, payload=payload, recheck=recheck, label=label or action,
-                       binding=binding, reason=why, files=files, meta=meta)
+    try:
+        t = executor.issue(argv=argv, payload=payload, recheck=recheck, label=label or action,
+                           binding=binding, reason=why, files=files, meta=meta)
+    except executor.TicketRefused as e:
+        return False, "refused: %s" % e, None
     return True, why, t
 
 

@@ -2,14 +2,17 @@
 import pytest
 
 import engagement as E
+import txguard
 import zigbee as Z
 
 
 @pytest.fixture(autouse=True)
 def _reset():
     E.reset()
+    txguard.reset_session()
     yield
     E.reset()
+    txguard.reset_session()
 
 
 def test_channel_to_mhz():
@@ -25,6 +28,7 @@ def test_sniff_is_ungated():
 def test_active_discover_gated():
     assert Z.prepare("discover")[0] is False                 # no engagement
     E.start("iot audit", "self-owned", ["pan:0x1A2B@15"], "KD0ABC")    # PAN + channel (CL2/G5)
+    txguard.arm(True)    # CL2-fix N2: an RF emitter also needs the TX kill switch armed
     ok, why, t = Z.prepare("discover")
     assert ok and t.argv[0] == "zbstumbler"
     assert Z.prepare("discover", channel=20)[0] is False      # channel not in scope

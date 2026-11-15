@@ -28,6 +28,15 @@ OPS = {
 }
 
 
+# CL2-fix N4: for sim / clone the parameter IS the identity being impersonated or written. It must
+# be in the engagement scope (uid:…) too, not only the card on the antenna. Ops whose written
+# content is not an identity parameter (raw block write, dump restore, iClass clone) cannot be
+# bound this way and say so in the reason and the trail.
+IDENTITY_PARAM = {"hf_mf_sim": "uid", "lf_hid_clone": "id"}
+UNBOUND_CONTENT = ("lf_t55_write", "hf_mf_restore", "hf_iclass_clone")
+_PARAM_RE = __import__("re").compile(r"^[0-9A-Za-z_.:-]{1,64}$")
+
+
 def is_active(op):
     return bool(OPS.get(op, (False,))[0])
 
@@ -63,6 +72,14 @@ def prepare(op, target=None, evidence_chain=None, read_uid=None, port="/dev/ttyA
     same UID, else refused (no read-back = refused). Returns (ok, reason, ticket)."""
     if op not in OPS:
         return False, "unknown op %r" % (op,), None
+    if op in IDENTITY_PARAM and _norm_uid(params.get(IDENTITY_PARAM[op])) is not None:
+        # the command carries exactly the identity that is scope-checked below
+        params = dict(params, **{IDENTITY_PARAM[op]: _norm_uid(params[IDENTITY_PARAM[op]])})
+    for k, v in params.items():
+        # pm3 -c runs ';'-separated commands: a parameter must be one plain token (no second
+        # command smuggled past the scope check)
+        if not _PARAM_RE.match(str(v)):
+            return False, "parameter %s=%r is not a plain hex/number token — refusing" % (k, v), None
     try:
         cmd = pm3_command(op, **params)
     except KeyError as e:
@@ -88,8 +105,20 @@ def prepare(op, target=None, evidence_chain=None, read_uid=None, port="/dev/ttyA
     if got != want:
         return False, "UID mismatch: card on the antenna is %s, authorized %s — refusing" % (
             got, want), None
-    return engagement.issue("proxmark:" + op, "uid:" + want, argv=client_argv(cmd, port),
-                            kind="uid", evidence_chain=evidence_chain, label="proxmark:" + op)
+    also = ()
+    if op in IDENTITY_PARAM:
+        ident = _norm_uid(params.get(IDENTITY_PARAM[op]))
+        if ident is None:
+            return False, ("%s: the %s to emulate/write is not a card ID — refusing"
+                           % (op, IDENTITY_PARAM[op])), None
+        also = (("uid:" + ident, "uid"),)
+    ok, why, ticket = engagement.issue("proxmark:" + op, "uid:" + want,
+                                       argv=client_argv(cmd, port), kind="uid",
+                                       evidence_chain=evidence_chain, label="proxmark:" + op,
+                                       also=also)
+    if ok and op in UNBOUND_CONTENT:
+        why += " — written content is not bound to the scope (label-only for the data)"
+    return ok, why, ticket
 
 
 def detect(which=shutil.which):

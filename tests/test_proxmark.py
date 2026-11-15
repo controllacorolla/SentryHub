@@ -2,14 +2,17 @@
 import pytest
 
 import engagement as E
+import txguard
 import proxmark as P
 
 
 @pytest.fixture(autouse=True)
 def _reset():
     E.reset()
+    txguard.reset_session()
     yield
     E.reset()
+    txguard.reset_session()
 
 
 def test_read_ops_are_ungated():
@@ -26,9 +29,11 @@ def test_active_op_denied_without_engagement():
 def test_active_op_allowed_in_scope():
     # CL2/G5: the scope is the card UID and the card on the antenna is read back first
     E.start("badge audit", "ROE-7", ["uid:2006F623AE"], "KD0ABC")
+    txguard.arm(True)    # CL2-fix N2: an RF emitter also needs the TX kill switch armed
     ok, why, t = P.prepare("lf_hid_clone", target="uid:2006F623AE", id="2006f623ae",
                            read_uid=lambda: "2006f623ae")
-    assert ok and t.argv[-1] == "lf hid clone -r 2006f623ae"
+    # CL2-fix N4: the command carries exactly the scope-checked (normalised) identity
+    assert ok and t.argv[-1] == "lf hid clone -r 2006F623AE"
 
 
 def test_active_op_blocked_out_of_scope():

@@ -116,6 +116,21 @@ def _digest(kind, argv, payload, files):
 # tests/test_cl2_gates.py. Not a security boundary against hostile in-process code — a guard
 # against a well-meaning caller minting its own "authorization".
 ISSUERS = ("txguard", "engagement", "flipper")
+# Owner decision 1 (CL2-fix N1): only these issuers may mint a ticket for an SDR transmitter
+# (rfemit.SDR_TX). The engagement gate knows scope, not band plans or power caps.
+TX_ISSUERS = ("txguard",)
+
+
+def _with_rf_gate(recheck):
+    """Compose the RF-silence gate (env hard lock + TX kill switch, owner decision 2) in front of
+    a ticket's own re-check. Runs at issue, at spawn and on every sweep: disarm kills the process."""
+    def rf_recheck():
+        import txguard
+        ok, why = txguard.emit_allowed()
+        if not ok:
+            return False, why
+        return recheck()
+    return rf_recheck
 
 
 def issue(argv=None, recheck=None, label="", binding="scoped", reason="", files=None,
@@ -131,11 +146,23 @@ def issue(argv=None, recheck=None, label="", binding="scoped", reason="", files=
     if (argv is None) == (payload is None):
         raise ValueError("a ticket authorizes exactly one argv or one payload")
     kind = "proc" if argv is not None else "write"
+    # CL2-fix N1/N2: what the command radiates decides which gates must keep passing.
+    import rfemit
+    emitter = rfemit.classify(argv=argv, payload=payload, meta=meta)
+    if emitter == rfemit.SDR_TX and caller not in TX_ISSUERS:
+        raise TicketRefused("an SDR transmitter (%s) can only be authorized by txguard (band, "
+                            "power and protected-range checks), not by %r"
+                            % (" ".join(str(a) for a in argv)[:80], caller))
+    if emitter is not None:
+        recheck = _with_rf_gate(recheck)
+        ok, why = recheck()
+        if not ok:
+            raise TicketRefused(why)
     t = Ticket(kind, argv, payload, files, label, binding, reason, meta)
     with _LOCK:
         _ISSUED[t.id] = {"ticket": t, "digest": _digest(kind, t.argv, t.payload, t.files),
                          "expires": _mono() + float(TICKET_TTL_S if ttl is None else ttl),
-                         "recheck": recheck, "used": False}
+                         "recheck": recheck, "used": False, "emitter": emitter}
     record("issue", ticket=t.id, label=label, binding=binding, reason=reason,
            argv=list(t.argv) if t.argv else None)
     return t
@@ -296,6 +323,9 @@ def write(ticket, port, port_name="", chunk=None):
     """Redeem a device-write ticket and write its exact bytes to `port` (an object with .write),
     whole or in `chunk`-byte pieces (one HID report per write). Every line is logged. Returns the
     number of bytes the port reports written."""
+    if ticket.binding == "demo" and getattr(type(port), "SYNTHETIC", False) is not True:
+        # CL2-fix N9a: an ungated demo-device ticket is only ever written to the synthetic port
+        raise TicketRefused("a demo-device ticket can only be written to the synthetic demo port")
     _redeem(ticket, kind="write")
     data = ticket.payload
     pieces = [data] if not chunk else [data[i:i + chunk] for i in range(0, len(data), chunk)]

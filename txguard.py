@@ -126,6 +126,16 @@ def _finite(x):
     return f if math.isfinite(f) else None
 
 
+def as_hz(x):
+    """A finite number (int, float, or text like "2e6" / "433.92e6") as a whole number of Hz / sps
+    for an argv; None when it is not one. The gate checks the same _finite() value, so an argv
+    builder never crashes on a value the gate accepted (CL2-fix N6)."""
+    f = _finite(x)
+    if f is None:
+        return None
+    return int(round(f))
+
+
 def allocations(freq_hz, region=REGION_DEFAULT):
     """Every allocation the frequency falls in, for the region: subset of
     {'protected', 'ism', 'ham'}. Non-finite input -> {'protected'} (fail closed)."""
@@ -322,6 +332,23 @@ def reset_session():
         _notify()
 
 
+def emit_allowed():
+    """The RF-silence gate for EVERY emitter, including the engagement-gated ones (Wi-Fi deauth,
+    Zigbee inject, BLE, Flipper sub-GHz, Proxmark sim/clone …) — owner decision 2, CL2-fix N2.
+    (ok, reason). Denied while the env hard lock is set, while a bound child's hub state is stale,
+    or while the master kill switch is OFF. It does not need the session unlock or a band check:
+    those belong to txguard's own SDR modes. The executor runs it at issue, at spawn and while the
+    process runs, so a disarm kills a running emitter."""
+    if env_locked():
+        return False, "RF silenced: TX locked by SUITE_TX_LOCK in the environment"
+    sh = _shared()
+    if sh is not None and sh.get("stale"):
+        return False, "RF silenced: hub session state is missing or stale (fail closed)"
+    if not is_armed():
+        return False, "RF silenced: the TX kill switch is OFF — arm it (TX slot) to emit"
+    return True, ""
+
+
 def gain_for_power(power_dbm):
     """hackrf_transfer -x gain that cannot exceed power_dbm, using the conservative full-gain
     output estimate. Clamped to 0..47. Non-finite -> 0 (the floor)."""
@@ -411,18 +438,24 @@ def authorize(mode, freq_hz=None, power_dbm=None, callsign="", settings=None, sa
 
 
 def issue_ticket(mode, argv, freq_hz=None, power_dbm=None, callsign="", settings=None,
-                 sample_rate=None, label=None, files=None):
+                 sample_rate=None, label=None, files=None, live=None):
     """authorize() and, on success, a single-use executor ticket bound to exactly this argv. The
-    executor re-runs the same authorize() at spawn and while the process runs.
-    Returns (ok, reason, ticket_or_None, power_allowed)."""
+    executor re-runs the same authorize() at spawn and while the process runs, against the LIVE
+    settings: the same `settings` object (not a copy), or `live()` when the caller's settings are
+    rebuilt from a store on every read (bench). Returns (ok, reason, ticket_or_None, power)."""
     ok, why, power = authorize(mode, freq_hz, power_dbm, callsign, settings, sample_rate)
     if not ok:
         return False, why, None, 0
     import executor
-    snap = dict(settings or {})
 
     def recheck():
-        r = authorize(mode, freq_hz, power_dbm, callsign, snap, sample_rate)
+        # LIVE settings (CL2-fix N8): the caller's own dict, or its loader when it passed
+        # live=callable — clearing tx_enabled mid-transmission stops it, like disarm does.
+        try:
+            cur = live() if callable(live) else settings
+        except Exception as e:
+            return False, "settings could not be re-read (%s) — refusing" % e
+        r = authorize(mode, freq_hz, power_dbm, callsign, cur, sample_rate)
         return r[0], r[1]
     t = executor.issue(argv, recheck, label=label or "tx:%s" % mode, binding="tx-gate",
                        reason=why, files=files)

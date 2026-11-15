@@ -209,7 +209,9 @@ class BenchApp(PalisadeApp):
             self._check_handle()
             return
         s = self._settings()
-        ok, message, h = bench.start_transmit(s, spawner=self._spawner())
+        ok, message, h = bench.start_transmit(
+            s, spawner=self._spawner(),
+            opt_in=lambda: (self._saved() or {}).get("tx_enabled") is True)   # live (CL2-fix N8)
         if not ok:
             self.card.set_hero("BLOCKED", "conducted into a load — no antenna, no OTA")
             self.card.set_rows([("TXGUARD", "GATED/BLOCKED"), ("RESULT", message)])

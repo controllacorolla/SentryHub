@@ -280,7 +280,9 @@ def gated_send(reader, text, device=("unknown", "port:?"), port_name="", newline
 class DemoSerial:
     """A synthetic ESP32: boot banner, then periodic sensor lines, and it answers a few
     typed commands. Mirrors the real reader's .read_lines()/.write() so the UI path is
-    identical to a live port."""
+    identical to a live port. SYNTHETIC marks it as the only port a demo-device ticket may be
+    written to (executor.write, CL2-fix N9a)."""
+    SYNTHETIC = True
     BOOT = ["ets Jun  8 2016 00:22:57", "rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)",
             "configsip: 0, SPIWP:0xee", "mode:DIO, clock div:1", "load:0x3fff0030,len:1184",
             "entry 0x400805f0", "", "[boot] RF Reaper firmware v0.4.1 (demo)",

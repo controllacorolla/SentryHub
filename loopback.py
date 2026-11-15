@@ -63,8 +63,8 @@ def hardware_loopback_plan(mode, freq_hz, settings, iq_file="/tmp/selftest.iq", 
     ok, reason, power = req.authorize(devices=devices)
     if not ok:
         return False, reason, None
-    argv = ["hackrf_transfer", "-t", iq_file, "-f", str(int(freq_hz)),
-            "-s", str(int(sample_rate)), "-x", "0"]
+    argv = ["hackrf_transfer", "-t", iq_file, "-f", str(txguard.as_hz(freq_hz)),
+            "-s", str(txguard.as_hz(sample_rate)), "-x", "0"]
     ok, why, ticket, _p = txguard.issue_ticket(mode, argv, freq_hz,
                                                callsign=(settings or {}).get("callsign", ""),
                                                settings=settings, sample_rate=sample_rate,

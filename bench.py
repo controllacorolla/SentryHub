@@ -53,10 +53,12 @@ def _tx_argv(iq_file, freq_hz, sample_rate=2_000_000, tx_gain=TX_GAIN_DEFAULT, r
     one, after the gate. Raises on bad input."""
     if not iq_file:
         raise ValueError("no IQ file to transmit")
-    f = int(freq_hz)
-    if f <= 0:
-        raise ValueError("frequency must be positive")
-    argv = [exe, "-t", iq_file, "-f", str(f), "-s", str(int(sample_rate)),
+    f, sr = txguard.as_hz(freq_hz), txguard.as_hz(sample_rate)
+    if f is None or f <= 0:
+        raise ValueError("frequency must be a positive number")
+    if sr is None:
+        raise ValueError("sample rate is not a finite number")
+    argv = [exe, "-t", iq_file, "-f", str(f), "-s", str(sr),
             "-x", str(clamp_gain(tx_gain))]
     if repeat:
         argv.append("-R")
@@ -66,8 +68,8 @@ def _tx_argv(iq_file, freq_hz, sample_rate=2_000_000, tx_gain=TX_GAIN_DEFAULT, r
 def log_record(settings, iq_file, freq_hz, tx_gain, repeat):
     """One JSON line describing a key-up, for the audit log."""
     return {"t": time.time(), "when": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "freq_hz": int(freq_hz), "freq_mhz": round(float(freq_hz) / 1e6, 4),
-            "sample_rate": int(settings.get("sample_rate", 2_000_000)),
+            "freq_hz": txguard.as_hz(freq_hz), "freq_mhz": round(float(freq_hz) / 1e6, 4),
+            "sample_rate": txguard.as_hz(settings.get("sample_rate", 2_000_000)),
             "tx_gain": clamp_gain(tx_gain), "iq_file": iq_file, "repeat": bool(repeat),
             "mode": "conducted-bench"}
 
@@ -90,7 +92,7 @@ def preflight(settings, freq_hz=None):
     return ok, why
 
 
-def start_transmit(settings, spawner=None, on_line=None):
+def start_transmit(settings, spawner=None, on_line=None, opt_in=None):
     """Gate + start the conducted key-up in a registered process group. Returns
     (ok, reason, handle); the handle can be stopped and reports the real exit code."""
     import executor
@@ -111,9 +113,19 @@ def start_transmit(settings, spawner=None, on_line=None):
         argv = _tx_argv(iq, freq, sr, gain, repeat)
     except ValueError as e:
         return False, str(e), None
+    # CL2-fix N8: re-checks read the LIVE settings — this same dict (not a copy) and, when the
+    # caller passes opt_in() (the Qt bench app: the SAVED tx_enabled), that too. Both must stay
+    # True: clearing either during a transmission stops it, like a disarm does.
+    def live():
+        s = dict(settings)
+        ok = settings.get("tx_enabled") is True
+        if opt_in is not None:
+            ok = ok and opt_in() is True
+        s["tx_enabled"] = ok
+        return s
     ok, why, ticket, _p = txguard.issue_ticket("bench", argv, freq, settings.get("power_dbm"),
                                                settings=settings, sample_rate=sr,
-                                               label="tx:bench")
+                                               label="tx:bench", live=live)
     if not ok:
         return False, "TX blocked: " + why, None
     append_log(log_record(settings, iq, freq, gain, repeat))

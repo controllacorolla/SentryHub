@@ -1374,7 +1374,12 @@ def test_forge_proxmark_write_gated_and_reads_are_not():
     ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "uid:04A22B3C"}, p.evidence)
     assert ok is False and cmd is None, "write op gated without engagement"
     engagement.start("Op", "ROE", ["uid:04A22B3C"], "KD0ABC")
+    import txguard
     ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "uid:04A22B3C"}, p.evidence)
+    assert ok is False and cmd is None and "silenced" in why.lower()    # CL2-fix N2: disarmed
+    txguard.arm(True)
+    ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "uid:04A22B3C"}, p.evidence)
+    txguard.reset_session()
     assert ok is True and cmd
     ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "uid:DEADBEEF"}, p.evidence)
     assert ok is False and cmd is None                  # not the card on the antenna / scope

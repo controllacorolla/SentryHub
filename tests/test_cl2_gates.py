@@ -234,6 +234,7 @@ def test_g3_allowlisted_read_passes_and_emit_is_label_only_with_engagement():
     ok, why, ticket = flipper.prepare_command("device_info", device="usb:0483:5740", kind="flipper")
     assert ok and ticket is not None and ticket.payload == b"device_info\r\n"
     E.start("job", "ROE-1", ["usb:0483:5740"], OP)
+    G.arm(True)                      # CL2-fix N2: an RF emitter also needs the kill switch armed
     ok, why, ticket = flipper.prepare_command("subghz tx 0 433920000", device="usb:0483:5740",
                                               kind="flipper")
     assert ok and "label-only authorization" in why and ticket.binding == "label-only"
@@ -246,6 +247,7 @@ def test_g2_unknown_and_emitter_devices_are_read_only_until_engagement():
         ok, why, ticket = flipper.prepare_command("AT", device=dev, kind=kind)
         assert not ok and ticket is None, (kind, why)
     E.start("job", "ROE-1", ["usb:10c4:ea60"], OP)
+    G.arm(True)                      # CL2-fix N2: an RF emitter also needs the kill switch armed
     assert flipper.prepare_command("AT", device="usb:10c4:ea60", kind="esp32")[0] is True
     assert flipper.prepare_command("AT", device="usb:1a86:7523", kind="unknown")[0] is False
 
@@ -380,6 +382,7 @@ def test_g4_ip_range_and_host_scope_entries(monkeypatch):
 def test_g5_pmkid_command_carries_the_bssid_filter_poc():
     import wifipent
     E.start("job", "ROE-1", ["AA:BB:CC:DD:EE:FF"], OP)
+    G.arm(True)                      # CL2-fix N2: an RF emitter also needs the kill switch armed
     ok, why, ticket = wifipent.prepare("pmkid", "AA:BB:CC:DD:EE:FF", out="cap")
     assert ok
     argv = list(ticket.argv)
@@ -391,6 +394,7 @@ def test_g5_pmkid_command_carries_the_bssid_filter_poc():
 def test_g5_deauth_requires_and_scope_checks_the_client_poc():
     import wifipent
     E.start("job", "ROE-1", ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"], OP)
+    G.arm(True)                      # CL2-fix N2: an RF emitter also needs the kill switch armed
     ok, why, t = wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF")
     assert not ok and t is None and "client" in why.lower()            # no broadcast
     ok, why, t = wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF", client="99:99:99:99:99:99")
@@ -410,6 +414,7 @@ def test_g5_can_scope_is_interface_plus_id_range():
 def test_g5_zigbee_scope_is_pan_and_channel():
     import zigbee
     E.start("job", "ROE-1", ["pan:0x1A2B@15"], OP)
+    G.arm(True)                      # CL2-fix N2: an RF emitter also needs the kill switch armed
     assert zigbee.prepare("inject", pan=0x1A2B, channel=15)[0] is True
     assert zigbee.prepare("inject", pan=0x1A2B, channel=20)[0] is False
     assert zigbee.prepare("inject", pan=0x9999, channel=15)[0] is False
@@ -420,6 +425,7 @@ def test_g5_zigbee_scope_is_pan_and_channel():
 def test_g5_proxmark_reads_back_uid_before_write():
     import proxmark
     E.start("job", "ROE-1", ["uid:DEADBEEF"], OP)
+    G.arm(True)                      # CL2-fix N2: an RF emitter also needs the kill switch armed
     ok, why, t = proxmark.prepare("hf_mf_sim", target="uid:DEADBEEF", uid="DEADBEEF",
                                   read_uid=lambda: "04A22B3C")
     assert not ok and t is None and "uid" in why.lower()
@@ -436,6 +442,7 @@ def test_g5_unbindable_tools_say_label_only():
     import usbhid
     import zwave
     E.start("job", "ROE-1", ["LAPTOP-7", "ROUTER-1", "NODE-5"], OP)
+    G.arm(True)                      # CL2-fix N2: an RF emitter also needs the kill switch armed
     for ok, why, t in (usbhid.prepare("STRING hi", "LAPTOP-7"),
                        buslab.prepare_flash_write("ch341a_spi", "fw.bin", target="ROUTER-1"),
                        zwave.prepare("query", target="NODE-5", node_id=5)):
@@ -845,10 +852,10 @@ def test_l1_child_sees_parent_arm_and_disarm(tmp_path):
     pub = gatestate.Publisher(str(tmp_path / "gate.json"))
     try:
         pub.publish(armed=True, unlocked=False, engagement=None)
-        st = gatestate.read(str(tmp_path / "gate.json"))
-        assert st["armed"] is True and st["unlocked"] is False
+        st = gatestate.read(str(tmp_path / "gate.json"), nonce=pub.nonce)   # CL2-fix N3: bound
+        assert st["armed"] is True and st["unlocked"] is False              # to THIS hub
         pub.publish(armed=False, unlocked=False, engagement=None)
-        assert gatestate.read(str(tmp_path / "gate.json"))["armed"] is False
+        assert gatestate.read(str(tmp_path / "gate.json"), nonce=pub.nonce)["armed"] is False
     finally:
         pub.close()
     assert not os.path.exists(str(tmp_path / "gate.json"))                # removed on hub exit
@@ -1026,6 +1033,7 @@ GATED_MODULES = [
     "blepent.py", "canbus.py", "proxmark.py", "zigbee.py", "zwave.py", "usbhid.py", "buslab.py",
     "flipper.py", "hwlab.py", "scout.py", "devterm.py", "passaudit.py", "digimodes.py",
     "loopback.py", "radio.py", "mesh_dash.py", "cw.py", "rtty.py", "opprofile.py", "gatestate.py",
+    "rfemit.py",
     "palisade_qt/forge.py", "palisade_qt/recon.py", "palisade_qt/bench_app.py",
     "palisade_qt/panels.py", "palisade_qt/chrome.py",
 ]

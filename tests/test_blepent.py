@@ -3,13 +3,16 @@ import pytest
 
 import blepent as B
 import engagement as E
+import txguard
 
 
 @pytest.fixture(autouse=True)
 def _reset():
     E.reset()
+    txguard.reset_session()
     yield
     E.reset()
+    txguard.reset_session()
 
 
 def test_enum_denied_without_engagement():
@@ -19,6 +22,7 @@ def test_enum_denied_without_engagement():
 
 def test_enum_in_scope():
     E.start("iot audit", "self-owned", ["AA:BB:CC:DD:EE:FF"], "KD0ABC")
+    txguard.arm(True)    # CL2-fix N2: an RF emitter also needs the TX kill switch armed
     ok, why, t = B.prepare("enum", "AA:BB:CC:DD:EE:FF")
     argv = t.argv
     assert ok and argv[0] == "gatttool" and "--primary" in argv and "AA:BB:CC:DD:EE:FF" in argv
@@ -26,6 +30,7 @@ def test_enum_in_scope():
 
 def test_read_requires_handle():
     E.start("j", "roe", ["AA:BB:CC:DD:EE:FF"], "KD0ABC")
+    txguard.arm(True)    # CL2-fix N2: an RF emitter also needs the TX kill switch armed
     assert B.prepare("read", "AA:BB:CC:DD:EE:FF")[0] is False       # no handle
     ok, _, t = B.prepare("read", "AA:BB:CC:DD:EE:FF", handle="0x0025")
     argv = t.argv
@@ -34,6 +39,7 @@ def test_read_requires_handle():
 
 def test_write_requires_handle_and_value():
     E.start("j", "roe", ["AA:BB:CC:DD:EE:FF"], "KD0ABC")
+    txguard.arm(True)    # CL2-fix N2: an RF emitter also needs the TX kill switch armed
     assert B.prepare("write", "AA:BB:CC:DD:EE:FF", handle="0x0025")[0] is False   # no value
     ok, _, t = B.prepare("write", "AA:BB:CC:DD:EE:FF", handle="0x0025", value="01")
     argv = t.argv

@@ -14,8 +14,11 @@ import sys
 def _replay_argv(iq_file, freq_hz, sample_rate, tx_gain):
     """The hackrf_transfer command to replay an IQ file as TX. Private: built only by
     prepare_replay after authorization, with a gain derived from the authorized power."""
-    return ["hackrf_transfer", "-t", iq_file, "-f", str(int(freq_hz)),
-            "-s", str(int(sample_rate)), "-x", str(int(tx_gain))]
+    import txguard
+    f, sr = txguard.as_hz(freq_hz), txguard.as_hz(sample_rate)
+    if f is None or sr is None:
+        raise ValueError("frequency / sample rate is not a finite number")
+    return ["hackrf_transfer", "-t", iq_file, "-f", str(f), "-s", str(sr), "-x", str(int(tx_gain))]
 
 
 def authorize_replay(freq_hz, confirmed, settings=None, power_dbm=None, sample_rate=None):
@@ -41,7 +44,10 @@ def prepare_replay(iq_file, freq_hz, sample_rate, confirmed, settings=None, tx_g
     gok, gwhy, gain = txguard.check_gain(tx_gain, power)
     if not gok:
         return False, gwhy, None
-    argv = _replay_argv(iq_file, freq_hz, sample_rate, gain)
+    try:
+        argv = _replay_argv(iq_file, freq_hz, sample_rate, gain)
+    except ValueError as e:
+        return False, "refused: %s" % e, None
     ok, why, ticket, _p = txguard.issue_ticket("replay", argv, freq_hz, power_dbm,
                                                settings=settings or {}, sample_rate=sample_rate,
                                                label="tx:replay")

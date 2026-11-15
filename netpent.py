@@ -56,9 +56,20 @@ def prepare(action, target, evidence_chain=None, ports="1-1024"):
     t = str(target).strip()
     if t.startswith("-"):
         return False, "target %r looks like an option" % (target,), None
-    argv = _ACTIONS[action](t, ports) if action in ("portscan", "services") else _ACTIONS[action](t)
-    return engagement.issue("net:" + action, t, argv=argv, kind="ip",
-                            evidence_chain=evidence_chain, label="net:" + action)
+    # CL2-fix N5: a hostname is resolved ONCE here; nmap gets the checked addresses (every one in
+    # scope, re-checked at spawn), never the name — no second, unchecked lookup by nmap.
+    try:
+        pinned = engagement.pin_host(t)
+    except ValueError as e:
+        return False, "refused: %s" % e, None
+    addrs = pinned or [t]
+    argv = _ACTIONS[action](addrs[0], ports) if action in ("portscan", "services") \
+        else _ACTIONS[action](addrs[0])
+    argv = argv[:-1] + addrs                        # every builder ends with its target
+    label = "net:" + action + ((":" + t) if pinned else "")
+    return engagement.issue("net:" + action, addrs[0], argv=argv, kind="ip",
+                            evidence_chain=evidence_chain, label=label,
+                            also=tuple((a, "ip") for a in addrs[1:]))
 
 
 def main(parent=None):

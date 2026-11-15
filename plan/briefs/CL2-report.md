@@ -127,3 +127,95 @@ operator profile. The engines decide every state shown.
 
 All stages ran on the session model (**Claude Opus 5.5**, not Mythos as the README suggests for CL2): gate code, all denial tests, inventory (done inline with grep — no haiku agent), suite / pyflakes runs, renders, and every verdict. No subagents were used.
 The commit trailer uses `Co-Authored-By: Claude Opus 5.5`, the model that actually wrote it, plus the brief's `Claude-Session` line.
+
+---
+
+# CL2-fix — closes what RA-CL2 found
+
+**Branch:** `fix/cl2-gates` · base `dcb7c4f` (RA-CL2) · code + report in one commit after it.
+Brief: `plan/briefs/CL2-fix.md` (on `docs/briefs`). Owner decisions 1–3 (2026-11-15) are implemented as written.
+New regression file: `tests/test_cl2_fix.py` (59 tests). **56 of 59 fail on `dcb7c4f`.**
+The 3 that pass there are sanity checks showing the fix is not over-broad: txguard still issues on an allowed band, wired tools need no kill switch, and a real bound child still follows its hub.
+Evidence: `plan/briefs/CL2-fix-evidence/before_dcb7c4f.txt` and `after.txt`.
+
+## Per finding
+
+| ID | Verdict | Fix · file:line | Regression test(s) |
+|---|---|---|---|
+| **N1** SDR TX via engagement gate | **CLOSED** | `rfemit.py` (new) classifies argv. An SDR transmitter matches if its name appears in any token (exact set, or a transmit-shaped pattern so unknown names fail closed). Wrappers like `sudo` and `sh -c`, and full paths, are caught. `executor.py:121,151-155`: only `TX_ISSUERS=("txguard",)` may mint an SDR-TX ticket, a structural backstop for every issuer. `engagement.py:603` refuses first, before the trail records anything. | `test_n1_engagement_cannot_issue_hackrf_1090_poc` (the RA p5 PoC); `test_n1_wrapped_and_lookalike_transmitters_refused_at_issue` (×8); `test_n1_executor_refuses_sdr_tx_from_every_issuer_but_txguard`; `test_n1_txguard_still_issues_sdr_tx_on_an_allowed_band`; **static** `test_n1_static_no_non_txguard_issuer_names_a_transmitter` (a module that issues through engagement or the executor must not name a transmitter) |
+| **N2** hard lock + kill switch don't silence emitters | **CLOSED** | `txguard.emit_allowed()` (`txguard.py:335`) denies on the env lock, stale hub state, or the kill switch OFF. `executor._with_rf_gate` (`executor.py:124,157`) adds it to the re-check of **every** ticket that `rfemit` classifies as an emitter. That check runs at issue, at spawn, and on every sweep, so a disarm (notification) or a lock (0.25 s monitor) kills the process. `engagement.issue` pre-checks at `engagement.py:612`. Emitter classes: Wi-Fi (aireplay-ng, hcxdumptool, mdk…), Zigbee (`zb*` except known RX tools), Z-Wave (`zwave-*` except the sniffer), BLE (gatttool …), RFID (pm3), and serial lines (Flipper by verb, failing closed on unknown verbs; every ESP32 or unknown device). | `test_n2_kill_switch_off_refuses_every_emitter_at_issue_poc` (×9 classes); `test_n2_env_hard_lock_refuses_every_emitter_at_issue_poc` (×9); `test_n2_every_emitter_refused_at_spawn_after_disarm_or_lock` (×9, both closes); `test_n2_disarm_kills_a_running_deauth_poc`; `test_n2_env_lock_mid_run_kills_a_running_emitter`; `test_n2_wired_tools_do_not_need_the_kill_switch`; `test_n2_classifier_table` |
+| **N3** gatestate trusts any live pid | **CLOSED** | `gatestate.py:115-136`. The child must hold the hub nonce in `PALISADE_GATE_NONCE`; `child_env` hands it over and the child never reads it from the file. The file's pid must be alive, and its start time must equal what the hub recorded (`proc_start`, `gatestate.py:104`: `/proc/<pid>/stat` on Linux, `sysctl KERN_PROC_PID` on macOS). A missing or unknown start time counts as locked. | `test_n3_live_pid_with_wrong_start_time_is_locked_recycled_pid`; `test_n3_stale_file_after_hub_crash_is_locked`; `test_n3_file_from_another_hub_is_locked`; `test_n3_missing_start_time_is_locked`; `test_n3_forged_file_naming_a_live_pid_is_not_trusted_by_a_child_poc` (RA `l1_forged`, real child process); `test_n3_real_child_of_a_real_publisher_still_follows_the_hub` |
+| **N4** Proxmark emulated ID not scope-checked | **CLOSED** | `proxmark.py:35,75-81,109-118`. The `hf_mf_sim` uid and the `lf_hid_clone` id must also be `uid:` entries in scope. They are checked at issue and on every re-check (`engagement.issue(also=…)`), and the command carries exactly the normalised, checked ID. Any parameter that is not a single plain token is refused, which closes a second command smuggled through pm3's `;`. | `test_n4_sim_out_of_scope_emulated_id_refused_poc` (RA `g5_pm_param`); `test_n4_clone_out_of_scope_written_id_refused`; `test_n4_in_scope_emulated_id_allowed_and_bound_into_the_command`; `test_n4_second_pm3_command_cannot_be_smuggled_in_a_parameter` |
+| **N5** hostname bound by name | **CLOSED** | `engagement.pin_host` (`engagement.py:271`) resolves once. `netpent.py:62-68` hands nmap every checked address, never the name; the extra addresses are re-checked through `also`. | `test_n5_hostname_target_is_pinned_to_its_checked_address_poc` (RA `g4_rebind`); `test_n5_every_resolved_address_is_pinned_and_checked` |
+| **N6** `"2e6"` sample rate crashes | **CLOSED** | `txguard.as_hz` (`txguard.py:129`) uses the same `_finite` value the gate bounds-checks. Used by the replay, bench and loopback argv builders and the bench log. | `test_n6_float_format_sample_rate_does_not_crash_and_is_bounded_poc` (RA `poc3`; also 2e9, nan, inf and 1e3 are refused) |
+| **N8** re-check uses settings snapshot | **CLOSED** | `txguard.issue_ticket` re-checks the caller's own settings object, not a copy, or `live()` (`txguard.py:455`). Bench: `start_transmit(opt_in=…)` (`bench.py:95-125`). The Qt BENCH app passes the SAVED `tx_enabled` as a live opt-in (`palisade_qt/bench_app.py:212`), ANDed with the dict. | `test_n8_recheck_reads_live_settings_not_a_snapshot_poc` (RA `g11_settings_snapshot`); `test_n8_bench_saved_opt_in_is_live` |
+| **N9a** demo ticket writes to any port | **CLOSED** (trivial) | `executor.py:326` refuses a `binding="demo"` ticket unless the port class is `SYNTHETIC` (`hwlab.DemoSerial`, `hwlab.py:285`). | `test_n9a_demo_ticket_only_writes_to_the_synthetic_port` |
+| **N7** Tk hub has no UNLOCK | **DEFERRED** (owner decision 3) | Unchanged: the Tk gated tools stay permanently blocked and no unlock control was added. Listed for retirement in CL8 below. | (existing `test_g8_*` keep them blocked) |
+| **N9b** Scout fallback scanner runs outside the executor | **OPEN — found, not fixed** (not trivial) | When nmap is absent, `scout.py`'s connect-scan runs in in-process threads. It is gated before start, but `executor.kill_all` cannot stop it; only its stop flag can. A fix would move it into a subprocess under the executor, or register its stop flag with `kill_all`. | — |
+
+## Test changes to existing files (no denial weakened)
+
+- These tests drive an RF emitter, so they now arm the kill switch after opening the engagement (owner decision 2). Every refusal assertion is kept:
+  - `test_cl2_gates.py`: g2, g3-allowlisted, g5 pmkid, g5 deauth, g5 zigbee, g5 proxmark, g5 unbindable
+  - `test_blepent.py` (3), `test_flipper.py`, `test_proxmark.py`, `test_wifipent.py`, `test_zigbee.py`, `test_zwave.py`
+  - Each of those module files' fixtures now also resets txguard, so no armed state leaks between tests.
+- `test_palisade_qt.py::test_forge_proxmark_write_gated_and_reads_are_not`: **stricter**. It now also asserts the write is refused ("RF silenced") while disarmed, then arms.
+- `test_cl2_gates.py::test_l1_child_sees_parent_arm_and_disarm`: `read()` now takes the hub nonce (N3).
+- `test_proxmark.py::test_active_op_allowed_in_scope`: the expected command is `…-r 2006F623AE`, the normalised identity that is scope-checked (N4).
+- `GATED_MODULES` now includes `rfemit.py`, so the one-gate static scan covers it.
+
+## Brief vs reality
+
+- N2 is applied **strictly**. Every radiating action is gated, not only the owner's examples: PMKID (hcxdumptool transmits), Zigbee *discover* (beacon requests), BLE *enum/read* (they connect), Z-Wave map/query, every ESP32 or unknown serial line, and Flipper verbs not on the known non-RF list (`loader open …` included). Relaxing any of these means editing one table in `rfemit.py`. Flipper `ir` and `ibutton` are treated as non-RF (optical / contact).
+- Engagement-gated emitters need **arm only**, not the session unlock. The unlock is part of txguard's SDR chain, and the owner decision names the hard lock and the kill switch.
+
+## Found, not in the audit
+
+| Sev | Finding | Status |
+|---|---|---|
+| Medium | `proxmark.prepare` put caller parameters raw into a `pm3 -c` string, and pm3 runs `;`-separated commands. A parameter like `data="…; lf hid clone -r <any>"` smuggled a second, unchecked command. | **Fixed** with N4 (`_PARAM_RE`), test `test_n4_second_pm3_command_cannot_be_smuggled_in_a_parameter` |
+| Low | `lf_t55_write`, `hf_mf_restore` and `hf_iclass_clone` write content that is not an identity parameter. It cannot be scope-bound; the reason and trail now say "written content is not bound to the scope". | Labelled. Owner may prefer to refuse these. |
+| Low (fails safe) | With an engagement open and the kill switch OFF, the RECON / FORGE cards show emitter buttons as available. The engine refuses with "RF silenced …" on press. G12-style: the UI should reflect `txguard.emit_allowed()`. UI work, so not done here. | Open, for CL1/CL4 UI |
+| Info | `netpent` trail entries for a hostname now carry the pinned address as the target; the name goes into the label (`net:portscan:nas.lan`). | By design (N5) |
+
+## For CL8 (retirement list, owner decision 3)
+
+The Tk gated tools stay blocked: Tk CW, RTTY, digital modes (`digimodes.py`), replay, Mesh send, and the Tk engagement-gated tools (wifipent, blepent, zigbee, zwave, proxmark, usbhid Tk windows). The Tk hub has ARM but no UNLOCK and cannot open an engagement.
+
+## Suite, lint, renders
+
+```text
+$ QT_QPA_PLATFORM=offscreen python3.12 -m pytest -q tests        # Py 3.12.16, PySide6, macOS
+FAILED tests/test_audit_tiles.py::test_undecodable_tile_is_marked_failed
+FAILED tests/test_sstvdec.py::test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone
+2 failed, 1044 passed, 14 skipped in 249.41s
+```
+Both failures are the known ones, already failing on `main@e6184c6` (RA-CL2 confirmed this). The second fails because `skyfield` is missing from this venv. Before CL2-fix the suite was 985 passed; +59 new tests.
+
+```text
+$ python3.12 -m pyflakes rfemit.py executor.py txguard.py engagement.py gatestate.py proxmark.py netpent.py \
+    replay.py bench.py loopback.py hwlab.py palisade_qt/bench_app.py tests/test_cl2_fix.py tests/test_cl2_gates.py \
+    tests/test_blepent.py tests/test_flipper.py tests/test_proxmark.py tests/test_wifipent.py tests/test_zigbee.py \
+    tests/test_zwave.py tests/test_palisade_qt.py
+tests/test_palisade_qt.py:181:5: local variable 'before' is assigned to but never used
+tests/test_palisade_qt.py:202:5: 'palisade_qt.__main__ as m' imported but unused
+tests/test_palisade_qt.py:1508:9: 'skyfield' imported but unused
+```
+All 3 warnings are pre-existing: the same warnings appear on `dcb7c4f`, at line 1503 there. Nothing new. **Not run on Python 3.13 or on the uConsole.** The Linux branch of `gatestate.proc_start` (`/proc/<pid>/stat`) is exercised only there.
+
+**Renders** (token budget: only pages a finding touches, dark + sun, live): `plan/briefs/CL2-fix-renders/{dark,sun}-live/`. That is 56 PNGs, all exactly 1280×720 (`sizes_*.json`), covering the 4 gate states × FORGE BUS/RADIO, RECON WIFI/NET, SYSTEM › BENCH, and the TX and ENGAGE panels. No layout changed; BENCH has only a gate-wiring change. PNGs are git-ignored.
+
+## Stage → model
+
+| Stage | Model |
+|---|---|
+| Gate code, tests, every verdict | session model (Claude Opus 5.5) |
+| Inventory, suite, pyflakes, renders | session model, inline. **No subagents were used**, which is within the token-budget rule (max 4; none needed). |
+
+## Open questions (owner)
+
+1. **N2 breadth:** keep BLE enum/read, Zigbee discover and PMKID under the kill switch, or limit it to write, inject and deauth? This branch is at the strict answer.
+2. **Unbindable Proxmark writes** (`lf_t55_write`, `hf_mf_restore`, `hf_iclass_clone`): keep them label-only for content, or refuse them?
+3. **N9b:** fix Scout's fallback scanner in CL2, or defer it to the Scout cluster?
+
+Stop. **RA-CL2b** follows.
