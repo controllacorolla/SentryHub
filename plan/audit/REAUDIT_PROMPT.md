@@ -16,7 +16,7 @@ Your job is to falsify that claim, finding by finding. For each ID:
   - If not fixed, partially fixed, or fixed in a way that introduces a new problem: say
     exactly what remains, with a PoC.
   - Check for regressions the fix introduced elsewhere: run the suite headless, render every
-    page at exactly 1280×480 (dark, light, sun · live, demo), and diff behaviour against main
+    page at exactly 1280×720 (dark, light, sun · live, demo), and diff behaviour against main
     for anything the branch touched.
 
 Then, separately: anything NEW you find on this branch that was not in the 93, with the same

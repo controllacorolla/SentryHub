@@ -1,10 +1,14 @@
 # CLAUDE.md — PALISADE (SentryHub) working rules
 
 You are working on **PALISADE** (repo name `SentryHub`, formerly "Sentry"): a Python/Tkinter
-SDR + field-signals suite for a ClockworkPi uConsole (CM5, 1280×480 handheld). This file is
+SDR + field-signals suite for a ClockworkPi uConsole (CM5, 1280×720 handheld). This file is
 the contract. Read it first, every session.
 
 ## Read these before doing anything
+0. **`plan/audit/AUDIT_INDEX.md`** — the 2026-11-15 independent audit (93 findings) and the
+   nine fix clusters CL1–CL9. Phase 2 is parked until these land. Work arrives as briefs in
+   **`plan/briefs/`** — read `plan/briefs/README.md` for the protocol. When the owner says
+   `run <ID>`, fetch `origin/docs/briefs`, read `plan/briefs/<ID>.md`, do exactly that.
 1. **`PALISADE_BUILD_PLAN.md`** — the master plan. It drives. Everything else is detail.
 2. `CODE_REVIEW_HANDOFF.md` — defects to fix (security/reliability/honesty), with file refs.
 3. `TRIAGE.md` — per-module wire / merge / hide worklist.
@@ -19,11 +23,15 @@ got in — a name-based assumption created a duplicate dict key.)
 ## Hard constraints (do not violate without asking the human)
 - **Never commit to `main`.** One cluster per branch, one PR per cluster.
 - **UI-only changes must not alter a module's data/decoding/radio behaviour.**
-- **Don't claim tests pass that you didn't run** in a real **Python 3.12** venv with the GUI
-  deps (the dev Mac's system Python has nothing). Install `tkinter` (still needed for
-  not-yet-migrated apps), **PySide6 + pyqtgraph** (the new UI), `flask`, `numpy`. Tests:
-  `xvfb-run -a python3.12 -m pytest -q tests`. (The only `test_headless` failures in a bare env
+- **Don't claim tests pass that you didn't run** in a real venv with the GUI deps (the dev
+  Mac's system Python has nothing). Python **3.12 on the Mac, 3.13 on the uConsole** (Debian
+  13); code must run on both. Install `tkinter` (still needed for not-yet-migrated apps),
+  **PySide6 + pyqtgraph** (the new UI), `flask`, `numpy`. Tests:
+  `xvfb-run -a python3 -m pytest -q tests`. (The only `test_headless` failures in a bare env
   are missing `flask`.)
+- **Your own review does not close a finding.** Every audit cluster gets a cold re-audit
+  (`plan/audit/REAUDIT_PROMPT.md`) before merge. A fix with no regression test is not a fix.
+- **Target screen is 1280×720** (5" CWU50, ~294 ppi). Render at that size. Not 480.
 - **All tools come in.** PALISADE is a full pentest + SIGINT suite — passive AND active
   assessment. Active modules (wifipent, blepent, netpent, usbhid, canbus, proxmark, etc.)
   are gated behind `engagement.py` (authorization), `opprofile.py` (operator identity), and

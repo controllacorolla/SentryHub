@@ -332,7 +332,7 @@ for continuous operation.
 ### Wiring phase (UI + integration, no new algorithms)
 - ✅ **Event bus** — typed contract, thread-safe, geo-native payloads. OPS + all panels consume.
 - ✅ **Radio arbiter** — one-owner dongle model, RADIO BUSY states, seed for OVERWATCH director.
-- ✅ **Theme** — violet light/dark per DESIGN.md, depth tokens, legible at 1280×480.
+- ✅ **Theme** — violet light/dark per DESIGN.md, depth tokens, legible at 1280×720.
 - ➕ **Session record + replay** — capture all event-bus traffic to NVMe SSD, play back field sessions.
 - ➕ **Command palette (⌘K)** — jump to any callsign/freq/tail/decoder.
 - ➕ **Watchlists** — watch a tail/callsign/freq/MAC/MMSI; alert on hit.

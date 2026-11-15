@@ -136,5 +136,5 @@ google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
   --force-device-scale-factor=2 --window-size=1360,560 \
   --screenshot=out.png file:///path/to/concept.html
 ```
-uConsole screen is 1280×480. The concept HTML carries a working light/dark toggle and volume
+uConsole screen is 1280×720 (5-inch CWU50 DSI panel, native 720×1280 rotated; ~294 ppi). An earlier draft said 1280×480 — that is the DevTerm, not the uConsole. The concept HTML carries a working light/dark toggle and volume
 control; swap `<body class="dark">`/`"light"` to screenshot each mode.

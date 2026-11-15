@@ -6,7 +6,7 @@ review (`CODE_REVIEW_HANDOFF.md`) and the per-module audit (`TRIAGE.md`). Where 
 an input disagree, **this doc wins**; the inputs remain as detail references.
 
 Repo: `github.com/controllacorolla/SentryHub` · `main` is the source of truth · device app
-path stays `~/.local/share/uconsole-suite/app` · screen **1280×480**, handheld, outdoors,
+path stays `~/.local/share/uconsole-suite/app` · screen **1280×720**, handheld, outdoors,
 often one-handed.
 
 ---
@@ -142,7 +142,7 @@ feed hook, health-awareness via `suite.start_health`, and the QSS depth-token th
 
 **Acceptance for the kit:** a throwaway module built on it, in demo mode, renders the QSS depth
 tokens correctly in both modes, survives open→close with no leaked `QThread` and no exception
-(the R1/R3 test, via pytest-qt), and matches the OPS concept at 1280×480.
+(the R1/R3 test, via pytest-qt), and matches the OPS concept at 1280×720.
 
 ---
 
