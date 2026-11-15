@@ -24,14 +24,17 @@ def test_active_op_denied_without_engagement():
 
 
 def test_active_op_allowed_in_scope():
-    E.start("badge audit", "ROE-7", ["BADGE-*"], "KD0ABC")
-    ok, why, cmd = P.prepare("lf_hid_clone", target="BADGE-1", id="2006f623ae")
-    assert ok and cmd == "lf hid clone -r 2006f623ae"
+    # CL2/G5: the scope is the card UID and the card on the antenna is read back first
+    E.start("badge audit", "ROE-7", ["uid:2006F623AE"], "KD0ABC")
+    ok, why, t = P.prepare("lf_hid_clone", target="uid:2006F623AE", id="2006f623ae",
+                           read_uid=lambda: "2006f623ae")
+    assert ok and t.argv[-1] == "lf hid clone -r 2006f623ae"
 
 
 def test_active_op_blocked_out_of_scope():
-    E.start("badge audit", "ROE-7", ["BADGE-*"], "KD0ABC")
-    ok, why, cmd = P.prepare("hf_mf_sim", target="VIP-CARD", uid="DEADBEEF")
+    E.start("badge audit", "ROE-7", ["uid:2006F623AE"], "KD0ABC")
+    ok, why, cmd = P.prepare("hf_mf_sim", target="uid:DEADBEEF", uid="DEADBEEF",
+                             read_uid=lambda: "DEADBEEF")
     assert not ok and cmd is None
 
 

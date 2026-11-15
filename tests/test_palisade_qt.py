@@ -1197,16 +1197,19 @@ def test_recon_gate_authorizes_in_scope_denies_out_of_scope():
     import engagement
     from palisade_qt.recon import ReconApp
     p = ReconApp(demo=False, mode="dark")
-    engagement.start("Op", "ROE-7", ["aa:bb:cc:*"], "N0CALL")
+    engagement.start("Op", "ROE-7", ["aa:bb:cc:*"], "KD0ABC")
     p._refresh_gate()
     g = p.wifi_gated
     assert all(b.isEnabled() for b in g._btns), "unlocked under an active engagement"
     g.target.setText("aa:bb:cc:dd:ee:ff")
-    g._authorize("deauth")
-    assert "AUTHORIZED" in g.result.text() and "wifi:deauth" in g.result.text()
-    assert any(a["action"] == "wifi:deauth" for a in engagement.actions()), "logged to the trail"
+    g._authorize("handshake")
+    assert "AUTHORIZED" in g.result.text() and "wifi:handshake" in g.result.text()
+    assert "--bssid" in g.result.text()                 # the capture is bound to the BSSID (G5)
+    assert any(a["action"] == "wifi:handshake" for a in engagement.actions()), "logged to the trail"
+    g._authorize("deauth")                              # no client field: never a broadcast (G5)
+    assert "DENIED" in g.result.text() and "client" in g.result.text()
     g.target.setText("99:99:99:99:99:99")               # out of scope
-    g._authorize("deauth")
+    g._authorize("handshake")
     assert "DENIED" in g.result.text() and "scope" in g.result.text()
     _reset_engagement()
 
@@ -1271,8 +1274,10 @@ def test_recon_engage_activate_deactivate_and_trail():
     p = EngagePanel("dark")
     p.eng_name.setText("NightWatch")
     p.eng_auth.setText("ROE-42")
-    p.eng_scope.setText("10.0.0.*, Corp-*")
-    p.eng_operator.setText("N0CALL")
+    p.eng_scope.setText("10.0.0.*, Corp-*")            # globs: refused (CL2/G4)
+    p._activate()
+    assert not engagement.is_active() and "REFUSED" in p.eng_msg.text()
+    p.eng_scope.setText("10.0.0.0/24, Corp-1")
     p._activate()
     assert engagement.is_active() and "NightWatch" in p.eng_detail.hero.text()
     p._deactivate()
@@ -1315,7 +1320,7 @@ def test_recon_passaudit_hashcat_authorizes_in_scope():
     import engagement
     from palisade_qt.recon import ReconApp
     p = ReconApp(demo=False, mode="dark")
-    engagement.start("Op", "ROE-9", ["cap-*"], "N0CALL")
+    engagement.start("Op", "ROE-9", ["cap-01"], "KD0ABC")
     p._refresh_gate()
     g = p.pass_gated
     g.target.setText("cap-01")
@@ -1347,12 +1352,14 @@ def test_forge_canbus_tx_gated_by_engagement():
     # no engagement -> denied, no argv
     ok, why, argv = p._can_send(canbus, {"id": "7DF", "data": "0201", "target": "ecu-1"}, p.evidence)
     assert ok is False and argv is None and "engagement" in why.lower()
-    # in-scope engagement -> authorized + argv produced by the engine
-    engagement.start("Op", "ROE", ["ecu-*"], "N0CALL")
-    ok, why, argv = p._can_send(canbus, {"id": "7DF", "data": "0201", "target": "ecu-1"}, p.evidence)
-    assert ok is True and argv and argv[0] == "cansend"
-    # out of scope -> denied
-    ok, why, argv = p._can_send(canbus, {"id": "7DF", "data": "0201", "target": "other"}, p.evidence)
+    # in-scope engagement (interface + ID range, G5) -> authorized, a ticket from the engine
+    engagement.start("Op", "ROE", ["can0:0x700-0x7FF"], "KD0ABC")
+    ok, why, t = p._can_send(canbus, {"id": "7DF", "data": "0201", "target": "can0"}, p.evidence)
+    assert ok is True and t.argv[0] == "cansend"
+    # out of scope (ID / interface) -> denied
+    ok, why, argv = p._can_send(canbus, {"id": "100", "data": "0201", "target": "can0"}, p.evidence)
+    assert ok is False and argv is None
+    ok, why, argv = p._can_send(canbus, {"id": "7DF", "data": "0201", "target": "can1"}, p.evidence)
     assert ok is False and argv is None
     _reset_engagement()
 
@@ -1362,13 +1369,19 @@ def test_forge_proxmark_write_gated_and_reads_are_not():
     _reset_engagement()
     import engagement, proxmark
     from palisade_qt.forge import ForgeApp
-    p = ForgeApp(demo=False, mode="dark")
+    p = ForgeApp(demo=True, mode="dark")          # demo: the synthetic card 04A22B3C is read back
     active = [o for o, v in proxmark.OPS.items() if v[0] and "{" not in v[1]][0]  # no-param op
-    ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "badge-1"}, p.evidence)
+    ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "uid:04A22B3C"}, p.evidence)
     assert ok is False and cmd is None, "write op gated without engagement"
-    engagement.start("Op", "ROE", ["badge-*"], "N0CALL")
-    ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "badge-1"}, p.evidence)
+    engagement.start("Op", "ROE", ["uid:04A22B3C"], "KD0ABC")
+    ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "uid:04A22B3C"}, p.evidence)
     assert ok is True and cmd
+    ok, why, cmd = p._pm_write(proxmark, {"op": active, "target": "uid:DEADBEEF"}, p.evidence)
+    assert ok is False and cmd is None                  # not the card on the antenna / scope
+    live = ForgeApp(demo=False, mode="dark")       # live: no read-back path wired -> refused
+    ok, why, cmd = live._pm_write(proxmark, {"op": active, "target": "uid:04A22B3C"}, live.evidence)
+    assert ok is False and "read-back" in why
+    live.stop()
     # a read op is NOT gated
     ok, why, cmd = p._pm_write(proxmark, {"op": "lf_search", "target": ""}, p.evidence)
     assert ok is True and "ungated" in why
@@ -1585,14 +1598,22 @@ def test_overwatch_predict_error_shows_warn_standby():
 def test_bench_gate_safe_with_ack_gated_without():
     _app()
     from palisade_qt.bench_app import BenchApp
+    import txguard
     p = BenchApp(demo=False, mode="dark")
-    p.ack.setChecked(False)
-    p._refresh_gate()
-    assert "GATED" in p.gate.text() and not p.tx_btn.isEnabled()
-    p.ack.setChecked(True)
-    p._refresh_gate()
-    # "TX SAFE" is retired (it meant two things); a passing gate reads PERMITTED (D4)
-    assert "TX PERMITTED" in p.gate.text() and "SAFE" not in p.gate.text() and p.tx_btn.isEnabled()
+    p._saved = lambda: {"tx_enabled": True}            # the saved opt-in (never forced by the page)
+    txguard.arm(True)
+    txguard.unlock_session(True)                       # CL2/G1: the one chain, not the checkbox
+    try:
+        p.ack.setChecked(False)
+        p._refresh_gate()
+        assert "GATED" in p.gate.text() and not p.tx_btn.isEnabled()
+        p.ack.setChecked(True)
+        p._refresh_gate()
+        # "TX SAFE" is retired (it meant two things); a passing gate reads PERMITTED (D4)
+        assert "TX PERMITTED" in p.gate.text() and "SAFE" not in p.gate.text() and p.tx_btn.isEnabled()
+    finally:
+        txguard.reset_session()
+        p.stop()
 
 
 def test_bench_software_selftests_pass():
@@ -1611,17 +1632,25 @@ def test_bench_software_selftests_pass():
 def test_bench_conducted_tx_is_gated_and_hermetic():
     _app()
     from palisade_qt.bench_app import BenchApp
+    import txguard
     p = BenchApp(demo=False, mode="dark")
     spawned = []
     import bench
-    # no conducted ack -> txguard blocks before any transmit; the run seam is never called
-    p.ack.setChecked(False)
-    ok, msg = bench.transmit(p._settings(), run=lambda a: spawned.append(a))
-    assert ok is False and "conducted" in msg.lower() and spawned == []
-    # offscreen _tx never spawns regardless
-    p.ack.setChecked(True)
-    p._tx()
-    assert "no antenna" in p.card.sub.text().lower() or p.card.hero.text() in ("KEYED", "BLOCKED")
+    p._saved = lambda: {"tx_enabled": True}
+    txguard.arm(True)
+    txguard.unlock_session(True)
+    try:
+        # no conducted ack -> txguard blocks before any transmit; the spawner is never called
+        p.ack.setChecked(False)
+        ok, msg, code = bench.transmit(p._settings(), spawner=lambda a, **k: spawned.append(a))
+        assert ok is False and "conducted" in msg.lower() and spawned == []
+        # offscreen _tx never spawns regardless (no IQ file -> blocked; and the spawner refuses)
+        p.ack.setChecked(True)
+        p._tx()
+        assert p.card.hero.text() == "BLOCKED" and spawned == []
+    finally:
+        txguard.reset_session()
+        p.stop()
 
 
 def test_bench_open_pump_close_no_leak():

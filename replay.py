@@ -11,28 +11,43 @@ import os
 import sys
 
 
-def replay_argv(iq_file, freq_hz, sample_rate, tx_gain=0):
-    """The hackrf_transfer command to replay an IQ file as TX (built only after authorization)."""
+def _replay_argv(iq_file, freq_hz, sample_rate, tx_gain):
+    """The hackrf_transfer command to replay an IQ file as TX. Private: built only by
+    prepare_replay after authorization, with a gain derived from the authorized power."""
     return ["hackrf_transfer", "-t", iq_file, "-f", str(int(freq_hz)),
             "-s", str(int(sample_rate)), "-x", str(int(tx_gain))]
 
 
-def authorize_replay(freq_hz, confirmed, settings=None, power_dbm=None):
-    """Gate a replay. Returns (ok, reason, argv_power). Requires an explicit per-burst confirmation
-    AND the full txguard replay-mode policy (armed + unlocked + ISM/allowed band)."""
+def authorize_replay(freq_hz, confirmed, settings=None, power_dbm=None, sample_rate=None):
+    """Gate a replay. Returns (ok, reason, power_allowed). Requires an explicit per-burst
+    confirmation AND the full txguard replay-mode policy (armed + unlocked + tx_enabled + ISM band
+    for the region + finite power / sample rate)."""
     import txguard
-    if not confirmed:
+    if confirmed is not True:
         return False, "replay requires an explicit per-burst confirmation (manual trigger only)", 0
-    return txguard.authorize("replay", freq_hz, power_dbm=power_dbm, settings=settings or {})
+    return txguard.authorize("replay", freq_hz, power_dbm=power_dbm, settings=settings or {},
+                             sample_rate=sample_rate)
 
 
-def prepare_replay(iq_file, freq_hz, sample_rate, confirmed, settings=None, tx_gain=0):
-    """Authorize + build the replay command. Returns (ok, reason, argv). argv is None unless fully
-    authorized (confirmed + txguard pass)."""
-    ok, reason, _power = authorize_replay(freq_hz, confirmed, settings)
+def prepare_replay(iq_file, freq_hz, sample_rate, confirmed, settings=None, tx_gain=None,
+                   power_dbm=None):
+    """Authorize + build the replay command. Returns (ok, reason, ticket). The -x gain is derived
+    from the authorized power (audit G9): a requested gain above that is clamped down, a
+    non-integer / non-finite / negative one is refused."""
+    import txguard
+    ok, reason, power = authorize_replay(freq_hz, confirmed, settings, power_dbm, sample_rate)
     if not ok:
         return False, reason, None
-    return True, reason, replay_argv(iq_file, freq_hz, sample_rate, tx_gain)
+    gok, gwhy, gain = txguard.check_gain(tx_gain, power)
+    if not gok:
+        return False, gwhy, None
+    argv = _replay_argv(iq_file, freq_hz, sample_rate, gain)
+    ok, why, ticket, _p = txguard.issue_ticket("replay", argv, freq_hz, power_dbm,
+                                               settings=settings or {}, sample_rate=sample_rate,
+                                               label="tx:replay")
+    if not ok:
+        return False, why, None
+    return True, "%s; %s" % (reason, gwhy), ticket
 
 
 def main(parent=None):

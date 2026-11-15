@@ -103,17 +103,24 @@ class GatedTool(QtWidgets.QFrame):
         self.result.setWordWrap(True)
         self.result.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         lay.addWidget(self.result)
+        from . import chrome
+        chrome.gate_signals().changed.connect(self.refresh)      # follows the engine (G12)
         self.refresh()
 
     def refresh(self):
-        active = _engagement().is_active()
+        eng = _engagement()
+        active = eng.is_active()
         for b in self._btns:
             b.setEnabled(active)
         self.target.setEnabled(active)
         if active:
-            info = _engagement().info()
+            info = eng.info()
             self.state.setStyleSheet("color:%s;" % self._tok["warn"])     # amber: armed, not healthy
             self.state.setText("◆ authorized scope: %s" % ", ".join(info["scope"][:4]))
+        elif eng.expired():
+            self.state.setStyleSheet("color:%s;" % self._tok["alert"])
+            self.state.setText("▲ engagement EXPIRED — END it and open a new one (E)")
+            self.result.setText("")
         else:
             self.state.setStyleSheet("color:%s;" % self._tok["muted"])
             self.state.setText("○ REQUIRES ENGAGEMENT — open ENGAGEMENT in the top strip (E)")
@@ -125,14 +132,16 @@ class GatedTool(QtWidgets.QFrame):
             self.result.setText("enter a %s first" % self._domain)
             return
         # the ENGINE gates this (engagement.authorize_action); we pass the shared evidence chain
-        ok, why, argv = self._prepare(action, target, evidence_chain=self._app.evidence)
+        ok, why, ticket = self._prepare(action, target, evidence_chain=self._app.evidence)
         if not ok:
             self.result.setStyleSheet("color:%s;" % self._tok["muted"])
             self.result.setText("DENIED: %s" % why)
             return
         self.result.setStyleSheet("color:%s;" % self._tok["warn"])        # AUTHORIZED is amber (D9)
-        self.result.setText("AUTHORIZED: %s\n$ %s" % (why, " ".join(argv)))
-        self._app.on_authorized(self._domain, action, target, argv)
+        bind = " · LABEL-ONLY authorization" if ticket.binding == "label-only" else ""
+        self.result.setText("AUTHORIZED: %s\n$ %s\n(single-use ticket%s — runs only through the "
+                            "executor)" % (why, ticket.display(), bind))
+        self._app.on_authorized(self._domain, action, target, list(ticket.argv or ()))
 
 
 # ======================= passive scan workers =======================

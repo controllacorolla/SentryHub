@@ -789,7 +789,8 @@ def main():
             return
         with S.errfile(os.path.join(S.CACHE, key + ".err")) as err:
             procs[key] = subprocess.Popen(cmd, start_new_session=True,
-                                          stdout=subprocess.DEVNULL, stderr=err)
+                                          stdout=subprocess.DEVNULL, stderr=err,
+                                          env=_child_env())
         msg.config(text="Opening %s…" % dict((t[0], t[1]) for t in TILES)[key])
 
     def launch_sdrpp():
@@ -814,7 +815,7 @@ def main():
             try:
                 lease.acquire()
                 p = subprocess.Popen([exe], start_new_session=True, stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL)
+                                     stderr=subprocess.DEVNULL, env=_child_env())
                 procs["sdrpp"] = p
                 say("SDR++ open. The plane map returns when you close it.")
                 p.wait()
@@ -1022,6 +1023,15 @@ def main():
     # plus band/power/callsign to pass txguard.authorize().
     import txguard as _TXG
     _TXG.reset_session()                         # always boot disarmed/locked
+    # one gate state across processes (audit L1): this hub publishes arm / unlock / engagement to
+    # a session file in the runtime dir; every child it launches is bound to it (gatestate.child_env)
+    # and hard-locked (SUITE_TX_LOCK=1) while disarmed. The kill switch and the power auto-disarm
+    # below change txguard, which republishes; the file is removed when the hub exits.
+    import gatestate as _GS
+    _gate_pub = _GS.Publisher()
+
+    def _child_env():
+        return _GS.child_env(_gate_pub.path)
     tx_tag = tk.Label(mini, text="TX", font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE, cursor="hand2")
     tx_tag.pack(side="bottom", pady=(0, T.px(4)))
 
@@ -1030,8 +1040,9 @@ def main():
         tx_tag.config(text="TX●" if armed else "TX", fg="#ff3b30" if armed else T.TXT_3)
 
     def _tx_toggle(_=None):
-        _TXG.arm(not _TXG.is_armed())
+        _TXG.arm(not _TXG.is_armed())            # -> txguard listeners -> gate file republished
         _tx_paint()
+    _TXG.subscribe(lambda: root.after(0, _tx_paint))
     tx_tag.bind("<Button-1>", _tx_toggle)
     tx_tag.bind("<Enter>", lambda e: (tip.config(text=" TX %s — click to %s " % (
         "ARMED" if _TXG.is_armed() else "safe", "disarm" if _TXG.is_armed() else "arm")),
@@ -1395,6 +1406,8 @@ def main():
         handoff_sdrpp()
         shell.close_all()         # each app stops its radio and restores the plane map
         shell.closing = True
+        _TXG.arm(False)           # children lose authorization before the session file goes
+        _gate_pub.close()
         root.destroy()
 
     import signal

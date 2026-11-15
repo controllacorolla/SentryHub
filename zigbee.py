@@ -23,31 +23,43 @@ def sniff_argv(channel, out_pcap, iface=0):
     return ["zbdump", "-c", str(int(channel)), "-w", out_pcap]
 
 
-def discover_argv(iface=0):
-    """Active network discovery (sends beacon requests) — ACTIVE."""
-    return ["zbstumbler", "-i", str(iface)]
+def _discover_argv(channel, iface=0):
+    """Active network discovery (sends beacon requests on one channel) — ACTIVE."""
+    return ["zbstumbler", "-i", str(iface), "-c", str(int(channel))]
 
 
-def inject_argv(channel, pcap, iface=0):
+def _inject_argv(channel, pcap, iface=0):
     """Replay/inject frames for an injection-tolerance assessment — ACTIVE."""
     return ["zbreplay", "-c", str(int(channel)), "-r", pcap]
 
 
-def prepare(action, target="network", channel=15, out="zb.pcap", evidence_chain=None, iface=0):
-    """'sniff' is passive/ungated. 'discover'/'inject' are active and gated on an engagement
-    (target = PAN id or 'network'/channel in scope). Returns (ok, reason, argv)."""
+def prepare(action, target=None, channel=15, out="zb.pcap", evidence_chain=None, iface=0,
+            pan=None):
+    """'sniff' is passive/ungated. 'discover'/'inject' are active and gated on an engagement whose
+    scope lists the PAN and channel (pan:0x1A2B@15) — audit G5. discover (no PAN known yet) needs
+    a scoped entry on that channel. Returns (ok, reason, ticket|argv for sniff)."""
+    try:
+        ch = int(channel)
+    except (TypeError, ValueError):
+        return False, "channel must be a number", None
+    if ch not in CHANNELS:
+        return False, "channel %r is not an 802.15.4 2.4 GHz channel (11-26)" % (channel,), None
     if action == "sniff":
-        return True, "passive capture (ungated)", sniff_argv(channel, out, iface)
+        return True, "passive capture (ungated)", sniff_argv(ch, out, iface)
     if action == "discover":
-        argv = discover_argv(iface)
+        argv, tgt = _discover_argv(ch, iface), (None, ch)
     elif action == "inject":
-        argv = inject_argv(channel, out, iface)
+        if pan is None:
+            return False, "inject needs the target PAN id (scope pan:0xNNNN@channel)", None
+        try:
+            tgt = (int(pan), ch)
+        except (TypeError, ValueError):
+            return False, "PAN id must be a number", None
+        argv = _inject_argv(ch, out, iface)
     else:
         return False, "unknown action %r" % (action,), None
-    ok, why = engagement.authorize_action("zigbee:" + action, target, evidence_chain)
-    if not ok:
-        return False, why, None
-    return True, why, argv
+    return engagement.issue("zigbee:" + action, tgt, argv=argv, kind="zigbee",
+                            evidence_chain=evidence_chain, label="zigbee:" + action)
 
 
 def main(parent=None):

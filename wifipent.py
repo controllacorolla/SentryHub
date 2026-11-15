@@ -28,43 +28,70 @@ def set_channel_argv(iface, channel):
     return ["iw", "dev", iface, "set", "channel", str(int(channel))]
 
 
-def handshake_capture_argv(iface, bssid, channel, out_prefix):
+def _handshake_capture_argv(iface, bssid, channel, out_prefix):
     """airodump-ng targeted at one BSSID to capture its WPA handshake."""
     return ["airodump-ng", "--bssid", bssid, "--channel", str(int(channel)),
             "--write", out_prefix, "--output-format", "pcap", iface]
 
 
-def pmkid_capture_argv(iface, out_file):
-    """hcxdumptool PMKID/EAPOL capture (clientless where supported)."""
-    return ["hcxdumptool", "-i", iface, "-o", out_file, "--enable_status=1"]
+def _pmkid_capture_argv(iface, out_file, filter_file):
+    """hcxdumptool PMKID/EAPOL capture, restricted to the in-scope AP by a filter list
+    (--filtermode=2: attack only the listed APs) — audit G5."""
+    return ["hcxdumptool", "-i", iface, "-o", out_file, "--enable_status=1",
+            "--filterlist_ap=" + filter_file, "--filtermode=2"]
 
 
-def deauth_argv(iface, bssid, client=None, count=3):
-    """A SMALL, targeted deauth to trigger a re-handshake. count is clamped to DEAUTH_MAX; no
-    broadcast flood is offered (a client is targeted when given)."""
+def _deauth_argv(iface, bssid, client, count=3):
+    """A SMALL, targeted deauth to trigger a re-handshake: one AP, one client, count clamped to
+    DEAUTH_MAX. There is no broadcast form."""
     n = max(1, min(DEAUTH_MAX, int(count)))
-    argv = ["aireplay-ng", "--deauth", str(n), "-a", bssid]
-    if client:
-        argv += ["-c", client]
-    return argv
+    return ["aireplay-ng", "--deauth", str(n), "-a", bssid, "-c", client, iface]
+
+
+def _mac(x):
+    import re
+    s = re.sub(r"[:-]", "", str(x or "").strip()).upper()
+    if not re.fullmatch(r"[0-9A-F]{12}", s):
+        return None
+    return ":".join(s[i:i + 2] for i in range(0, 12, 2))
 
 
 def prepare(action, bssid, client=None, evidence_chain=None, iface="wlan0mon", channel=1,
             out="cap", count=3):
-    """Gate + build an active Wi-Fi action. Returns (ok, reason, argv). 'scan' is passive/ungated;
-    capture/deauth require an engagement with `bssid` in scope."""
-    if action == "handshake":
-        argv = handshake_capture_argv(iface, bssid, channel, out)
-    elif action == "pmkid":
-        argv = pmkid_capture_argv(iface, out)
-    elif action == "deauth":
-        argv = deauth_argv(iface, bssid, client, count)
-    else:
+    """Gate + build an active Wi-Fi action. Returns (ok, reason, ticket). The scope is bound to the
+    command (audit G5): handshake and PMKID capture filter on the in-scope BSSID; a deauth needs a
+    client, and both the AP and the client must be in scope (no client = refused, never a
+    broadcast)."""
+    if action not in ("handshake", "pmkid", "deauth"):
         return False, "unknown action %r" % (action,), None
-    ok, why = engagement.authorize_action("wifi:" + action, bssid, evidence_chain)
+    ok, why = engagement.require_active()
     if not ok:
         return False, why, None
-    return True, why, argv
+    ap = _mac(bssid)
+    if ap is None:
+        return False, "BSSID %r is not a MAC address" % (bssid,), None
+    try:
+        ch = int(channel)
+    except (TypeError, ValueError):
+        return False, "channel must be a number", None
+    files = None
+    if action == "handshake":
+        argv = _handshake_capture_argv(iface, ap, ch, out)
+    elif action == "pmkid":
+        ffile = str(out) + ".bssid"
+        argv = _pmkid_capture_argv(iface, str(out) + ".pcapng", ffile)
+        files = {ffile: ap.replace(":", "") + "\n"}
+    else:
+        cl = _mac(client)
+        if cl is None:
+            return False, ("deauth needs a target client MAC (no broadcast deauth) — "
+                           "refusing"), None
+        ok, why, _b = engagement.check("wifi:deauth", cl, kind="mac")
+        if not ok:
+            return False, "client: " + why, None
+        argv = _deauth_argv(iface, ap, cl, count)
+    return engagement.issue("wifi:" + action, ap, argv=argv, kind="mac",
+                            evidence_chain=evidence_chain, label="wifi:" + action, files=files)
 
 
 def main(parent=None):

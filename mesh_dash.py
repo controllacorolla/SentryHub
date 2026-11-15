@@ -20,10 +20,43 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite as S  # noqa: E402
 
 DEFAULTS = {"connect": "auto", "tcp_host": "127.0.0.1", "tcp_port": 4403, "serial_port": "",
-            # TX policy (see txguard): LoRa is license-free, so Mesh send stays on by default;
-            # callsign/tx_enabled only matter if amateur-band TX is added later.
-            "tx_enabled": True, "callsign": ""}
+            # TX policy (see txguard, audit G8): a mesh send is a LoRa key-up and goes through the
+            # one txguard chain like every other transmit - armed + unlocked + tx_enabled (default
+            # OFF, strict owner-decision default) + the region's licence-free band. No exemption.
+            "tx_enabled": False, "callsign": "", "lora_region": "US"}
 MSG_LOG = os.path.join(S.DATA, "mesh_messages.jsonl")
+
+# Meshtastic region -> (txguard region, the region's default LongFast frequency in Hz). A region not
+# listed here cannot be checked against a band table, so a send is refused.
+LORA_REGIONS = {"US": ("US", 906_875_000), "EU_868": ("EU", 869_525_000),
+                "EU": ("EU", 869_525_000)}
+
+
+def node_region(iface):
+    """The connected node's configured LoRa region name, or None."""
+    try:
+        reg = iface.localNode.localConfig.lora.region
+        name = getattr(reg, "name", None)
+        if name is None:
+            from meshtastic.protobuf import config_pb2
+            name = config_pb2.Config.LoRaConfig.RegionCode.Name(reg)
+        return str(name).upper()
+    except Exception:
+        return None
+
+
+def authorize_send(settings, iface=None):
+    """The one TX gate for a mesh message. Returns (ok, reason)."""
+    import txguard
+    region = (node_region(iface) if iface is not None else None) or \
+        str((settings or {}).get("lora_region") or "").upper()
+    if region not in LORA_REGIONS:
+        return False, "LoRa region %r unknown — cannot check the band, not sending" % (region or None,)
+    treg, freq = LORA_REGIONS[region]
+    s = dict(settings or {})
+    s["tx_region"] = treg
+    ok, why, _p = txguard.authorize("lora", freq, settings=s)
+    return ok, why
 
 
 def dist_km(a, b):
@@ -325,9 +358,8 @@ def main():
         if len(text.encode()) > 200:
             node_info.config(text="Message too long (200 bytes max).", fg=S.RED)
             return
-        import txguard
-        ok, why = txguard.decide(service="lora", settings=s)
-        if not ok:                       # only trips under a hard TX lockdown
+        ok, why = authorize_send(s, st["iface"])
+        if not ok:                       # the one txguard chain: arm + unlock + tx_enabled + band
             node_info.config(text="TX blocked: " + why, fg=S.RED)
             return
         dest = st["sel"] if st["sel"] and st["sel"] != my_id() else "^all"

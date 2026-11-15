@@ -45,7 +45,7 @@ def test_prepare_authorizes_with_gate_and_tool():
     ok, why, argv = digimodes.prepare("wspr", callsign="KD0ABC",
                                       settings={"tx_enabled": True, "callsign": "KD0ABC"},
                                       which=_which({"wsjtx"}))
-    assert ok and argv == ["wsjtx"] and "WSPR" in why
+    assert ok and argv.argv == ("wsjtx",) and "WSPR" in why        # a single-use ticket (CL2/G11)
 
 
 def test_prepare_rejects_unknown_mode():

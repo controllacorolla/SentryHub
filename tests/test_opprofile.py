@@ -25,6 +25,15 @@ def test_validate_and_can_tx():
 
 
 def test_tx_settings():
+    # owner decision 3, strict default (CL2): a callsign alone never enables TX
     ts = O.tx_settings({"callsign": "KD0ABC"})
-    assert ts["callsign"] == "KD0ABC" and ts["tx_enabled"] is True
+    assert ts["callsign"] == "KD0ABC" and ts["tx_enabled"] is False
+    assert O.tx_settings({"callsign": "KD0ABC", "tx_enabled": True})["tx_enabled"] is True
+    assert O.tx_settings({"callsign": "KD0ABC", "tx_enabled": "yes"})["tx_enabled"] is False
     assert O.tx_settings({"callsign": ""})["tx_enabled"] is False
+
+
+def test_operator_identity():
+    assert O.operator_identity({"callsign": "kd0abc", "name": "Pat"}) == "KD0ABC"
+    assert O.operator_identity({"callsign": "", "name": "Pat"}) == "Pat"
+    assert O.operator_identity({}) == "" and O.operator_identity(None) == ""

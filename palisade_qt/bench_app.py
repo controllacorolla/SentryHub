@@ -5,16 +5,21 @@ antenna port), never an antenna, every key-up gated by txguard. Two parts, both 
 
   * loopback.software_selftests() — pure in-software encode→decode round-trips (CW / RTTY / AIS /
     OpenDroneID). No radio, always runnable, hermetic — the honest "does the DSP chain work" check.
-  * bench.preflight()/bench.transmit() — the conducted key-up, gated by txguard's bench policy
-    (needs TX enabled AND an explicit per-session conducted-only acknowledgment). The gate state is
-    shown live: TX PERMITTED when a conducted burst is permitted, TX GATED (with the reason) when not.
+  * bench.preflight()/bench.start_transmit() — the conducted key-up, through the ONE txguard chain
+    (audit G1/G8): kill switch armed + session unlocked + the SAVED bench tx_enabled setting (default
+    off; this page never overrides it) + the conducted-only acknowledgment + the band (protected
+    bands stay denied even conducted — txguard.CONDUCTED_PROTECTED_ALLOWED). The gate state follows
+    the engine (chrome.gate_signals): TX PERMITTED when a conducted burst is permitted, TX GATED
+    (with the reason) when not.
+  * The key-up runs through the executor as a registered process group: the button becomes STOP
+    while it runs, disarm / PANIC kill it, and the card shows the transmitter's real exit code.
 
-No OTA ever leaves BENCH. `run` is a hermetic seam so tests never spawn a transmitter.
+No OTA ever leaves BENCH. Offscreen (tests) the key-up is never spawned.
 """
 import os
 import sys
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from .app import PalisadeApp
 from . import theme, chrome
@@ -25,10 +30,10 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-# conducted bench targets (band is irrelevant — nothing radiates — but the operator picks a freq)
+# conducted bench targets. Protected bands are denied even conducted (owner decision, strict
+# default), so no protected preset is offered (the 121.5 MHz preset is removed — audit G1).
 BANDS = [("20 m CW (ham)", 14_060_000), ("2 m (ham)", 144_390_000),
-         ("70 cm (ham)", 433_920_000), ("915 MHz ISM", 915_000_000),
-         ("Aviation 121.5 (protected)", 121_500_000)]
+         ("70 cm (ham)", 433_920_000), ("915 MHz ISM", 915_000_000)]
 MODES = ["conducted-replay"]
 
 
@@ -115,6 +120,12 @@ class BenchApp(PalisadeApp):
         right.addWidget(self.tx_btn)
         split.addWidget(self._wrap(right), 2)
         lay.addLayout(split, 1)
+        self._handle = None
+        self._poll = QtCore.QTimer(self)
+        self._poll.setInterval(200)
+        self._poll.timeout.connect(self._check_handle)
+        self.power.valueChanged.connect(lambda _v: self._refresh_gate())
+        chrome.gate_signals().changed.connect(self._refresh_gate)      # follows the engine (G12)
         self._refresh_gate()
         return body
 
@@ -126,17 +137,32 @@ class BenchApp(PalisadeApp):
     def _band_freq(self):
         return BANDS[self.band.currentIndex()][1]
 
+    def _saved(self):
+        """The saved bench settings — the ONLY source of tx_enabled (default off)."""
+        import bench
+        try:
+            return bench.saved_settings()
+        except Exception:
+            return {"tx_enabled": False}
+
     def _settings(self):
         import bench
+        saved = self._saved() or {}
         s = dict(bench.DEFAULTS)
-        s["tx_enabled"] = True
+        s.update({k: v for k, v in saved.items() if k in bench.DEFAULTS})
+        s["tx_enabled"] = saved.get("tx_enabled") is True        # never forced on here (G1)
         s["bench_conducted_ack"] = self.ack.isChecked()
         s["freq_hz"] = self._band_freq()
-        s["tx_gain"] = 0                       # conducted paths use external attenuation
+        s["power_dbm"] = self.power.value()
+        s["tx_gain"] = None                    # derived from the authorized power by txguard (G9)
         return s
 
-    def _refresh_gate(self):
+    def _refresh_gate(self, *_a):
         import bench
+        if not hasattr(self, "tx_btn"):
+            return
+        if self._handle is not None and self._handle.running():
+            return                              # STOP stays available while keyed
         ok, why = bench.preflight(self._settings(), self._band_freq())
         self.tx_btn.setEnabled(ok)
         # "TX SAFE" is retired: it meant "not transmitting" in the strip and "transmit permitted"
@@ -168,21 +194,63 @@ class BenchApp(PalisadeApp):
         self.header.set_chip("sdr", "SELF-TEST %s" % ("PASS" if msg["all_pass"] else "FAIL"),
                              state="neutral")
 
+    def _spawner(self):
+        """None = the executor's real spawner. Offscreen (tests / CI) a key-up is never spawned."""
+        if _offscreen():
+            def refuse(argv, **kw):
+                raise OSError("offscreen: transmitter not spawned")
+            return refuse
+        return None
+
     def _tx(self):
         import bench
+        if self._handle is not None and self._handle.running():
+            self._handle.stop("operator STOP")
+            self._check_handle()
+            return
         s = self._settings()
-        # hermetic seam: offscreen/tests never spawn a transmitter; on-device run is the default
-        run = (lambda argv: None) if _offscreen() else None
-        ok, message = bench.transmit(s, run=run)
-        self.card.set_hero("KEYED" if ok else "BLOCKED",
+        ok, message, h = bench.start_transmit(s, spawner=self._spawner())
+        if not ok:
+            self.card.set_hero("BLOCKED", "conducted into a load — no antenna, no OTA")
+            self.card.set_rows([("TXGUARD", "GATED/BLOCKED"), ("RESULT", message)])
+            return
+        self._handle = h
+        self.tx_btn.setText("STOP CONDUCTED TX")
+        self.tx_btn.setEnabled(True)
+        self.card.set_hero("KEYED", "conducted into a load — no antenna, no OTA")
+        self.card.set_rows([("TXGUARD", "PERMITTED — conducted"), ("RUNNING", message)])
+        self._poll.start()
+
+    def _check_handle(self):
+        h = self._handle
+        if h is None or h.running():
+            return
+        self._poll.stop()
+        self._handle = None
+        self.tx_btn.setText("KEY CONDUCTED TX (confirm)")
+        code = h.exit_code
+        if h.stopped:
+            result = "stopped (%s) · exit %s" % (h.stopped, code)
+        else:
+            result = "exit %s%s" % (code, "" if code == 0 else " — FAILED")
+        self.card.set_hero("DONE" if code == 0 and not h.stopped else "ENDED",
                            "conducted into a load — no antenna, no OTA")
-        self.card.set_rows([("TXGUARD", "PERMITTED — conducted" if ok else "GATED/BLOCKED"),
-                            ("RESULT", message)])
+        self.card.set_rows([("RESULT", result), ("OUTPUT", (h.lines[-1] if h.lines else "—"))])
+        self._refresh_gate()
 
     def stop(self):
         if self._stopped:
             return
         chrome.report_tx_permit("BENCH", False)
+        if getattr(self, "_handle", None) is not None:
+            self._handle.stop("BENCH closed")
+            self._handle = None
+        if hasattr(self, "_poll"):
+            self._poll.stop()
+        try:
+            chrome.gate_signals().changed.disconnect(self._refresh_gate)
+        except (TypeError, RuntimeError):
+            pass
         stw = getattr(self, "_stw", None)
         if stw is not None:
             stw.stop()

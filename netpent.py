@@ -12,43 +12,53 @@ import sys
 import engagement
 
 
-def ping_sweep_argv(cidr):
+def _ping_sweep_argv(cidr):
     return ["nmap", "-sn", cidr]
 
 
-def port_scan_argv(target, ports="1-1024", syn=True):
+def _port_scan_argv(target, ports="1-1024", syn=True):
     return ["nmap", "-sS" if syn else "-sT", "-p", str(ports), target]
 
 
-def service_enum_argv(target, ports="1-1024"):
+def _service_enum_argv(target, ports="1-1024"):
     return ["nmap", "-sV", "-p", str(ports), target]
 
 
-def os_fingerprint_argv(target):
+def _os_fingerprint_argv(target):
     return ["nmap", "-O", target]
 
 
-def arp_scan_argv(iface):
+def _survey_argv(target):
+    """Scout's "Scan my network": connect scan with light version detection, greppable output."""
+    return ["nmap", "-sV", "--version-light", "-T4", "--open", "-oG", "-", target]
+
+
+def _arp_scan_argv(iface):
+    """arp-scan of the local net: ACTIVE. Private and not wired to any gate action yet."""
     return ["arp-scan", "--interface", iface, "--localnet"]
 
 
-_ACTIONS = {"discover": ping_sweep_argv, "portscan": port_scan_argv,
-            "services": service_enum_argv, "osfp": os_fingerprint_argv}
+_ACTIONS = {"discover": _ping_sweep_argv, "portscan": _port_scan_argv,
+            "services": _service_enum_argv, "osfp": _os_fingerprint_argv,
+            "survey": _survey_argv}
+_PORTS_RE = __import__("re").compile(r"^[0-9]{1,5}(-[0-9]{1,5})?(,[0-9]{1,5}(-[0-9]{1,5})?)*$")
 
 
 def prepare(action, target, evidence_chain=None, ports="1-1024"):
     """Gate + build a network scan. Every action is active (touches the target), so all require an
-    open engagement with `target` (IP/host/CIDR) in scope. Returns (ok, reason, argv)."""
+    open engagement with `target` inside the typed IP scope (address / network / range; a hostname
+    is resolved and every address must be in scope). Returns (ok, reason, ticket) — the ticket is
+    single-use and runs only through executor.run()/start()."""
     if action not in _ACTIONS:
         return False, "unknown action %r" % (action,), None
-    ok, why = engagement.authorize_action("net:" + action, target, evidence_chain)
-    if not ok:
-        return False, why, None
-    if action in ("portscan", "services"):
-        argv = _ACTIONS[action](target, ports)
-    else:
-        argv = _ACTIONS[action](target)
-    return True, why, argv
+    if not _PORTS_RE.match(str(ports)):
+        return False, "ports must look like 1-1024 or 22,80,443", None
+    t = str(target).strip()
+    if t.startswith("-"):
+        return False, "target %r looks like an option" % (target,), None
+    argv = _ACTIONS[action](t, ports) if action in ("portscan", "services") else _ACTIONS[action](t)
+    return engagement.issue("net:" + action, t, argv=argv, kind="ip",
+                            evidence_chain=evidence_chain, label="net:" + action)
 
 
 def main(parent=None):

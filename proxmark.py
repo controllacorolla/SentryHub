@@ -38,21 +38,58 @@ def pm3_command(op, **params):
     return OPS[op][1].format(**params)
 
 
-def prepare(op, target=None, evidence_chain=None, **params):
-    """Build a Proxmark3 command. For active ops, gate through the engagement authorization first.
-    Returns (ok, reason, command_string)."""
+def _norm_uid(u):
+    import re
+    s = str(u or "").strip()
+    if s.lower().startswith("uid:"):
+        s = s[4:]
+    s = re.sub(r"[\s:]", "", s).upper()
+    return s if re.fullmatch(r"(?:[0-9A-F]{2}){4,10}", s) else None
+
+
+def parse_uid(text):
+    """The card UID / ID from pm3 `hf 14a info` / `lf search` output, or None."""
+    import re
+    m = re.search(r"UID\s*:\s*((?:[0-9A-Fa-f]{2}\s?){4,10})", str(text or ""))
+    if not m:
+        m = re.search(r"\bID\s*:?\s*([0-9A-Fa-f]{8,20})\b", str(text or ""))
+    return _norm_uid(m.group(1)) if m else None
+
+
+def prepare(op, target=None, evidence_chain=None, read_uid=None, port="/dev/ttyACM0", **params):
+    """Build a Proxmark3 command. Read ops: (ok, reason, command_string), ungated.
+    Active ops (write / clone / sim): the scope is bound to the card (audit G5) — `target` must be a
+    uid:… entry in scope, and read_uid() (a fresh read of the card on the antenna) must return the
+    same UID, else refused (no read-back = refused). Returns (ok, reason, ticket)."""
     if op not in OPS:
         return False, "unknown op %r" % (op,), None
     try:
         cmd = pm3_command(op, **params)
     except KeyError as e:
         return False, "missing parameter %s for %s" % (e, op), None
-    if is_active(op):
-        ok, why = engagement.authorize_action("proxmark:" + op, target, evidence_chain)
-        if not ok:
-            return False, why, None
-        return True, why, cmd
-    return True, "read op (ungated)", cmd
+    if not is_active(op):
+        return True, "read op (ungated)", cmd
+    ok, why = engagement.require_active()
+    if not ok:
+        return False, why, None
+    want = _norm_uid(target)
+    if want is None:
+        return False, "active op needs the target card UID (scope entry uid:…)", None
+    if read_uid is None:
+        return False, "no UID read-back available — refusing to write a card that was not read", None
+    try:
+        got = _norm_uid(read_uid())
+    except Exception as e:
+        got, err = None, str(e)
+    else:
+        err = ""
+    if got is None:
+        return False, "UID read-back failed%s — refusing" % ((": " + err) if err else ""), None
+    if got != want:
+        return False, "UID mismatch: card on the antenna is %s, authorized %s — refusing" % (
+            got, want), None
+    return engagement.issue("proxmark:" + op, "uid:" + want, argv=client_argv(cmd, port),
+                            kind="uid", evidence_chain=evidence_chain, label="proxmark:" + op)
 
 
 def detect(which=shutil.which):

@@ -62,12 +62,58 @@ def hid_report(mods=(), keys=()):
 
 
 def prepare(script, target, evidence_chain=None):
-    """Gate running a payload against a host. Returns (ok, reason, actions). actions only when an
-    engagement with `target` (the host) is open and in scope."""
-    ok, why = engagement.authorize_action("usbhid:inject", target, evidence_chain)
+    """Gate running a payload against a host. Returns (ok, reason, ticket). The ticket authorizes
+    exactly the HID report bytes for this script; the target host is a label the command cannot be
+    bound to, so this is a label-only authorization (audit G5)."""
+    actions = parse_ducky(script)
+    return engagement.issue("usbhid:inject", target, payload=build_reports(actions), kind="label",
+                            evidence_chain=evidence_chain, label="usbhid:inject",
+                            meta={"device": "hidg", "actions": len(actions)})
+
+
+def build_reports(actions):
+    """The keyboard report stream for parsed actions: press + release per key / character.
+    Delays are not encoded (the gadget writer applies them)."""
+    out = bytearray()
+    release = bytes(8)
+    for a in actions:
+        if a["type"] == "string":
+            for ch in a["text"]:
+                shift = ch.isupper() or ch in "!@#$%^&*()_+{}|:\"<>?~"
+                k = ch.lower() if ch.isalpha() else ch
+                if keycode(k) is None and ch != " ":
+                    continue
+                out += hid_report(["SHIFT"] if shift else [], ["SPACE" if ch == " " else k])
+                out += release
+        elif a["type"] == "key":
+            out += hid_report(a["mods"], a["keys"])
+            out += release
+    return bytes(out)
+
+
+def run_payload(script, target, gadget=None, device="/dev/hidg0", opener=open):
+    """Gate, then write the payload to the HID gadget through the executor. Returns
+    (ok, status_text, reports_written). Never says "sent" unless reports were actually written
+    (audit S3)."""
+    import executor
+    ok, why, ticket = prepare(script, target)
     if not ok:
-        return False, why, None
-    return True, why, parse_ducky(script)
+        return False, "BLOCKED: " + why, 0
+    if gadget is None:
+        gadget = os.path.exists(device)
+    n_reports = len(ticket.payload) // 8
+    if not gadget:
+        return False, ("Authorized (%s) — %d reports built, NOT SENT: no USB gadget (%s absent)"
+                       % (why, n_reports, device)), 0
+    try:
+        with opener(device, "wb") as fh:
+            written = executor.write(ticket, fh, port_name=device, chunk=8)
+    except (OSError, executor.TicketRefused) as e:
+        return False, "Authorized, but NOT SENT: write to %s failed (%s)" % (device, e), 0
+    reports = written // 8
+    if reports <= 0:
+        return False, "Authorized, but NOT SENT: the gadget accepted 0 bytes", 0
+    return True, "Sent %d reports to %s (%s)" % (reports, device, why), reports
 
 
 DEMO_PAYLOAD = "REM lock-screen check\nGUI r\nDELAY 300\nSTRING notepad\nENTER"
@@ -84,7 +130,7 @@ def main(parent=None):
     import tkinter as tk
     T = S.T
     slog = S.SessionLog("usbhid")
-    gadget = os.path.isdir("/sys/kernel/config/usb_gadget")
+
 
     S.top_bar(root, F, "USB-HID", "Keystroke-injection · engagement-gated")
     body = tk.Frame(root, bg=S.BG)
@@ -130,14 +176,11 @@ def main(parent=None):
         if not tgt:
             status.config(text="set a target host first", fg=S.AMBER)
             return
-        ok, why, actions = prepare(editor.get("1.0", "end"), tgt)
-        if not ok:
-            status.config(text="BLOCKED: " + why, fg=S.RED)
-            return
-        slog.event("usbhid", "payload -> %s (%d actions)" % (tgt, len(actions)), id=tgt)
-        status.config(text="Authorized: %s — %d actions %s (gadget %s)" % (
-            why, len(actions), "sent" if gadget else "built (no gadget hw)",
-            "ready" if gadget else "absent"), fg=S.GREEN)
+        # gate + write through the executor; the status says what actually happened (audit S3)
+        ok, text, n = run_payload(editor.get("1.0", "end"), tgt)     # /dev/hidg0 present?
+        if n:
+            slog.event("usbhid", "payload -> %s (%d reports written)" % (tgt, n), id=tgt)
+        status.config(text=text, fg=S.AMBER if ok else S.RED)
 
     bar = tk.Frame(root, bg=T.SURFACE)
     bar.pack(side="bottom", fill="x")

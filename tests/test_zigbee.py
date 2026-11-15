@@ -24,11 +24,13 @@ def test_sniff_is_ungated():
 
 def test_active_discover_gated():
     assert Z.prepare("discover")[0] is False                 # no engagement
-    E.start("iot audit", "self-owned", ["network"], "KD0ABC")
-    ok, why, argv = Z.prepare("discover")
-    assert ok and argv[0] == "zbstumbler"
+    E.start("iot audit", "self-owned", ["pan:0x1A2B@15"], "KD0ABC")    # PAN + channel (CL2/G5)
+    ok, why, t = Z.prepare("discover")
+    assert ok and t.argv[0] == "zbstumbler"
+    assert Z.prepare("discover", channel=20)[0] is False      # channel not in scope
 
 
 def test_inject_out_of_scope_blocked():
-    E.start("iot audit", "self-owned", ["my-pan"], "KD0ABC")
-    assert Z.prepare("inject", target="someone-elses-pan", channel=20)[0] is False
+    E.start("iot audit", "self-owned", ["pan:0x1A2B@15"], "KD0ABC")
+    assert Z.prepare("inject", pan=0x9999, channel=15)[0] is False
+    assert Z.prepare("inject", pan=0x1A2B, channel=20)[0] is False

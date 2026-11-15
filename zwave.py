@@ -26,7 +26,7 @@ def sniff_argv(region, out_pcap):
     return ["zwave-sniffer", "-f", str(int(f)), "-w", out_pcap]
 
 
-def query_argv(region, node_id):
+def _query_argv(region, node_id):
     return ["zwave-query", "-f", str(int(region_freq(region) or REGION_FREQ["US"])),
             "-n", str(int(node_id))]
 
@@ -55,18 +55,18 @@ def assess(nodes):
 
 
 def prepare(action, target="network", region="US", out="zw.pcap", node_id=1, evidence_chain=None):
+    """'sniff' is passive. 'map'/'query' are active and gated; Z-Wave home IDs are not bound into
+    the command, so the authorization is label-only (audit G5). Returns (ok, reason, ticket)."""
     if action == "sniff":
         return True, "passive capture (ungated)", sniff_argv(region, out)
     if action == "map":
         argv = ["zwave-map", "-f", str(int(region_freq(region) or REGION_FREQ["US"]))]
     elif action == "query":
-        argv = query_argv(region, node_id)
+        argv = _query_argv(region, node_id)
     else:
         return False, "unknown action %r" % (action,), None
-    ok, why = engagement.authorize_action("zwave:" + action, target, evidence_chain)
-    if not ok:
-        return False, why, None
-    return True, why, argv
+    return engagement.issue("zwave:" + action, target, argv=argv, kind="label",
+                            evidence_chain=evidence_chain, label="zwave:" + action)
 
 
 def main(parent=None):

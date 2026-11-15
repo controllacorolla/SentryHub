@@ -37,6 +37,6 @@ def test_commands_build():
 def test_audit_gated():
     assert P.prepare("hashcat", "AA:BB:CC:DD:EE:FF")[0] is False     # no engagement
     E.start("wifi audit", "self-owned", ["AA:BB:CC:*"], "KD0ABC")
-    ok, _, argv = P.prepare("hashcat", "AA:BB:CC:DD:EE:FF", hash_file="h", wordlist="w")
-    assert ok and argv[0] == "hashcat"
+    ok, _, t = P.prepare("hashcat", "AA:BB:CC:DD:EE:FF", hash_file="h", wordlist="w")
+    assert ok and t.argv[0] == "hashcat"
     assert P.prepare("hashcat", "99:99:99:99:99:99")[0] is False     # out of scope

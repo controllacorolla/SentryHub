@@ -308,7 +308,9 @@ class TopBar(QtWidgets.QFrame):
             self.slots["radio"].set("ACQUIRING", "half", t["warn"], owner)
         else:
             self.slots["radio"].set("FREE", "ring", t["muted"])
-        if tx == "ARMED":
+        if tx == "UNLOCKED":
+            self.slots["tx"].set("UNLOCKED", "square", t["alert"])
+        elif tx == "ARMED":
             self.slots["tx"].set("ARMED", "square", t["alert"])
         elif tx == "PERMITTED":
             self.slots["tx"].set("PERMITTED", "tri", t["warn"])
@@ -317,6 +319,8 @@ class TopBar(QtWidgets.QFrame):
         eword, scope = engagement[0], engagement[1]
         if eword == "ACTIVE":
             self.slots["engagement"].set("ACTIVE", "diamond", t["warn"], scope)
+        elif eword == "EXPIRED":
+            self.slots["engagement"].set("EXPIRED", "tri", t["alert"])
         else:
             self.slots["engagement"].set("NONE", "ring", t["muted"])
 

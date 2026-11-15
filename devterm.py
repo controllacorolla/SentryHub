@@ -118,6 +118,35 @@ def ssh_hosts(cfg_path=None, extra=()):
     return hosts
 
 
+# ---- gates (audit S2): connecting to a BLE device, publishing to a broker and running a command
+# over SSH all touch a target, so each needs an open engagement with that target in scope.
+def authorize_ble_connect(address):
+    import engagement
+    return engagement.authorize_action("devterm:ble-connect", address, kind="mac")
+
+
+def authorize_mqtt_publish(broker):
+    import engagement
+    return engagement.authorize_action("devterm:mqtt-publish", broker, kind="ip")
+
+
+def authorize_ssh_host(host):
+    import engagement
+    return engagement.authorize_action("devterm:ssh-open", host, kind="ip")
+
+
+def prepare_ssh(host, cmd):
+    """Gate a one-shot remote command. Returns (ok, reason, ticket) for
+    ssh -o BatchMode=yes -o ConnectTimeout=8 <host> <cmd>, run only through the executor."""
+    import engagement
+    h = str(host or "").strip()
+    if not h or h.startswith("-"):
+        return False, "host %r is not valid" % (host,), None
+    return engagement.issue("devterm:ssh", h,
+                            argv=["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", h,
+                                  str(cmd)], kind="ip", label="devterm:ssh")
+
+
 def term_launcher():
     """A terminal emulator present on the system that can run `-e <cmd>`, or None."""
     for term in ("lxterminal", "xterm", "x-terminal-emulator", "kitty", "alacritty",
@@ -306,6 +335,11 @@ def main():
         connect_ble(d)
 
     def connect_ble(d):
+        if not demo:
+            ok, why = authorize_ble_connect(d["address"])
+            if not ok:
+                ble_status.config(text="NOT CONNECTED — " + why, fg=S.AMBER)
+                return
         ble_status.config(text="connecting to %s…" % (d["name"] or d["address"]), fg=T.TXT_3)
 
         def work():
@@ -488,6 +522,11 @@ def main():
         topic, val = pub_topic.get().strip(), pub_val.get()
         if not topic:
             return
+        if not demo:
+            ok, why = authorize_mqtt_publish(s.get("broker", ""))
+            if not ok:
+                mqtt_status.config(text="NOT PUBLISHED — " + why, fg=S.AMBER)
+                return
         try:
             m.publish(topic, val)
         except Exception as e:
@@ -591,13 +630,19 @@ def main():
             s.setdefault("hosts", []).append(host)
         save()
         render_hosts()
+        ok, why = authorize_ssh_host(host)
+        if not ok:
+            ssh_status.config(text="NOT OPENED — " + why, fg=S.AMBER)
+            return
         term = term_launcher()
         if not term:
             ssh_status.config(text="no terminal emulator found (install lxterminal)", fg=S.AMBER)
             return
         try:
-            S.spawn([term, "-e", "ssh %s" % host] if term in ("lxterminal", "xterm")
-                    else [term, "-e", "ssh", host])
+            import subprocess
+            subprocess.Popen([term, "-e", "ssh %s" % host] if term in ("lxterminal", "xterm")
+                             else [term, "-e", "ssh", host], start_new_session=True,
+                             stdin=subprocess.DEVNULL)
             ssh_status.config(text="opened terminal to %s" % host, fg=T.TXT)
             slog.event("devterm", "ssh %s" % host, id="ssh:" + host)
         except Exception as e:
@@ -612,12 +657,20 @@ def main():
         cmd_out.delete("1.0", "end")
         cmd_out.insert("end", "$ ssh %s %s\n" % (host, cmd))
         cmd_out.config(state="disabled")
+        ok, why, ticket = prepare_ssh(host, cmd)
+        if not ok:
+            ssh_status.config(text="NOT RUN — " + why, fg=S.AMBER)
+            return
         ssh_status.config(text="running…", fg=T.TXT_3)
 
         def work():
-            # BatchMode: key-based only, never prompt for a password
-            rc, out = S.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host, cmd],
-                            timeout=30)
+            # BatchMode: key-based only, never prompt for a password; through the executor ticket
+            import executor
+            try:
+                r = executor.run(ticket, timeout=30)
+                rc, out = r.exit_code, "\n".join(r.lines)
+            except (executor.TicketRefused, OSError) as e:
+                rc, out = -1, str(e)
             q.put(("ssh_out", (rc, out)))
         S.in_thread(work)
 

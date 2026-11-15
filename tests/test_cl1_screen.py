@@ -318,10 +318,10 @@ def test_slots_follow_engine_state():
         txguard.arm(False)
         hub.state.poll()
         assert hub.topbar.slots["tx"].text() == "OFF"
-        engagement.start("Op", "ROE-1", ["10.0.0.*"], "N0CALL")
+        engagement.start("Op", "ROE-1", ["10.0.0.0/24"], "KD0ABC")
         hub.state.poll()
         assert hub.topbar.slots["engagement"].text().startswith("ACTIVE")
-        assert "10.0.0.*" in hub.topbar.slots["engagement"].text()
+        assert "10.0.0.0/24" in hub.topbar.slots["engagement"].text()
         ra.arbiter.changed.emit("ATLAS-APRS")
         _pump(20)
         assert hub.topbar.slots["radio"].text() == "HELD · APRS"
@@ -340,16 +340,22 @@ def test_tx_safe_is_retired_and_bench_permit_shows_in_the_tx_slot():
     try:
         for lbl in hub.findChildren(QtWidgets.QLabel):
             assert "TX SAFE" not in lbl.text()
+        import txguard
         bench = hub.page_app("BENCH")
+        bench._saved = lambda: {"tx_enabled": True}          # the saved bench opt-in
         _pump(60)
         assert hub.topbar.slots["tx"].text() == "OFF"
-        bench.ack.setChecked(True)
+        bench.ack.setChecked(True)                           # CL2/G1: the checkbox alone is not enough
         hub.state.poll()
+        assert "GATED" in bench.gate.text() and hub.topbar.slots["tx"].text() == "OFF"
+        txguard.arm(True)
+        txguard.unlock_session(True)
+        _pump(40)
         assert "PERMITTED" in bench.gate.text()
-        assert hub.topbar.slots["tx"].text() == "PERMITTED"
-        bench.ack.setChecked(False)
-        hub.state.poll()
-        assert hub.topbar.slots["tx"].text() == "OFF"
+        assert hub.topbar.slots["tx"].text() == "UNLOCKED"   # the engine state wins the slot
+        txguard.arm(False)
+        _pump(40)
+        assert "GATED" in bench.gate.text() and hub.topbar.slots["tx"].text() == "OFF"
     finally:
         hub.close()
         _pump(150)
@@ -625,9 +631,9 @@ def test_panic_key_disarms_ends_engagement_and_kills_children():
         hub._kill = lambda pid: killed.append(pid) or True
         txguard.arm(True)
         txguard.unlock_session(True)
-        engagement.start("Op", "ROE-1", ["10.0.0.*"], "N0CALL")
+        engagement.start("Op", "ROE-1", ["10.0.0.0/24"], "KD0ABC")
         hub.state.poll()
-        assert hub.topbar.slots["tx"].text() == "ARMED"
+        assert hub.topbar.slots["tx"].text() == "UNLOCKED"
         got = []
         eventbus.bus.published.connect(lambda e: got.append(e))
         assert shell.PANIC_KEY == "F12"
@@ -693,10 +699,11 @@ def test_green_means_receiving_only_not_authorized_or_armed():
     from palisade_qt.recon import ReconApp
     _app()
     green = theme.tokens("dark")["live"].lower()
-    engagement.start("Op", "ROE-1", ["10.0.0.*", "aa:*"], "N0CALL")
+    engagement.start("Op", "ROE-1", ["10.0.0.0/24", "AA:BB:CC:*"], "KD0ABC")
     txguard.arm(True)
     txguard.unlock_session(True)
     forge = ForgeApp(demo=False, mode="dark")
+    forge.replay_card._saved = lambda: {"tx_enabled": True}      # saved replay opt-in
     forge.refresh_gates()
     for card in forge._cards:
         assert green not in card.state.styleSheet().lower(), type(card).__name__
@@ -712,6 +719,7 @@ def test_green_means_receiving_only_not_authorized_or_armed():
     assert green not in recon.net_gated.result.styleSheet().lower()
     assert green not in recon.net_gated.state.styleSheet().lower()
     bench = BenchApp(demo=False, mode="dark")
+    bench._saved = lambda: {"tx_enabled": True}
     bench.ack.setChecked(True)
     assert "PERMITTED" in bench.gate.text() and green not in bench.gate.styleSheet().lower()
     for a in (forge, recon, bench):
@@ -838,8 +846,7 @@ def test_engagement_panel_opens_from_its_slot_and_refreshes_recon_cards():
         assert panel.isVisible()
         panel.eng_name.setText("NightWatch")
         panel.eng_auth.setText("ROE-42")
-        panel.eng_scope.setText("10.0.0.*")
-        panel.eng_operator.setText("N0CALL")
+        panel.eng_scope.setText("10.0.0.0/24")
         panel._activate()
         _pump(40)
         assert engagement.is_active()
