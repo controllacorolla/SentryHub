@@ -324,3 +324,23 @@ $ QT_QPA_PLATFORM=offscreen xvfb-run -a python3 -m pytest -q tests \
 
 Stage → model: everything in the planner's session (Claude Mythos 5.1 / Opus 5.5), no subagents.
 Not run: Python 3.12 on the Mac for this commit (RA-CL2d will), the uConsole.
+
+---
+
+## CL2-fix4 — close RA-CL2d (planner, cloud session, 2026-11-15)
+
+| ID | Status | Fix | Test (`tests/test_cl2_fix4.py`) |
+|---|---|---|---|
+| **D1** host-field shell injection via terminal launch | CLOSED (both halves) | (1) `_self_target`: the host token must match `^\[?[A-Za-z0-9.:%_-]{1,255}\]?$` and any IPv6 scope id must match `^[A-Za-z0-9_.-]{1,15}$` (an interface name); anything else is refused before `authorize_action`, so nothing hostile enters the trail. (2) `_terminal_argv()`: the terminal is never handed one command string; xterm/kitty/etc. get `[term, "-e", "ssh", "--", host]` (argc > 1, so xterm execs ssh directly and never `$SHELL -c`), lxterminal gets its `-e` string built with `shlex.quote`. | `test_d1_shell_metacharacters_in_the_host_are_refused_at_issue_poc[22]` (incl. the RA PoC `fe80::2%;touch$IFS.m`), `test_d1_legitimate_hosts_still_authorize[5]`, `test_d1_terminal_launch_is_never_one_command_string`, `test_d1_xterm_fallback_shell_would_see_no_metacharacters`, `test_d1_open_terminal_path_uses_the_argv_builder` |
+| D2 local-use NAT64 `64:ff9b:1::/48` | CLOSED | Added to `_V4_EMBED`; refused when the embedded IPv4 is loopback / unspecified / ours, allowed for a foreign IPv4. | `test_d2_*` (4) |
+| D3 scoped HostName percent-expanded | CLOSED | `_hostname_option()` doubles `%` → `HostName=fe80::2%%en0`; verified with real `ssh -G` (no `percent_expand` error, hostname printed intact). | `test_d3_*` (2, one needs OpenSSH) |
+
+Fail-first on `f44d1b7`: **17 failed, 19 passed** (the 19 are cases already refused by the
+whitespace/parse checks, plus the positive cases). After: 36 passed.
+
+Suite here (Linux, **Python 3.13.18**, xvfb): `1170 passed, 4 skipped` with the three known
+non-CL2 items deselected/ignored (`test_audit_tiles` baseline failure on `main`; `test_shell.py` needs
+`tkinter`, absent in this container; `test_all_callsigns_build_in_both_themes` 3.13 shiboken GC
+segfault fixed by CL1 `1e0993c`, which this branch predates — goes away on rebase). pyflakes clean
+on `devterm.py tests/test_cl2_fix4.py`. Stage → model: planner session (Claude Mythos 5.1), no
+subagents. Not run: Python 3.12 on the Mac (RA-CL2e will), xterm itself.

@@ -174,6 +174,27 @@ def own_addresses():
     return out
 
 
+# A host token may only be an address, a bracketed address with an optional %scope, or a
+# hostname. Nothing a shell, ssh or a terminal could interpret (RA-CL2d D1).
+_HOST_TOKEN = __import__("re").compile(r"^\[?[A-Za-z0-9.:%_-]{1,255}\]?$")
+_SCOPE_ID = __import__("re").compile(r"^[A-Za-z0-9_.-]{1,15}$")
+
+
+def _terminal_argv(term, host):
+    """argv for 'open a terminal running ssh <host>'. Never one command string: xterm falls back to
+    `$SHELL -c <string>` when a single -e argument is not an executable (RA-CL2d D1), and lxterminal
+    parses its -e string. ssh gets `--` so the host can never be read as an option."""
+    import shlex
+    if term == "lxterminal":
+        return [term, "-e", " ".join(shlex.quote(x) for x in ("ssh", "--", host))]
+    return [term, "-e", "ssh", "--", host]
+
+
+def _hostname_option(addr):
+    """HostName= value: OpenSSH percent-expands it, so a scope id's % is doubled (RA-CL2d D3)."""
+    return "HostName=" + str(addr).replace("%", "%%")
+
+
 def _canon(a):
     """An address with its IPv6 scope id dropped and an IPv4-mapped form unwrapped (RA-CL2c C2)."""
     import ipaddress
@@ -183,7 +204,7 @@ def _canon(a):
     return ip
 
 
-_V4_EMBED = ("::/96", "::ffff:0:0:0/96", "64:ff9b::/96")   # compat, SIIT-translated, NAT64
+_V4_EMBED = ("::/96", "::ffff:0:0:0/96", "64:ff9b::/96", "64:ff9b:1::/48")   # compat, SIIT, NAT64, local NAT64
 
 
 def _embeds_v4(ip, mine):
@@ -196,7 +217,7 @@ def _embeds_v4(ip, mine):
     for pre in _V4_EMBED:
         if ip in ipaddress.ip_network(pre):
             v4 = ipaddress.ip_address(int(ip) & 0xFFFFFFFF)
-            if pre != "64:ff9b::/96" or v4.is_loopback or v4.is_unspecified or v4 in mine:
+            if not pre.startswith("64:ff9b") or v4.is_loopback or v4.is_unspecified or v4 in mine:
                 return True
     return False
 
@@ -210,6 +231,13 @@ def _self_target(host):
     h = str(host or "").strip()
     if not h or h.startswith("-") or any(c.isspace() for c in h):
         return None, "host %r is not valid" % (host,)
+    if not _HOST_TOKEN.match(h):
+        return None, ("refused: host %r contains characters that are not part of an address or "
+                      "hostname (RA-CL2d D1)" % (host,))
+    if "%" in h:
+        scope = h.strip("[]").split("%", 1)[1]
+        if not _SCOPE_ID.match(scope):
+            return None, "refused: %r is not an interface name (IPv6 scope id)" % scope
     if h.lower().rstrip(".") in ("localhost", "localhost.localdomain", "ip6-localhost"):
         return None, "refused: %s is this device — SSH only reaches other hosts" % h
     try:
@@ -264,7 +292,7 @@ def prepare_ssh(host, cmd):
     # an ssh option such as -F / -oKnownHostsCommand / -oPKCS11Provider.
     ok, why, t = engagement.issue(
         "devterm:ssh", addrs[0],
-        argv=["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "HostName=" + addrs[0],
+        argv=["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", _hostname_option(addrs[0]),
               "-o", "ProxyCommand=none", "-o", "ProxyJump=none", "--", h, c],
         kind="ip", label="devterm:ssh", also=tuple((a, "ip") for a in addrs[1:]))
     if ok:
@@ -765,8 +793,7 @@ def main():
             return
         try:
             import subprocess
-            subprocess.Popen([term, "-e", "ssh %s" % host] if term in ("lxterminal", "xterm")
-                             else [term, "-e", "ssh", host], start_new_session=True,
+            subprocess.Popen(_terminal_argv(term, host), start_new_session=True,
                              stdin=subprocess.DEVNULL)
             ssh_status.config(text="opened terminal to %s" % host, fg=T.TXT)
             slog.event("devterm", "ssh %s" % host, id="ssh:" + host)
