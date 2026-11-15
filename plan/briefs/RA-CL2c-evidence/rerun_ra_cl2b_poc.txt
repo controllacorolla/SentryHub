@@ -1,0 +1,46 @@
+HOLD   N1 E.issue refuses SDR TX in every argv shape (string-level classifier)
+      engagement minted tickets for: {}
+HOLD   N1 DEVTERM SSH (shipped, free-text cmd) to an in-scope self address runs SDR TX
+      {"hackrf_transfer": {"issued": false, "spawned": false, "why": "refused: 127.0.0.1 resolves to 127.0.0.1, which is this device \u2014 SSH o"}, "hackrf_trans''fer": {"issued": false, "spawned": false, "why": "refused: 127.0.0.1 resolves to 127.0.0.1, which is this device \u2014 SSH o"}}
+BREAK  N1 DEVTERM SSH remote deauth ignores the RF hard lock (classified non-emitter)
+      issued under SUITE_TX_LOCK=1 + disarmed: True (authorized: devterm:ssh on 192.168.1.20 (engagement 'j') — r)
+HOLD   N1 txguard ticket: argv -f differs from the authorized freq_hz
+      issue_ticket authorized freq=915 MHz for an argv keying 1090 MHz: False
+HOLD   N1 executor.issue direct from a non-gate module refused
+      only a gate (txguard, engagement, flipper) may issue tickets, not '__main__'
+HOLD   N2 issue refused under SUITE_TX_LOCK=1 (armed+unlocked otherwise) for every emitter class
+      leaked={} probe-errors={}
+HOLD   N2 issue refused while disarmed (kill switch OFF) for every emitter class
+      leaked={}
+HOLD   N2 issued armed, then lock/disarm before spawn: refused at spawn for every class
+      ran or failed to issue: {}
+HOLD   N2 disarm kills a running emitter (deauth, zigbee inject, proxmark sim)
+      killed by disarm: {'wifi deauth': True, 'zigbee inject': True, 'proxmark sim': True}
+HOLD   N2 SUITE_TX_LOCK set mid-run kills a running deauth (monitor poll)
+      killed within 2.2s: True
+HOLD   N2 wired tools are NOT silenced by the RF lock (no over-blocking): nmap, CAN, USB-HID
+      nmap issued=True · usbhid=True authorized: usbhid:inject on BADGE-7 (engagement '
+BREAK  N2 rfemit misses real RF emitters (default non-RF for unknown programs)
+      classified as NOT an emitter: ['SDRangel sdrangelsrv', 'UHD tx_bursts', 'UHD tx_waveforms', 'URH urh_cli', 'airgeddon', 'btlejuice', 'crazyradio/mousejack', 'direwolf (APRS TX)', 'eaphammer', 'hciconfig (BT adv)', 'jackit (nRF24)', 'l2ping (BT)', 'meshtastic CLI', 'mfoc', 'minimodem --tx (rig audio)', 'nfc-mfsetuid', 'nfc-relay-picc', 'rfcomm (BT)', 'rpitx pichirp', 'rpitx pisstv', 'rpitx pocsag', 'rpitx sendook', 'rpitx spectrumpaint', 'rpitx tune', 'ubertooth-btle', 'wifiphisher', 'wpa_supplicant']
+HOLD   N2 Flipper verbs the RF lock lets through that can still key RF
+      issued under SUITE_TX_LOCK=1: []
+HOLD   N3 recycled pid / crash-stale / other hub / forged nonce all read as STALE
+      {"recycled pid (start differs)": true, "crash-stale (pid dead)": true, "other hub (nonce mismatch)": true, "no nonce in env": true, "forged: parent pid + its real start, wrong nonce": true, "group/other-writable": true, "start differs by pid (distinct)": true}
+HOLD   N3 bound child end-to-end: hub armed -> child armed; hub gone -> child STALE/locked
+      genuine='True True False' forged-nonce='False False True' hub-closed='False False True'
+HOLD   N3 Linux /proc/<pid>/stat parser picks field 22 (starttime), comm with ') ' inside
+      parsed 'linux:22' from a comm containing ') ' (want 'linux:22')
+HOLD   N4 Proxmark sim/clone: out-of-scope identity, ';' chaining, other separators
+      leaked={} · in-scope sim ok=True (proxmark3 -p /dev/ttyACM0 -c hf mf sim --1k -u DEADBEEF)
+HOLD   N4 sim scope revoked mid-run (END) kills it; out-of-scope also re-checked at spawn
+      gate no longer passes: 'uid:CAFEBABE' is not in the engagement scope — refusing (out of au
+HOLD   N5 hostname pinned: nmap argv carries the checked address only (DNS change is moot)
+      argv=['nmap', '-sS', '-p', '1-1024', '10.0.0.7'] · after DNS change: SPAWNED
+HOLD   N5 multi-address name: one address out of scope refuses the whole scan
+      issued=False '8.8.8.8' is not in the engagement scope — refusing (out of authorizat
+HOLD   N6 sample rate as text: '2e6' builds, 'nan'/'inf'/'1e400'/True refused cleanly
+      {"2e6": [true, "2000000"], "2.5e6": [true, "2500000"], "nan": [false, "sample rate 'nan' outside 2000000..20000"], "inf": [false, "sample rate 'inf' outside 2000000..20000"], "1e400": [false, "sample rate '1e400' outside 2000000..200"], "True": [false, "sample rate True outside 2000000..200000"], "0x200000": [false, "sample rate '0x200000' outside 2000000.."]}
+HOLD   N8 clearing tx_enabled in the LIVE settings kills a running replay; bench opt_in too
+      replay killed=True · bench issued=True (tmpfdx_v0cf.iq -> 915.0000 MHz (conducted): hackrf) killed=True
+HOLD   N9a demo ticket refused on a real port; written to DemoSerial
+      real port: refused · DemoSerial wrote 6
