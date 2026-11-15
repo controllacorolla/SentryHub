@@ -10,11 +10,11 @@ import sys
 import random
 import time
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from .app import PalisadeApp
 from . import theme
-from .kit import ControlBar, FeedTable, DetailCard, micro
+from .kit import ControlBar, FeedTable, DetailCard, micro, card
 from .worker import Worker
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,10 +40,30 @@ class ScanWorker(Worker):
         self._bank = bank
 
     def run(self):
-        if self.demo or not shutil.which("rtl_fm"):
+        if self.demo:
             self._run_demo()
+        elif not shutil.which("rtl_fm"):
+            self._run_standby()        # live + no rtl_fm: honest standby, never synthesise hits
         else:
             self._run_live()
+
+    def _run_standby(self):
+        """Live mode without rtl_fm: list the bank's channels all-quiet and publish NO fake hits.
+        Live shows only real activity (zero with no hardware); demo is the only synthetic path."""
+        import scanner as engine
+        s, _ = _load_scanner_settings(engine)
+        channels = (engine.bank_channels(self._bank, s.get("custom", []))
+                    or engine.bank_channels("NOAA Wx", []))
+        scan = {"on": False, "pause": False, "idx": 0, "rms": 0.0}
+        while not self._stop:
+            self._emit_state(channels, {}, scan)   # channels listed, all quiet, no fabricated hits
+            # re-assert STANDBY *after* the rows so on_row's "N CH" chip doesn't mask it
+            self.status.emit({"sdr": {"text": "SCAN STANDBY — no rtl_fm", "ok": False},
+                              "standby": True})
+            waited = 0
+            while waited < 1000 and not self._stop:
+                self.msleep(20)
+                waited += 20
 
     def _run_demo(self):
         while not self._stop:
@@ -218,9 +238,53 @@ class ProwlApp(PalisadeApp):
             "QProgressBar::chunk { background: %s; border-radius: 3px; }"
             % (self._tok["well"], accent))
         right.addWidget(self.sig_bar)
+
+        fdb = card(2)
+        fl = QtWidgets.QVBoxLayout(fdb)
+        fl.setContentsMargins(11, 9, 11, 9)
+        fl.setSpacing(5)
+        fl.addWidget(micro("Frequency DB"))
+        self.fdb_input = QtWidgets.QLineEdit()
+        self.fdb_input.setPlaceholderText("MHz, or search a service…")
+        self.fdb_input.returnPressed.connect(self._fdb_query)
+        self.fdb_input.textChanged.connect(self._fdb_query)
+        fl.addWidget(self.fdb_input)
+        self.fdb_results = QtWidgets.QLabel("")
+        self.fdb_results.setProperty("class", "micro")
+        self.fdb_results.setWordWrap(True)
+        self.fdb_results.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        fl.addWidget(self.fdb_results)
+        right.addWidget(fdb, 2)
+
         split.addLayout(right, 1)
         lay.addLayout(split, 1)
         return body
+
+    def _fdb_query(self):
+        """A bare number = MHz -> lookup/describe; text -> freqdb.search. Pure, no radio."""
+        term = self.fdb_input.text().strip()
+        if not term:
+            self.fdb_results.setText("")
+            return
+        try:
+            import freqdb
+        except ImportError:
+            self.fdb_results.setText("freqdb unavailable")
+            return
+        lines = []
+        try:
+            mhz = float(term)
+            for lo, hi, svc, note in freqdb.lookup(int(mhz * 1e6))[:5]:
+                lines.append("%.3f–%.3f  %s%s" % (lo / 1e6, hi / 1e6, svc,
+                                                  " · " + note if note else ""))
+            if not lines:
+                lines = ["%.3f MHz — unallocated" % mhz]
+        except ValueError:
+            for lo, hi, svc, note in freqdb.search(term)[:6]:
+                lines.append("%.3f–%.3f  %s" % (lo / 1e6, hi / 1e6, svc))
+            if not lines:
+                lines = ["no match for %r" % term]
+        self.fdb_results.setText("\n".join(lines))
 
     def _toggle_hold(self):
         if self._worker is not None:
@@ -234,6 +298,14 @@ class ProwlApp(PalisadeApp):
     def make_worker(self):
         return ScanWorker(demo=self.demo, bank=self.bank_combo.currentText(),
                           squelch=self.squelch.value())
+
+    def on_status(self, status):
+        super().on_status(status)
+        if status.get("standby"):            # live + no device: say so, don't imply a live scan
+            self.active.setText("standby — no device")
+            self.active.setProperty("class", "value")
+            self.active.style().unpolish(self.active)
+            self.active.style().polish(self.active)
 
     def _sig_color(self, sig, hot):
         if hot:
@@ -276,4 +348,14 @@ class ProwlApp(PalisadeApp):
             ("SIGNAL", row.get("sig", "") + " dBm"),
             ("LAST HEARD", row.get("last", "—")),
             ("STATUS", "ACTIVE" if row.get("_hot") else "quiet"),
+            ("ALLOCATION", _describe_mhz(row.get("freq", ""))),      # freqdb cross-reference
         ])
+
+
+def _describe_mhz(freq_mhz_str):
+    """freqdb.describe for an 'MHz' string, reused as-is. 'unallocated' if unknown/unparseable."""
+    try:
+        import freqdb
+        return freqdb.describe(int(float(freq_mhz_str) * 1e6))
+    except Exception:
+        return "—"

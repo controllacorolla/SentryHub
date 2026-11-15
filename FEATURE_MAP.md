@@ -110,6 +110,9 @@ Absorbs: rf_explorer, specan, waterfall, iqtool, noisefloor, classify, freqdb, r
 Absorbs: scanner, fm, freqdb, nwr.
 - ✅ scanner + FM tuner + NWR/SAME decode, all on arbiter, sub-mode tabs
 - 🔧 **DMR / P25 / TETRA / NXDN digital trunked radio** — decode digital police/fire/EMS/commercial/military radio via SDRTrunk or OP25. Majority of modern radio traffic is digital; without this PALISADE is deaf to it. Mature open-source tools, RTL-SDR compatible
+- ✅ scanner wired · ✅ **freqdb** (lookup/search panel + ALLOCATION row via freqdb.describe/lookup/search) · ⬜ fm
+- ⬜ fm (PR2): FM/NOAA tuner mode via fm.pipeline/Pipe through the radio arbiter (NAME 'PROWL'), RDS→decode;
+  also migrate ProwlApp off base-class LEASE='PROWL' (bypasses the arbiter today) to arbiter-routed
 - ➕ memory banks + scan/hold + audio with the top-bar volume
 - ➕ CTCSS/DCS decoder
 
