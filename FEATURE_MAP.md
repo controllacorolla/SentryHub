@@ -23,6 +23,23 @@ Absorbs: overwatch, astro, radio (SDR lease/autopilot), scout, passsched.
 - 🔧 **remote sensor nodes** — distributed PALISADE instances feeding one OPS dashboard
 - 🔧 **GPIO power manager** (AIO V2) — individual SDR/GPS/LoRa/USB power on/off via GPIO for load shedding + hardware control
 - 🔧 **OPSEC mode** — one-button RF-dark confirmation: kill all TX, pure monitor WiFi, no BLE advertising, visual OPS indicator (see Operational Modes above)
+## OVERWATCH — sky dome + radio director
+Absorbs: overwatch, astro, skyintel(ADS-B, NOT sat), wxsat(passes), passsched, radio arbiter.
+- ◐ **OVERWATCH page wired** — sub-views SKY DOME / RADIO / PASSES, all backends AS-IS.
+  - **SKY DOME** — a QPainter polar dome (zenith centre, horizon rim, N/E/S/W, elevation rings)
+    with the sun + moon from pure `astro.sun_azel`/`moon_azel` (always live — deterministic math)
+    and satellite positions + pass arcs; projection reuses `overwatch.project`/`dome_r`/`compass`.
+  - **RADIO** (the director seed) — the operator's view into the one-owner dongle: current
+    `radio_arbiter` holder, acquire/release history (from the arbiter's `changed` signal), and a
+    "FREE THE RADIO" hand-over that releases the holder so the next layer can take it.
+  - **PASSES** — upcoming passes from `wxsat.predict` (skyfield + TLE) scheduled via
+    `passsched.schedule`/`next_pass`/`assign_decoder`; the next real pass raises an
+    `alert(source=OVERWATCH)` for the OPS next-pass card. No TLE → "NO TLE — update required"
+    standby, no synthetic passes in live; demo passes are flagged; tests inject a fake TLE file and
+    never fetch from network.
+- Scout (site survey) stays under **RECON** (network/RF survey fits there, not the sky/radio view).
+- ⬜ autopilot radio rotation, per-pass arbiter record (acquire on AOS / release on LOS) on-device,
+  live TLE refresh.
 
 ## ATLAS — the map
 Absorbs: sky_app (ADS-B), skyintel, mlat, balloons, aprs, dronewatch (Remote ID), kraken (DF),
@@ -38,6 +55,35 @@ tacmap, geo, tiles, fieldcomp (map/trip/almanac), gnss.
 - 🔧 **OSINT enrichment layer** — auto-lookup detected identifiers against cached offline databases on NVMe: MAC → vendor (IEEE OUI), MMSI → vessel name/flag (ITU), tail number → aircraft registration (FAA), callsign → ham license (FCC ULS), BSSID → known AP mapping. Turns raw contacts into identified entities. Feeds the entity graph
 - 🔧 **geofenced alerts** — define areas, alert on contact enter/leave
 - 🔧 **temporal timeline view** — scrub through time across all radios: "at 14:32 this BLE appeared, at 14:35 this WiFi probed, at 14:37 this TPMS arrived" with correlation markers
+- ✅ **ONE layered map** — aircraft / ships / APRS / **drones (Remote-ID, first-class)** / DF /
+  balloons, togglable layers + legend; selectable contact → detail (id, alt, speed, dist+brg)
+- ✅ every contact publishes a typed `contact` event to the event bus → renders on ATLAS's map
+  AND the OPS PPI (one stream, two views); demo feed wired, flagged by the SDR-DEMO chip
+- ◐ **live ADS-B WIRED** — reuses `sky_app.AdsbFeed` (readsb/dump1090 `aircraft.json`) as-is and
+  adapts its aircraft to typed `contact` events (`adsb_to_contact`, kind=aircraft, source=ADS-B,
+  7x00 squawk/emergency → alert). No 2nd radio and no lease (readsb owns its radio). Shows on the
+  ATLAS map AND the OPS PPI. **Device validation (real RTL capture) pending on the uConsole.**
+- ◐ **live Remote-ID (dronewatch) WIRED** — reuses dronewatch's OpenDroneID decoder as-is over a
+  BLE (bleak) scan; publishes the **DRONE (red)** AND its **OPERATOR (violet, the differentiator)**
+  as typed contacts. BLE/Wi-Fi, NOT the SDR → no lease. Wi-Fi-monitor path stubbed (device-only).
+  On the ATLAS map + OPS PPI. **Device validation (real beacons / BLE on the uConsole) pending.**
+- ◐ **live APRS WIRED** (the FIRST lease-using source) — aprs's 144.39 decoder as-is
+  (rtl_fm→multimon-ng→parse_frame/decode/Stations); stations as typed contacts (amber, kind=station).
+  Holds the single-SDR **LEASE only while the APRS layer is on** (acquire on toggle-on, release on
+  toggle-off AND page close); opt-in in live, so opening ATLAS never grabs the radio or disturbs
+  the autopilot. This is the template for AIS/PRISM. **Device validation (real 144.39 + dongle) pending.**
+- ◐ **live AIS WIRED** — ais's 162 MHz decoder as-is (rtl_ais→AivdmAssembler/decode/Vessels);
+  vessels as typed contacts (cyan, kind=vessel). Uses the shared radio arbiter. Device validation pending.
+- ➕ **RADIO ARBITER** (radio_arbiter.py) — one SDR owner at a time (APRS/AIS; later PRISM). A
+  denied lease-layer renders "RADIO BUSY — held by X" on the map rail + an OPS alert, and ADS-B
+  shows BUSY (readsb paused) while a layer holds the radio, resuming on release. No time-sharing;
+  the displaced layer shows BUSY. This is the seed of the OVERWATCH radio director.
+- ◐ **live BALLOONS WIRED** — reads the radiosonde cache `sondes.json` (written by the Balloons
+  app's auto_rx UDP listener; the same file sky_app reads) via `balloons.parse_summary`'s shape;
+  sondes → balloon contacts. No SDR lease (auto_rx owns its pipeline). On ATLAS map + OPS PPI.
+- ◐ **DF (kraken) wired, device-gated** — `kraken.triangulate`/`confidence`/`kraken_available`
+  reused; the 5-channel KrakenSDR array is separate hardware (no lease). No array → zero (honest);
+  bearing collection + triangulation validate on the device.
 
 ## BABEL — universal decoder
 Absorbs: ais, signals (ACARS/VDL2), pager (POCSAG/FLEX), rds, cw, rtty, digimodes, tpms,
@@ -57,6 +103,32 @@ zigbee, zwave, nwr, sstv/sstvdec, wxsat (LRPT/APT), classify.
 - 🔧 **GR-GSM** — passive GSM decode + cell mapping
 - 🔧 **406 MHz COSPAS-SARSAT** — emergency beacon decode
 - 🔧 **SatDump integration** — NOAA APT, Meteor LRPT, GOES satellite imagery
+zigbee, zwave, nwr, sstv/sstvdec, wxsat (LRPT/APT).
+- ✅ ais, signals, pager, rds wired
+- ✅ **single-SDR via the shared radio arbiter** (PR-B1 foundation) — BABEL's radio modes
+  (AIS/ACARS/POCSAG/RDS) lease the one dongle through `radio_arbiter` under NAME `BABEL`
+  (no longer the base-class lease), so it coexists with ATLAS/PRISM — one owner at a time; a
+  held radio renders "RADIO BUSY — held by X" and, being live, decodes nothing. The live
+  runners gained the `_open_pipe` offscreen/offline seam so tests/CI never open a real radio.
+- ✅ **TPMS** (PR-B2) — tire-pressure sensors via rtl_433 JSON (315/433.92 MHz); `tpms.parse_tpms`
+  reused AS-IS, SDR-leased, honest standby (no `rtl_433` → "TPMS STANDBY"), real decodes publish to
+  the bus as `decode(source=BABEL-TPMS)` → OPS decode card.
+- ⬜ **CW / RTTY / digimodes — no reusable live RX backend AS-IS.** cw.py/rtty.py expose only the
+  *encode/decode primitives* (`decode_morse`, `decode_timing`, `decode_codes`) and are TX keyers
+  gated by txguard; there is **no audio→timing / audio→FSK demodulator**. digimodes.py has **no
+  decode path at all** (a txguard-gated TX launcher). Wiring these "live" would require building new
+  DSP — out of the UI-only mandate — so they stay practice/demo until a demod backend exists.
+- ⬜ **classify** — pure `classify(iq, fs)` modulation triage, but BABEL has no live IQ feed to run
+  it on; it belongs where an IQ source exists (PRISM/file), not a BABEL live tab.
+- ✅ **SSTV** (PR-B3) — ISS SSTV image decoder: `sstv.Recorder` (rtl_fm→WAV) under the `BABEL-SSTV`
+  lease, re-running `sstvdec.decode_wav` on the growing WAV until a frame decodes (both reused
+  AS-IS). A stacked **image panel** renders the RGB frame (numpy→QImage); honest standby (no
+  `rtl_fm`/numpy → "SSTV STANDBY"), a frame shown only on a real decode (ISS SSTV is rare →
+  listening is the norm); offscreen seam opens no radio. Decodes publish to the bus.
+- ⬜ **wxsat — image decoder, own PR** (device-only): drives SatDump (APT/LRPT) → PNGs,
+  pass-scheduled; a SatDump subprocess + filesystem harvest, not a pure reuse.
+- NWR is wired under **PROWL** (SAME/EAS), not duplicated here.
+- ⬜ **406 MHz COSPAS-SARSAT** (new decoder), Zigbee / Z-Wave (engagement-gated, future)
 - ➕ protocol filter + per-source coloring + one searchable decode log
 - ➕ number station / spy station database + tuner integration
 
@@ -69,14 +141,36 @@ Absorbs: rf_explorer, specan, waterfall, iqtool, noisefloor, classify, freqdb, r
 - 🔧 **AI signal classification** — ML model trained on known signal types, flags unknowns for human review. "This doesn't match anything in the database" = potential covert transmitter
 - 🔧 **Spectral fingerprinting** — capture physical-layer manufacturing imperfections of individual radios from IQ data. Same model WiFi router, different fingerprint. Identifies devices even after MAC change
 - 🔧 **TEMPEST** — EM emanation monitoring (gr-tempest, experimental)
+- ◐ **live spectrum + waterfall WIRED** — PyQtGraph spectrum line + peak-hold over a rolling
+  violet→green waterfall (ScopePanel). Real engine reused AS-IS: `waterfall.rtl_power_sweep_argv`
+  + `noisefloor.parse_rtl_power_row`, assembled into a full sweep per pass. SDR via the shared
+  **radio arbiter** ("PRISM"), held only while the page is active (release on page-leave + close);
+  shows RADIO BUSY when ATLAS holds the dongle. **Device validation (real RTL sweep) pending.**
+- ⬜ IQ record/replay (iqtool), noise-floor baseline tracking (noisefloor), signal classifier (classify)
 - ➕ click-to-tune into PROWL/BABEL from a spectrum peak
 
 ## PROWL — scanner / tuner
 Absorbs: scanner, fm, freqdb, nwr.
 - ✅ scanner + FM tuner + NWR/SAME decode, all on arbiter, sub-mode tabs
 - 🔧 **DMR / P25 / TETRA / NXDN digital trunked radio** — decode digital police/fire/EMS/commercial/military radio via SDRTrunk or OP25. Majority of modern radio traffic is digital; without this PALISADE is deaf to it. Mature open-source tools, RTL-SDR compatible
+- ✅ scanner wired · ✅ **freqdb** (lookup/search panel + ALLOCATION row via freqdb.describe/lookup/search) · ⬜ fm
+- ⬜ fm (PR2): FM/NOAA tuner mode via fm.pipeline/Pipe through the radio arbiter (NAME 'PROWL'), RDS→decode;
+  also migrate ProwlApp off base-class LEASE='PROWL' (bypasses the arbiter today) to arbiter-routed
 - ➕ memory banks + scan/hold + audio with the top-bar volume
 - ➕ CTCSS/DCS decoder
+- ◐ **SCAN + FM + NWR wired** (PR2) — three sub-modes (tabs), each leasing the one SDR through the
+  shared `radio_arbiter` (`PROWL-SCAN` / `PROWL-FM` / `PROWL-NWR`); switching releases the old and
+  acquires the new, so only one holds the dongle (denied → RADIO BUSY). `ProwlApp` is off the
+  base-class lease (`LEASE=None`) and releases the radio when backgrounded (the ATLAS/PRISM pattern).
+  - **FM** — `fm.pipeline`/`fm.Pipe` AS-IS: broadcast + weather tuner, frequency entry + step-seek +
+    gain, audio out, RDS (station/PI/PTY/radiotext) via redsea; auto-nbfm in the 162 MHz band.
+  - **NWR** — `nwr.pipeline`/`nwr.parse_same` AS-IS: 7-channel NOAA Weather Radio, SAME/EAS decode →
+    event/areas/station/valid; urgent events flagged.
+- ✅ scanner wired · ✅ **freqdb** (lookup/search panel + ALLOCATION row)
+- ➕ bus: scanner hits → `decode(source=PROWL)`, NWR SAME → `alert(source=PROWL)` (urgent → severity
+  `alert`); both already render in OPS's decode/alert cards by source. A dedicated OPS mode+freq tile
+  is an OPS-cluster item.
+- ⬜ memory banks, true signal-seek (vs step-tune), audio volume on the top bar
 
 ## FORGE — hardware & IO bench
 Absorbs: hwlab (serial/I2C/GPIO), devterm (serial/BLE/MQTT/SSH), buslab, canbus, proxmark,
@@ -89,6 +183,21 @@ flipper, usbhid, rollcode, replay, sensors (I2C).
 - 🔧 **Bias tee control** (AIO V2 RTL-SDR) — software toggle for 5V bias tee powering external LNAs/active antennas through coax
 - 🔧 **Ubertooth integration** — raw Bluetooth Classic sniffing (beyond BLE)
 - 🔧 **Nordic nRF sniffer** — protocol-aware BLE packet capture (GATT endpoints, pairing, keys) vs raw BLE scan
+flipper, usbhid, rollcode, replay, sensors.
+- ◐ **FORGE page wired** — sub-tabs SERIAL / BUS / RFID / RADIO / SENSORS, all backends AS-IS.
+  - **One colored multiplexed console** (`ConsolePane`): per-device scrollback + input line +
+    tx/rx/sys/ok/deny coloring. SERIAL = hwlab console (`SerialReader`/`DemoSerial` via a seam);
+    the same pane serves the CAN monitor and Proxmark reads.
+  - **Two gate types, same model as RECON** (engine-enforced, UI only reflects): engagement-gated
+    (canbus `prepare_send`, proxmark `prepare` write/clone/sim, usbhid `prepare` inject) show
+    "REQUIRES ENGAGEMENT"; txguard-gated (replay `prepare_replay`) shows a live **TX GATED** banner
+    (armed/unlocked). The UI never spawns a produced write/TX argv and wires no new TX path.
+  - **Passive always on**: hwlab serial console + I2C/GPIO read, canbus monitor (OBD/UDS decoded),
+    proxmark/flipper reads, rollcode RX analysis, sensors ISM readout — honest "NO DEVICE" standby,
+    demo flagged, bus publishes device/CAN/RFID/sensor reads as `decode(source=FORGE)`.
+- ➕ gated-action authorizations + flipper NFC-relay alerts → OPS strip.
+- ⬜ live device I/O (real serial/CAN/USB/Proxmark/Flipper) + buslab flash/JTAG write + per-op
+  Proxmark/Flipper param UIs are device-only follow-ups.
 
 ## RECON — network + RF survey + pentest (authorized)
 Absorbs: wifisurvey, wifipent, netpent, blescan, blepent, passaudit, scout, rffinger,
@@ -111,16 +220,51 @@ opprofile, engagement, evidence.
 - 🔧 **wireless keyboard/mouse sniffing** — 2.4 GHz non-WiFi traffic (MouseJack-style) via MT7921AUN monitor mode. Keystroke injection attack vector detection
 - 🔧 **Amazon Sidewalk detection** — 900 MHz Ring/Alexa mesh traffic via SX1262. Novel IoT surveillance vector
 - 🔧 **TPMS vehicle fingerprinting** — cross-reference TPMS sensor IDs with time + GNSS location = unique vehicle fingerprint without LPR. Feeds entity graph
+bugsweep, jammer (detector), imsicatch (detector), gnss, + engagement/opprofile/evidence.
+- ◐ **RECON page wired** — sub-tabs WIFI / BLE / NET / RF / COUNTER / ENGAGE, all backends AS-IS.
+  - **ENGAGE** (keystone): operator identity (`opprofile`), engagement scope (`engagement.start/end`),
+    the authorized-action trail + the tamper-evident evidence chain (`evidence.EvidenceChain`).
+  - **Gate is engine-enforced** — active tools (wifipent/blepent/netpent/passaudit) call their own
+    `prepare()` → `engagement.authorize_action(...)`; with no engagement (or out-of-scope target) the
+    engine returns no argv. The UI only reflects state ("REQUIRES ENGAGEMENT" vs the active scope) and
+    passes the shared evidence chain — it never routes around the gate or wires a new TX/attack path.
+  - **Passive**: wifisurvey AP scan + blescan BLE enum (hermetic seams, honest standby, bus publish).
+  - **COUNTER**: bugsweep / jammer / imsicatch / gnss — all receive-only detectors (no TX, guardrail
+    test), demo-fed, alerts → OPS strip.
+- ➕ open-network / fake-BTS / jammer / GPS-spoof alerts → `alert(source=RECON)` on the OPS strip;
+  Wi-Fi/BLE scans → `decode(source=RECON)`.
+- ⬜ live adapter wiring (monitor-mode Wi-Fi, bleak BLE, nmap, SatDump) is device-only; RF fingerprint
+  + scout site-survey are standby until an on-device feed is wired.
 
 ## BENCH — conducted TX self-test
 Absorbs: bench, loopback, txguard UI.
-- ◐ self-test UI → wire bench/loopback engines behind txguard; show the gate state live
+- ◐ **BENCH wired** — `loopback.software_selftests()` (CW/RTTY/AIS/OpenDroneID encode→decode
+  round-trips, pure, always runs) with real pass/fail, plus a conducted TX card gated by
+  `bench.preflight`/`txguard` — a live **TX SAFE** (conducted ack set) / **TX GATED** (amber + the
+  exact txguard reason) chip. Conducted-only: `bench.transmit` runs only via an injected seam, so
+  tests never key a transmitter and nothing goes OTA. Honest: loopback has **no VSWR/power meter**,
+  so no return/power numbers are shown or invented (the old placeholder faked SNR/BER — removed).
 
 ## MORE / SYSTEM (under a gear/overflow)
 Absorbs: settings_ui, doctor, assistant (AI), sitrep (spoken), transcriber, fusion.
 - ⬜ settings, device doctor, **AI assistant tied to live context**, spoken sitrep, transcriber,
   session logging
 - 🔧 **Meshtastic mesh relay** — relay contacts/alerts over LoRa mesh to other PALISADE nodes
+## MORE / SYSTEM (a SYSTEM nav callsign)
+Absorbs: settings_ui, doctor, assistant (AI), sitrep (spoken), transcriber, mesh_dash
+(Meshtastic), engagement/opprofile/evidence (governance lives in RECON's ENGAGE).
+- ◐ **MORE wired** — sub-tabs SETTINGS / DOCTOR / ASSISTANT / MESH / SITREP.
+  - **SETTINGS**: operator (opprofile), HOME, theme, event-bus retention; persisted via suite settings.
+  - **DOCTOR**: `doctor.run_all()` health checks with honest pass/fail/info + fix hints (network
+    checks skipped offscreen so tests never hit the network).
+  - **ASSISTANT**: answers from the live event-bus context (alerts / contacts / decodes) and honestly
+    reports "AI backend offline" when no Ollama host is reachable (`assistant.pick_host`).
+  - **MESH**: Meshtastic node list + message log (demo mirrors `mesh_dash.FakeIface`'s data; no node
+    → honest standby). *Note: FakeIface's live chatter uses an unstoppable daemon, so the demo uses
+    its data shape statically, not the class.*
+  - **SITREP**: a plain-language situation report from the current bus state + an optional
+    `sitrep.speak` read-out (no TTS → the text stands on its own).
+- **Phase 1 complete — all 9 callsigns + MORE are wired.**
 
 ---
 

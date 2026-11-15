@@ -26,11 +26,12 @@ CALLSIGNS = [
     ("ATLAS", "Live map"), ("BABEL", "Universal decoder"),
     ("PRISM", "Spectrum + waterfall"), ("PROWL", "Scanner / tuner"),
     ("FORGE", "Hardware & IO bench"), ("RECON", "Network + RF survey"),
-    ("BENCH", "Conducted TX self-test"),
+    ("BENCH", "Conducted TX self-test"), ("MORE", "Settings + system"),
 ]
 GROUPS = [("OVERVIEW", ["OPS", "OVERWATCH"]),
           ("SENSE", ["ATLAS", "BABEL", "PRISM", "PROWL"]),
-          ("FIELD", ["FORGE", "RECON", "BENCH"])]
+          ("FIELD", ["FORGE", "RECON", "BENCH"]),
+          ("SYSTEM", ["MORE"])]
 
 STALE_S = 12.0          # a contact not refreshed within this drops off the scope
 
