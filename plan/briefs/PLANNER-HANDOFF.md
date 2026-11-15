@@ -9,25 +9,27 @@ audit protocol (force-push, deleting branches, system changes, relaxing a gate d
 touching a protected band or the device). Decisions he reserved: Tk vs web, logo/SVG, second SDR,
 ham callsign, head signing automation, session-chain prune policy, the v0.1 launch line.
 
-## How work flows (see `README.md` in this directory for the full protocol)
-- **The planner writes the fix code** on the cluster branch (owner decision 13:27) and runs the
-  suite in its own workspace (`QT_QPA_PLATFORM=offscreen xvfb-run -a python3 -m pytest -q tests`).
-- **Cold audits run on the owner's Mac** through `plan/runner/run.sh`: append a line
-  `<lane A|B>  <BRIEF-ID>  opus` to `plan/runner/QUEUE` on branch `docs/briefs`, push, and the
-  runner executes `claude -p "run <ID>"` headless within a minute. Reports land on the cluster
-  branch as `plan/briefs/<ID>-report.md`. Poll GitHub for them (the runner's own status log does
-  not reach GitHub; that is harmless).
-- Every session works in its own git worktree. Never force-push (forbidden by CLAUDE.md).
-- Briefs live in `plan/briefs/<ID>.md`. Audit briefs are short and scoped; verdicts are one line
-  MERGE / DO NOT MERGE. On DO NOT MERGE: fix, push, queue `RA-<cluster><next letter>`.
+## How work flows (owner decision 2026-11-15 16:33; README "Where audits run")
+- One Project chat (`PALISADE`, repo attached) is the planner: writes fixes on the cluster branch,
+  runs the suite (`QT_QPA_PLATFORM=offscreen xvfb-run -a python3 -m pytest -q tests`), opens and
+  merges PRs, updates this file after every merge. Owner reads and approves what is flagged.
+- **Cold audits run as subagents from that chat**: spawn a fresh `general-purpose` agent on Opus,
+  own worktree, prompt = "git fetch origin docs/briefs && read plan/briefs/<RA-ID>.md and
+  plan/audit/REAUDIT_PROMPT.md; do exactly that; push the report to the cluster branch". It must
+  not be given anything from the planner's context. Verdict MERGE / DO NOT MERGE; on DO NOT MERGE
+  fix, push, spawn `RA-<cluster><next letter>`.
+- The Mac runner is retired (owner closes the Terminal windows). Mac = hardware/device checks only.
+- Models: planner Mythos; gate/evidence/TX code Mythos; audits Opus; mechanical Sonnet/Haiku.
+- Token rules: suite once per stage, renders only for touched screens, ≤4 subagents, no polling or
+  sleep-and-check loops, new chat every 1–2 clusters (write this file first). Never force-push.
 
 ## State at handoff
 | Cluster | Branch | State |
 |---|---|---|
 | CL1 screen | merged (PR #19) | RA-CL1d MERGE |
-| CL2 gates | merged (PR #20) | RA-CL2e MERGE; the planner's merge resolution is being checked by **RA-MAIN-1** (lane B) |
-| CL3 evidence chain | `fix/cl3-evidence` @ 13c04a4 | CL3-fix pushed; **RA-CL3b** queued (lane A). MERGE → open PR → merge → tell owner |
-| CL5 radio/threads | `fix/cl5-radio` | kit done: worker (interruptible stop/pause/backoff), app lifecycle (park, never abort; exit drain), arbiter FREE/ACQUIRING/HELD + revoke/ack, bus copy/retention/backlog, `kit/procs.py` Pipeline, aprs/ais/nwr argv builders, NWR poll/DOWN state, `more.py` deleted. Remaining: BABEL R1/R2, E2 scan bank skip/dwell, E3 BLE toggle, R5 SSTV rolling window, B1 FM tuner 3 decimals + step, B2 squelch, B3 epoch hit times; tests; report; then RA-CL5 |
+| CL2 gates | merged (PR #20) | RA-CL2e MERGE. **RA-MAIN-1** (post-merge check) was queued on the Mac runner; if no `RA-MAIN-1-report.md` exists on `audit/ra-main-1`, run it as a subagent |
+| CL3 evidence chain | `fix/cl3-evidence` @ 13c04a4 | CL3-fix pushed; **RA-CL3b** was queued on the Mac runner. If `plan/briefs/RA-CL3b-report.md` is not on the branch, run it as a subagent. MERGE → open PR → merge → tell owner |
+| CL5 radio/threads | `fix/cl5-radio` @ 478ecf8 | **All code done** (A1–A6, R1–R5, E2, E3, B1–B3, worker exit drain, per-stage process groups). `tests/test_cl5_radio.py` 29/29. Full suite 995 pass / 9 fail: 3 are old tests to update for CL5 semantics — `test_cl1_fix::test_decoder_pipelines_start_in_their_own_session` (each stage now leads its own group), `test_palisade_qt::test_babel_live_mode_acquires_and_releases_via_arbiter` (BABEL takes the radio only after RUN + active), `test_palisade_qt::test_overwatch_radio_director_tracks_arbiter_and_frees` (arbiter ACQUIRING/HELD states); the other 6 pre-exist on main (tiles, 4× `test_cl1_fix3` strip 1284 px on Linux, flaky `test_up_down…`). Then: write `CL5-report.md` (before/after renders of PROWL/BABEL/ATLAS/RADIOS panel), write `RA-CL5.md`, spawn the audit |
 | CL4 honest state | not started | H1–H19 E1 E4 D4(empty) L5 — branch off main once CL3 merges |
 | CL6, CL7, CL8 | not started | `plan/audit/AUDIT_INDEX.md` |
 
@@ -48,5 +50,7 @@ ham callsign, head signing automation, session-chain prune policy, the v0.1 laun
   tools hidden; CL6/CL7 → v0.2. Ask him when CL5 is in.
 
 ## First actions in a new chat
-1. `git fetch origin`; read `plan/runner/QUEUE` and the newest `RA-*-report.md` on each open branch.
-2. Act on verdicts (merge + tell the owner, or fix). 3. Continue CL5 from the list above.
+1. `git fetch origin`; check for `RA-CL3b-report.md` on `fix/cl3-evidence` and `RA-MAIN-1-report.md`
+   on `audit/ra-main-1`. Missing → spawn each as a cold subagent. Present → act on the verdict.
+2. CL5: fix the 3 tests above, report, `RA-CL5` subagent. 3. CL4 off main once CL3 merges, then CL8.
+4. When CL5 merges, ask the owner to confirm the v0.1 launch line. Tell him in one line after each merge.
