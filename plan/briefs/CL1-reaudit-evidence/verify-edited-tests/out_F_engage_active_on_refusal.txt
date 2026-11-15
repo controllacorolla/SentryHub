@@ -1,0 +1,30 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.16, pytest-9.2.0, pluggy-1.7.0 -- /private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/bin/python
+rootdir: /private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/F_engage_active_on_refusal
+collecting ... collected 169 items
+
+tests/test_palisade_qt.py::test_ops_open_pump_close_no_leaked_thread[dark] PASSED [  0%]
+tests/test_palisade_qt.py::test_ops_open_pump_close_no_leaked_thread[light] PASSED [  1%]
+tests/test_palisade_qt.py::test_hub_builds_and_hosts_ops PASSED          [  1%]
+tests/test_palisade_qt.py::test_lease_skipped_in_demo PASSED             [  2%]
+tests/test_palisade_qt.py::test_prism_open_pump_close_no_leaked_thread[dark] PASSED [  2%]
+tests/test_palisade_qt.py::test_prism_open_pump_close_no_leaked_thread[light] PASSED [  3%]
+tests/test_palisade_qt.py::test_hub_embeds_prism_as_qt_page PASSED       [  4%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[ATLAS] PASSED [  4%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[PRISM] PASSED [  5%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[PROWL] PASSED [  5%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[SWEEP] PASSED [  6%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[RECON] PASSED [  7%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[FORGE] PASSED [  7%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[SYSTEM] PASSED [  8%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[OVERWATCH] PASSED [  8%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[BABEL] PASSED [  9%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[BENCH] PASSED [ 10%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[MORE] PASSED [ 10%]
+tests/test_palisade_qt.py::test_all_callsigns_build_in_both_themes[dark] PASSED [ 11%]
+tests/test_palisade_qt.py::test_all_callsigns_build_in_both_themes[light] PASSED [ 11%]
+tests/test_palisade_qt.py::test_hub_soak_open_all_callsigns_then_close_no_leaks PASSED [ 12%]
+tests/test_palisade_qt.py::test_launcher_main_is_importable PASSED       [ 13%]
+tests/test_palisade_qt.py::test_eventbus_typed_contract PASSED           [ 13%]
+tests/test_palisade_qt.py::test_ops_live_mode_shows_standby_not_fake_data PASSED [ 14%]
+tests/test_palisade_qt.py::test_atlas_demo_contacts_reach_both_map_and_ops 

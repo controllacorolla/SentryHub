@@ -80,3 +80,69 @@ class AudioSink:
             return vol, "[off]" in out
         rc2, out2 = self._run(["pactl", "get-sink-mute", "@DEFAULT_SINK@"])
         return vol, ("yes" in out2.lower()) if rc2 == 0 else None
+
+
+# ---------------------------------------------------------------------------------------------
+# Off the GUI thread. A mixer CLI can hang (a wedged PipeWire daemon) for its whole timeout; on
+# the GUI thread that froze the strip for 2-4 s per call (RA-CL1). Every set is followed by a
+# read-back, and the strip shows only what the read-back says.
+
+import queue        # noqa: E402
+import threading    # noqa: E402
+
+from PySide6 import QtCore  # noqa: E402
+
+# Controllers and their threads live for the process (the `_retain` rule in app.py): nothing a
+# worker thread holds may become garbage that a non-GUI thread then has to delete.
+_RETAINED = []
+
+
+class AudioController(QtCore.QObject):
+    """Queues mixer operations onto one daemon thread. Emits `state` after each operation with what
+    the mixer reported: {"volume": int|None, "muted": bool|None, "fault": str, "op": str}.
+    A daemon thread rather than a QThread: a hung mixer call must never hold up process exit, and a
+    QThread that outlives its join aborts the process (audit A2)."""
+    state = QtCore.Signal(object)
+
+    def __init__(self, sink):
+        super().__init__()                    # unparented and retained: see _RETAINED
+        _RETAINED.append(self)
+        self.sink = sink
+        self._q = queue.Queue()
+        self._thread = None
+        self.pending = 0
+
+    def request(self, op, arg=None):
+        """op: 'get' | 'volume' (arg pct) | 'mute' (arg bool)."""
+        if self._thread is None:
+            self._thread = threading.Thread(target=self._loop, name="palisade-mixer", daemon=True)
+            _RETAINED.append(self._thread)
+            self._thread.start()
+        self.pending += 1
+        self._q.put((op, arg))
+
+    def _loop(self):
+        while True:
+            item = self._q.get()
+            if item is None:
+                return
+            op, arg = item
+            fault = ""
+            try:
+                if op == "volume" and not self.sink.set_volume(arg):
+                    fault = "volume change refused by %s" % self.sink.backend
+                elif op == "mute" and not self.sink.set_mute(arg):
+                    fault = "%s refused by %s" % ("mute" if arg else "unmute", self.sink.backend)
+                vol, muted = self.sink.get()
+            except Exception as e:            # a broken seam must surface, not kill the thread
+                vol, muted, fault = None, None, "mixer error: %s" % e
+            if vol is None and muted is None:
+                fault = (fault + "; " if fault else "") + "cannot read %s" % self.sink.backend
+            try:
+                self.state.emit({"volume": vol, "muted": muted, "fault": fault, "op": op})
+            except RuntimeError:
+                return
+
+    def stop(self):
+        if self._thread is not None:
+            self._q.put(None)

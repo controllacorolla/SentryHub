@@ -71,9 +71,10 @@ class RadioArbiter(QtCore.QObject):
 arbiter = RadioArbiter()
 
 # lease name -> short label for the "RADIO BUSY — held by X" chrome
+# <= 8 characters each: these are the state word of the strip's fixed-width SDR slot
 OWNER_LABELS = {"ATLAS-APRS": "APRS", "ATLAS-AIS": "AIS", "BABEL": "BABEL",
-                "PROWL-SCAN": "PROWL scan", "PROWL-FM": "PROWL FM", "PROWL-NWR": "PROWL NWR",
-                "BABEL-SSTV": "BABEL SSTV"}
+                "PROWL-SCAN": "PROWL SC", "PROWL-FM": "PROWL FM", "PROWL-NWR": "PROWL WX",
+                "BABEL-SSTV": "SSTV"}
 
 
 def owner_label():

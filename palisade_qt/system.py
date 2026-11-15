@@ -20,7 +20,7 @@ import time
 
 from PySide6 import QtWidgets
 
-from .app import PalisadeApp
+from .app import PalisadeApp, _retain
 from . import theme, eventbus
 from .kit import ControlBar, FeedTable, DetailCard, micro, card
 from .worker import Worker
@@ -497,6 +497,9 @@ class MoreApp(PalisadeApp):
             docw.stop()
             docw.quit()
             docw.wait(3000)
+            _retain(docw)
+        for w in getattr(self, "_workers", []):
+            _retain(w)
         self._workers = []
         super().stop()
 

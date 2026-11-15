@@ -1,0 +1,29 @@
+...F.....                                                                [100%]
+=================================== FAILURES ===================================
+___________________ test_recon_demo_stays_off_the_shared_bus ___________________
+
+    def test_recon_demo_stays_off_the_shared_bus():
+        """Honesty: synthetic demo RECON data is shown locally but must NOT pollute the OPS event bus."""
+        _app()
+        from palisade_qt import recon, eventbus
+        eventbus.bus.clear()
+        evs = []
+        eventbus.bus.published.connect(lambda e: evs.append(e))
+        p = recon.ReconApp(demo=True, mode="dark")
+        p._on_wifi({"aps": recon._demo_aps(), "demo": True})
+        p._on_ble({"devs": [{"address": "a", "name": "x", "vendor": "v", "kind": "k", "rssi": -50}],
+                   "demo": True})
+        from palisade_qt.sweep import SweepApp
+        SweepApp(demo=True, mode="dark")._on_counter(
+            {"kind": "bugsweep", "alert": ("bug", "2 suspect"), "demo": True})
+>       assert evs == [], "demo synthetic RECON data must not publish to the shared bus"
+E       AssertionError: demo synthetic RECON data must not publish to the shared bus
+E       assert [{'payload': ....657673, ...}] == []
+E         
+E         Left contains one more item: {'payload': {'text': 'BUG: 2 suspect'}, 'severity': 'warn', 'source': 'SWEEP', 'ts': 1794763140.657673, ...}
+E         Use -v to get more diff
+
+tests/test_palisade_qt.py:1309: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_palisade_qt.py::test_recon_demo_stays_off_the_shared_bus - ...
+1 failed, 8 passed, 160 deselected in 3.01s

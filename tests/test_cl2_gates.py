@@ -782,7 +782,9 @@ def test_g12_topbar_tx_slot_is_driven_by_the_engine_not_a_poll():
         assert hub.topbar.slots["tx"].text() == "ARMED"
         E.start("job", "ROE-1", ["10.0.0.1"], OP)
         _pump()
-        assert hub.topbar.slots["engagement"].text().startswith("ACTIVE")
+        # CL1-fix: the scope IS the word; ACTIVE lives in the tooltip (amber diamond = active)
+        assert hub.topbar.slots["engagement"].glyph.shape() == "diamond"
+        assert "ACTIVE" in hub.topbar.slots["engagement"].toolTip()
         G.arm(False)
         E.end()
         _pump()

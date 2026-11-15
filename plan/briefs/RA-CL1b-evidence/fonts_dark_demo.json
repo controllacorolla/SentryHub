@@ -1,0 +1,83 @@
+{
+ "mode": "dark",
+ "run": "demo",
+ "small_text": [],
+ "elided": [],
+ "hscroll": {
+  "ATLAS/MAP:4776234816": [
+   1,
+   438
+  ],
+  "SYSTEM/MESH:4781886144": [
+   1,
+   444
+  ]
+ },
+ "strip_worst": {
+  "mode": [
+   "DEMO",
+   "DEMO",
+   39
+  ],
+  "radio": [
+   "PROWL SC",
+   "PROWL SC",
+   77
+  ],
+  "tx": [
+   "PERMITTED",
+   "PERMITTED",
+   87
+  ],
+  "engagement": [
+   "999 targets",
+   "999 targets",
+   106
+  ],
+  "alerts": "5",
+  "strip_min_w": 1227,
+  "hub_min": [
+   1258,
+   537
+  ],
+  "hub_size": [
+   1280,
+   720
+  ],
+  "nav_painted": {
+   "OPS": [
+    "1 OPS",
+    true
+   ],
+   "ATLAS": [
+    "2 ATLAS",
+    true
+   ],
+   "PRISM": [
+    "3 PRISM",
+    true
+   ],
+   "PROWL": [
+    "4 PROWL",
+    true
+   ],
+   "SWEEP": [
+    "5 SWEEP",
+    true
+   ],
+   "RECON": [
+    "6 RECON",
+    true
+   ],
+   "FORGE": [
+    "7 FORGE",
+    true
+   ],
+   "SYSTEM": [
+    "8 SYSTEM",
+    true
+   ]
+  },
+  "longest_owner": "PROWL SC"
+ }
+}

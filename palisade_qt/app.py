@@ -35,6 +35,23 @@ _STATE_CLASS = {"neutral": "pstat", "ok": "pstat_live", "live": "pstat_live", "w
                 "alert": "pstat_alert", "accent": "pstat_accent"}
 
 
+# Pages and their finished workers are retained for the life of the process. A page that
+# becomes cyclic garbage can be collected by whichever thread triggers the GC — a worker
+# QThread — and shiboken then has to delete a QWidget off the GUI thread, which segfaults
+# (seen 1-in-3 under Python 3.13: Shiboken::BindingManager::runDeletionInMainThread). Pages
+# live until exit anyway; this just makes that explicit and deterministic.
+_RETAINED = []
+
+
+def _retain(obj):
+    _RETAINED.append(obj)
+    return obj
+
+
+def retained():
+    return list(_RETAINED)
+
+
 class PalisadeApp(QtWidgets.QWidget):
     TITLE = "APP"
     LEASE = None
@@ -43,6 +60,7 @@ class PalisadeApp(QtWidgets.QWidget):
 
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         super().__init__(parent)
+        _retain(self)
         self.demo = demo
         self.mode = mode
         self._embedded = embedded          # True when a CompositeApp hosts this page as a sub-tab
@@ -133,6 +151,11 @@ class PalisadeApp(QtWidgets.QWidget):
     def on_gate_changed(self):
         """The shell calls this when the engagement / TX state changes."""
 
+    def on_panic(self):
+        """PANIC: drop any transmit permission this page holds in its own UI state (UI-only; never
+        a gate change). Returns a list of short lines for the PANIC banner."""
+        return []
+
     # ---- page-owned status (never the top strip) ----
     def set_chip(self, key, text=None, state=None, ok=None):
         if state is None:
@@ -216,6 +239,7 @@ class PalisadeApp(QtWidgets.QWidget):
             self._worker.stop()
             self._worker.quit()
             self._worker.wait(3000)      # join the worker before we go — no leaked QThread
+            _retain(self._worker)        # joined; kept so no thread ever GC-deletes a QThread
             self._worker = None
         self._release_lease()
 
@@ -388,6 +412,12 @@ class CompositeApp(PalisadeApp):
     def on_gate_changed(self):
         for c in self._children.values():
             c.on_gate_changed()
+
+    def on_panic(self):
+        did = []
+        for c in self._children.values():
+            did += c.on_panic()
+        return did
 
     def stop(self):
         if self._stopped:

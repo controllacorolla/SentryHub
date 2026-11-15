@@ -1,0 +1,113 @@
+{
+ "light": {
+  "viewport_w": 438,
+  "cols": [
+   [
+    "CONTACT",
+    0,
+    162
+   ],
+   [
+    "TYPE",
+    162,
+    108
+   ],
+   [
+    "NM",
+    270,
+    100
+   ],
+   [
+    "ALT",
+    370,
+    100
+   ]
+  ],
+  "hscroll_max": 1,
+  "hscroll_visible": true,
+  "alt_visible_px": 68,
+  "widest_alt_px": 54,
+  "sample_alts": [
+   "26279",
+   "19227",
+   "26940",
+   "\u2014",
+   "\u2014",
+   "\u2014"
+  ]
+ },
+ "sun": {
+  "viewport_w": 433,
+  "cols": [
+   [
+    "CONTACT",
+    0,
+    162
+   ],
+   [
+    "TYPE",
+    162,
+    108
+   ],
+   [
+    "NM",
+    270,
+    100
+   ],
+   [
+    "ALT",
+    370,
+    100
+   ]
+  ],
+  "hscroll_max": 1,
+  "hscroll_visible": true,
+  "alt_visible_px": 63,
+  "widest_alt_px": 54,
+  "sample_alts": [
+   "\u2014",
+   "\u2014",
+   "\u2014",
+   "21348",
+   "21936",
+   "\u2014"
+  ]
+ },
+ "dark": {
+  "viewport_w": 438,
+  "cols": [
+   [
+    "CONTACT",
+    0,
+    162
+   ],
+   [
+    "TYPE",
+    162,
+    108
+   ],
+   [
+    "NM",
+    270,
+    100
+   ],
+   [
+    "ALT",
+    370,
+    100
+   ]
+  ],
+  "hscroll_max": 1,
+  "hscroll_visible": true,
+  "alt_visible_px": 68,
+  "widest_alt_px": 54,
+  "sample_alts": [
+   "\u2014",
+   "\u2014",
+   "58179",
+   "29867",
+   "\u2014",
+   "\u2014"
+  ]
+ }
+}

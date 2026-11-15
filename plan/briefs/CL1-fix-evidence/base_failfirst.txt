@@ -1,0 +1,37 @@
+        """RA-CL1: PANIC cleared the PERMITTED label while BENCH's gate still passed. The slot must
+__________ test_failed_mixer_command_shows_a_fault_and_the_true_state __________
+    def test_failed_mixer_command_shows_a_fault_and_the_true_state():
+    def test_failed_mixer_command_shows_a_fault_and_the_true_state():
+FAILED tests/test_cl1_fix.py::test_panic_stops_every_pipeline_member_and_counts_only_verified[True]
+FAILED tests/test_cl1_fix.py::test_panic_stops_every_pipeline_member_and_counts_only_verified[False]
+FAILED tests/test_cl1_fix.py::test_panic_never_counts_a_signal_as_a_kill - Im...
+FAILED tests/test_cl1_fix.py::test_decoder_pipelines_start_in_their_own_session
+FAILED tests/test_cl1_fix.py::test_panic_never_signals_its_own_process_group
+FAILED tests/test_cl1_fix.py::test_panic_leaves_tx_slot_on_the_real_bench_gate_and_says_ack_not_revoked
+FAILED tests/test_cl1_fix.py::test_mute_shows_muted_only_after_the_read_back_says_so
+FAILED tests/test_cl1_fix.py::test_failed_mixer_command_shows_a_fault_and_the_true_state
+FAILED tests/test_cl1_fix.py::test_unreadable_mixer_shows_unknown_never_zero_and_unmuted
+FAILED tests/test_cl1_fix.py::test_a_hanging_mixer_does_not_freeze_the_ui - A...
+FAILED tests/test_cl1_fix.py::test_alert_arriving_while_drawer_open_does_not_get_acked_in_place_of_the_selected_one
+FAILED tests/test_cl1_fix.py::test_slots_paint_the_whole_owner_and_scope_never_an_ellipsis
+FAILED tests/test_cl1_fix.py::test_unreadable_engines_show_unknown_not_the_all_clear
+FAILED tests/test_cl1_fix.py::test_panic_works_with_a_combo_dropdown_open - A...
+FAILED tests/test_cl1_fix.py::test_panic_works_with_a_context_menu_open_and_with_modifiers_held
+FAILED tests/test_cl1_fix.py::test_engagement_panel_shows_whole_scope_three_evidence_rows_and_banner_parity
+FAILED tests/test_cl1_fix.py::test_alert_cap_never_drops_an_unacknowledged_alert
+FAILED tests/test_cl1_fix.py::test_sky_dome_labels_are_font_sized_and_stay_inside_the_dome
+FAILED tests/test_cl1_fix.py::test_focus_ring_is_visible_on_the_active_nav_key_and_the_map_style_combo
+FAILED tests/test_cl1_fix.py::test_prowl_demo_data_is_never_painted_green - A...
+FAILED tests/test_cl1_fix.py::test_feed_columns_get_real_widths_even_when_filled_while_hidden
+FAILED tests/test_cl1_fix.py::test_rendered_text_is_16px_or_more_everywhere_including_captions_headers_and_plots
+FAILED tests/test_cl1_fix.py::test_ops_scope_has_at_most_24px_dead_space_each_side
+FAILED tests/test_cl1_fix.py::test_armed_and_active_slots_are_never_green[dark]
+FAILED tests/test_cl1_fix.py::test_armed_and_active_slots_are_never_green[light]
+FAILED tests/test_cl1_fix.py::test_armed_and_active_slots_are_never_green[sun]
+FAILED tests/test_cl1_fix.py::test_babel_protocol_colours_are_readable[light-4.5]
+FAILED tests/test_cl1_fix.py::test_babel_protocol_colours_are_readable[sun-7.0]
+FAILED tests/test_cl1_fix.py::test_babel_protocol_colours_are_readable[dark-4.5]
+FAILED tests/test_cl1_fix.py::test_empty_detail_cards_collapse_in_live_pages
+FAILED tests/test_cl1_fix.py::test_ops_alert_card_shows_newest_unacknowledged_alerts
+FAILED tests/test_cl1_fix.py::test_radios_panel_rereads_the_kernel_while_visible
+32 failed, 6 passed in 24.84s

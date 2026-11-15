@@ -1,0 +1,37 @@
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+qt.qpa.fonts: Populating font family aliases took 50 ms. Replace uses of missing font family "DejaVu Sans Mono" with one that exists to avoid this cost. 
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+baseline qthreads [] py []
+views 30
+after pass1 qthreads 16 ['AtlasLiveWorker', 'BleScanWorker', 'CanWorker', 'DecoderWorker', 'DetectorWorker', 'DetectorWorker', 'DetectorWorker', 'DetectorWorker', 'LiveStatusWorker', 'NwrWorker', 'PassWorker', 'SensorWorker', 'SerialWorker', 'SkyWorker', 'SweepWorker', 'WifiScanWorker']
+py ['Thread-1 (_loop)']
+after rapid qthreads 16 ['AtlasLiveWorker', 'BleScanWorker', 'CanWorker', 'DecoderWorker', 'DetectorWorker', 'DetectorWorker', 'DetectorWorker', 'DetectorWorker', 'LiveStatusWorker', 'PassWorker', 'ScanWorker', 'SensorWorker', 'SerialWorker', 'SkyWorker', 'SweepWorker', 'WifiScanWorker']
+py ['Thread-1 (_loop)']
+owner None leases [('PRISM', True), ('PRISM', True), ('PRISM', True)]
+on OPS: owner None
+   OPS OpsHome active True started True worker LiveStatusWorker
+   ATLAS AtlasPage active False started True worker None
+   ATLAS:inner AtlasApp active False started True worker AtlasLiveWorker
+   PRISM PrismApp active False started True worker SweepWorker
+   PROWL ProwlPage active False started True worker None
+   PROWL:inner ProwlApp active False started True worker ScanWorker
+   SWEEP SweepApp active False started True worker None
+   RECON ReconApp active False started True worker None
+   FORGE ForgeApp active False started True worker None
+   SYSTEM SystemPage active False started True worker None
+after close qthreads []
+py []
+owner None unreleased []

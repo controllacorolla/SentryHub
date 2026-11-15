@@ -1,0 +1,44 @@
+F.......F                                                                [100%]
+=================================== FAILURES ===================================
+______________ test_recon_active_tools_locked_without_engagement _______________
+
+    def test_recon_active_tools_locked_without_engagement():
+        _app()
+        _reset_engagement()
+        from palisade_qt.recon import ReconApp
+        p = ReconApp(demo=False, mode="dark")
+        for g in p._gated:
+>           assert all(not b.isEnabled() for b in g._btns), "active tools must be locked, no engagement"
+E           AssertionError: active tools must be locked, no engagement
+E           assert False
+E            +  where False = all(<generator object test_recon_active_tools_locked_without_engagement.<locals>.<genexpr> at 0x11c528ba0>)
+
+tests/test_palisade_qt.py:1186: AssertionError
+----------------------------- Captured stderr call -----------------------------
+qt.qpa.fonts: Populating font family aliases took 106 ms. Replace uses of missing font family "Sans Serif" with one that exists to avoid this cost. 
+_____ test_engagement_panel_opens_from_its_slot_and_refreshes_recon_cards ______
+
+    def test_engagement_panel_opens_from_its_slot_and_refreshes_recon_cards():
+        """ENGAGE moved to the strip; RECON's gated cards must still follow the gate."""
+        import engagement
+        hub = _hub(demo=False)
+        try:
+            hub.open_callsign("RECON")
+            recon = hub.pages["RECON"]
+>           assert not recon.net_gated.target.isEnabled()
+E           assert not True
+E            +  where True = <built-in method isEnabled of PySide6.QtWidgets.QLineEdit object at 0x1253d1c40>()
+E            +    where <built-in method isEnabled of PySide6.QtWidgets.QLineEdit object at 0x1253d1c40> = <PySide6.QtWidgets.QLineEdit(0x78c4ebfd40) at 0x1253d1c40>.isEnabled
+E            +      where <PySide6.QtWidgets.QLineEdit(0x78c4ebfd40) at 0x1253d1c40> = <palisade_qt.recon.GatedTool(0x78c1f4f640) at 0x1253d1a00>.target
+E            +        where <palisade_qt.recon.GatedTool(0x78c1f4f640) at 0x1253d1a00> = <palisade_qt.recon.ReconApp(0x78c4ebed80, name="root") at 0x125417bc0>.net_gated
+
+tests/test_cl1_screen.py:834: AssertionError
+----------------------------- Captured stderr call -----------------------------
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+=========================== short test summary info ============================
+FAILED tests/test_palisade_qt.py::test_recon_active_tools_locked_without_engagement
+FAILED tests/test_cl1_screen.py::test_engagement_panel_opens_from_its_slot_and_refreshes_recon_cards
+2 failed, 7 passed, 160 deselected in 2.90s

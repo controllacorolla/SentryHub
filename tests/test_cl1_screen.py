@@ -23,8 +23,10 @@ from PySide6.QtTest import QTest  # noqa: E402
 
 SCREEN_W, SCREEN_H = 1280, 720
 THEMES = ("dark", "light", "sun")
-# static captions: names, never state — the only text allowed under 16 px
-CAPTION_CLASSES = {"micro", "navlabel", "navlabel_on", "slotcap"}
+# Nothing is exempt from the 16 px floor any more. This set used to list exactly the classes the audit
+# measured as too small (micro / navlabel / slotcap), which is why the test could never fail on
+# them (CL1-fix item 12).
+CAPTION_CLASSES = set()
 
 
 def _app():
@@ -101,9 +103,14 @@ def _every_view(hub):
 
 
 def _worst_case_strip(hub):
-    """The widest state the status slots can show."""
-    hub.topbar.set_state("DEMO", ("HELD", "PROWL scan"), "PERMITTED",
-                         ("ACTIVE", "192.168.100.0/24 +12", "long engagement name"))
+    """The widest state the status slots can show: the longest owner label, the longest scope
+    summary chrome.scope_summary can produce (one SCOPE_CHARS-long target, or '128 targets')."""
+    from palisade_qt import chrome, radio_arbiter
+    owner = max(radio_arbiter.OWNER_LABELS.values(), key=len)
+    scope = max([chrome.scope_summary(["A" * chrome.SCOPE_CHARS]),
+                 chrome.scope_summary(["x"] * 128)], key=len)
+    hub.topbar.set_state("DEMO", ("HELD", owner), "PERMITTED",
+                         ("ACTIVE", scope, "long engagement name"))
     hub.topbar.set_alerts(128)
     _pump(30)
 
@@ -320,11 +327,13 @@ def test_slots_follow_engine_state():
         assert hub.topbar.slots["tx"].text() == "OFF"
         engagement.start("Op", "ROE-1", ["10.0.0.0/24"], "KD0ABC")
         hub.state.poll()
-        assert hub.topbar.slots["engagement"].text().startswith("ACTIVE")
-        assert "10.0.0.0/24" in hub.topbar.slots["engagement"].text()
+        assert hub.topbar.slots["engagement"].text() == "10.0.0.*"     # the scope is the word
+        assert hub.topbar.slots["engagement"].glyph.shape() == "diamond"
+        assert "ACTIVE" in hub.topbar.slots["engagement"].toolTip()
         ra.arbiter.changed.emit("ATLAS-APRS")
         _pump(20)
-        assert hub.topbar.slots["radio"].text() == "HELD · APRS"
+        assert hub.topbar.slots["radio"].text() == "APRS"
+        assert "HELD" in hub.topbar.slots["radio"].toolTip()
         ra.arbiter.changed.emit("")
         _pump(20)
         assert hub.topbar.slots["radio"].text() == "FREE"
@@ -399,7 +408,8 @@ def test_eight_keys_in_order_with_function_labels():
         for i, (name, label) in enumerate(CALLSIGNS, start=1):
             key = hub.topbar.nav_keys[name]
             assert key.call.text() == "%d %s" % (i, name)
-            assert key.label.text() == label and key.label.isVisible(), "label always shown"
+            # D7 (owner, 2026-11-15): the function word is drawn under the callsign, at 16 px
+            assert key.function == label and key.label.text() == label and label in key.toolTip()
     finally:
         hub.close()
         _pump(150)
@@ -626,9 +636,10 @@ def test_panic_key_disarms_ends_engagement_and_kills_children():
     from palisade_qt import eventbus, shell
     hub = _hub(demo=False)
     try:
-        killed = []
+        stopped = []
         hub._list_children = lambda: [4242, 4243]
-        hub._kill = lambda pid: killed.append(pid) or True
+        hub._stop_tree = lambda roots: (stopped.extend(roots) or
+                                        {"targets": roots, "stopped": roots, "survivors": []})
         txguard.arm(True)
         txguard.unlock_session(True)
         engagement.start("Op", "ROE-1", ["10.0.0.0/24"], "KD0ABC")
@@ -636,11 +647,12 @@ def test_panic_key_disarms_ends_engagement_and_kills_children():
         assert hub.topbar.slots["tx"].text() == "UNLOCKED"
         got = []
         eventbus.bus.published.connect(lambda e: got.append(e))
-        assert shell.PANIC_KEY == "F12"
+        assert shell.PANIC_KEY == "F12" and shell.PANIC_CHORD == "Shift+Esc"
         _key(hub, QtCore.Qt.Key_F12)
         assert not txguard.is_armed() and not txguard.session_unlocked()
         assert not engagement.is_active()
-        assert killed == [4242, 4243]
+        assert stopped == [4242, 4243]
+        assert "2 of 2 child process(es) stopped (verified gone)" in hub.panic_banner.text()
         assert hub.topbar.slots["tx"].text() == "OFF"
         assert hub.topbar.slots["engagement"].text() == "NONE"
         assert any(e["type"] == "alert" and "PANIC" in e["payload"]["text"] for e in got)
@@ -738,13 +750,13 @@ def test_alerts_persist_until_acknowledged_not_capped_at_three():
             eventbus.bus.publish(eventbus.contact("ATLAS", "AC%d" % i, 47.6, -122.3))
         _pump(60)
         assert len(hub.alerts.items) == 7 and hub.alerts.unacked() == 7
-        assert hub.topbar.alerts.text() == "7 NEW"
+        assert hub.topbar.alerts.text() == "7"
         _key(hub, None, "a")
         assert hub.alerts_drawer.isVisible()
         assert hub.alerts_drawer.table.model.rowCount() == 7
         hub.alerts_drawer.table.view.selectRow(0)
         hub.alerts_drawer.ack_selected()
-        assert hub.alerts.unacked() == 6 and hub.topbar.alerts.text() == "6 NEW"
+        assert hub.alerts.unacked() == 6 and hub.topbar.alerts.text() == "6"
         hub.alerts.ack_all()
         assert hub.alerts.unacked() == 0 and hub.topbar.alerts.text() == "0"
         assert len(hub.alerts.items) == 7, "acknowledged alerts stay in the history"
@@ -821,7 +833,8 @@ def test_radios_panel_opens_from_the_radio_slot_and_frees_the_holder(monkeypatch
         _pump(40)
         assert "APRS" in hub.radios_panel.holder.hero.text()
         assert hub.radios_panel.hist_feed.model.rowCount() == 1
-        assert hub.topbar.slots["radio"].text() == "HELD · APRS"
+        assert hub.topbar.slots["radio"].text() == "APRS"
+        assert "HELD" in hub.topbar.slots["radio"].toolTip()
         hub.radios_panel.takeover_btn.click()
         _pump(40)
         assert ra.arbiter.owner() is None and hub.topbar.slots["radio"].text() == "FREE"
@@ -852,7 +865,7 @@ def test_engagement_panel_opens_from_its_slot_and_refreshes_recon_cards():
         assert engagement.is_active()
         assert recon.net_gated.target.isEnabled(), "RECON cards unlock when the engagement opens"
         hub.state.poll()
-        assert hub.topbar.slots["engagement"].text().startswith("ACTIVE")
+        assert hub.topbar.slots["engagement"].text() == "10.0.0.*"
         panel._deactivate()
         _pump(40)
         assert not engagement.is_active() and not recon.net_gated.target.isEnabled()
@@ -870,11 +883,24 @@ class _FakeMixer:
 
     def run(self, argv, timeout=2.0):
         self.calls.append(list(argv))
+        if argv[:2] == ["pactl", "set-sink-volume"]:      # a real mixer changes state on a set
+            self.volume = int(argv[-1].rstrip("%"))
+        if argv[:2] == ["pactl", "set-sink-mute"]:
+            self.muted = argv[-1] == "1"
         if argv[:2] == ["pactl", "get-sink-volume"]:
             return 0, "Volume: front-left: 26214 /  %d%% / -23.9 dB" % self.volume
         if argv[:2] == ["pactl", "get-sink-mute"]:
             return 0, "Mute: %s" % ("yes" if self.muted else "no")
         return 0, ""
+
+
+def _wait_mixer(tb, timeout=5.0):
+    """Mixer calls run off the GUI thread: pump until every queued call has reported back."""
+    import time
+    end = time.time() + timeout
+    while tb.mixer is not None and tb.mixer.pending and time.time() < end:
+        _pump(20)
+    assert tb.mixer is None or not tb.mixer.pending, "mixer call never reported back"
 
 
 def test_volume_slider_and_mute_drive_the_real_sink():
@@ -884,14 +910,24 @@ def test_volume_slider_and_mute_drive_the_real_sink():
     from palisade_qt.kit.audio import AudioSink
     mixer = _FakeMixer(volume=40)
     tb = TopBar(audio=AudioSink(which=mixer.which, run=mixer.run))
-    assert tb.volume.isEnabled() and tb.volume.value() == 40, "the slider starts at the sink's level"
-    tb.volume.setValue(75)
-    tb._apply_volume()                      # the debounce timer's slot
-    assert ["pactl", "set-sink-volume", "@DEFAULT_SINK@", "75%"] in mixer.calls
-    tb.mute.setChecked(True)
-    assert ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1"] in mixer.calls
-    tb.toggle_mute()
-    assert ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "0"] in mixer.calls
+    try:
+        _wait_mixer(tb)
+        assert tb.volume.isEnabled() and tb.volume.value() == 40, \
+            "the slider starts at the sink's level"
+        tb.volume.setValue(75)              # moved by the operator -> debounced set + read-back
+        _pump(200)
+        _wait_mixer(tb)
+        assert ["pactl", "set-sink-volume", "@DEFAULT_SINK@", "75%"] in mixer.calls
+        tb.mute.click()
+        _wait_mixer(tb)
+        assert ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1"] in mixer.calls
+        assert tb.mute.isChecked()
+        tb.toggle_mute()
+        _wait_mixer(tb)
+        assert ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "0"] in mixer.calls
+        assert not tb.mute.isChecked()
+    finally:
+        tb.stop()
 
 
 @pytest.mark.parametrize("backend,vol_argv,mute_argv", [
@@ -949,3 +985,50 @@ def test_navigation_leaves_focus_on_the_page_not_on_a_nav_key():
     finally:
         hub.close()
         _pump(150)
+
+
+def test_maps_are_dark_or_satellite_only():
+    """Owner rule (2026-11-15): every map is DARK or SAT, in every theme; no light / plain tiles."""
+    _app()
+    from palisade_qt.kit import mappanel
+    assert set(mappanel.STYLES) == {"dark", "satellite"}
+    for mode in ("dark", "light", "sun"):
+        m = mappanel.MapPanel(mode=mode)
+        assert m.current_style() == "dark"
+        assert [m._combo.itemText(i) for i in range(m._combo.count())] == ["DARK", "SAT"]
+
+
+def test_strip_has_no_text_under_16px_at_all():
+    """Planner decision: on the 5" panel nothing in the strip may be under 16 px — not captions,
+    not nav function words. (Tighter than D2's status-bearing rule.)"""
+    hub = _hub()
+    try:
+        small = []
+        for w in hub.topbar.findChildren(QtWidgets.QLabel):
+            if not w.isVisible() or not w.text().strip():
+                continue
+            w.ensurePolished()
+            f = w.font()
+            px = f.pixelSize() if f.pixelSize() > 0 else f.pointSizeF() * w.logicalDpiY() / 72.0
+            if px < 16 - 0.01:
+                small.append((w.property("class"), w.text(), px))
+        assert not small, small
+    finally:
+        hub.close()
+        _pump(100)
+
+
+def test_panic_chord_shift_esc_works_too(monkeypatch):
+    """Planner decision: Shift+Esc is the primary PANIC chord (no Fn layer on the uConsole)."""
+    import txguard
+    hub = _hub()
+    try:
+        monkeypatch.setattr(hub, "_list_children", lambda: [])
+        txguard.arm(True)
+        assert txguard.is_armed()
+        QTest.keyClick(hub, QtCore.Qt.Key_Escape, QtCore.Qt.ShiftModifier)
+        _pump(40)
+        assert not txguard.is_armed()
+    finally:
+        hub.close()
+        _pump(100)

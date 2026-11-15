@@ -10,11 +10,11 @@ from PySide6 import QtGui, QtWidgets
 
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Type scale (CL1 / D2), in physical pixels on the 1280x720 ~294 ppi panel. Nothing that carries
-# state is under FONT_STATUS; captions (static, never state) may use FONT_CAPTION.
+# Type scale (CL1 / D2), in physical pixels on the 1280x720 ~294 ppi panel. Nothing on screen is
+# under 16 px — captions included (CL1-fix: 13 px captions were 1.1 mm on the 5" panel).
 FONT_BODY = 18
 FONT_STATUS = 16
-FONT_CAPTION = 13
+FONT_CAPTION = 16
 ROW_H = 40
 
 DARK = {
@@ -26,6 +26,7 @@ DARK = {
     "field": "#0E1115", "accent_dim": "rgba(164,146,218,0.15)",
     "row_alt": "rgba(255,255,255,0.035)", "row_hover": "rgba(255,255,255,0.06)",
     "focus": "#FFFFFF", "focus_w": "2px", "bw": "1px",
+    "focus_on": "#FFFFFF", "focus_under": "2px",
     "check_bg": "rgba(164,146,218,0.22)", "check_fg": "#C9BCF2", "disabled": "#5F6772",
 }
 LIGHT = {
@@ -37,6 +38,7 @@ LIGHT = {
     "field": "#FFFFFF", "accent_dim": "rgba(90,71,144,0.12)",
     "row_alt": "rgba(0,0,0,0.04)", "row_hover": "rgba(0,0,0,0.07)",
     "focus": "#000000", "focus_w": "2px", "bw": "1px",
+    "focus_on": "#000000", "focus_under": "2px",
     "check_bg": "rgba(90,71,144,0.18)", "check_fg": "#3B2C6B", "disabled": "#8A9099",
 }
 # SUN: direct-sunlight theme. Black and white only, nothing under 7:1, 2 px borders. Colour carries
@@ -50,6 +52,7 @@ SUN = {
     "field": "#FFFFFF", "accent_dim": "#D9D9D9",
     "row_alt": "#EEEEEE", "row_hover": "#DDDDDD",
     "focus": "#000000", "focus_w": "4px", "bw": "2px",
+    "focus_on": "#FFFFFF", "focus_under": "3px",
     "check_bg": "#000000", "check_fg": "#FFFFFF", "disabled": "#595959",
 }
 MODES = {"dark": DARK, "light": LIGHT, "sun": SUN}
@@ -128,7 +131,8 @@ QPlainTextEdit {{ background: {well}; color: {text}; border: {bw} solid {hairlin
                   border-radius: 6px; font-size: {status}px; }}
 QPlainTextEdit:focus {{ border: {focus_w} solid {focus}; }}
 
-/* tables */
+/* tables (the header's own font is set too, so its rendered size is measurable) */
+QHeaderView {{ font-size: {status}px; }}
 QHeaderView::section {{ background: {p1}; color: {muted}; border: none;
                         border-bottom: {bw} solid {hairline}; padding: 6px 8px;
                         font-size: {status}px; }}
@@ -167,16 +171,24 @@ QFrame#top_bar {{ background: {p1}; border: none; border-bottom: {bw} solid {hai
 QPushButton.navkey {{ background: transparent; border: {bw} solid transparent; border-radius: 5px;
                       padding: 0; min-height: 0; text-align: left; }}
 QPushButton.navkey:hover {{ background: {row_hover}; }}
-QPushButton.navkey:focus {{ border: {focus_w} solid {focus}; }}
-QPushButton.navkey_on {{ background: {check_bg}; border: {bw} solid {accent}; border-radius: 5px;
+/* focus on a nav key: over- and underline only (RA-CL1c F1). Both text lines run edge to edge
+   (SIDE = 1 px), so a side ring painted over the first/last glyph columns ('8 SYSTEM' read
+   '3 SYSTEM' in SUN). The sides keep their unfocused width + colour; focus_under fits the ink-free
+   rows under the label; corners are square (a rounded thick underline curls up into the edge
+   glyphs); focus_on is the cue on the current page's filled key (SUN: white on black). No width. */
+QPushButton.navkey:focus {{ border-style: solid; border-color: {focus} transparent;
+                            border-width: {bw} {bw} {focus_under} {bw}; border-radius: 0; }}
+QPushButton.navkey_on {{ background: {check_bg}; border: {bw} solid {accent}; border-radius: 0;
                          padding: 0; min-height: 0; text-align: left; }}
+QPushButton.navkey_on:focus {{ border-style: solid solid double solid; border-color: {focus_on} {accent};
+                               border-width: {bw} {bw} {focus_under} {bw}; border-radius: 0; }}
 QLabel.navcall {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QLabel.navcall_on {{ color: {check_fg}; font-size: {status}px; font-weight: 600; }}
-QLabel.navlabel {{ color: {muted}; font-size: 11px; }}
-QLabel.navlabel_on {{ color: {check_fg}; font-size: 11px; }}
+QLabel.navlabel {{ color: {muted}; font-size: {status}px; }}
+QLabel.navlabel_on {{ color: {check_fg}; font-size: {status}px; }}
 QFrame.slot {{ background: transparent; border: none; border-left: {bw} solid {hairline}; }}
 QFrame.slot:focus {{ border: {focus_w} solid {focus}; }}
-QLabel.slotcap {{ color: {muted}; font-size: 10px; }}
+QLabel.slotcap {{ color: {muted}; font-size: {status}px; letter-spacing: 1px; }}
 QLabel.slotval {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QLabel#dtg {{ color: {text}; font-size: {status}px; }}
 QSlider#vol::groove:horizontal {{ height: 4px; background: {hairline}; border-radius: 2px; }}
@@ -189,6 +201,7 @@ QSlider#vol:disabled::handle:horizontal {{ background: {disabled}; }}
 /* ---- vertical sub-tab rail at the page's left edge ---- */
 QFrame#subtab_rail {{ background: transparent; border: none; }}
 QPushButton.subtab {{ text-align: left; padding: 6px 10px; min-height: 28px; }}
+QPushButton.subtab:focus {{ border: {focus_w} solid {focus}; }}
 
 /* page-owned status row (pages may write this; they may never write the top strip) */
 QFrame#page_status {{ background: transparent; border: none; border-top: {bw} solid {hairline}; }}

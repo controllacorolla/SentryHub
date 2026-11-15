@@ -1,0 +1,15 @@
+FAILED tests/test_cl1_fix3.py::test_nav_key_focus_cue_never_paints_inside_the_text_rect[off-dark]
+FAILED tests/test_cl1_fix3.py::test_nav_key_focus_cue_never_paints_inside_the_text_rect[off-light]
+FAILED tests/test_cl1_fix3.py::test_nav_key_focus_cue_never_paints_inside_the_text_rect[off-sun]
+FAILED tests/test_cl1_fix3.py::test_nav_key_focus_cue_never_paints_inside_the_text_rect[on-dark]
+FAILED tests/test_cl1_fix3.py::test_nav_key_focus_cue_never_paints_inside_the_text_rect[on-light]
+FAILED tests/test_cl1_fix3.py::test_nav_key_focus_cue_never_paints_inside_the_text_rect[on-sun]
+FAILED tests/test_cl1_fix3.py::test_scope_summary_caps_the_target_count
+FAILED tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[live-dark]
+FAILED tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[live-light]
+FAILED tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[live-sun]
+FAILED tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[demo-dark]
+FAILED tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[demo-light]
+FAILED tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[demo-sun]
+FAILED tests/test_cl1_fix3.py::test_atlas_detail_marks_a_vanished_selected_contact_lost
+14 failed, 2 passed, 6 warnings in 13.84s
