@@ -1180,3 +1180,29 @@ def test_overwatch_open_pump_close_no_leaked_threads():
     _pump(200)
     p.stop()
     assert all(not w.isRunning() for w in p._workers) if p._workers else True
+
+
+def test_overwatch_passworker_repredicts_on_cadence():
+    """Review fix: predict is not a one-shot — it re-runs on the hourly cadence."""
+    from palisade_qt import overwatch
+    w = overwatch.PassWorker(demo=True)
+    got = []
+    w.row.connect(lambda m: got.append(m))
+    w.step()                                     # first predict
+    assert len(got) == 1
+    w.step()                                     # within the hour -> no re-predict
+    assert len(got) == 1
+    w._last_predict -= overwatch.PassWorker.RE_PREDICT_S + 1   # an hour elapses
+    w.step()
+    assert len(got) == 2, "PassWorker must re-predict after the cadence, not latch forever"
+
+
+def test_overwatch_predict_error_shows_warn_standby():
+    """Review fix: a predict failure/offscreen is surfaced as a warn standby, not a clean '0 passes'."""
+    _app()
+    from palisade_qt import overwatch
+    p = overwatch.OverwatchApp(demo=False, mode="dark")
+    for status in ("error", "offscreen"):
+        p._on_passes({"passes": [], "status": status})
+        assert p.pass_feed.model.rowCount() == 0
+        assert "passes in the next" not in p.pass_note.text(), "%s must not read as a clear sky" % status

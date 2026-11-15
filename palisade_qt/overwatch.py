@@ -166,15 +166,18 @@ class PassWorker(Worker):
     """Predicts satellite passes off the GUI thread (skyfield is slow). Live: wxsat.predict from the
     cached TLE; no TLE / no skyfield -> an honest NO-TLE/standby signal. Demo: synthetic passes."""
 
+    RE_PREDICT_S = 3600                       # re-predict hourly so the horizon stays fresh
+
     def __init__(self, demo=True, tle_path=None, parent=None):
         super().__init__(demo=demo, interval_ms=60000, parent=parent)
         self._tle_path = tle_path
-        self._done = False
+        self._last_predict = 0.0
 
     def step(self):
-        if self._done:                       # predict once per long interval; re-run hourly
+        now = time.time()
+        if now - self._last_predict < self.RE_PREDICT_S:   # predict at open, then re-run hourly
             return
-        self._done = True
+        self._last_predict = now
         passes, status = self._predict()
         self.row.emit({"passes": passes, "status": status})
 
@@ -410,10 +413,13 @@ class OverwatchApp(PalisadeApp):
         sky = getattr(self, "_sky", None)
         if sky is not None:
             sky.set_passes(passes)           # feed the dome the pass arcs
-        if status in ("no-tle", "no-skyfield"):
+        standby = {"no-tle": "NO TLE — update required",
+                   "no-skyfield": "Skyfield not installed — satellite passes unavailable",
+                   "error": "pass prediction failed — standby",
+                   "offscreen": "pass prediction unavailable (offscreen)"}
+        if status in standby:                  # surface a failure honestly, not as a clear sky
             self.pass_note.setStyleSheet("color:%s;" % self._tok["warn"])
-            self.pass_note.setText("NO TLE — update required" if status == "no-tle"
-                                   else "Skyfield not installed — satellite passes unavailable")
+            self.pass_note.setText(standby[status])
             self.pass_feed.model.set_rows([])
             return
         sched = passsched.schedule([_remap(p) for p in passes], min_elev=15.0)
