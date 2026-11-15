@@ -16,8 +16,17 @@ def card(raised=1):
 
 
 def micro(text):
+    """A static caption (a name, never a state). Captions are the only text allowed under 16 px."""
     lbl = QtWidgets.QLabel(text.upper())
     lbl.setProperty("class", "micro")
+    return lbl
+
+
+def note(text=""):
+    """A status-bearing line: 16 px, wraps. Use this (not micro) for anything that reports state."""
+    lbl = QtWidgets.QLabel(text)
+    lbl.setProperty("class", "note")
+    lbl.setWordWrap(True)
     return lbl
 
 
@@ -77,6 +86,21 @@ class StatusHeader(QtWidgets.QFrame):
         c.style().polish(c)
 
 
+class StatusLine(QtWidgets.QLabel):
+    """A status-bearing line (RADIO BUSY / STANDBY …) that takes no space while it has nothing to
+    say. 16 px, wraps."""
+
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self.setProperty("class", "note")
+        self.setWordWrap(True)
+        self.setText(text)
+
+    def setText(self, text):
+        super().setText(text)
+        self.setVisible(bool(text))
+
+
 class ControlBar(QtWidgets.QFrame):
     """A row of labelled controls (tuner / gain / squelch …). Apps add fields; values are read
     back by name. Pure UI — the app wires them to its engine."""
@@ -86,10 +110,10 @@ class ControlBar(QtWidgets.QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setProperty("class", "card")
-        self.setFixedHeight(54)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         self.lay = QtWidgets.QHBoxLayout(self)
-        self.lay.setContentsMargins(12, 8, 12, 8)
-        self.lay.setSpacing(14)
+        self.lay.setContentsMargins(10, 6, 10, 6)
+        self.lay.setSpacing(12)
         self.fields = {}
 
     def add_field(self, name, widget, label=None):
@@ -112,41 +136,62 @@ class ControlBar(QtWidgets.QFrame):
 
 
 class DetailCard(QtWidgets.QFrame):
-    """The selected-contact / detail panel: a hero numeral plus labelled key/value rows."""
+    """The selected-contact / detail panel: a hero numeral plus labelled key/value rows. Every value
+    wraps (a long value must never widen the window), and a card with nothing selected collapses to
+    its one-line hint instead of holding a 100 px dash."""
 
     def __init__(self, title="DETAIL", parent=None):
         super().__init__(parent)
         self.setProperty("class", "card")
         self.lay = QtWidgets.QVBoxLayout(self)
-        self.lay.setContentsMargins(14, 12, 14, 12)
-        self.lay.setSpacing(6)
+        self.lay.setContentsMargins(12, 10, 12, 10)
+        self.lay.setSpacing(4)
         self.lay.addWidget(micro(title))
         self.hero = QtWidgets.QLabel("—")
         self.hero.setProperty("class", "hero")
+        self.hero.setWordWrap(True)
+        self.hero.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         self.lay.addWidget(self.hero)
         self.sub = QtWidgets.QLabel("")
-        self.sub.setProperty("class", "micro")
+        self.sub.setProperty("class", "note")
+        self.sub.setWordWrap(True)
         self.lay.addWidget(self.sub)
         self._rows = QtWidgets.QFormLayout()
         self._rows.setLabelAlignment(QtCore.Qt.AlignLeft)
-        self._rows.setHorizontalSpacing(18)
-        self._rows.setVerticalSpacing(4)
+        self._rows.setHorizontalSpacing(14)
+        self._rows.setVerticalSpacing(3)
+        self._rows.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
         self.lay.addLayout(self._rows)
         self.lay.addStretch(1)
+        self._nrows = 0
+        self._sync_collapsed()
+
+    def is_empty(self):
+        return self.hero.text().strip() in ("", "—") and self._nrows == 0
+
+    def _sync_collapsed(self):
+        # a dash is not information: never spend a 40 px hero line on it
+        self.hero.setVisible(self.hero.text().strip() not in ("", "—"))
 
     def set_hero(self, value, sub=""):
         self.hero.setText(str(value))
         self.sub.setText(sub.upper())
+        self._sync_collapsed()
 
     def set_rows(self, pairs):
         while self._rows.rowCount():
             self._rows.removeRow(0)
+        self._nrows = 0
         for k, v in pairs:
             key = micro(k)
             val = QtWidgets.QLabel(str(v))
-            val.setProperty("class", "value")
-            val.setStyleSheet("font-size:13px;")
+            val.setProperty("class", "note")
+            val.setWordWrap(True)
+            val.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
+            val.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
             self._rows.addRow(key, val)
+            self._nrows += 1
+        self._sync_collapsed()
 
 
 class EmptyState(QtWidgets.QFrame):
@@ -159,12 +204,13 @@ class EmptyState(QtWidgets.QFrame):
         lay.addStretch(1)
         big = QtWidgets.QLabel(text)
         big.setAlignment(QtCore.Qt.AlignCenter)
-        big.setProperty("class", "micro")
-        big.setStyleSheet("font-size:15px; letter-spacing:3px;")
+        big.setProperty("class", "value")
+        big.setWordWrap(True)
         lay.addWidget(big)
         if hint:
             h = QtWidgets.QLabel(hint)
             h.setAlignment(QtCore.Qt.AlignCenter)
-            h.setProperty("class", "micro")
+            h.setProperty("class", "note")
+            h.setWordWrap(True)
             lay.addWidget(h)
         lay.addStretch(1)

@@ -27,6 +27,7 @@ from .app import PalisadeApp
 from . import theme, radio_arbiter, eventbus
 from .kit import ControlBar, FeedTable, DetailCard, micro, card
 from .worker import Worker
+from .kit.components import StatusLine
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
@@ -528,10 +529,55 @@ class ProwlApp(PalisadeApp):
     LEASE = None          # each sub-mode leases the SDR per-run via radio_arbiter, not the base
 
     SUBMODES = ("SCAN", "FM", "NWR")
+    SUBTABS = SUBMODES
 
-    def __init__(self, demo=False, mode="dark", parent=None):
+    def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._submode = "SCAN"
-        super().__init__(demo=demo, mode=mode, parent=parent)
+        super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
+
+    def current_subtab(self):
+        return self._submode
+
+    def switch_subtab(self, name):
+        self._switch_submode(name)
+
+    # ---- keyboard (D8): Space holds the scan; [ ] step the band / tuner / channel ----
+    def handle_key(self, text):
+        if self._submode == "SCAN":
+            if text == " ":
+                self._toggle_hold()
+                return True
+            if text in "[]":
+                n = self.bank_combo.count()
+                if n:
+                    step = 1 if text == "]" else -1
+                    self.bank_combo.setCurrentIndex((self.bank_combo.currentIndex() + step) % n)
+                return True
+        elif self._submode == "FM" and text in "[]":
+            self._fm_step(0.2 if text == "]" else -0.2)
+            return True
+        elif self._submode == "NWR" and text in "[]":
+            n = self.nwr_combo.count()
+            if n:
+                step = 1 if text == "]" else -1
+                self.nwr_combo.setCurrentIndex((self.nwr_combo.currentIndex() + step) % n)
+            return True
+        return False
+
+    def primary_action(self):
+        if self._submode == "SCAN":
+            self._toggle_hold()
+            return True
+        if self._submode == "FM":
+            self._fm_retune()
+            return True
+        return False
+
+    def tune_fm(self, mhz):
+        """Shell 'send to tuner' (D10): open the FM sub-tab on this frequency."""
+        self._switch_submode("FM")
+        self.fm_freq.setValue(float(mhz))
+        self._fm_retune()
 
     # ---- layout ----
     def build_body(self):
@@ -541,21 +587,9 @@ class ProwlApp(PalisadeApp):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
 
-        top = QtWidgets.QHBoxLayout()
-        top.setSpacing(8)
-        self._mode_btns = {}
-        for m in self.SUBMODES:
-            b = QtWidgets.QPushButton(m)
-            b.setCheckable(True)
-            b.setFixedWidth(92)
-            b.clicked.connect(lambda _=False, mm=m: self._switch_submode(mm))
-            self._mode_btns[m] = b
-            top.addWidget(b)
-        top.addStretch(1)
-        self.busy = QtWidgets.QLabel("")
+        self.busy = StatusLine("")                 # RADIO BUSY / STANDBY line for the sub-mode
         self.busy.setStyleSheet("color:%s;" % self._tok["warn"])
-        top.addWidget(self.busy)
-        lay.addLayout(top)
+        lay.addWidget(self.busy)
 
         self.stack = QtWidgets.QStackedWidget()
         self._pages = {"SCAN": self._build_scan_page(),
@@ -619,7 +653,7 @@ class ProwlApp(PalisadeApp):
         self.sig_bar.setRange(0, 100)
         self.sig_bar.setValue(0)
         self.sig_bar.setTextVisible(False)
-        self.sig_bar.setFixedHeight(8)
+        self.sig_bar.setFixedHeight(14)
         self.sig_bar.setStyleSheet(
             "QProgressBar { background: %s; border: none; border-radius: 3px; }"
             "QProgressBar::chunk { background: %s; border-radius: 3px; }"
@@ -637,7 +671,7 @@ class ProwlApp(PalisadeApp):
         self.fdb_input.textChanged.connect(self._fdb_query)
         fl.addWidget(self.fdb_input)
         self.fdb_results = QtWidgets.QLabel("")
-        self.fdb_results.setProperty("class", "micro")
+        self.fdb_results.setProperty("class", "note")
         self.fdb_results.setWordWrap(True)
         self.fdb_results.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         fl.addWidget(self.fdb_results)
@@ -744,8 +778,7 @@ class ProwlApp(PalisadeApp):
                 self._worker.start()
 
     def _sync_mode_buttons(self):
-        for m, b in self._mode_btns.items():
-            b.setChecked(m == self._submode)
+        self._sync_rail()
 
     def make_worker(self):
         if self._submode == "FM":

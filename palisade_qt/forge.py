@@ -72,7 +72,7 @@ class ConsolePane(QtWidgets.QFrame):
         self.view = QtWidgets.QPlainTextEdit()
         self.view.setReadOnly(True)
         self.view.setMaximumBlockCount(600)
-        self.view.setStyleSheet("background:transparent; border:none; font-family:monospace;")
+        self.view.setStyleSheet("QPlainTextEdit { background:transparent; border:none; }")
         lay.addWidget(self.view, 1)
         if on_input is not None:
             self.input = QtWidgets.QLineEdit()
@@ -112,11 +112,13 @@ def _no_device(tok, text):
     v.addStretch(1)
     lbl = QtWidgets.QLabel("NO DEVICE")
     lbl.setAlignment(QtCore.Qt.AlignCenter)
-    lbl.setStyleSheet("color:%s; font-size:18px; letter-spacing:2px;" % tok["muted"])
+    lbl.setProperty("class", "value")
+    lbl.setStyleSheet("color:%s; letter-spacing:2px;" % tok["muted"])
     v.addWidget(lbl)
     hint = QtWidgets.QLabel(text)
     hint.setAlignment(QtCore.Qt.AlignCenter)
-    hint.setProperty("class", "micro")
+    hint.setProperty("class", "note")
+    hint.setWordWrap(True)
     v.addWidget(hint)
     v.addStretch(1)
     return f
@@ -279,13 +281,14 @@ class _GateCardBase(QtWidgets.QFrame):
 
     def _result_label(self):
         self.result = QtWidgets.QLabel("")
-        self.result.setProperty("class", "micro")
+        self.result.setProperty("class", "note")
         self.result.setWordWrap(True)
         self.result.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.lay.addWidget(self.result)
 
     def _show_result(self, ok, reason, payload=None):
-        self.result.setStyleSheet("color:%s;" % (self._tok["live"] if ok else self._tok["warn"]))
+        # AUTHORIZED is a hazard state, not a healthy one: amber, never green (D9)
+        self.result.setStyleSheet("color:%s;" % (self._tok["warn"] if ok else self._tok["muted"]))
         if ok:
             tail = ("\n$ %s" % (" ".join(payload) if isinstance(payload, list) else payload)
                     if payload else "")
@@ -323,11 +326,11 @@ class EngagementCard(_GateCardBase):
         for e in self._inputs.values():
             e.setEnabled(active)
         if active:
-            self.state.setStyleSheet("color:%s;" % self._tok["live"])
-            self.state.setText("engagement active — actions authorized against the scope")
+            self.state.setStyleSheet("color:%s;" % self._tok["warn"])     # amber: armed, not healthy
+            self.state.setText("◆ engagement active — actions authorized against the scope")
         else:
-            self.state.setStyleSheet("color:%s;" % self._tok["warn"])
-            self.state.setText("REQUIRES ENGAGEMENT — open one in RECON's ENGAGE tab")
+            self.state.setStyleSheet("color:%s;" % self._tok["muted"])
+            self.state.setText("○ REQUIRES ENGAGEMENT — open ENGAGEMENT in the top strip (E)")
             self.result.setText("")
 
     def _run(self):
@@ -358,11 +361,11 @@ class ReplayTxCard(_GateCardBase):
     def refresh(self):
         armed, unlocked = _tx_state()
         if armed and unlocked:
-            self.state.setStyleSheet("color:%s;" % self._tok["live"])
-            self.state.setText("TX armed + unlocked — a burst still passes per-band txguard policy")
+            self.state.setStyleSheet("color:%s;" % self._tok["alert"])    # red: armed, never green
+            self.state.setText("■ TX armed + unlocked — a burst still passes per-band txguard policy")
         else:
-            self.state.setStyleSheet("color:%s;" % self._tok["warn"])
-            self.state.setText("TX GATED — kill switch %s, session %s (arm/unlock in the hub)" % (
+            self.state.setStyleSheet("color:%s;" % self._tok["muted"])
+            self.state.setText("○ TX GATED — kill switch %s, session %s (arm/unlock in the hub)" % (
                 "armed" if armed else "OFF", "unlocked" if unlocked else "locked"))
 
     def _run(self):
@@ -378,13 +381,20 @@ class ReplayTxCard(_GateCardBase):
 class ForgeApp(PalisadeApp):
     TITLE = "FORGE"
     LEASE = None            # serial/I2C/CAN/USB bench — never holds the SDR
+    SUBTABS = SUBTABS
 
-    def __init__(self, demo=False, mode="dark", parent=None):
+    def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._subtab = "SERIAL"
         self._cards = []
         import evidence
         self.evidence = evidence.EvidenceChain()
-        super().__init__(demo=demo, mode=mode, parent=parent)
+        super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
+
+    def current_subtab(self):
+        return self._subtab
+
+    def switch_subtab(self, name):
+        self._switch(name)
 
     def build_body(self):
         self._tok = theme.tokens(self.mode)
@@ -393,21 +403,8 @@ class ForgeApp(PalisadeApp):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(10)
 
-        top = QtWidgets.QHBoxLayout()
-        top.setSpacing(8)
-        self._tab_btns = {}
-        for t in SUBTABS:
-            b = QtWidgets.QPushButton(t)
-            b.setCheckable(True)
-            b.setFixedWidth(98)
-            b.clicked.connect(lambda _=False, tt=t: self._switch(tt))
-            self._tab_btns[t] = b
-            top.addWidget(b)
-        top.addStretch(1)
-        self.lines_lbl = QtWidgets.QLabel("")
-        self.lines_lbl.setProperty("class", "micro")
-        top.addWidget(self.lines_lbl)
-        lay.addLayout(top)
+        self.lines_lbl = QtWidgets.QLabel("")       # placed on the SERIAL bar by _serial_page
+        self.lines_lbl.setProperty("class", "note")
 
         self.stack = QtWidgets.QStackedWidget()
         self._pages = {"SERIAL": self._serial_page(), "BUS": self._bus_page(),
@@ -434,6 +431,7 @@ class ForgeApp(PalisadeApp):
         self.ser_baud.addItems(["115200", "9600", "57600", "250000"])
         bar.add_field("baud", self.ser_baud, "Baud")
         bar.add_stretch()
+        bar.lay.addWidget(self.lines_lbl)
         bar.lay.addWidget(micro("console multiplexer"))
         pl.addWidget(bar)
         # the colored multiplexed console: a tab per connected device
@@ -566,7 +564,7 @@ class ForgeApp(PalisadeApp):
         self.roll_note = QtWidgets.QLabel("Load several captured presses of one remote to classify "
                                           "FIXED vs ROLLING and flag replay risk. Analysis only — "
                                           "standby until captures are loaded on-device.")
-        self.roll_note.setProperty("class", "micro")
+        self.roll_note.setProperty("class", "note")
         self.roll_note.setWordWrap(True)
         cl.addWidget(self.roll_note)
         pl.addWidget(c)
@@ -612,8 +610,7 @@ class ForgeApp(PalisadeApp):
         self.refresh_gates()
 
     def _sync_tabs(self):
-        for t, b in self._tab_btns.items():
-            b.setChecked(t == self._subtab)
+        self._sync_rail()
 
     # ---- lifecycle ----
     def start(self):

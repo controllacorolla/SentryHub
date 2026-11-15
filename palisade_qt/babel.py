@@ -17,7 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .app import PalisadeApp
 from . import theme, radio_arbiter, eventbus
-from .kit import ControlBar, FeedTable, DetailCard, micro
+from .kit import ControlBar, FeedTable, DetailCard
 from .worker import Worker
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -463,12 +463,14 @@ class SstvImagePanel(QtWidgets.QFrame):
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(10, 10, 10, 10)
         lay.setSpacing(6)
-        self.caption = micro("SSTV — no frame yet")
+        self.caption = QtWidgets.QLabel("SSTV — no frame yet")     # reports state -> not a caption
+        self.caption.setProperty("class", "note")
+        self.caption.setWordWrap(True)
         lay.addWidget(self.caption)
         self.view = QtWidgets.QLabel("listening…")
         self.view.setAlignment(QtCore.Qt.AlignCenter)
         self.view.setStyleSheet("color:%s;" % tok["muted"])
-        self.view.setMinimumHeight(240)
+        self.view.setMinimumHeight(80)              # sized from the space it is given
         lay.addWidget(self.view, 1)
         self._buf = None
 
@@ -669,10 +671,11 @@ class BabelApp(PalisadeApp):
         self.mode_combo.addItems(MODES)
         self.mode_combo.currentTextChanged.connect(self._set_mode)
         self.bar.add_field("mode", self.mode_combo, "Decoder")
-        self.bar.add_stretch()
         self.busy = QtWidgets.QLabel("")        # "RADIO BUSY — held by X" when another layer owns it
+        self.busy.setProperty("class", "note")
+        self.busy.setWordWrap(True)
         self.busy.setStyleSheet("color: %s;" % self._tok["warn"])
-        self.bar.lay.addWidget(self.busy)
+        self.bar.lay.addWidget(self.busy, 1)
         self.count = QtWidgets.QLabel("0 msgs")
         self.count.setProperty("class", "value")
         self.bar.lay.addWidget(self.count)

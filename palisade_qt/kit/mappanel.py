@@ -50,12 +50,18 @@ class MapPanel(QtWidgets.QFrame):
             self._rings.append(circ)
         for r in rings[:-1]:
             lbl = pg.TextItem("%.0f" % r, color=tok["muted"], anchor=(0, 1))
+            _f = lbl.textItem.font()
+            _f.setPixelSize(16)
+            lbl.setFont(_f)
             lbl.setPos(2, r)
             self.plot.addItem(lbl)
             self._ring_labels.append(lbl)
         for txt, x, y in [("N", 0, span_nm * 0.92), ("S", 0, -span_nm * 0.92),
                            ("E", span_nm * 0.92, 0), ("W", -span_nm * 0.92, 0)]:
             c = pg.TextItem(txt, color=tok["muted"], anchor=(0.5, 0.5))
+            _f = c.textItem.font()
+            _f.setPixelSize(16)
+            c.setFont(_f)
             c.setPos(x, y)
             self.plot.addItem(c)
             self._cardinal_labels.append(c)
@@ -67,24 +73,25 @@ class MapPanel(QtWidgets.QFrame):
                                        pen=pg.mkPen(tok["accent"], width=2))
         self.plot.addItem(self.home)
         self._contact_labels = []
+        self._label_color = tok["text"]          # legible on every theme (was a fixed light grey)
         lay.addWidget(self.plot)
 
         self._styles = STYLES_DARK if mode == "dark" else STYLES_LIGHT
         self._combo = QtWidgets.QComboBox(self)
         tile_label = "DARK" if mode == "dark" else "LIGHT"
         self._combo.addItems(["SCOPE", tile_label, "SAT"])
-        self._combo.setFixedWidth(72)
+        self._combo.setFixedWidth(104)
         if mode == "dark":
             self._combo.setStyleSheet(
                 "QComboBox { background: rgba(0,0,0,160); color: #AAB; "
-                "border: 1px solid #333; font-size: 10px; padding: 2px 4px; }"
+                "border: 1px solid #333; font-size: 16px; padding: 2px 4px; }"
                 "QComboBox::drop-down { border: none; }"
                 "QComboBox QAbstractItemView { background: #181C22; color: #AAB; "
                 "selection-background-color: #2A2F38; }")
         else:
             self._combo.setStyleSheet(
                 "QComboBox { background: rgba(255,255,255,200); color: #334; "
-                "border: 1px solid #CCC; font-size: 10px; padding: 2px 4px; }"
+                "border: 1px solid #CCC; font-size: 16px; padding: 2px 4px; }"
                 "QComboBox::drop-down { border: none; }"
                 "QComboBox QAbstractItemView { background: #F4F5F7; color: #334; "
                 "selection-background-color: #DEE1E6; }")
@@ -148,10 +155,10 @@ class MapPanel(QtWidgets.QFrame):
         self._contact_labels.clear()
         if labels:
             for (x, y), txt in zip(pts, labels):
-                t = pg.TextItem(txt, color=(200, 200, 200, 160), anchor=(0, 1))
+                t = pg.TextItem(txt, color=self._label_color, anchor=(0, 1))
+                _f = t.textItem.font()
+                _f.setPixelSize(16)
+                t.setFont(_f)
                 t.setPos(x + 1.5, y + 1.5)
-                font = t.textItem.font()
-                font.setPointSize(7)
-                t.setFont(font)
                 self.plot.addItem(t)
                 self._contact_labels.append(t)

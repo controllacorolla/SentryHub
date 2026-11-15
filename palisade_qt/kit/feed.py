@@ -1,6 +1,8 @@
 """Feed table — a QTableView + model for decoder/contact feeds (the BABEL/ATLAS list)."""
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..theme import ROW_H
+
 
 class FeedModel(QtCore.QAbstractTableModel):
     def __init__(self, columns, parent=None):
@@ -64,7 +66,7 @@ class FeedTable(QtWidgets.QFrame):
         self.view.setShowGrid(False)
         self.view.setAlternatingRowColors(True)
         self.view.verticalHeader().setVisible(False)
-        self.view.verticalHeader().setDefaultSectionSize(28)
+        self.view.verticalHeader().setDefaultSectionSize(ROW_H)
         self.view.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.view.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         hdr = self.view.horizontalHeader()
@@ -73,8 +75,41 @@ class FeedTable(QtWidgets.QFrame):
         for i in range(len(columns) - 1):
             hdr.setSectionResizeMode(i, QtWidgets.QHeaderView.ResizeToContents)
         self.view.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.view.setWordWrap(False)
+        self.view.setTabKeyNavigation(False)
         self.view.clicked.connect(self._clicked)
+        # keyboard: the detail card must follow the cursor row, not only mouse clicks (D8)
+        self.view.selectionModel().currentRowChanged.connect(self._row_changed)
+        # a refresh resets the model; keep the cursor row so arrow-key navigation survives it
+        self._keep_row = -1
+        self.model.modelAboutToBeReset.connect(self._remember_row)
+        self.model.modelReset.connect(self._restore_row)
         lay.addWidget(self.view)
+
+    def _remember_row(self):
+        self._keep_row = self.view.currentIndex().row()
+
+    def _restore_row(self):
+        if 0 <= self._keep_row < len(self.model.rows):
+            sm = self.view.selectionModel()
+            sm.blockSignals(True)                  # restoring is not a new selection
+            self.view.selectRow(self._keep_row)
+            sm.blockSignals(False)
+
+    def _row_changed(self, cur, _prev):
+        if cur.isValid() and 0 <= cur.row() < len(self.model.rows):
+            self.selected.emit(self.model.rows[cur.row()])
+
+    def move_cursor(self, delta):
+        """Move the row cursor by delta (keyboard up/down from anywhere on the page)."""
+        n = len(self.model.rows)
+        if not n:
+            return False
+        cur = self.view.currentIndex().row()
+        row = 0 if cur < 0 else max(0, min(n - 1, cur + delta))
+        self.view.setFocus()
+        self.view.selectRow(row)
+        return True
 
     def _clicked(self, idx):
         if 0 <= idx.row() < len(self.model.rows):

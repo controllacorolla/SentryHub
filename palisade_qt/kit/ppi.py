@@ -83,6 +83,9 @@ class PpiScope(QtWidgets.QFrame):
             if selected is not None and c.get("id") == selected:
                 sel.append((x, y))
                 t = pg.TextItem(c.get("label", ""), color=tok["accent"], anchor=(0, 1))
+                _f = t.textItem.font()
+                _f.setPixelSize(16)
+                t.setFont(_f)
                 t.setPos(x + 1.5, y + 1.5)
                 self.plot.addItem(t)
                 self._labels.append(t)

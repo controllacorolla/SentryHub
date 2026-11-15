@@ -7,7 +7,7 @@ antenna port), never an antenna, every key-up gated by txguard. Two parts, both 
     OpenDroneID). No radio, always runnable, hermetic — the honest "does the DSP chain work" check.
   * bench.preflight()/bench.transmit() — the conducted key-up, gated by txguard's bench policy
     (needs TX enabled AND an explicit per-session conducted-only acknowledgment). The gate state is
-    shown live: TX SAFE when a conducted burst is permitted, TX GATED (with the reason) when not.
+    shown live: TX PERMITTED when a conducted burst is permitted, TX GATED (with the reason) when not.
 
 No OTA ever leaves BENCH. `run` is a hermetic seam so tests never spawn a transmitter.
 """
@@ -17,7 +17,7 @@ import sys
 from PySide6 import QtWidgets
 
 from .app import PalisadeApp
-from . import theme
+from . import theme, chrome
 from .kit import ControlBar, FeedTable, DetailCard, micro
 from .worker import Worker
 
@@ -51,6 +51,10 @@ class BenchApp(PalisadeApp):
     TITLE = "BENCH"
     LEASE = None            # conducted bench — never holds the SDR arbiter lease
 
+    def primary_action(self):
+        self._run_selftest()      # Enter runs the harmless action; keying TX is never the default
+        return True
+
     def build_body(self):
         self._tok = theme.tokens(self.mode)
         body = QtWidgets.QWidget()
@@ -72,14 +76,21 @@ class BenchApp(PalisadeApp):
         self.modebox = QtWidgets.QComboBox()
         self.modebox.addItems(MODES)
         self.bar.add_field("mode", self.modebox, "Modulation")
+        self.bar.add_stretch()
+        lay.addWidget(self.bar)
+        # the acknowledgment and the gate state get their own row: on one line with the selectors
+        # they forced the window wider than the screen (D1)
+        ackrow = QtWidgets.QHBoxLayout()
+        ackrow.setSpacing(12)
         self.ack = QtWidgets.QCheckBox("conducted-only (into a load, not an antenna)")
         self.ack.toggled.connect(self._refresh_gate)
-        self.bar.lay.addWidget(self.ack)
-        self.bar.add_stretch()
-        self.bar.lay.addWidget(micro("Gate"))
+        ackrow.addWidget(self.ack)
+        ackrow.addStretch(1)
+        ackrow.addWidget(micro("Gate"))
         self.gate = QtWidgets.QLabel("")
-        self.bar.lay.addWidget(self.gate)
-        lay.addWidget(self.bar)
+        self.gate.setProperty("class", "value")
+        ackrow.addWidget(self.gate)
+        lay.addLayout(ackrow)
 
         split = QtWidgets.QHBoxLayout()
         split.setSpacing(10)
@@ -128,13 +139,16 @@ class BenchApp(PalisadeApp):
         import bench
         ok, why = bench.preflight(self._settings(), self._band_freq())
         self.tx_btn.setEnabled(ok)
+        # "TX SAFE" is retired: it meant "not transmitting" in the strip and "transmit permitted"
+        # here. A passing gate is a hazard state, so it is amber PERMITTED, never green (D4/D9).
         if ok:
-            self.gate.setText("TX SAFE · conducted")
-            self.gate.setStyleSheet("color:%s; font-weight:600;" % self._tok["live"])
+            self.gate.setText("▲ TX PERMITTED · conducted")
+            self.gate.setStyleSheet("color:%s;" % self._tok["warn"])
         else:
-            self.gate.setText("TX GATED")
-            self.gate.setStyleSheet("color:%s; font-weight:600;" % self._tok["warn"])
-        self.card.set_rows([("TXGUARD", "SAFE — conducted" if ok else "GATED"),
+            self.gate.setText("○ TX GATED")
+            self.gate.setStyleSheet("color:%s;" % self._tok["muted"])
+        chrome.report_tx_permit("BENCH", ok)         # the shell's TX slot shows PERMITTED
+        self.card.set_rows([("TXGUARD", "PERMITTED — conducted" if ok else "GATED"),
                             ("REASON", why), ("RESULT", "—")])
 
     def make_worker(self):
@@ -162,12 +176,13 @@ class BenchApp(PalisadeApp):
         ok, message = bench.transmit(s, run=run)
         self.card.set_hero("KEYED" if ok else "BLOCKED",
                            "conducted into a load — no antenna, no OTA")
-        self.card.set_rows([("TXGUARD", "SAFE — conducted" if ok else "GATED/BLOCKED"),
-                            ("RESULT", message[:80])])
+        self.card.set_rows([("TXGUARD", "PERMITTED — conducted" if ok else "GATED/BLOCKED"),
+                            ("RESULT", message)])
 
     def stop(self):
         if self._stopped:
             return
+        chrome.report_tx_permit("BENCH", False)
         stw = getattr(self, "_stw", None)
         if stw is not None:
             stw.stop()
