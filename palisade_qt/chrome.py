@@ -119,9 +119,11 @@ class ChromeState(QtCore.QObject):
             self.changed.emit()
 
     def radio(self):
-        """('HELD', label) or ('FREE', '')."""
-        if self._owner:
-            return "HELD", radio_arbiter.OWNER_LABELS.get(self._owner, self._owner)
+        """('HELD', label) · ('ACQUIRING', label) · ('FREE', '') — straight from the arbiter (A3)."""
+        st, owner = radio_arbiter.arbiter.state()
+        if owner:
+            return ("ACQUIRING" if st == "ACQUIRING" else "HELD"), \
+                radio_arbiter.OWNER_LABELS.get(owner, owner)
         return "FREE", ""
 
     def tx(self):

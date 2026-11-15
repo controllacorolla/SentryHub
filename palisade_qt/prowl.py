@@ -14,7 +14,6 @@ Demo is the only synthetic path (SDR-DEMO chip). offscreen/offline never opens a
 """
 import os
 import shutil
-import subprocess
 import sys
 import random
 import threading
@@ -63,14 +62,13 @@ def _open_fm_pipe(rtl, mid, sink, on_rds):
     return fm.Pipe(rtl, sink, mid, on_rds=on_rds)
 
 
-def _open_nwr_pipe(cmd):
-    """Spawn the nwr rtl_fm|multimon-ng shell pipeline, or None under offscreen/offline.
-    cmd is nwr.pipeline()'s shell STRING (a pipe), so shell=True is required — reused AS-IS."""
+def _open_nwr_pipe(stages):
+    """Spawn the nwr rtl_fm | multimon-ng pipeline from argv lists in one session (audit A4), or
+    None under offscreen/offline."""
     if _offscreen():
         return None
-    return subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            stdin=subprocess.DEVNULL, text=True, bufsize=1, errors="replace",
-                            start_new_session=True)
+    from .kit.procs import Pipeline
+    return Pipeline(stages)
 
 
 class _RadioWorker(Worker):
@@ -78,13 +76,26 @@ class _RadioWorker(Worker):
     page's front/back state (release the dongle when backgrounded — the ATLAS/PRISM pattern)."""
     NAME = None
 
+    PAUSE_WHEN_HIDDEN = False          # a radio holder must keep stepping to release when hidden
+
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
         self._active = True
         self._has_radio = False
+        self._revoked = False
+        radio_arbiter.arbiter.revoked.connect(self._on_revoked)
 
     def set_active(self, on):
         self._active = bool(on)
+        if on:
+            self._revoked = False
+
+    def _on_revoked(self, name):
+        """A1: the operator wants the radio back. The next step() stops the pipeline, waits for
+        it, and releases (the acknowledgement); we stay backgrounded until the page is fronted."""
+        if name == self.NAME:
+            self._revoked = True
+            self._active = False
 
     def _ensure_lease(self):
         """True if we hold the single SDR. Acquire if active+free; release if backgrounded; emit
@@ -371,6 +382,8 @@ class NwrWorker(_RadioWorker):
         self._lock = threading.Lock()
         self._retune = False
         self._demo_src = None
+        self._down = 0
+        self._last_line = 0.0
 
     def set_channel(self, channel, label):
         self.channel, self.label = channel, label
@@ -396,13 +409,28 @@ class NwrWorker(_RadioWorker):
             self._respawn()
         elif self._proc is None:
             self._spawn()
+        elif self._proc.poll() is not None:           # R3: a dead receiver must not look healthy
+            rc = self._proc.poll()
+            self._kill()
+            self._down += 1
+            self.status.emit({"busy": None, "down": True,
+                              "sdr": {"text": "NWR DOWN — decoder exited (%s) ×%d" % (rc, self._down),
+                                      "state": "alert", "ok": False}})
+            if self._down >= 3:
+                raise RuntimeError("NWR pipeline keeps exiting (rc %s)" % rc)   # Worker backs off
+            return
         self._drain()
-        self.status.emit({"busy": None,
-                          "sdr": {"text": "NWR %s %s" % (self.label, self.channel), "ok": True}})
+        age = (time.time() - self._last_line) if self._last_line else None
+        self._down = 0
+        self.status.emit({"busy": None, "down": False, "last_heard_s": age,
+                          "sdr": {"text": "NWR %s %s%s" % (
+                              self.label, self.channel,
+                              "" if age is None else " · heard %ds ago" % int(age)),
+                          "ok": True}})
 
     def _spawn(self):
         import nwr
-        proc = _open_nwr_pipe(nwr.pipeline(self.channel, self.gain))
+        proc = _open_nwr_pipe(nwr.pipeline_argv(self.channel, self.gain))
         orphan = None
         with self._lock:                 # guard against a concurrent stop()/_kill on the GUI thread
             if self._stop:
@@ -424,6 +452,7 @@ class NwrWorker(_RadioWorker):
             for line in proc.stdout:
                 if self._stop or proc is not self._proc:
                     break
+                self._last_line = time.time()            # any decoder output = receiver alive
                 self._handle_line(line)
         except Exception:
             pass
@@ -470,12 +499,14 @@ class NwrWorker(_RadioWorker):
 
     @staticmethod
     def _terminate(proc):
-        if proc is not None and proc.poll() is None:
-            import signal as _sig
-            try:
-                os.killpg(proc.pid, _sig.SIGTERM)
-            except (ProcessLookupError, PermissionError, AttributeError):
-                pass
+        """R4: SIGTERM the group, WAIT for exit (then SIGKILL) before anything respawns, so the
+        dongle is really free when the next rtl_fm opens it."""
+        if proc is None:
+            return
+        try:
+            proc.terminate()
+        except Exception:
+            pass
 
     def _kill(self):
         with self._lock:

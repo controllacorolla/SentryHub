@@ -14,7 +14,6 @@ real radio.
 import math
 import os
 import shutil
-import subprocess
 import threading
 import time
 
@@ -74,9 +73,8 @@ def _open_rtl_power(lo_mhz, hi_mhz, gain):
     bin_hz = max(1, int((hi_mhz - lo_mhz) * 1e6 / BINS))
     argv = waterfall.rtl_power_sweep_argv(int(lo_mhz * 1e6), int(hi_mhz * 1e6), bin_hz, "-",
                                           gain, "1")
-    return subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            text=True, bufsize=1,
-                            start_new_session=True)     # PANIC stops it by group
+    from .kit.procs import Pipeline
+    return Pipeline([argv])                         # own session; killed + waited as a group (A4)
 
 
 class SweepWorker(Worker):
@@ -93,9 +91,17 @@ class SweepWorker(Worker):
         self._latest = None
         self._lock = threading.Lock()
         self._band_dirty = False
+        radio_arbiter.arbiter.revoked.connect(self._on_revoked)
+
+    PAUSE_WHEN_HIDDEN = False          # keeps stepping while hidden so it can release the dongle
 
     def set_active(self, on):
         self._active = bool(on)
+
+    def _on_revoked(self, name):
+        """A1: operator asked for the radio back — stop sweeping, wait, release on the next step."""
+        if name == NAME:
+            self._active = False
 
     def set_band(self, lo, hi):
         with self._lock:
@@ -133,12 +139,12 @@ class SweepWorker(Worker):
             pass
 
     def _kill_rtl(self):
-        if self._proc is not None:
+        proc, self._proc = self._proc, None
+        if proc is not None:
             try:
-                self._proc.terminate()
+                proc.terminate()                 # Pipeline: SIGTERM → wait → SIGKILL → wait: no zombie
             except Exception:
                 pass
-            self._proc = None
 
     def _release(self):
         self._kill_rtl()

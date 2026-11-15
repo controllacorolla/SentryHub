@@ -242,28 +242,24 @@ class RidSource:
 # offscreen/offline/no-tools, so CI never opens a real radio. Legacy decode paths reused AS-IS.
 def _open_aprs_pipe(gain):
     import shutil
-    import subprocess
     if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
         return None
     if not shutil.which("rtl_fm") or not shutil.which("multimon-ng"):
         return None
     import aprs
-    return subprocess.Popen(aprs.pipeline(gain), shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1,
-                            start_new_session=True)     # PANIC stops the pipeline by group
+    from .kit.procs import Pipeline
+    return Pipeline(aprs.pipeline_argv(gain))          # one session: PANIC/arbiter kill the lot (A4)
 
 
 def _open_ais_pipe(gain):
     import shutil
-    import subprocess
     if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
         return None
     if not shutil.which("rtl_ais"):
         return None
     import ais
-    return subprocess.Popen(ais.pipeline(gain), shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1,
-                            start_new_session=True)     # PANIC stops the pipeline by group
+    from .kit.procs import Pipeline
+    return Pipeline(ais.pipeline_argv(gain))           # one session: PANIC/arbiter kill the lot (A4)
 
 
 def aprs_station_contacts(stations, now):
@@ -357,6 +353,17 @@ class LeaseSource:
 
     def start(self):
         self._on = True          # acquire is deferred to poll() so a busy layer keeps retrying
+        radio_arbiter.arbiter.revoked.connect(self._on_revoked)
+
+    def _on_revoked(self, name):
+        """A1: the operator asked for the radio back. Stop the pipeline, wait for it to exit,
+        then release — the arbiter frees on this acknowledgement."""
+        if name != self.NAME or not self._has_radio:
+            return
+        self._on = False
+        self._stop_pipe()
+        radio_arbiter.arbiter.release(self.NAME)
+        self._has_radio = False
 
     def poll(self):
         if not self._on:
@@ -386,14 +393,21 @@ class LeaseSource:
         except Exception:
             pass
 
-    def stop(self):
-        self._on = False
-        if self._proc is not None:
+    def _stop_pipe(self):
+        proc, self._proc = self._proc, None
+        if proc is not None:
             try:
-                self._proc.terminate()
+                proc.terminate()                 # Pipeline: group SIGTERM → wait → SIGKILL → wait
             except Exception:
                 pass
-            self._proc = None
+
+    def stop(self):
+        self._on = False
+        try:
+            radio_arbiter.arbiter.revoked.disconnect(self._on_revoked)
+        except (TypeError, RuntimeError):
+            pass
+        self._stop_pipe()
         if self._has_radio:
             radio_arbiter.arbiter.release(self.NAME)   # readsb / the autopilot resume
             self._has_radio = False

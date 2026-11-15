@@ -93,18 +93,25 @@ def test_hub_builds_and_hosts_ops():
     assert not (ops_worker and ops_worker.isRunning()), "hub close must stop its pages' workers"
 
 
-def test_lease_skipped_in_demo():
+def test_base_class_never_touches_the_dongle(monkeypatch):
+    """CL5/A5: the base-class daemon-thread lease path is gone; the SDR is owned only through
+    radio_arbiter. A LEASE attribute is inert in demo AND live."""
     _app()
+    import suite
     from palisade_qt.app import PalisadeApp
+    touched = []
+    monkeypatch.setattr(suite, "RtlLease", lambda name: touched.append(name) or None)
 
     class RadioApp(PalisadeApp):
         TITLE = "RADIO"
-        LEASE = "TestLease"      # would acquire the SDR if not demo
+        LEASE = "TestLease"
 
-    a = RadioApp(demo=True, mode="dark")
-    a.start()
-    assert a._lease is None, "demo must never touch the dongle"
-    a.stop()
+    for demo in (True, False):
+        a = RadioApp(demo=demo, mode="dark")
+        a.start()
+        _pump(50)
+        a.stop()
+    assert touched == [] and not hasattr(PalisadeApp, "_acquire_lease")
 
 
 @pytest.mark.parametrize("mode", ["dark", "light"])
