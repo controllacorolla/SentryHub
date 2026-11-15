@@ -28,6 +28,10 @@
   removed (use a real `sh -c` pipeline that traps SIGTERM).
 - **N3** per decision 1, with a test.
 - **D7** per decision 2, with a test that every nav key shows its function label as visible text.
+- **Item 6 (from the second RA-CL1b report):** the RADIOS and ENGAGEMENT *panels* must show
+  UNKNOWN when a read raises, like the slots do. Today RADIOS keeps "FREE" and ENGAGEMENT throws
+  on open. Test both with a raising reader.
+- **Ack all** must not clear alerts that arrived after the drawer was opened/last viewed. Test.
 - Other RA-CL1b Mediums/Lows: fix if trivial, else list under "found, not fixed".
 
 ## Done means
