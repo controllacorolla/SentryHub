@@ -57,3 +57,11 @@ message each other. This directory is the channel.
 - Run the suite once per stage, not per finding. Read only the files and lines a finding cites.
 - Reports: table + short evidence per row. No narrative.
 - On a cyber-safeguard block: `/model claude-opus-5-5` and continue.
+
+## Runner (owner rule, 2026-11-15)
+
+Briefs are now launched headless by `plan/runner/run.sh` on the owner's Mac from
+`plan/runner/QUEUE`. Two lanes run at once, so **every session works in its own git worktree**
+(`git worktree add ../wt-<ID> origin/<branch>`), never the shared checkout, and removes it when
+done. Nobody can answer questions mid-run: where a brief is ambiguous, take the strictest
+reading, say so in the report, and finish. End by pushing the report; the planner reads it.
