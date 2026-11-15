@@ -1,5 +1,9 @@
 """RA-CL3 PoCs. Each test PASSES when the stated behaviour holds (DEFECT_* = the defect reproduces;
-OK_* = the audit claim holds). Run: SUITE=<worktree> pytest -q poc_ra_cl3.py"""
+OK_* = the audit claim holds). Run: SUITE=<worktree> pytest -q poc_ra_cl3.py
+
+RA-CL3b (tip 13c04a4): every RA-CL3 DEFECT_* was re-pointed at the fixed behaviour and renamed
+FIXED_* (the test passes when the defect no longer reproduces). Records now carry the writer pid
+as `wpid` (N5), so the field-rewrite list uses `wpid`."""
 import json
 import os
 import stat
@@ -56,7 +60,7 @@ def _lines(p):
 
 
 # ------------------------------------------------------------------ step 1: field rewrites
-FIELDS = ["operator", "engagement", "seq", "target", "action", "binding", "authorization", "t", "pid"]
+FIELDS = ["operator", "engagement", "seq", "target", "action", "binding", "authorization", "t", "wpid"]
 
 
 @pytest.mark.parametrize("field", FIELDS)
@@ -114,20 +118,22 @@ def test_OK_drop_last_and_middle_and_head_delete():
         chain.Chain.open(info["id"])
 
 
-def test_DEFECT_truncate_plus_head_rewrite_without_key_verifies():
-    """The head is an unkeyed copy of the last record's h, which is printed in the jsonl itself.
-    Drop the last N records and write the new last h into .head: verifies. No key needed."""
+def test_FIXED_truncate_plus_head_rewrite_without_key_fails():
+    """N1: truncate N records and forge a head without the key → refused (old 1-field head and a
+    3-field head with a junk MAC)."""
     info = _start()
     for i in range(3):
         assert E.authorize_action("net:portscan", "10.0.0.%d" % (i + 1))[0]
     lines = _lines(info["path"])
     kept = lines[:-2]
     open(info["path"], "wb").write(b"\n".join(kept) + b"\n")
-    with open(info["path"][:-6] + ".head", "w") as fh:
-        fh.write(json.loads(kept[-1])["h"])
-    ch = chain.Chain.open(info["id"])           # no exception
-    assert ch.verify()[0]
-    assert len(ch.records) == len(lines) - 2
+    hp = info["path"][:-6] + ".head"
+    for forged in (json.loads(kept[-1])["h"],
+                   "%d %s %s" % (len(kept), json.loads(kept[-1])["h"], "0" * 64)):
+        with open(hp, "w") as fh:
+            fh.write(forged)
+        with pytest.raises(chain.ChainError):
+            chain.Chain.open(info["id"])
 
 
 def test_OK_reforge_with_guessed_key_fails():
@@ -147,9 +153,8 @@ def test_OK_reforge_with_guessed_key_fails():
         chain.Chain.open(info["id"])
 
 
-def test_DEFECT_swap_two_chains_files_with_their_keys_and_heads_verifies_under_wrong_name():
-    """Swap A<->B (jsonl+key+head together): each id opens and verifies, showing the other
-    engagement. Records do not carry the chain id, so the id↔content binding is not checked."""
+def test_FIXED_swap_two_chains_files_with_their_keys_and_heads_fails():
+    """N2: swap A<->B (jsonl+key+head together) → the id is in every HMAC → refused."""
     a = _start("alpha")
     E.end()
     b = _start("bravo")
@@ -158,10 +163,9 @@ def test_DEFECT_swap_two_chains_files_with_their_keys_and_heads_verifies_under_w
     for ext in (".jsonl", ".key", ".head"):
         pa, pb = os.path.join(d, a["id"] + ext), os.path.join(d, b["id"] + ext)
         os.rename(pa, pa + ".x"); os.rename(pb, pa); os.rename(pa + ".x", pb)
-    ca = chain.Chain.open(a["id"])
-    assert ca.verify()[0]
-    opened = [r for r in ca.records if r["event"] == "engagement.open"][0]
-    assert opened["name"] == "bravo"
+    for cid in (a["id"], b["id"]):
+        with pytest.raises(chain.ChainError):
+            chain.Chain.open(cid)
 
 
 def test_OK_swap_only_jsonl_fails():
@@ -200,10 +204,9 @@ def test_OK_write_failure_refuses_authorize_and_issue(monkeypatch):
     assert executor._ISSUED == before
 
 
-def test_DEFECT_failed_append_bricks_the_chain_permanently(monkeypatch):
-    """A failure AFTER the line is written (fsync / head replace) raises, the gate refuses —
-    but the line stays in the jsonl and the head is not advanced: the chain never verifies
-    again, every later authorize refuses, the report refuses. No repair path."""
+def test_FIXED_failed_head_write_is_rolled_back(monkeypatch):
+    """N3: a head-write failure after the line is written → rolled back; the refused authorize
+    is not on disk; the next authorize succeeds; the chain verifies."""
     info = _start()
     calls = {"n": 0}
     real = chain._write_private
@@ -217,11 +220,9 @@ def test_DEFECT_failed_append_bricks_the_chain_permanently(monkeypatch):
     assert not ok
     monkeypatch.setattr(chain, "_write_private", real)
     ok2, why2 = E.authorize_action("net:portscan", "10.0.0.6")
-    assert not ok2, "recovered"
-    assert b"10.0.0.5" in open(info["path"], "rb").read()   # the 'refused' authorize is on disk
-    ok3, why3 = chain.Chain(info["id"]).verify() if False else (None, None)
-    with pytest.raises(chain.ChainError):
-        chain.Chain.open(info["id"])
+    assert ok2, why2
+    assert b"10.0.0.5" not in open(info["path"], "rb").read()
+    assert chain.Chain.open(info["id"]).verify()[0]
 
 
 def test_OK_refusal_execution_kill_recorded():
@@ -244,9 +245,8 @@ def test_OK_refusal_execution_kill_recorded():
     print(chain.Chain.open(info["id"]).states())
 
 
-def test_DEFECT_spawn_and_kill_records_lose_the_child_pid():
-    """record() never lets a field override 'pid' — spawn/kill pass pid=proc.pid, it is dropped
-    and the HUB's pid is written. The panel's 'pid N' for RUNNING is the hub, not the process."""
+def test_FIXED_spawn_and_kill_records_carry_the_child_pid():
+    """N5: spawn/kill carry the spawned pid; the writer is wpid; the RUNNING row names the child."""
     import executor
     info = _start()
     G.arm(True)
@@ -260,9 +260,9 @@ def test_DEFECT_spawn_and_kill_records_lose_the_child_pid():
     ev = [json.loads(x) for x in _lines(info["path"])]
     sp = [r for r in ev if r["event"] == "spawn"][0]
     kl = [r for r in ev if r["event"] == "kill"][0]
-    assert sp["pid"] == os.getpid() != child
-    assert kl["pid"] == os.getpid()
-    assert any(r["detail"] == "pid %d" % os.getpid() for r in rows)
+    assert sp["pid"] == child and sp["wpid"] == os.getpid()
+    assert kl["pid"] == child
+    assert any(r["detail"] == "pid %d" % child for r in rows)
 
 
 def test_DEFECT_end_while_running_kill_record_placement():
@@ -311,10 +311,9 @@ CHILD_HDR = ("import os, sys, json, suite; suite.DATA=os.environ['PALISADE_TEST_
              "SP=lambda real: (lambda argv: subprocess.Popen(real, stdout=subprocess.PIPE, start_new_session=True))\n")
 
 
-def test_DEFECT_bound_child_executions_go_to_a_private_session_chain(tmp_path):
-    """In a bound child, authorize goes to the hub's chain (via _active_chain) but executor
-    issue/spawn/exit go through chain.current(), whose _OPEN is None in the child → a fresh
-    per-child session chain. The engagement chain shows AUTHORIZED, never EXECUTED."""
+def test_FIXED_bound_child_executions_land_in_the_engagement_chain(tmp_path):
+    """B1: a bound child's issue/spawn/exit (exit code) are in the engagement chain; no session
+    chain; the row is EXECUTED."""
     info = _start()
     G.arm(True)
     pub, env = _bound_env(tmp_path)
@@ -331,21 +330,20 @@ def test_DEFECT_bound_child_executions_go_to_a_private_session_chain(tmp_path):
     print(out.stdout, out.stderr[-2000:])
     assert "ISSUE True" in out.stdout and "EXIT 0" in out.stdout
     ev = [json.loads(x) for x in _lines(info["path"])]
-    mine = [r["event"] for r in ev if r.get("target") == "10.0.0.7" or r.get("pid") != os.getpid()]
+    mine = [r["event"] for r in ev if r.get("wpid") != os.getpid()]
     print("ENG CHAIN child events:", mine)
-    assert "authorize" in mine
-    assert "issue" not in mine and "exit" not in mine
+    assert "authorize" in mine and "issue" in mine and "spawn" in mine
+    ex = [r for r in ev if r["event"] == "exit" and r.get("wpid") != os.getpid()]
+    assert ex and ex[0]["exit_code"] == 0
+    assert "CHILDCHAIN %s" % info["id"] in out.stdout
     d = os.path.dirname(info["path"])
-    sess = [f for f in os.listdir(d) if "session" in f and f.endswith(".jsonl")]
-    assert sess, os.listdir(d)
+    assert not [f for f in os.listdir(d) if "session" in f and f.endswith(".jsonl")]
     st = chain.Chain.open(info["id"]).states()
-    assert [r["state"] for r in st if r["target"] == "10.0.0.7"] == ["AUTHORIZED"]
+    assert [r["state"] for r in st if r["target"] == "10.0.0.7"] == ["EXECUTED"]
 
 
-def test_DEFECT_bound_child_stale_chain_after_engagement_rollover(tmp_path):
-    """A long-lived bound child caches _CHAIN['obj']. Hub ENDs and STARTs a new engagement: the
-    child's next authorize (checked against the NEW scope) is recorded in the OLD chain; the new
-    engagement's chain has no record of the authorization."""
+def test_FIXED_bound_child_follows_engagement_rollover(tmp_path):
+    """B2: after END alpha / START bravo the child's authorize is in bravo's chain, not alpha's."""
     import gatestate
     a = _start("alpha")
     pub, env = _bound_env(tmp_path)
@@ -370,8 +368,9 @@ def test_DEFECT_bound_child_stale_chain_after_engagement_rollover(tmp_path):
         pub.close()
     ra = [json.loads(x) for x in _lines(a["path"])]
     rb = [json.loads(x) for x in _lines(b["path"])]
-    assert any(r.get("target") == "10.0.0.8" and r["event"] == "authorize" for r in ra)
-    assert not any(r.get("target") == "10.0.0.8" for r in rb)
+    assert not any(r.get("target") == "10.0.0.8" for r in ra)
+    assert any(r.get("target") == "10.0.0.8" and r["event"] == "authorize"
+               and r.get("engagement") == "bravo" for r in rb)
 
 
 def test_OK_concurrent_appends_from_4_processes_verify(tmp_path):
@@ -391,9 +390,8 @@ def test_OK_concurrent_appends_from_4_processes_verify(tmp_path):
     assert sum(1 for r in ch.records if r["event"] == "authorize") == 125
 
 
-def test_DEFECT_unlocked_reader_sees_spurious_tamper(tmp_path):
-    """verify()/open() read without the flock; between the jsonl append and the head replace a
-    reader sees head != last → 'NOT VERIFIED' / ChainError (false tamper alarm, child refuses)."""
+def test_FIXED_locked_reader_sees_no_spurious_tamper(tmp_path):
+    """N4: readers take LOCK_SH → 0 spurious failures against a real writer process."""
     info = _start()
     pub, env = _bound_env(tmp_path)
     bad = 0
@@ -411,7 +409,7 @@ def test_DEFECT_unlocked_reader_sees_spurious_tamper(tmp_path):
     finally:
         pub.close()
     print("spurious failures:", bad)
-    assert bad > 0
+    assert bad == 0
     assert chain.Chain.open(info["id"]).verify()[0]
 
 
@@ -424,7 +422,7 @@ def test_OK_permissions():
     assert stat.S_IMODE(os.stat(d).st_mode) == 0o700
 
 
-def test_DEFECT_short_key_accepted_and_jsonl_perms_unchecked():
+def test_FIXED_short_key_refused_and_jsonl_perms_checked():
     info = _start()
     d = os.path.dirname(info["path"])
     kp = os.path.join(d, info["id"] + ".key")
@@ -443,9 +441,19 @@ def test_DEFECT_short_key_accepted_and_jsonl_perms_unchecked():
     open(info["path"], "wb").write(b"\n".join(out) + b"\n")
     open(kp, "wb").write(k); os.chmod(kp, 0o600)
     open(os.path.join(d, info["id"] + ".head"), "w").write(prev)
-    os.chmod(info["path"], 0o666)
-    os.chmod(os.path.join(d, info["id"] + ".head"), 0o666)
-    assert chain.Chain.open(info["id"]).verify()[0]
+    with pytest.raises(chain.ChainError, match="damaged"):
+        chain.Chain.open(info["id"])
+    # loose jsonl / head perms with an intact chain → refused
+    E.reset(); chain.reset_for_tests()
+    info2 = _start("perm")
+    d2 = os.path.dirname(info2["path"])
+    for ext in (".jsonl", ".head"):
+        p = os.path.join(d2, info2["id"] + ext)
+        os.chmod(p, 0o666)
+        with pytest.raises(chain.ChainError, match="not private"):
+            chain.Chain.open(info2["id"])
+        os.chmod(p, 0o600)
+    assert chain.Chain.open(info2["id"]).verify()[0]
 
 
 def test_OK_world_readable_key_refused():
@@ -467,23 +475,26 @@ def test_symlink_at_chain_path_on_create(tmp_path):
         chain.Chain.create(cid="fixed")
     dangling = os.path.join(d, "dang.jsonl")
     os.symlink(str(tmp_path / "nowhere"), dangling)
-    c = chain.Chain.create(cid="dang")          # exists() is False for a dangling link
-    assert not os.path.islink(dangling)          # os.replace replaced the link itself
+    # RA-CL3b: create() now uses lexists → a dangling link is refused too (stricter)
+    with pytest.raises(chain.ChainError):
+        chain.Chain.create(cid="dang")
+    assert os.path.islink(dangling)
     assert victim.read_text() == "keep"
 
 
-def test_DEFECT_chain_id_path_traversal_from_shared_state(tmp_path):
-    """Chain.open(cid) joins cid unvalidated. A gate-state engagement record with chain
-    '../../x' makes a bound child record authorizations into an attacker-chosen chain
-    (with an attacker-made key) outside DATA/engagements."""
+def test_FIXED_chain_id_path_traversal_refused(tmp_path):
+    """N8: a chain id with '..' or '/' is refused by open/for_id/exists."""
     d = chain.engagements_dir()
     outside = tmp_path / "evil"
     outside.mkdir()
-    c = chain.Chain.create(cid="x", directory=str(outside))
+    chain.Chain.create(cid="x", directory=str(outside))
     rel = os.path.relpath(str(outside / "x"), d)
     assert ".." in rel
-    c2 = chain.Chain.open(rel)
-    assert c2.path.startswith(d) and os.path.realpath(c2.path) == os.path.realpath(c.path)
+    with pytest.raises(chain.ChainError, match="invalid chain id"):
+        chain.Chain.open(rel)
+    with pytest.raises(chain.ChainError):
+        chain.for_id(rel)
+    assert not chain.Chain.exists(rel)
 
 
 def test_canonical_collisions_and_newlines():
@@ -499,11 +510,13 @@ def test_canonical_collisions_and_newlines():
     assert chain.canonical({"x": (1, 2)}) == chain.canonical({"x": [1, 2]})
 
 
-def test_DEFECT_unencodable_or_mixed_key_fields_raise_non_chainerror():
+def test_FIXED_unencodable_field_records_mixed_keys_still_typeerror():
+    """N7 side: canonical() uses surrogatepass → a lone surrogate records and verifies. Mixed
+    int/str dict keys still raise TypeError (not ChainError) — callers catch Exception."""
     info = _start()
     ch = chain.Chain.open(info["id"])
-    with pytest.raises(UnicodeEncodeError):
-        ch.record("t", target="caf\udce9")      # surrogateescape'd filename/argv
+    ch.record("t", target="caf\udce9")
+    assert chain.Chain.open(info["id"]).verify()[0]
     with pytest.raises(TypeError):
         ch.record("t", meta={1: "a", "b": 2})
     # authorize_action catches Exception → refusal (fail closed): confirm
@@ -511,10 +524,9 @@ def test_DEFECT_unencodable_or_mixed_key_fields_raise_non_chainerror():
     assert ok
 
 
-def test_DEFECT_start_raises_on_unencodable_name():
-    with pytest.raises(UnicodeEncodeError):
-        E.start("job\udce9", "ROE-1", ["10.0.0.0/24"], OP)
-    assert not E._ENG["active"]
+def test_FIXED_start_never_raises_on_unencodable_name():
+    r = E.start("job\udce9", "ROE-1", ["10.0.0.0/24"], OP)     # must not raise
+    assert isinstance(r, tuple) and len(r) == 2
 
 
 def test_session_chain_for_tx_only():
@@ -536,18 +548,17 @@ def test_session_chain_for_tx_only():
     assert chain.current() is s
 
 
-def test_DEFECT_refusals_without_engagement_are_not_recorded():
+def test_FIXED_refusals_without_engagement_are_recorded():
     G.arm(True)
     ok, why = E.authorize_action("net:portscan", "10.0.0.5")
     assert not ok
     s = chain.current(create_session=False)
-    assert s is None or not any(r["event"] == "refuse" for r in s.records)
+    assert s is not None and any(r["event"] == "refuse" for r in s.records)
 
 
 # ------------------------------------------------------------------ step 3: H9 / E5 / C2
-def test_DEFECT_chain_states_served_from_memory_when_tampered():
-    """chain_states(): verify() fails, but states() is then computed from the in-memory
-    records cached from the last good load — rows from memory, not the (tampered) chain."""
+def test_FIXED_chain_states_not_served_from_memory_when_tampered():
+    """H9: on a tampered file verify() drops records → no rows from memory."""
     info = _start()
     assert E.authorize_action("net:portscan", "10.0.0.5")[0]
     E.chain_states()
@@ -558,7 +569,7 @@ def test_DEFECT_chain_states_served_from_memory_when_tampered():
     ci = E.chain_info()
     assert ci["verified"] is False
     rows = E.chain_states()
-    assert rows and any(r["target"] == "10.0.0.5" for r in rows)
+    assert rows == []
 
 
 def test_OK_report_refuses_tampered_and_writes_verified(tmp_path):
