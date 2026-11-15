@@ -475,3 +475,44 @@ def test_adsb_goes_busy_when_a_lease_layer_holds_the_radio(monkeypatch):
     assert not any(e["payload"].get("kind") == "aircraft" for e in got), "ADS-B BUSY while held"
     for s in list(w._lease_srcs.values()):
         s.stop()
+
+
+def test_balloon_contacts_reads_sondes_cache(tmp_path):
+    from palisade_qt import atlas
+    import json
+    p = tmp_path / "sondes.json"
+    p.write_text(json.dumps({"t": 0, "sondes": [
+        {"id": "V1234567", "lat": 47.7, "lon": -122.4, "alt": 18000.0, "vel_h": 12.0, "model": "RS41"},
+        {"id": "NOPOS", "alt": 1000.0}]}))      # second has no position -> dropped
+    evs = atlas.balloon_contacts(str(p))
+    assert len(evs) == 1
+    pl = evs[0]["payload"]
+    assert pl["kind"] == "balloon" and pl["id"] == "V1234567" and evs[0]["source"] == "SONDE"
+    assert pl["alt"] == 59055            # 18000 m -> ft
+    assert atlas.balloon_contacts(str(tmp_path / "missing.json")) == []   # no file -> zero
+
+
+def test_df_contacts_zero_without_kraken():
+    from palisade_qt import atlas
+    assert atlas.df_contacts() == []     # no KrakenSDR array -> honest zero
+
+
+def test_atlas_live_balloon_reaches_ops(monkeypatch, tmp_path):
+    _app()
+    from palisade_qt import atlas, eventbus
+    import json
+    eventbus.bus.clear()
+    p = tmp_path / "sondes.json"
+    p.write_text(json.dumps({"sondes": [{"id": "V7", "lat": 47.65, "lon": -122.35, "alt": 9000.0}]}))
+    monkeypatch.setattr(atlas, "_SONDES_PATH", str(p))
+    from palisade_qt.shell import PalisadeHub
+    hub = PalisadeHub(demo=False, mode="dark")
+    try:
+        hub.show()
+        hub.open_callsign("ATLAS")
+        _pump(1300)
+        assert any(c["kind"] == "balloon" for c in hub.pages["ATLAS"]._contacts.values())
+        assert "V7" in hub.ops._contacts   # the same balloon reached the OPS PPI (one stream)
+    finally:
+        hub.close()
+        _pump(200)

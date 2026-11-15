@@ -9,6 +9,7 @@ runs the real engine adapters, which publish nothing until they're wired — so 
 no backend shows zero contacts rather than inventing them. UI + wiring only; no decoding/radio
 behaviour changes here.
 """
+import json
 import math
 import os
 import queue
@@ -296,6 +297,48 @@ def ais_vessel_contacts(vessels, now):
     return out
 
 
+# ------------------------------------------------------------------ non-lease geo sources
+_SONDES_PATH = os.path.join(os.path.expanduser("~"), ".cache", "uconsole-suite", "sondes.json")
+
+
+def balloon_contacts(path=None):
+    """Read the radiosonde cache (sondes.json, written by the Balloons app's auto_rx UDP listener;
+    the same file sky_app reads) -> balloon contacts. No SDR lease: auto_rx owns its pipeline.
+    No file -> zero (honest)."""
+    path = path or _SONDES_PATH
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return []
+    out = []
+    for s in (data.get("sondes") or []):
+        lat, lon = s.get("lat"), s.get("lon")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            continue
+        out.append(eventbus.contact(
+            "SONDE", str(s.get("id") or "sonde"), lat, lon,
+            alt=int(s["alt"] * 3.28084) if isinstance(s.get("alt"), (int, float)) else None,
+            kind="balloon", severity="info",
+            spd=int(s["vel_h"] * 1.94384) if isinstance(s.get("vel_h"), (int, float)) else None,
+            model=s.get("model"), freq=s.get("freq")))
+    return out
+
+
+def df_contacts():
+    """KrakenSDR direction finding. Device-only: needs the 5-channel array; kraken.triangulate is
+    reused for the geolocation geometry. No array -> zero (honest)."""
+    try:
+        import kraken
+    except Exception:
+        return []
+    if not kraken.kraken_available():
+        return []
+    # TODO(device-only): collect bearings from the KrakenSDR DAQ, kraken.triangulate(fixes) ->
+    # emitter (lat, lon) + kraken.confidence(); publish kind="df". Validate with the array.
+    return []
+
+
 class LeaseSource:
     """A layer that needs the single SDR. Goes through radio_arbiter: poll() acquires the radio if
     free and runs its capture pipe; if the radio is held by another layer it stays idle and
@@ -486,6 +529,10 @@ class AtlasLiveWorker(Worker):
         if self._rid is not None:
             for ev in self._rid.contacts():
                 eventbus.bus.publish(ev)
+        for ev in balloon_contacts():        # radiosonde cache file; no lease (auto_rx service)
+            eventbus.bus.publish(ev)
+        for ev in df_contacts():             # KrakenSDR array (separate device); no lease
+            eventbus.bus.publish(ev)
         for src in self._lease_srcs.values():
             for ev in src.poll():            # acquires if free; nothing while the radio is busy
                 eventbus.bus.publish(ev)

@@ -38,6 +38,35 @@ tacmap, geo, tiles, fieldcomp (map/trip/almanac), gnss.
 - 🔧 **OSINT enrichment layer** — auto-lookup detected identifiers against cached offline databases on NVMe: MAC → vendor (IEEE OUI), MMSI → vessel name/flag (ITU), tail number → aircraft registration (FAA), callsign → ham license (FCC ULS), BSSID → known AP mapping. Turns raw contacts into identified entities. Feeds the entity graph
 - 🔧 **geofenced alerts** — define areas, alert on contact enter/leave
 - 🔧 **temporal timeline view** — scrub through time across all radios: "at 14:32 this BLE appeared, at 14:35 this WiFi probed, at 14:37 this TPMS arrived" with correlation markers
+- ✅ **ONE layered map** — aircraft / ships / APRS / **drones (Remote-ID, first-class)** / DF /
+  balloons, togglable layers + legend; selectable contact → detail (id, alt, speed, dist+brg)
+- ✅ every contact publishes a typed `contact` event to the event bus → renders on ATLAS's map
+  AND the OPS PPI (one stream, two views); demo feed wired, flagged by the SDR-DEMO chip
+- ◐ **live ADS-B WIRED** — reuses `sky_app.AdsbFeed` (readsb/dump1090 `aircraft.json`) as-is and
+  adapts its aircraft to typed `contact` events (`adsb_to_contact`, kind=aircraft, source=ADS-B,
+  7x00 squawk/emergency → alert). No 2nd radio and no lease (readsb owns its radio). Shows on the
+  ATLAS map AND the OPS PPI. **Device validation (real RTL capture) pending on the uConsole.**
+- ◐ **live Remote-ID (dronewatch) WIRED** — reuses dronewatch's OpenDroneID decoder as-is over a
+  BLE (bleak) scan; publishes the **DRONE (red)** AND its **OPERATOR (violet, the differentiator)**
+  as typed contacts. BLE/Wi-Fi, NOT the SDR → no lease. Wi-Fi-monitor path stubbed (device-only).
+  On the ATLAS map + OPS PPI. **Device validation (real beacons / BLE on the uConsole) pending.**
+- ◐ **live APRS WIRED** (the FIRST lease-using source) — aprs's 144.39 decoder as-is
+  (rtl_fm→multimon-ng→parse_frame/decode/Stations); stations as typed contacts (amber, kind=station).
+  Holds the single-SDR **LEASE only while the APRS layer is on** (acquire on toggle-on, release on
+  toggle-off AND page close); opt-in in live, so opening ATLAS never grabs the radio or disturbs
+  the autopilot. This is the template for AIS/PRISM. **Device validation (real 144.39 + dongle) pending.**
+- ◐ **live AIS WIRED** — ais's 162 MHz decoder as-is (rtl_ais→AivdmAssembler/decode/Vessels);
+  vessels as typed contacts (cyan, kind=vessel). Uses the shared radio arbiter. Device validation pending.
+- ➕ **RADIO ARBITER** (radio_arbiter.py) — one SDR owner at a time (APRS/AIS; later PRISM). A
+  denied lease-layer renders "RADIO BUSY — held by X" on the map rail + an OPS alert, and ADS-B
+  shows BUSY (readsb paused) while a layer holds the radio, resuming on release. No time-sharing;
+  the displaced layer shows BUSY. This is the seed of the OVERWATCH radio director.
+- ◐ **live BALLOONS WIRED** — reads the radiosonde cache `sondes.json` (written by the Balloons
+  app's auto_rx UDP listener; the same file sky_app reads) via `balloons.parse_summary`'s shape;
+  sondes → balloon contacts. No SDR lease (auto_rx owns its pipeline). On ATLAS map + OPS PPI.
+- ◐ **DF (kraken) wired, device-gated** — `kraken.triangulate`/`confidence`/`kraken_available`
+  reused; the 5-channel KrakenSDR array is separate hardware (no lease). No array → zero (honest);
+  bearing collection + triangulation validate on the device.
 
 ## BABEL — universal decoder
 Absorbs: ais, signals (ACARS/VDL2), pager (POCSAG/FLEX), rds, cw, rtty, digimodes, tpms,
