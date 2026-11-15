@@ -65,3 +65,9 @@ Briefs are now launched headless by `plan/runner/run.sh` on the owner's Mac from
 (`git worktree add ../wt-<ID> origin/<branch>`), never the shared checkout, and removes it when
 done. Nobody can answer questions mid-run: where a brief is ambiguous, take the strictest
 reading, say so in the report, and finish. End by pushing the report; the planner reads it.
+
+## Split of labour (owner decision, 2026-11-15 13:27)
+
+The planner now writes fix code directly on the cluster branches. The runner on the Mac executes
+only cold audits (`RA-*`) and any brief the planner explicitly queues. Audits remain independent:
+they run in a fresh headless session that never saw the fix being written.
