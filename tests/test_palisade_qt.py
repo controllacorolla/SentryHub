@@ -1883,3 +1883,134 @@ def test_forge_gate_cards_show_tx_blocked_by_opsec_when_armed():
     _pump(80)
     assert "TX BLOCKED BY OPSEC" not in replay_cards[0].state.text(), "card recovers on disarm"
     a.stop()
+
+
+# ===================================================================================
+# SENTINEL — autonomous RF watch mode, under OVERWATCH (baseline + diff + forensic log).
+# ===================================================================================
+def test_overwatch_exposes_sentinel_subtab():
+    _app()
+    from palisade_qt.overwatch import OverwatchApp, SUBVIEWS
+    assert "SENTINEL" in SUBVIEWS
+    a = OverwatchApp(demo=True, mode="dark")       # structure only — not started, so no stop()
+    assert "SENTINEL" in a._pages
+    a._switch("SENTINEL")
+    assert a.stack.currentWidget() is a._pages["SENTINEL"]
+
+
+def test_sentinel_watch_worker_runs_and_joins_on_close():
+    """The watch is a long-running QThread — it must run while open and be joined on close."""
+    _app()
+    from palisade_qt.overwatch import OverwatchApp
+    a = OverwatchApp(demo=True, mode="dark")
+    a.start()
+    _pump(300)
+    w = a._sentinel_worker
+    assert w is not None and w.isRunning()
+    a.stop()
+    _pump(250)
+    assert not w.isRunning(), "SENTINEL watch QThread must be joined on close (no leak)"
+
+
+def test_sentinel_demo_publishes_diff_events_to_ops():
+    _app()
+    from palisade_qt.overwatch import OverwatchApp
+    from palisade_qt import eventbus
+    got = []
+    eventbus.bus.published.connect(lambda ev: got.append(ev))
+    a = OverwatchApp(demo=True, mode="dark")
+    a.start()                           # demo self-drives: baseline + 2s-interval sweeps
+    _pump(2500)
+    a._switch("SENTINEL")
+    _pump(150)
+    sent = [e for e in got if e.get("source") == "SENTINEL" and e["type"] == "alert"]
+    assert sent, "demo SENTINEL should publish baseline-deviation events to the bus"
+    assert a._sent_events, "events should reach the SENTINEL sub-tab feed"
+    a.stop()
+    _pump(200)
+
+
+def test_sentinel_worker_joins_when_a_live_sweep_seam_blocks(monkeypatch):
+    """Review fix: a LIVE sweep seam that blocks must still honour stop() so wait(3000) joins —
+    the kit's no-leaked-QThread contract on the live path, not only the instant demo path."""
+    import time as _t
+    import sentinel
+    _app()
+    from palisade_qt.overwatch import SentinelWorker
+    w = SentinelWorker(demo=False, config={"interval_s": 0})
+
+    def blocking_wifi(c):
+        t0 = _t.time()
+        while _t.time() - t0 < 5.0 and not w._stop:     # like a real iw scan, but honours stop
+            _t.sleep(0.02)
+        return sentinel._domain(False, "interrupted" if w._stop else "ok")
+
+    def off(c):
+        return sentinel._domain(False, "offscreen")
+    monkeypatch.setattr(w, "_seams", lambda: {"spectrum": off, "wifi": blocking_wifi,
+                                              "ble": off, "cellular": off, "gnss": lambda c: None})
+    w._baseline = {"version": 1, "captured": 0.0, "demo": False, "config": {},
+                   "domains": {d: sentinel._domain(False, "x") for d in sentinel.DOMAINS}, "gps": None}
+    w._ws = sentinel.WatchState(w._baseline, w._cfg)
+    w._mode = "watch"
+    w.start()
+    _t.sleep(0.4)                                       # let it enter the blocking wifi seam
+    t1 = _t.time()
+    w.stop()
+    w.quit()
+    assert w.wait(3000), "worker must join within 3s despite a 5s-blocking seam"
+    assert _t.time() - t1 < 3.0
+
+
+def test_sentinel_spectrum_reports_radio_busy_and_releases_lease(monkeypatch):
+    _app()
+    from palisade_qt.overwatch import SentinelWorker
+    from palisade_qt import radio_arbiter
+    w = SentinelWorker(demo=False)
+    # busy: request denied -> honest radio-busy with the holder, no fabricated spectrum
+    monkeypatch.setattr(radio_arbiter.arbiter, "request", lambda n: False)
+    monkeypatch.setattr(radio_arbiter, "owner_label", lambda: "PRISM")
+    d = w._spectrum_leased(dict(w._cfg))
+    assert d["available"] is False and d["status"] == "radio-busy" and d.get("owner") == "PRISM"
+    assert "bins" not in d
+    # granted: the lease is released after the sweep, and again (harmlessly) on stop()
+    rel = []
+    monkeypatch.setattr(radio_arbiter.arbiter, "request", lambda n: True)
+    monkeypatch.setattr(radio_arbiter.arbiter, "release", lambda n: rel.append(n))
+    w._spectrum_leased(dict(w._cfg))                    # offscreen engine returns; finally releases
+    assert "SENTINEL-SWEEP" in rel
+    rel.clear()
+    w.stop()
+    assert "SENTINEL-SWEEP" in rel, "stop() must release the lease (owner-guarded)"
+
+
+def test_sentinel_forensic_log_records_domain_gaps(tmp_path, monkeypatch):
+    """The persisted JSONL (not just the in-memory dict) must record a busy/unavailable domain and
+    flag demo honestly, and log diff events."""
+    import json
+    import sentinel
+    _app()
+    from palisade_qt.overwatch import SentinelWorker
+    w = SentinelWorker(demo=False, config={"storage_dir": str(tmp_path)})
+    ap = {"bssid": "aa:bb:cc:00:00:99", "ssid": "X", "channel": 1, "signal": -50.0, "security": "open"}
+    monkeypatch.setattr(w, "_seams", lambda: {
+        "spectrum": lambda c: sentinel._domain(False, "radio-busy", owner="PRISM"),
+        "wifi": lambda c: sentinel._domain(True, "ok", aps={ap["bssid"]: ap}),
+        "ble": lambda c: sentinel._domain(False, "standby-no-bleak"),
+        "cellular": lambda c: sentinel._domain(False, "no-modem"),
+        "gnss": lambda c: None})
+    w._baseline = sentinel.capture_baseline(w._cfg, {           # empty baseline wifi -> AP is 'new'
+        "spectrum": lambda c: sentinel._domain(False, "x"),
+        "wifi": lambda c: sentinel._domain(True, "ok", aps={}),
+        "ble": lambda c: sentinel._domain(False, "x"),
+        "cellular": lambda c: sentinel._domain(False, "x"), "gnss": lambda c: None}, now=0.0)
+    w._ws = sentinel.WatchState(w._baseline, w._cfg)
+    w._log = sentinel.SentinelLog(str(tmp_path / "log.jsonl"))
+    w._do_sweep(100.0)
+    lines = [json.loads(x) for x in open(tmp_path / "log.jsonl")]
+    scans = [x for x in lines if x["type"] == "scan"]
+    events = [x for x in lines if x["type"] == "event"]
+    assert scans and scans[0]["domains"]["spectrum"]["available"] is False
+    assert scans[0]["domains"]["spectrum"]["status"] == "radio-busy"
+    assert scans[0]["demo"] is False
+    assert any(e["domain"] == "wifi" and e["kind"] == "new" for e in events)
