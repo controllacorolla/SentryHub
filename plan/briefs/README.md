@@ -71,3 +71,19 @@ reading, say so in the report, and finish. End by pushing the report; the planne
 The planner now writes fix code directly on the cluster branches. The runner on the Mac executes
 only cold audits (`RA-*`) and any brief the planner explicitly queues. Audits remain independent:
 they run in a fresh headless session that never saw the fix being written.
+
+## Where audits run (owner decision, 2026-11-15 16:33 — supersedes "Runner" and "Split of labour")
+
+The build lives in one claude.ai **Project (`PALISADE`) chat** with the repo attached. That chat is
+the planner: it writes fixes, runs audits, opens and merges PRs, and keeps `PLANNER-HANDOFF.md`
+current after every merge. **Cold audits (`RA-*`) run as subagents spawned from that chat**:
+a fresh agent (Opus) that is given only the brief ID and the branch, in its own worktree, and that
+has never seen the fix being written. The verdict rules are unchanged (`REAUDIT_PROMPT.md`). The
+Mac runner (`plan/runner/run.sh`) is retired from the loop and kept only for a separate-machine
+sign-off before a public release; the owner's Mac is otherwise used for hardware/device checks.
+
+Model rule: planner = Mythos; gate/evidence/TX-safety code = Mythos; audits = Opus; mechanical
+sweeps, inventories and renders = Sonnet/Haiku. Token rules above still apply: full suite once per
+stage, renders only for screens the cluster touches, ≤4 subagents at once, no polling or scheduled
+check-ins, and a fresh chat every 1–2 clusters (write the handoff first) rather than riding one
+chat into compaction.
