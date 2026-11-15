@@ -1,0 +1,644 @@
+{
+ "atlas_dark": {
+  "viewport": 438,
+  "sections": [
+   275,
+   76,
+   87
+  ],
+  "hscroll_max": 0,
+  "hscroll_visible": false,
+  "vscroll_visible": true,
+  "bad": [],
+  "elided": [
+   [
+    "CONTACT",
+    "OP RID-1581F5FAB2C3D4E5F60718",
+    "OP RID-1581F5FAB2C3D4E\u2026"
+   ],
+   [
+    "CONTACT",
+    "1581F5FAB2C3D4E5F60718AABBCCDDEEFF",
+    "1581F5FAB2C3D4E5F60718\u2026"
+   ]
+  ],
+  "resort_follow": [
+   "ALT6",
+   "ALT6",
+   "N12345"
+  ],
+  "after_removal": [
+   -1,
+   false,
+   "N12345"
+  ]
+ },
+ "atlas_light": {
+  "viewport": 438,
+  "sections": [
+   275,
+   76,
+   87
+  ],
+  "hscroll_max": 0,
+  "hscroll_visible": false,
+  "vscroll_visible": true,
+  "bad": [],
+  "elided": [
+   [
+    "CONTACT",
+    "OP RID-1581F5FAB2C3D4E5F60718",
+    "OP RID-1581F5FAB2C3D4E\u2026"
+   ],
+   [
+    "CONTACT",
+    "1581F5FAB2C3D4E5F60718AABBCCDDEEFF",
+    "1581F5FAB2C3D4E5F60718\u2026"
+   ]
+  ],
+  "resort_follow": [
+   "ALT6",
+   "ALT6",
+   "N12345"
+  ],
+  "after_removal": [
+   -1,
+   false,
+   "N12345"
+  ]
+ },
+ "atlas_sun": {
+  "viewport": 433,
+  "sections": [
+   270,
+   76,
+   87
+  ],
+  "hscroll_max": 0,
+  "hscroll_visible": false,
+  "vscroll_visible": true,
+  "bad": [],
+  "elided": [
+   [
+    "CONTACT",
+    "OP RID-1581F5FAB2C3D4E5F60718",
+    "OP RID-1581F5FAB2C3D4E\u2026"
+   ],
+   [
+    "CONTACT",
+    "1581F5FAB2C3D4E5F60718AABBCCDDEEFF",
+    "1581F5FAB2C3D4E5F60718\u2026"
+   ]
+  ],
+  "resort_follow": [
+   "ALT6",
+   "ALT6",
+   "N12345"
+  ],
+  "after_removal": [
+   -1,
+   false,
+   "N12345"
+  ]
+ },
+ "strip_dark_live": {
+  "idle": {
+   "strip_min": 1078,
+   "strip_w": 1280,
+   "strip_h": 40,
+   "hub_min": 1078,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 202
+  },
+  "worst": {
+   "strip_min": 1260,
+   "strip_w": 1280,
+   "strip_h": 40,
+   "hub_min": 1260,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 20
+  },
+  "keys_sample": {
+   "FORGE": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "7 FORGE",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "hardware",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "SYSTEM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "8 SYSTEM",
+     16,
+     77,
+     77
+    ],
+    "label": [
+     "settings",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "PRISM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "3 PRISM",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "spectrum",
+     16,
+     77,
+     77,
+     true
+    ]
+   }
+  },
+  "unknown": {
+   "strip_min": 1194,
+   "strip_w": 1280,
+   "strip_h": 40,
+   "hub_min": 1194,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 86
+  }
+ },
+ "strip_dark_demo": {
+  "idle": {
+   "strip_min": 1078,
+   "strip_w": 1268,
+   "strip_h": 40,
+   "hub_min": 1090,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 190
+  },
+  "worst": {
+   "strip_min": 1260,
+   "strip_w": 1268,
+   "strip_h": 40,
+   "hub_min": 1272,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 8
+  },
+  "keys_sample": {
+   "FORGE": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "7 FORGE",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "hardware",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "SYSTEM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "8 SYSTEM",
+     16,
+     77,
+     77
+    ],
+    "label": [
+     "settings",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "PRISM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "3 PRISM",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "spectrum",
+     16,
+     77,
+     77,
+     true
+    ]
+   }
+  },
+  "unknown": {
+   "strip_min": 1194,
+   "strip_w": 1268,
+   "strip_h": 40,
+   "hub_min": 1206,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 74
+  }
+ },
+ "strip_light_live": {
+  "idle": {
+   "strip_min": 1078,
+   "strip_w": 1280,
+   "strip_h": 40,
+   "hub_min": 1078,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 202
+  },
+  "worst": {
+   "strip_min": 1260,
+   "strip_w": 1280,
+   "strip_h": 40,
+   "hub_min": 1260,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 20
+  },
+  "keys_sample": {
+   "FORGE": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "7 FORGE",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "hardware",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "SYSTEM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "8 SYSTEM",
+     16,
+     77,
+     77
+    ],
+    "label": [
+     "settings",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "PRISM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "3 PRISM",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "spectrum",
+     16,
+     77,
+     77,
+     true
+    ]
+   }
+  },
+  "unknown": {
+   "strip_min": 1194,
+   "strip_w": 1280,
+   "strip_h": 40,
+   "hub_min": 1194,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 86
+  }
+ },
+ "strip_light_demo": {
+  "idle": {
+   "strip_min": 1078,
+   "strip_w": 1268,
+   "strip_h": 40,
+   "hub_min": 1090,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 190
+  },
+  "worst": {
+   "strip_min": 1260,
+   "strip_w": 1268,
+   "strip_h": 40,
+   "hub_min": 1272,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 8
+  },
+  "keys_sample": {
+   "FORGE": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "7 FORGE",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "hardware",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "SYSTEM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "8 SYSTEM",
+     16,
+     77,
+     77
+    ],
+    "label": [
+     "settings",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "PRISM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "3 PRISM",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "spectrum",
+     16,
+     77,
+     77,
+     true
+    ]
+   }
+  },
+  "unknown": {
+   "strip_min": 1194,
+   "strip_w": 1268,
+   "strip_h": 40,
+   "hub_min": 1206,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 74
+  }
+ },
+ "strip_sun_live": {
+  "idle": {
+   "strip_min": 1085,
+   "strip_w": 1280,
+   "strip_h": 40,
+   "hub_min": 1085,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 195
+  },
+  "worst": {
+   "strip_min": 1267,
+   "strip_w": 1280,
+   "strip_h": 40,
+   "hub_min": 1267,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 13
+  },
+  "keys_sample": {
+   "FORGE": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "7 FORGE",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "hardware",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "SYSTEM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "8 SYSTEM",
+     16,
+     77,
+     77
+    ],
+    "label": [
+     "settings",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "PRISM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "3 PRISM",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "spectrum",
+     16,
+     77,
+     77,
+     true
+    ]
+   }
+  },
+  "unknown": {
+   "strip_min": 1201,
+   "strip_w": 1280,
+   "strip_h": 40,
+   "hub_min": 1201,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 79
+  }
+ },
+ "strip_sun_demo": {
+  "idle": {
+   "strip_min": 1085,
+   "strip_w": 1268,
+   "strip_h": 40,
+   "hub_min": 1097,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 183
+  },
+  "worst": {
+   "strip_min": 1267,
+   "strip_w": 1268,
+   "strip_h": 40,
+   "hub_min": 1279,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 1
+  },
+  "keys_sample": {
+   "FORGE": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "7 FORGE",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "hardware",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "SYSTEM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "8 SYSTEM",
+     16,
+     77,
+     77
+    ],
+    "label": [
+     "settings",
+     16,
+     77,
+     77,
+     true
+    ]
+   },
+   "PRISM": {
+    "w": 79,
+    "hint": 79,
+    "call": [
+     "3 PRISM",
+     16,
+     67,
+     77
+    ],
+    "label": [
+     "spectrum",
+     16,
+     77,
+     77,
+     true
+    ]
+   }
+  },
+  "unknown": {
+   "strip_min": 1201,
+   "strip_w": 1268,
+   "strip_h": 40,
+   "hub_min": 1213,
+   "small_fonts": [],
+   "key_overflow": [],
+   "slot_overflow": [],
+   "spare": 67
+  }
+ },
+ "eng_['NONE']": [
+  "ACTIVE",
+  "1 target",
+  "t"
+ ],
+ "eng_['averyverylonghost.example.com']": [
+  "ACTIVE",
+  "1 target",
+  "t"
+ ],
+ "eng_['10.0.0.5']": [
+  "ACTIVE",
+  "10.0.0.5",
+  "t"
+ ],
+ "eng_[]": [
+  "NONE",
+  "",
+  ""
+ ],
+ "eng_['Unknown ']": [
+  "ACTIVE",
+  "1 target",
+  "t"
+ ],
+ "eng_['None']": [
+  "ACTIVE",
+  "1 target",
+  "t"
+ ]
+}

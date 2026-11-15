@@ -1,0 +1,49 @@
+{
+ "P1_term_ignoring_pipeline": {
+  "members": [
+   89342,
+   89344,
+   89345,
+   89346
+  ],
+  "alive_after": [],
+  "panic_blocking_s": 1.67,
+  "banner": "PANIC \u2014 TX disarmed \u00b7 no engagement was open \u00b7 4 of 4 child process(es) stopped (verified gone)"
+ },
+ "P2_daemonized_member": {
+  "orphan": [
+   89465
+  ],
+  "orphan_alive": [],
+  "banner": "PANIC \u2014 TX disarmed \u00b7 no engagement was open \u00b7 2 of 2 child process(es) stopped (verified gone)"
+ },
+ "P3_real_child_listing": {
+  "members": [
+   89475,
+   89477,
+   89478
+  ],
+  "alive_after": [],
+  "banner": "PANIC \u2014 TX disarmed \u00b7 no engagement was open \u00b7 3 of 3 child process(es) stopped (verified gone)"
+ },
+ "P4_bench_after_panic": {
+  "before": "PE\u2026",
+  "after": "PERMITTED",
+  "ack_checked": true,
+  "tx_btn_enabled": true,
+  "banner": "PANIC \u2014 TX disarmed \u00b7 no engagement was open \u00b7 no child processes were running \u00b7 BENCH ack not revoked \u2014 TX still PERMITTED",
+  "slot_on_other_page": "PERMITTED",
+  "armed_plus_permit": "ARMED"
+ },
+ "P5_combo_popup_panic": {
+  "popup": "QFrame",
+  "panic_ran": true,
+  "popup_after": "NoneType"
+ },
+ "P5_menu_exec_panic": {
+  "panic_ran": true
+ },
+ "P5_other_toplevel_panic": {
+  "panic_ran": false
+ }
+}

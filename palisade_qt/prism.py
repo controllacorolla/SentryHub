@@ -75,7 +75,8 @@ def _open_rtl_power(lo_mhz, hi_mhz, gain):
     argv = waterfall.rtl_power_sweep_argv(int(lo_mhz * 1e6), int(hi_mhz * 1e6), bin_hz, "-",
                                           gain, "1")
     return subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            text=True, bufsize=1)
+                            text=True, bufsize=1,
+                            start_new_session=True)     # PANIC stops it by group
 
 
 class SweepWorker(Worker):

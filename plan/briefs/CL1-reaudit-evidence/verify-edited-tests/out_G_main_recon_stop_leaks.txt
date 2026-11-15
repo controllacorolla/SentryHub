@@ -1,0 +1,151 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.16, pytest-9.2.0, pluggy-1.7.0 -- /private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/bin/python
+rootdir: /private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/reaudit/verify-edited-tests/mut/G_main_recon_stop_leaks
+collecting ... collected 119 items
+
+tests/test_palisade_qt.py::test_ops_open_pump_close_no_leaked_thread[dark] PASSED [  0%]
+tests/test_palisade_qt.py::test_ops_open_pump_close_no_leaked_thread[light] PASSED [  1%]
+tests/test_palisade_qt.py::test_hub_builds_and_hosts_ops PASSED          [  2%]
+tests/test_palisade_qt.py::test_lease_skipped_in_demo PASSED             [  3%]
+tests/test_palisade_qt.py::test_prism_open_pump_close_no_leaked_thread[dark] PASSED [  4%]
+tests/test_palisade_qt.py::test_prism_open_pump_close_no_leaked_thread[light] PASSED [  5%]
+tests/test_palisade_qt.py::test_hub_embeds_prism_as_qt_page PASSED       [  5%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[OVERWATCH] PASSED [  6%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[ATLAS] PASSED [  7%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[BABEL] PASSED [  8%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[PRISM] PASSED [  9%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[PROWL] PASSED [ 10%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[FORGE] PASSED [ 10%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[RECON] PASSED [ 11%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[BENCH] PASSED [ 12%]
+tests/test_palisade_qt.py::test_every_callsign_opens_pumps_closes_clean[MORE] PASSED [ 13%]
+tests/test_palisade_qt.py::test_all_callsigns_build_in_both_themes[dark] PASSED [ 14%]
+tests/test_palisade_qt.py::test_all_callsigns_build_in_both_themes[light] PASSED [ 15%]
+tests/test_palisade_qt.py::test_hub_soak_open_all_callsigns_then_close_no_leaks PASSED [ 15%]
+tests/test_palisade_qt.py::test_launcher_main_is_importable PASSED       [ 16%]
+tests/test_palisade_qt.py::test_eventbus_typed_contract PASSED           [ 17%]
+tests/test_palisade_qt.py::test_ops_live_mode_shows_standby_not_fake_data PASSED [ 18%]
+tests/test_palisade_qt.py::test_atlas_demo_contacts_reach_both_map_and_ops PASSED [ 19%]
+tests/test_palisade_qt.py::test_atlas_live_mode_fabricates_zero_contacts PASSED [ 20%]
+tests/test_palisade_qt.py::test_adsb_to_contact_shapes_a_real_aircraft PASSED [ 21%]
+tests/test_palisade_qt.py::test_atlas_adsb_contacts_converts_a_snapshot PASSED [ 21%]
+tests/test_palisade_qt.py::test_rid_source_decodes_drone_and_operator PASSED [ 22%]
+tests/test_palisade_qt.py::test_aprs_source_acquires_via_arbiter_and_releases PASSED [ 23%]
+tests/test_palisade_qt.py::test_atlas_live_aprs_layer_toggles_the_lease_and_release_on_close PASSED [ 24%]
+tests/test_palisade_qt.py::test_atlas_live_default_has_aprs_layer_off PASSED [ 25%]
+tests/test_palisade_qt.py::test_radio_arbiter_single_owner PASSED        [ 26%]
+tests/test_palisade_qt.py::test_ais_source_decodes_vessels_via_arbiter PASSED [ 26%]
+tests/test_palisade_qt.py::test_arbiter_only_one_lease_layer_live_other_shows_busy PASSED [ 27%]
+tests/test_palisade_qt.py::test_adsb_goes_busy_when_a_lease_layer_holds_the_radio PASSED [ 28%]
+tests/test_palisade_qt.py::test_balloon_contacts_reads_sondes_cache PASSED [ 29%]
+tests/test_palisade_qt.py::test_df_contacts_zero_without_kraken PASSED   [ 30%]
+tests/test_palisade_qt.py::test_atlas_live_balloon_reaches_ops PASSED    [ 31%]
+tests/test_palisade_qt.py::test_prism_sweep_assembler_assembles_rtl_power PASSED [ 31%]
+tests/test_palisade_qt.py::test_prism_live_holds_radio_only_while_active PASSED [ 32%]
+tests/test_palisade_qt.py::test_prism_shows_busy_when_radio_held_by_atlas PASSED [ 33%]
+tests/test_palisade_qt.py::test_prism_live_no_rtl_power_shows_standby_not_synth PASSED [ 34%]
+tests/test_palisade_qt.py::test_prowl_freqdb_allocation_and_panel PASSED [ 35%]
+tests/test_palisade_qt.py::test_prowl_live_no_rtl_fm_shows_standby_not_synth PASSED [ 36%]
+tests/test_palisade_qt.py::test_babel_app_leases_per_mode_not_via_base_class PASSED [ 36%]
+tests/test_palisade_qt.py::test_babel_live_mode_acquires_and_releases_via_arbiter PASSED [ 37%]
+tests/test_palisade_qt.py::test_babel_live_mode_shows_busy_when_radio_held_elsewhere PASSED [ 38%]
+tests/test_palisade_qt.py::test_babel_runners_never_open_a_real_radio_offscreen PASSED [ 39%]
+tests/test_palisade_qt.py::test_babel_open_close_no_leaked_thread_or_lease PASSED [ 40%]
+tests/test_palisade_qt.py::test_babel_live_no_binary_shows_standby_not_synth PASSED [ 41%]
+tests/test_palisade_qt.py::test_prowl_off_base_lease_and_submode_labels PASSED [ 42%]
+tests/test_palisade_qt.py::test_prowl_scan_leases_and_releases_via_arbiter PASSED [ 42%]
+tests/test_palisade_qt.py::test_prowl_submodes_mutually_exclusive_on_the_radio PASSED [ 43%]
+tests/test_palisade_qt.py::test_prowl_fm_step_leases_but_opens_no_radio_offscreen PASSED [ 44%]
+tests/test_palisade_qt.py::test_prowl_fm_no_rtl_fm_shows_standby_no_lease PASSED [ 45%]
+tests/test_palisade_qt.py::test_prowl_nwr_decodes_same_and_publishes_alert PASSED [ 46%]
+tests/test_palisade_qt.py::test_prowl_nwr_skips_non_same_lines_zero_fabrication PASSED [ 47%]
+tests/test_palisade_qt.py::test_prowl_nwr_no_binary_standby PASSED       [ 47%]
+tests/test_palisade_qt.py::test_prowl_backgrounded_releases_the_radio PASSED [ 48%]
+tests/test_palisade_qt.py::test_prowl_submode_switch_updates_stack_and_worker_type PASSED [ 49%]
+tests/test_palisade_qt.py::test_prowl_open_pump_close_no_leaked_lease PASSED [ 50%]
+tests/test_palisade_qt.py::test_prowl_scan_stop_interrupts_blocking_listen_channel PASSED [ 51%]
+tests/test_palisade_qt.py::test_prowl_scan_offscreen_routes_to_standby_never_spawns PASSED [ 52%]
+tests/test_palisade_qt.py::test_prowl_scan_fatal_is_surfaced PASSED      [ 52%]
+tests/test_palisade_qt.py::test_prowl_fm_spawn_after_stop_drops_the_pipe PASSED [ 53%]
+tests/test_palisade_qt.py::test_prowl_nwr_spawn_after_stop_drops_the_proc PASSED [ 54%]
+tests/test_palisade_qt.py::test_babel_tpms_registered PASSED             [ 55%]
+tests/test_palisade_qt.py::test_babel_tpms_decodes_and_publishes_to_bus PASSED [ 56%]
+tests/test_palisade_qt.py::test_babel_tpms_live_no_rtl433_standby_not_synth PASSED [ 57%]
+tests/test_palisade_qt.py::test_babel_tpms_offscreen_opens_no_radio PASSED [ 57%]
+tests/test_palisade_qt.py::test_babel_cw_rtty_no_live_synth_only_practice PASSED [ 58%]
+tests/test_palisade_qt.py::test_babel_sstv_registered PASSED             [ 59%]
+tests/test_palisade_qt.py::test_babel_sstv_demo_emits_image PASSED       [ 60%]
+tests/test_palisade_qt.py::test_babel_sstv_live_leases_and_decodes PASSED [ 61%]
+tests/test_palisade_qt.py::test_babel_sstv_stop_joins_during_a_slow_decode PASSED [ 62%]
+tests/test_palisade_qt.py::test_babel_sstv_rtl_fm_death_reaps_and_retries PASSED [ 63%]
+tests/test_palisade_qt.py::test_babel_mode_switch_clears_stale_sstv_frame PASSED [ 63%]
+tests/test_palisade_qt.py::test_babel_sstv_no_rtl_fm_standby_no_lease PASSED [ 64%]
+tests/test_palisade_qt.py::test_babel_sstv_offscreen_opens_no_recorder PASSED [ 65%]
+tests/test_palisade_qt.py::test_sstv_image_panel_renders_ndarray PASSED  [ 66%]
+tests/test_palisade_qt.py::test_babel_switch_to_sstv_swaps_view_and_worker PASSED [ 67%]
+tests/test_palisade_qt.py::test_recon_active_tools_locked_without_engagement PASSED [ 68%]
+tests/test_palisade_qt.py::test_recon_gate_authorizes_in_scope_denies_out_of_scope PASSED [ 68%]
+tests/test_palisade_qt.py::test_recon_wifi_passive_demo_and_standby PASSED [ 69%]
+tests/test_palisade_qt.py::test_recon_counter_alert_reaches_bus_and_feed PASSED [ 70%]
+tests/test_palisade_qt.py::test_recon_demo_detectors_run_and_can_alert PASSED [ 71%]
+tests/test_palisade_qt.py::test_recon_counter_detectors_have_no_tx_path PASSED [ 72%]
+tests/test_palisade_qt.py::test_recon_engage_activate_deactivate_and_trail PASSED [ 73%]
+tests/test_palisade_qt.py::test_recon_open_pump_close_no_leaked_threads FAILED [ 73%]
+tests/test_palisade_qt.py::test_recon_demo_stays_off_the_shared_bus PASSED [ 74%]
+tests/test_palisade_qt.py::test_recon_passaudit_hashcat_authorizes_in_scope PASSED [ 75%]
+tests/test_palisade_qt.py::test_forge_engagement_tools_locked_without_engagement PASSED [ 76%]
+tests/test_palisade_qt.py::test_forge_canbus_tx_gated_by_engagement PASSED [ 77%]
+tests/test_palisade_qt.py::test_forge_proxmark_write_gated_and_reads_are_not PASSED [ 78%]
+tests/test_palisade_qt.py::test_forge_replay_is_txguard_gated PASSED     [ 78%]
+tests/test_palisade_qt.py::test_forge_serial_console_demo_populates_and_live_standby PASSED [ 79%]
+tests/test_palisade_qt.py::test_forge_can_monitor_demo_decodes PASSED    [ 80%]
+tests/test_palisade_qt.py::test_forge_open_pump_close_no_leaked_threads PASSED [ 81%]
+tests/test_palisade_qt.py::test_forge_serial_stop_does_not_reopen_reader PASSED [ 82%]
+tests/test_palisade_qt.py::test_forge_serial_write_queue_drains_atomically PASSED [ 83%]
+tests/test_palisade_qt.py::test_overwatch_sky_sun_moon_always_live PASSED [ 84%]
+tests/test_palisade_qt.py::test_overwatch_passes_demo_and_no_tle_standby PASSED [ 84%]
+tests/test_palisade_qt.py::test_overwatch_passes_predict_real_from_injected_tle PASSED [ 85%]
+tests/test_palisade_qt.py::test_overwatch_radio_director_tracks_arbiter_and_frees PASSED [ 86%]
+tests/test_palisade_qt.py::test_overwatch_next_pass_alerts_ops_for_real_passes PASSED [ 87%]
+tests/test_palisade_qt.py::test_overwatch_open_pump_close_no_leaked_threads PASSED [ 88%]
+tests/test_palisade_qt.py::test_overwatch_passworker_repredicts_on_cadence PASSED [ 89%]
+tests/test_palisade_qt.py::test_overwatch_predict_error_shows_warn_standby PASSED [ 89%]
+tests/test_palisade_qt.py::test_bench_gate_safe_with_ack_gated_without PASSED [ 90%]
+tests/test_palisade_qt.py::test_bench_software_selftests_pass PASSED     [ 91%]
+tests/test_palisade_qt.py::test_bench_conducted_tx_is_gated_and_hermetic PASSED [ 92%]
+tests/test_palisade_qt.py::test_bench_open_pump_close_no_leak PASSED     [ 93%]
+tests/test_palisade_qt.py::test_more_registered_as_a_callsign PASSED     [ 94%]
+tests/test_palisade_qt.py::test_more_doctor_runs_checks_and_skips_network_offscreen PASSED [ 94%]
+tests/test_palisade_qt.py::test_more_mesh_demo_nodes_and_live_standby PASSED [ 95%]
+tests/test_palisade_qt.py::test_more_assistant_answers_from_bus_and_offline_llm PASSED [ 96%]
+tests/test_palisade_qt.py::test_more_sitrep_from_bus_state PASSED        [ 97%]
+tests/test_palisade_qt.py::test_more_open_pump_close_no_leaked_threads PASSED [ 98%]
+tests/test_palisade_qt.py::test_more_settings_persists_home_and_theme_no_false_save PASSED [ 99%]
+tests/test_palisade_qt.py::test_more_doctor_stop_joins_during_a_blocking_check PASSED [100%]
+
+=================================== FAILURES ===================================
+_________________ test_recon_open_pump_close_no_leaked_threads _________________
+
+    def test_recon_open_pump_close_no_leaked_threads():
+        _app()
+        _reset_engagement()
+        from palisade_qt.recon import ReconApp
+        p = ReconApp(demo=False, mode="dark")
+        p.start()
+        _pump(200)
+        p.stop()
+>       assert all(not w.isRunning() for w in p._workers) if p._workers else True
+E       assert False
+
+tests/test_palisade_qt.py:1285: AssertionError
+=============================== warnings summary ===============================
+tests/test_palisade_qt.py::test_overwatch_passes_predict_real_from_injected_tle
+  /private/tmp/claude-501/-Users-daltonhayes-SentryHub/f893c360-320b-4c7c-9dc4-e3ab8ef11055/scratchpad/venv312/lib/python3.12/site-packages/skyfield/searchlib.py:224: DeprecationWarning: Setting the dtype on a NumPy array has been deprecated in NumPy 2.5.
+  Instead of changing the dtype on an array x, create a new array with x.view(new_dtype)
+    y.dtype = int8
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_palisade_qt.py::test_recon_open_pump_close_no_leaked_threads
+================== 1 failed, 118 passed, 1 warning in 33.00s ===================
+QThread: Destroyed while thread '' is still running

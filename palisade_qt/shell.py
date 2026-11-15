@@ -15,13 +15,11 @@ unlock_session from the TX panel, engagement.end(), executor.kill_all()); it add
 gate, and touches no decode path. The four slots follow the engines through chrome.gate_signals().
 """
 import os
-import signal
-import subprocess
 import sys
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import theme, chrome, eventbus, panels
+from . import theme, chrome, eventbus, panels, procs
 from .kit import TopBar
 from .ops import OpsHome, CALLSIGNS
 from .prism import PrismApp
@@ -50,7 +48,8 @@ FOLDED = {
     "MORE": ("SYSTEM", "SETTINGS", MoreApp),
 }
 _INNER = {"ATLAS": AtlasApp, "PROWL": ProwlApp}        # the app behind a composite's first part
-PANIC_KEY = "F12"
+PANIC_KEY = "F12"                    # alias
+PANIC_CHORD = "Shift+Esc"            # primary: no Fn layer on the uConsole keyboard, one hand
 SCREEN = (1280, 720)
 
 _TEXT_INPUTS = (QtWidgets.QLineEdit, QtWidgets.QAbstractSpinBox, QtWidgets.QPlainTextEdit,
@@ -59,21 +58,7 @@ _TEXT_INPUTS = (QtWidgets.QLineEdit, QtWidgets.QAbstractSpinBox, QtWidgets.QPlai
 
 def child_pids(pid=None):
     """Direct child processes of this app (the decoders / tools it spawned). Best effort."""
-    pid = os.getpid() if pid is None else pid
-    try:
-        out = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True,
-                             timeout=2).stdout
-    except (OSError, subprocess.SubprocessError):
-        return []
-    return [int(x) for x in out.split() if x.isdigit()]
-
-
-def _terminate(pid):
-    try:
-        os.kill(pid, signal.SIGTERM)
-        return True
-    except OSError:
-        return False
+    return procs.child_pids(pid)
 
 
 class PalisadeHub(QtWidgets.QMainWindow):
@@ -134,9 +119,9 @@ class PalisadeHub(QtWidgets.QMainWindow):
 
         # keyboard: one filter for the whole window (D8)
         QtWidgets.QApplication.instance().installEventFilter(self)
-        # test / automation seams for PANIC's process kill
+        # test / automation seams for PANIC's process stop
         self._list_children = child_pids
-        self._kill = _terminate
+        self._stop_tree = procs.stop_tree
 
     # ------------------------------------------------------------------ pages
     def _add_page(self, name, widget):
@@ -265,7 +250,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
             ("ENGAGEMENT panel", lambda: self.open_panel("engagement")),
             ("TX panel — arm / unlock", lambda: self.open_panel("tx")),
             ("ALERTS drawer", lambda: self.open_panel("alerts")),
-            ("Acknowledge all alerts", self.alerts.ack_all),
+            ("Acknowledge all alerts", self.alerts_drawer.ack_all_seen),   # seen ones only
             ("Mute / unmute audio", self.topbar.toggle_mute),
             ("Key map", lambda: self.open_panel("keys")),
             ("PANIC — disarm TX, end engagement, kill child processes", self.panic),
@@ -278,8 +263,10 @@ class PalisadeHub(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------------ PANIC
     def panic(self):
-        """One key, no confirmation: disarm TX, end the engagement, kill child processes. Uses the
-        engines' own functions; it is a stop, never an authorization."""
+        """One key, no confirmation: disarm TX, end the engagement, stop child processes. Uses the
+        engines' own functions; it is a stop, never an authorization. Every step runs even if an
+        earlier one fails, and the banner says only what was verified: the TX slot is re-read from
+        the gates (never cleared), and a process counts as stopped only once it is gone."""
         did = []
         try:
             import txguard
@@ -293,7 +280,6 @@ class PalisadeHub(QtWidgets.QMainWindow):
             did.append("engagement %s ended" % was if was else "no engagement was open")
         except Exception as e:
             did.append("engagement end FAILED: %s" % e)
-        chrome.reset()
         try:
             import executor
             n = executor.kill_all("PANIC")             # every registered gated process group
@@ -301,13 +287,35 @@ class PalisadeHub(QtWidgets.QMainWindow):
                 did.append("%d gated process(es) stopped" % n)
         except Exception as e:
             did.append("executor kill FAILED: %s" % e)
-        killed = [p for p in self._list_children() if self._kill(p)]
-        did.append("%d child process(es) killed" % len(killed))
+        try:
+            for name, page in list(self.pages.items()):     # UI-held permits (BENCH's ack)
+                if self.stack.indexOf(page) >= 0:
+                    did += page.on_panic()
+        except Exception as e:
+            did.append("permit revoke FAILED: %s" % e)
+        try:
+            roots = list(self._list_children())
+            did.append(procs.describe(self._stop_tree(roots)))
+        except Exception as e:
+            did.append("child process stop FAILED: %s" % e)
+        try:
+            self._gate_changed()                   # pages re-read their own gates (BENCH …)
+            self.state.poll()
+        except Exception as e:
+            did.append("gate re-read FAILED: %s" % e)
+        # the banner says what the gates say after the re-read, never what PANIC hoped for
+        tx = chrome.read_tx()
+        if tx == "OFF":
+            did.append("TX OFF")
+        elif tx == "PERMITTED":
+            did.append("TX still PERMITTED (%s)" % ", ".join(chrome.tx_permit_sources()))
+        else:
+            did.append("TX %s" % tx)
         text = "PANIC — " + " · ".join(did)
-        eventbus.bus.publish(eventbus.alert("SHELL", text, severity="alert"))
-        self.state.poll()
-        self._gate_changed()
-        self._show_banner(text)
+        try:
+            eventbus.bus.publish(eventbus.alert("SHELL", text, severity="alert"))
+        finally:
+            self._show_banner(text)
         return did
 
     def _show_banner(self, text):
@@ -324,10 +332,41 @@ class PalisadeHub(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------------ keyboard (D8)
     def eventFilter(self, obj, ev):
-        if ev.type() == QtCore.QEvent.KeyPress and self._is_key_target(obj):
-            if self.handle_key(ev):
+        if ev.type() == QtCore.QEvent.KeyPress:
+            if self._is_panic(ev) and self._ours(obj):
+                # PANIC first, before any focus/target test: an open combo dropdown or context
+                # menu is its own popup window and grabs the keyboard, so the ordinary routing
+                # never sees the key (RA-CL1). Consuming it stops propagation, so it runs once.
+                popup = QtWidgets.QApplication.activePopupWidget()
+                if popup is not None:
+                    popup.close()
+                self.panic()
+                return True
+            if self._is_key_target(obj) and self.handle_key(ev):
                 return True
         return super().eventFilter(obj, ev)
+
+    @staticmethod
+    def _is_panic(ev):
+        K = QtCore.Qt
+        return ev.key() == QtGui.QKeySequence(PANIC_KEY)[0].key() or (
+            ev.key() == K.Key_Escape and bool(ev.modifiers() & K.ShiftModifier))
+
+    def _ours(self, obj):
+        """A widget in this window, or a popup (dropdown list, menu) opened from it."""
+        if not isinstance(obj, QtWidgets.QWidget):
+            return False
+        w = obj.window()
+        if w is self:
+            return True
+        if w.windowType() in (QtCore.Qt.Popup, QtCore.Qt.ToolTip) or isinstance(w, QtWidgets.QMenu):
+            par = w.parentWidget()
+            while par is not None:
+                if par.window() is self:
+                    return True
+                par = par.parentWidget()
+            return self.isActiveWindow() or QtWidgets.QApplication.activePopupWidget() is w
+        return False
 
     def _is_key_target(self, obj):
         """True only for the widget the key was sent to. An unhandled key also propagates up through
@@ -344,6 +383,9 @@ class PalisadeHub(QtWidgets.QMainWindow):
         """Route one key press. Returns True if the shell consumed it."""
         key, text, mods = ev.key(), ev.text(), ev.modifiers()
         K = QtCore.Qt
+        if self._is_panic(ev):                    # works everywhere, even while typing
+            self.panic()
+            return True
         if mods & (K.ControlModifier | K.AltModifier | K.MetaModifier):
             return False
         focus = QtWidgets.QApplication.focusWidget()
@@ -351,9 +393,6 @@ class PalisadeHub(QtWidgets.QMainWindow):
             isinstance(focus, QtWidgets.QComboBox) and focus.isEditable())
         overlay = self.top_overlay()
 
-        if key == QtGui.QKeySequence(PANIC_KEY)[0].key():      # works everywhere, even while typing
-            self.panic()
-            return True
         if key == K.Key_Escape:
             if overlay is not None:
                 overlay.close_overlay()
@@ -444,6 +483,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
         if app is not None:
             app.removeEventFilter(self)
         self.state.stop()
+        self.topbar.stop()
         self.radios_panel.stop()
         try:
             self.alerts.changed.disconnect(self._on_alerts)

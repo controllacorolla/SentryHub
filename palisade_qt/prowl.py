@@ -166,7 +166,7 @@ class ScanWorker(_RadioWorker):
                              "last": time.strftime("%H:%M:%S") if hot else "", "_hot": hot})
             self.row.emit({"rows": rows, "active": active})
             if not active:
-                self.status.emit({"sdr": {"text": "SCAN DEMO", "ok": True}})
+                self.status.emit({"sdr": {"text": "SCAN DEMO", "state": "neutral"}})
             waited = 0
             while waited < self.interval_ms and not self._stop:
                 self.msleep(10)
@@ -340,7 +340,7 @@ class FmWorker(_RadioWorker):
         self.row.emit({"kind": "fm", "freq": self.freq, "mode": self.mode, "audio": True,
                        "rds": {"ps": ps, "prog_type": pty, "pi": "%04X" % (0x1000 + self._demo_i),
                                "radiotext": "demo stream — now playing"}})
-        self.status.emit({"sdr": {"text": "FM DEMO", "ok": True}})
+        self.status.emit({"sdr": {"text": "FM DEMO", "state": "neutral"}})
 
     def _kill(self):
         with self._lock:
@@ -466,7 +466,7 @@ class NwrWorker(_RadioWorker):
             a = nwr.parse_same(line)
             if a:
                 self._emit_alert(a, demo=True)
-        self.status.emit({"sdr": {"text": "NWR DEMO", "ok": True}})
+        self.status.emit({"sdr": {"text": "NWR DEMO", "state": "neutral"}})
 
     @staticmethod
     def _terminate(proc):
@@ -839,9 +839,13 @@ class ProwlApp(PalisadeApp):
                 lines = ["no match for %r" % term]
         self.fdb_results.setText("\n".join(lines))
 
+    def _hot_color(self):
+        # green means a real, healthy signal: synthetic demo rows never get it (D9 / RA-CL1)
+        return self._tok["accent"] if self.demo else self._tok["live"]
+
     def _sig_color(self, sig, hot):
         if hot:
-            return self._tok["live"]
+            return self._hot_color()
         if sig > -60:
             return self._tok["warn"]
         return self._tok["muted"]
@@ -852,8 +856,8 @@ class ProwlApp(PalisadeApp):
             sig = int(r["sig"])
             r["_colors"] = {"sig": self._sig_color(sig, r.get("_hot", False))}
             if r.get("_hot"):
-                r["_colors"]["label"] = self._tok["live"]
-                r["_colors"]["freq"] = self._tok["live"]
+                r["_colors"]["label"] = self._hot_color()
+                r["_colors"]["freq"] = self._hot_color()
         self.feed.model.set_rows(rows)
         self.header.set_chip("sdr", "%d CH" % len(rows), state="neutral")
         act = msg.get("active")

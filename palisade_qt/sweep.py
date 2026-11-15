@@ -13,7 +13,7 @@ import time
 
 from PySide6 import QtWidgets
 
-from .app import PalisadeApp
+from .app import PalisadeApp, _retain
 from . import theme, eventbus
 from .kit import FeedTable, micro
 from .recon import DetectorWorker
@@ -57,6 +57,7 @@ class SweepApp(PalisadeApp):
             w.stop()
             w.quit()
             w.wait(3000)
+            _retain(w)
         self._workers = []
         super().stop()
 

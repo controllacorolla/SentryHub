@@ -1,0 +1,45 @@
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+qt.qpa.fonts: Populating font family aliases took 66 ms. Replace uses of missing font family "DejaVu Sans Mono" with one that exists to avoid this cost. 
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+baseline qthreads [] py []
+views 30
+after pass1 qthreads 17 ['AtlasDemoWorker', 'BleScanWorker', 'CanWorker', 'DecoderWorker', 'DemoFeedWorker', 'DetectorWorker', 'DetectorWorker', 'DetectorWorker', 'DetectorWorker', 'MeshWorker', 'NwrWorker', 'PassWorker', 'SensorWorker', 'SerialWorker', 'SkyWorker', 'SweepWorker', 'WifiScanWorker']
+py []
+after rapid qthreads 17 ['AtlasDemoWorker', 'BleScanWorker', 'CanWorker', 'DecoderWorker', 'DemoFeedWorker', 'DetectorWorker', 'DetectorWorker', 'DetectorWorker', 'DetectorWorker', 'MeshWorker', 'PassWorker', 'ScanWorker', 'SensorWorker', 'SerialWorker', 'SkyWorker', 'SweepWorker', 'WifiScanWorker']
+py []
+owner None leases []
+on OPS: owner None
+   OPS OpsHome active True started True worker DemoFeedWorker
+   ATLAS AtlasPage active False started True worker None
+   ATLAS:inner AtlasApp active False started True worker AtlasDemoWorker
+   PRISM PrismApp active False started True worker SweepWorker
+   PROWL ProwlPage active False started True worker None
+   PROWL:inner ProwlApp active False started True worker ScanWorker
+   SWEEP SweepApp active False started True worker None
+   RECON ReconApp active False started True worker None
+   FORGE ForgeApp active False started True worker None
+   SYSTEM SystemPage active False started True worker None
+after close qthreads []
+py []
+owner None unreleased []

@@ -652,10 +652,24 @@ class BabelApp(PalisadeApp):
     TITLE = "BABEL"
     LEASE = None          # the radio is leased per-mode via radio_arbiter, not by the base class
 
+    # protocol tints per theme (D9 / RA-CL1): the dark set was unreadable on LIGHT's pale table and
+    # meaningless in SUN. LIGHT keeps >= 4.5:1 on its table, SUN is black (>= 7:1) — the protocol
+    # is a word in its own column, so the tint never carries meaning on its own.
     PROTO_COLORS = {
         "AIS": "#4DA6FF", "ACARS": "#66D9A0", "POCSAG": "#FFB74D",
         "RDS": "#CE93D8", "TPMS": "#80DEEA", "CW": "#F06292", "RTTY": "#90CAF9",
     }
+    PROTO_COLORS_LIGHT = {
+        "AIS": "#0B4F8A", "ACARS": "#0B5E3C", "POCSAG": "#7A4A00",
+        "RDS": "#6A2C80", "TPMS": "#0B5F6B", "CW": "#9C1E50", "RTTY": "#2B4A8C",
+    }
+
+    def proto_colors(self):
+        if self.mode == "sun":
+            return {k: "#000000" for k in self.PROTO_COLORS}
+        if self.mode == "light":
+            return self.PROTO_COLORS_LIGHT
+        return self.PROTO_COLORS
 
     def build_body(self):
         self._tok = theme.tokens(self.mode)      # self.mode stays the theme string (not the combo)
@@ -752,7 +766,7 @@ class BabelApp(PalisadeApp):
             self._on_sstv(row)
             return
         proto = row.get("proto", "")
-        color = self.PROTO_COLORS.get(proto)
+        color = self.proto_colors().get(proto)
         if color:
             row["_colors"] = {"proto": color}
         self.feed.model.prepend(row, cap=400)

@@ -1,0 +1,77 @@
+{
+ "P2b_daemonized": {
+  "orphan": [
+   89499,
+   89501
+  ],
+  "alive_after": [
+   89501
+  ],
+  "banner": "PANIC \u2014 TX disarmed \u00b7 no engagement was open \u00b7 2 of 2 child process(es) stopped (verified gone)"
+ },
+ "M_hang": {
+  "toggle_ui_block_s": 0.07,
+  "checked_immediately": false,
+  "after": [
+   50,
+   false,
+   ""
+  ],
+  "checked": false
+ },
+ "M_fail": {
+  "state": [
+   50,
+   false,
+   "mute refused by fake"
+  ],
+  "checked": false,
+  "text": "\u266a!"
+ },
+ "M_liar": {
+  "state": [
+   50,
+   false,
+   ""
+  ],
+  "checked": false,
+  "text": "\u266a"
+ },
+ "M_double_press": {
+  "final": [
+   50,
+   true,
+   ""
+  ],
+  "sink_muted": true
+ },
+ "A_mid_drawer": {
+  "selected": "alert 1",
+  "acked": [
+   "alert 1"
+  ]
+ },
+ "A_flood": {
+  "items": 603,
+  "unacked": 603,
+  "drawer_rows": 603,
+  "strip_text": null
+ },
+ "U_readers_raise": {
+  "tx": "UNKNOWN",
+  "tx_shape": "unknown",
+  "eng": "UNKNOWN",
+  "eng_shape": "unknown"
+ },
+ "U_active_no_scope": "0 targets",
+ "U_scope_named_NONE": [
+  "NONE",
+  "diamond"
+ ],
+ "U_scope_is_string": "11 targets",
+ "U_radio_reader": "signal-driven; owner() read once at init",
+ "L_row_restore": {
+  "detail_shows": "B",
+  "highlighted": "A"
+ }
+}

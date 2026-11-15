@@ -249,7 +249,8 @@ def _open_aprs_pipe(gain):
         return None
     import aprs
     return subprocess.Popen(aprs.pipeline(gain), shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                            stderr=subprocess.DEVNULL, text=True, bufsize=1,
+                            start_new_session=True)     # PANIC stops the pipeline by group
 
 
 def _open_ais_pipe(gain):
@@ -261,7 +262,8 @@ def _open_ais_pipe(gain):
         return None
     import ais
     return subprocess.Popen(ais.pipeline(gain), shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                            stderr=subprocess.DEVNULL, text=True, bufsize=1,
+                            start_new_session=True)     # PANIC stops the pipeline by group
 
 
 def aprs_station_contacts(stations, now):
@@ -592,8 +594,11 @@ class AtlasApp(PalisadeApp):
         self._busy_label.setWordWrap(True)
         self._busy_label.hide()
         right.addWidget(self._busy_label)
-        self.feed = FeedTable([("label", "CONTACT"), ("kind", "TYPE"),
-                               ("rng", "NM"), ("alt", "ALT")])
+        # TYPE is not a column: it is on the map (colour + label), the layer chips and the detail
+        # card. Four columns did not fit 1280x720 and cut altitudes off at the edge (RA-CL1b N1);
+        # the three that remain always fit, and a value too wide elides with its full text as tooltip
+        self.feed = FeedTable([("label", "CONTACT"), ("rng", "NM"), ("alt", "ALT")],
+                              fit_viewport=True)
         self.feed.selected.connect(self._show)
         right.addWidget(self.feed, 3)
         self.detail = DetailCard("CONTACT")
@@ -670,10 +675,13 @@ class AtlasApp(PalisadeApp):
                               colors=[self._color(c["kind"], c["severity"]) for c in shown])
         rows = []
         for c in sorted(shown, key=lambda c: c["rng"]):
-            rows.append({"label": c["label"], "kind": KIND_LABEL.get(c["kind"], c["kind"]),
+            rows.append({"_id": c["id"], "label": c["label"],
+                         "kind": KIND_LABEL.get(c["kind"], c["kind"]),
                          "rng": "%.0f" % c["rng"], "alt": "%d" % c["alt"] if c["alt"] else "—",
                          "_src": c, "_colors": {"rng": self._color(c["kind"], c["severity"])}})
         self.feed.model.set_rows(rows)
+        if self._selected is not None and self._selected not in {c["id"] for c in shown}:
+            self._show_lost()
         self.set_chip("sdr", ("%d CONTACTS" % len(shown)) if (self.demo or shown) else "NO FEED",
                       state="neutral")
         self._update_busy()
@@ -714,6 +722,14 @@ class AtlasApp(PalisadeApp):
             ("SPEED", "%d kt" % c["spd"] if c.get("spd") else "—"),
             ("RANGE", "%.0f nm" % c.get("rng", 0)),
             ("BEARING", "%03d°" % c.get("brg", 0))])
+
+    def _show_lost(self):
+        """The selected contact is gone (stale or its layer hidden): say so, and drop its last fix
+        so the card never reads as a current position (RA-CL1c F4)."""
+        label = self.detail.hero.text()
+        self._selected = None
+        self.detail.set_hero(label, "LOST · no longer reported")
+        self.detail.set_rows([("STATUS", "LOST")])
 
     def stop(self):
         try:

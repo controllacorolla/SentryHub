@@ -8,11 +8,17 @@ nothing in any engine or gate.
   MODE        LIVE | DEMO                      from the hub's own demo flag
   RADIO       FREE | HELD · <owner>            from radio_arbiter (its `changed` signal — never the
                                                arbiter lock, which can block during an acquire)
-  TX          OFF | PERMITTED | ARMED |        txguard armed + unlocked -> UNLOCKED; armed -> ARMED;
-              UNLOCKED                         else a page-reported permit (BENCH's conducted gate
-                                               passing) -> PERMITTED; else OFF
-  ENGAGEMENT  NONE | ACTIVE · <scope> |        from engagement.info(); EXPIRED once past its expiry
-              EXPIRED
+  TX          OFF | PERMITTED | ARMED | UNLOCKED | UNKNOWN
+                                               txguard armed + unlocked -> UNLOCKED; armed -> ARMED; else a page-reported permit
+                                               (BENCH's conducted gate passing) -> PERMITTED; else OFF.
+                                               UNKNOWN if txguard cannot be read.
+  ENGAGEMENT  NONE | <scope> | EXPIRED | UNKNOWN
+                                               from engagement.info(); EXPIRED once past its expiry; the strip paints the scope
+                                               summary as the word (amber diamond = active);
+                                               UNKNOWN if it cannot be read
+
+A reader that raises never falls back to the all-clear word (OFF / NONE): it reports UNKNOWN, which
+the strip draws amber with its own shape (RA-CL1).
 
 txguard and engagement emit change notifications (audit G12): GateSignals bridges them into one Qt
 signal (queued onto the GUI thread), and the slots, the FORGE replay banner and engagement cards,
@@ -71,34 +77,61 @@ def tx_permit_sources():
 
 
 def reset():
+    """Test isolation only. PANIC does not call this: clearing the registry would make the TX slot
+    read OFF while a page's own gate still passes."""
     _permits.clear()
 
 
 def read_tx():
-    """'UNLOCKED' | 'ARMED' | 'PERMITTED' | 'OFF' — read-only view of the engines."""
+    """'UNLOCKED' | 'ARMED' | 'PERMITTED' | 'OFF' | 'UNKNOWN' — read-only view of the engines."""
     try:
         import txguard
-        if txguard.is_armed():
-            return "UNLOCKED" if txguard.session_unlocked() else "ARMED"
+        armed = txguard.is_armed()
+        unlocked = armed and txguard.session_unlocked()
     except Exception:
-        pass
+        return "UNKNOWN"
+    if armed:
+        return "UNLOCKED" if unlocked else "ARMED"
     return "PERMITTED" if _permits else "OFF"
 
 
+SCOPE_CHARS = 10          # a single target this short is shown as itself; longer -> the count
+# words the strip uses for states: a target spelled like one must never be painted as the slot's
+# word (an active engagement on a host named "none" would read ENG NONE — RA-CL1b N4)
+STATE_WORDS = {"NONE", "OFF", "UNKNOWN", "FREE", "ACTIVE", "ARMED", "PERMITTED", "LIVE", "DEMO"}
+
+
+SCOPE_MAX = 999
+
+
+def scope_summary(scope):
+    """Short, never-elided scope text for the strip: the target itself when there is one short
+    target, else the count. The full list is in the ENGAGEMENT panel."""
+    scope = [str(s) for s in scope or []]
+    if len(scope) == 1 and len(scope[0]) <= SCOPE_CHARS and scope[0].strip().upper() not in STATE_WORDS:
+        return scope[0]
+    if len(scope) > SCOPE_MAX:
+        # RA-CL1c F2: "1000 targets" pushed the strip past 1280 px. "999 targets" (11 chars) is the
+        # widest value the strip is sized for, so the capped form may not be longer than that.
+        return "%d+ tgts" % SCOPE_MAX
+    return "%d target%s" % (len(scope), "" if len(scope) == 1 else "s")
+
+
 def read_engagement():
-    """('ACTIVE', scope summary, name) | ('EXPIRED', '', name) | ('NONE', '', '')."""
+    """('ACTIVE', scope summary, name) | ('EXPIRED', '', name) | ('NONE', '', '') |
+    ('UNKNOWN', '', '')."""
     try:
         import engagement
         info = engagement.info()
+        active = bool(info.get("active"))
+        expired = bool(info.get("expired"))
     except Exception:
-        return "NONE", "", ""
-    if info.get("expired"):
+        return "UNKNOWN", "", ""
+    if expired:
         return "EXPIRED", "", str(info.get("name") or "")
-    if not info.get("active"):
+    if not active:
         return "NONE", "", ""
-    scope = [str(s) for s in info.get("scope") or []]
-    summary = scope[0] if len(scope) == 1 else "%s +%d" % (scope[0], len(scope) - 1) if scope else "?"
-    return "ACTIVE", summary, str(info.get("name") or "")
+    return "ACTIVE", scope_summary(info.get("scope")), str(info.get("name") or "")
 
 
 class ChromeState(QtCore.QObject):
