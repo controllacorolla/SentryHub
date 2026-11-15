@@ -422,7 +422,9 @@ class TopBar(QtWidgets.QFrame):
             self.slots["radio"].setToolTip("SDR: ACQUIRING for %s" % owner)
         else:
             self.slots["radio"].set("FREE", "ring", t["muted"])
-        if tx == "ARMED":
+        if tx == "UNLOCKED":
+            self.slots["tx"].set("UNLOCKED", "square", t["alert"])
+        elif tx == "ARMED":
             self.slots["tx"].set("ARMED", "square", t["alert"])
         elif tx == "PERMITTED":
             self.slots["tx"].set("PERMITTED", "tri", t["warn"])
@@ -439,6 +441,10 @@ class TopBar(QtWidgets.QFrame):
             # scope is the part an operator needs to read (RA-CL1). Full detail: tooltip + panel.
             self.slots["engagement"].set(scope or "ACTIVE", "diamond", t["warn"])
             self.slots["engagement"].setToolTip("ENGAGEMENT: ACTIVE · %s · scope %s" % (name, scope))
+        elif eword == "EXPIRED":
+            self.slots["engagement"].set("EXPIRED", "tri", t["alert"])
+            self.slots["engagement"].setToolTip("ENGAGEMENT: EXPIRED · %s — END it and open a new one"
+                                                % name)
         elif eword == "UNKNOWN":
             self.slots["engagement"].set("UNKNOWN", "unknown", t["warn"])
             self.slots["engagement"].setToolTip("ENGAGEMENT: UNKNOWN — the engagement state could "

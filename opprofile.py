@@ -15,6 +15,10 @@ import sys
 DEFAULTS = {"callsign": "", "grid": "", "license_class": "", "name": "",
             "authorization": "", "wsprnet_opt_in": False, "aprsis_opt_in": False}
 
+# Owner decision 3, strict default (plan/briefs/CL2.md): a valid callsign does not by itself enable
+# TX. Relaxing this is the owner's call.
+CALLSIGN_ENABLES_TX = False
+
 _GRID = re.compile(r"^[A-R]{2}[0-9]{2}([a-x]{2})?$", re.I)
 
 
@@ -63,9 +67,25 @@ def load(settings_fn, name="operator"):
 
 
 def tx_settings(profile):
-    """A settings dict TX modules can hand to txguard (callsign + tx_enabled gate)."""
-    return {"callsign": profile.get("callsign", ""),
-            "tx_enabled": bool(profile.get("callsign")) and profile.get("tx_enabled", True)}
+    """A settings dict TX modules can hand to txguard (callsign + tx_enabled gate).
+
+    Owner decision 3, strict default (plan/briefs/CL2.md): a callsign alone NEVER enables TX.
+    tx_enabled comes only from an explicit saved setting that is exactly True."""
+    enabled = profile.get("tx_enabled") is True
+    if CALLSIGN_ENABLES_TX and valid_callsign(profile.get("callsign")):
+        enabled = profile.get("tx_enabled", True) is True
+    return {"callsign": profile.get("callsign", ""), "tx_enabled": enabled}
+
+
+def operator_identity(profile):
+    """Who the operator is, for the engagement record: the callsign, else the name. Never free
+    text typed at the moment an engagement is opened (audit G13)."""
+    if not isinstance(profile, dict):
+        return ""
+    call = str(profile.get("callsign") or "").strip().upper()
+    if call:
+        return call
+    return str(profile.get("name") or "").strip()
 
 
 def main(parent=None):
@@ -101,7 +121,8 @@ def main(parent=None):
             status.config(text="⚠ " + "; ".join(probs), fg=S.AMBER)
         else:
             pc = aprs_passcode(s["callsign"])
-            status.config(text="OK — TX enabled. APRS-IS passcode: %d" % pc, fg=S.GREEN)
+            status.config(text="OK — callsign valid (TX still needs tx_enabled, arm and unlock). "
+                               "APRS-IS passcode: %d" % pc, fg=S.GREEN)
         try:
             S.save_json(spath, s)
         except Exception:

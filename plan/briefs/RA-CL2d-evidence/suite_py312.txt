@@ -1,0 +1,79 @@
+........................................................................ [  6%]
+...s........................ss..F.......s............................... [ 12%]
+........................................................................ [ 18%]
+........................................................................ [ 25%]
+........................................................................ [ 31%]
+........................................................................ [ 37%]
+........................................................................ [ 43%]
+........................................................................ [ 50%]
+........................F............................................... [ 56%]
+........................................................................ [ 62%]
+........................................................................ [ 68%]
+...........................s............................................ [ 75%]
+........................................................................ [ 81%]
+............................ssssssss.................................... [ 87%]
+..............................................................F........s [ 93%]
+......................................................................   [100%]
+=================================== FAILURES ===================================
+____________________ test_undecodable_tile_is_marked_failed ____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e0c3230>
+tmp_path = PosixPath('/private/var/folders/yd/0_1jdp794wjf9sxcx3__83t40000gn/T/pytest-of-daltonhayes/pytest-412/test_undecodable_tile_is_marke0')
+
+    def test_undecodable_tile_is_marked_failed(monkeypatch, tmp_path):
+        t = _layer(monkeypatch, tmp_path)
+        key = ("dark", 5, 1, 1)
+        import os
+        p = t.path(*key)
+        os.makedirs(os.path.dirname(p))
+        open(p, "wb").write(b"garbage" * 50)
+        assert t._image(key) is None
+>       assert key in t.failed, "draw() would re-download it on every redraw"
+E       AssertionError: draw() would re-download it on every redraw
+E       assert ('dark', 5, 1, 1) in {}
+E        +  where {} = <tiles.TileLayer object at 0x10e0c3620>.failed
+
+tests/test_audit_tiles.py:56: AssertionError
+__________________________ test_doctor_hwbench_check ___________________________
+
+    def test_doctor_hwbench_check():
+        import doctor
+        ok, detail, fix = doctor.chk_hwbench(which=lambda n: "/usr/bin/" + n)
+>       assert ok is True and "serial" in detail and fix == ""
+E       assert (None is True)
+
+tests/test_hwlab.py:96: AssertionError
+_______ test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone ________
+
+tmp_path = PosixPath('/private/var/folders/yd/0_1jdp794wjf9sxcx3__83t40000gn/T/pytest-of-daltonhayes/pytest-412/test_iss_passes_use_their_own_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1130c3050>
+
+    def test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone(tmp_path, monkeypatch):
+        import importlib, time
+        sys.path.insert(0, os.path.dirname(__file__))
+        from iss_tle_fixture import iss_tle
+        import wxsat, sstv
+        weather_cache = os.path.join(wxsat.S.CACHE, "wx_passes.json")
+        before = os.path.getmtime(weather_cache) if os.path.exists(weather_cache) else None
+        tle = tmp_path / "sstv.tle"
+        tle.write_text(iss_tle())
+>       passes = wxsat.predict(sstv.SATS, {"lat": 39.62, "lon": -104.87}, 48, path=str(tle))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_sstvdec.py:183: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+s = {'satellites': [{'name': 'ISS', 'norad': 25544, 'freq': 145.8}], 'tle_urls': ['https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle']}
+home = {'lat': 39.62, 'lon': -104.87}, hours = 48
+path = '/private/var/folders/yd/0_1jdp794wjf9sxcx3__83t40000gn/T/pytest-of-daltonhayes/pytest-412/test_iss_passes_use_their_own_0/sstv.tle'
+
+    def predict(s, home, hours=48, path=None):
+>       from skyfield.api import wgs84
+E       ModuleNotFoundError: No module named 'skyfield'
+
+wxsat.py:117: ModuleNotFoundError
+=========================== short test summary info ============================
+FAILED tests/test_audit_tiles.py::test_undecodable_tile_is_marked_failed - As...
+FAILED tests/test_hwlab.py::test_doctor_hwbench_check - assert (None is True)
+FAILED tests/test_sstvdec.py::test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone
+3 failed, 1133 passed, 14 skipped in 256.90s (0:04:16)

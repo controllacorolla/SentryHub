@@ -28,6 +28,20 @@ OPS = {
 }
 
 
+# CL2-fix N4: for sim / clone the parameter IS the identity being impersonated or written. It must
+# be in the engagement scope (uid:…) too, not only the card on the antenna. Ops whose written
+# content is not an identity parameter (raw block write, dump restore, iClass clone) cannot be
+# bound this way and say so in the reason and the trail.
+IDENTITY_PARAM = {"hf_mf_sim": "uid", "lf_hid_clone": "id"}
+UNBOUND_CONTENT = ("lf_t55_write", "hf_mf_restore", "hf_iclass_clone")
+_PARAM_RE = __import__("re").compile(r"^[0-9A-Za-z_.:-]{1,64}$")
+
+
+# CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("pm3", "proxmark3"))
+
+
 def is_active(op):
     return bool(OPS.get(op, (False,))[0])
 
@@ -38,21 +52,80 @@ def pm3_command(op, **params):
     return OPS[op][1].format(**params)
 
 
-def prepare(op, target=None, evidence_chain=None, **params):
-    """Build a Proxmark3 command. For active ops, gate through the engagement authorization first.
-    Returns (ok, reason, command_string)."""
+def _norm_uid(u):
+    import re
+    s = str(u or "").strip()
+    if s.lower().startswith("uid:"):
+        s = s[4:]
+    s = re.sub(r"[\s:]", "", s).upper()
+    return s if re.fullmatch(r"(?:[0-9A-F]{2}){4,10}", s) else None
+
+
+def parse_uid(text):
+    """The card UID / ID from pm3 `hf 14a info` / `lf search` output, or None."""
+    import re
+    m = re.search(r"UID\s*:\s*((?:[0-9A-Fa-f]{2}\s?){4,10})", str(text or ""))
+    if not m:
+        m = re.search(r"\bID\s*:?\s*([0-9A-Fa-f]{8,20})\b", str(text or ""))
+    return _norm_uid(m.group(1)) if m else None
+
+
+def prepare(op, target=None, evidence_chain=None, read_uid=None, port="/dev/ttyACM0", **params):
+    """Build a Proxmark3 command. Read ops: (ok, reason, command_string), ungated.
+    Active ops (write / clone / sim): the scope is bound to the card (audit G5) — `target` must be a
+    uid:… entry in scope, and read_uid() (a fresh read of the card on the antenna) must return the
+    same UID, else refused (no read-back = refused). Returns (ok, reason, ticket)."""
     if op not in OPS:
         return False, "unknown op %r" % (op,), None
+    if op in IDENTITY_PARAM and _norm_uid(params.get(IDENTITY_PARAM[op])) is not None:
+        # the command carries exactly the identity that is scope-checked below
+        params = dict(params, **{IDENTITY_PARAM[op]: _norm_uid(params[IDENTITY_PARAM[op]])})
+    for k, v in params.items():
+        # pm3 -c runs ';'-separated commands: a parameter must be one plain token (no second
+        # command smuggled past the scope check)
+        if not _PARAM_RE.match(str(v)):
+            return False, "parameter %s=%r is not a plain hex/number token — refusing" % (k, v), None
     try:
         cmd = pm3_command(op, **params)
     except KeyError as e:
         return False, "missing parameter %s for %s" % (e, op), None
-    if is_active(op):
-        ok, why = engagement.authorize_action("proxmark:" + op, target, evidence_chain)
-        if not ok:
-            return False, why, None
-        return True, why, cmd
-    return True, "read op (ungated)", cmd
+    if not is_active(op):
+        return True, "read op (ungated)", cmd
+    ok, why = engagement.require_active()
+    if not ok:
+        return False, why, None
+    want = _norm_uid(target)
+    if want is None:
+        return False, "active op needs the target card UID (scope entry uid:…)", None
+    if read_uid is None:
+        return False, "no UID read-back available — refusing to write a card that was not read", None
+    try:
+        got = _norm_uid(read_uid())
+    except Exception as e:
+        got, err = None, str(e)
+    else:
+        err = ""
+    if got is None:
+        return False, "UID read-back failed%s — refusing" % ((": " + err) if err else ""), None
+    if got != want:
+        return False, "UID mismatch: card on the antenna is %s, authorized %s — refusing" % (
+            got, want), None
+    also = ()
+    if op in IDENTITY_PARAM:
+        ident = _norm_uid(params.get(IDENTITY_PARAM[op]))
+        if ident is None:
+            return False, ("%s: the %s to emulate/write is not a card ID — refusing"
+                           % (op, IDENTITY_PARAM[op])), None
+        also = (("uid:" + ident, "uid"),)
+    ok, why, ticket = engagement.issue("proxmark:" + op, "uid:" + want,
+                                       argv=client_argv(cmd, port), kind="uid",
+                                       evidence_chain=evidence_chain, label="proxmark:" + op,
+                                       also=also,
+                                       # CL2-fix2 R5: content not bound -> trail + ticket + UI say so
+                                       binding="label-only" if op in UNBOUND_CONTENT else None)
+    if ok and op in UNBOUND_CONTENT:
+        why += " — written content is not bound to the scope (label-only for the data)"
+    return ok, why, ticket
 
 
 def detect(which=shutil.which):

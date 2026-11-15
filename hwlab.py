@@ -258,10 +258,31 @@ def parse_raspi_gpio(text):
 
 
 # ---- demo (no hardware) ---------------------------------------------------------------------
+def gated_send(reader, text, device=("unknown", "port:?"), port_name="", newline="\r\n",
+               target=None):
+    """THE serial write path (audit G2): classify + gate the line with flipper.prepare_command
+    (device identified by USB VID:PID), then write it through the executor, which logs it.
+    Returns (ok, message). Nothing reaches `reader` unless the gate passed."""
+    import executor
+    import flipper
+    kind, label = device
+    ok, why, ticket = flipper.prepare_command(text, target=target, device=label, kind=kind,
+                                              newline=newline)
+    if not ok:
+        return False, "NOT SENT — " + why
+    try:
+        executor.write(ticket, reader, port_name=port_name)
+    except (executor.TicketRefused, OSError) as e:
+        return False, "NOT SENT — %s" % e
+    return True, why
+
+
 class DemoSerial:
     """A synthetic ESP32: boot banner, then periodic sensor lines, and it answers a few
     typed commands. Mirrors the real reader's .read_lines()/.write() so the UI path is
-    identical to a live port."""
+    identical to a live port. SYNTHETIC marks it as the only port a demo-device ticket may be
+    written to (executor.write, CL2-fix N9a)."""
+    SYNTHETIC = True
     BOOT = ["ets Jun  8 2016 00:22:57", "rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)",
             "configsip: 0, SPIWP:0xee", "mode:DIO, clock div:1", "load:0x3fff0030,len:1184",
             "entry 0x400805f0", "", "[boot] RF Reaper firmware v0.4.1 (demo)",
@@ -650,7 +671,11 @@ def main():
         if r is None:
             append("sys", "Not connected.")
             return
-        r.write((text + s.get("newline", "\r\n")).encode("utf-8", "replace"))
+        ok, why = gated_send(r, text, st.get("device", ("unknown", "port:?")),
+                             port_name=s.get("port", ""), newline=s.get("newline", "\r\n"))
+        if not ok:
+            append("sys", why)
+            return
         if s.get("echo", True):
             append("tx", text)
 
@@ -768,6 +793,8 @@ def main():
         save()
         try:
             st["reader"] = DemoSerial() if demo else SerialReader(port, baud)
+            import flipper
+            st["device"] = ("demo", "demo") if demo else flipper.identify_port(port)
         except Exception as e:
             append("sys", "Couldn't open %s: %s" % (port, str(e)[:70]))
             if "Permission" in str(e):
@@ -778,6 +805,11 @@ def main():
         conn_pill.config(text="%s @ %d" % (os.path.basename(port), baud), bg=S.GREEN)
         T.set_btn(connect_btn, "Disconnect", "danger")
         append("sys", "Connected to %s at %d baud." % (port, baud))
+        dk, dl = st.get("device", ("unknown", ""))
+        if dk not in ("demo",):
+            append("sys", "Device %s (%s): %s" % (dl, dk, "allowlisted Flipper reads are ungated; "
+                   "everything else needs an engagement naming %s" % dl if dk == "flipper" else
+                   "read-only until an engagement naming %s is open" % dl))
         slog.event("hwlab", "serial %s @ %d" % (os.path.basename(port), baud), id="ser")
         entry.focus_set()
 
@@ -800,7 +832,11 @@ def main():
         if text:
             history.append(text)
             hist_idx[0] = len(history)
-        r.write((text + s.get("newline", "\r\n")).encode("utf-8", "replace"))
+        ok, why = gated_send(r, text, st.get("device", ("unknown", "port:?")),
+                             port_name=s.get("port", ""), newline=s.get("newline", "\r\n"))
+        if not ok:
+            append("sys", why)
+            return
         if s.get("echo", True):
             append("tx", text)
 

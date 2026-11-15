@@ -1,0 +1,18 @@
+FAILED tests/test_wifipent.py::test_out_of_scope_blocked
+FAILED tests/test_blepent.py::test_out_of_scope_blocked
+FAILED tests/test_zigbee.py::test_active_discover_gated
+FAILED tests/test_zigbee.py::test_inject_out_of_scope_blocked
+FAILED tests/test_zwave.py::test_sniff_ungated_query_gated
+FAILED tests/test_proxmark.py::test_active_op_blocked_out_of_scope
+FAILED tests/test_flipper.py::test_emit_command_gated
+FAILED tests/test_cl2_gates.py::test_g3_allowlisted_read_passes_and_emit_is_label_only_with_engagement
+FAILED tests/test_cl2_gates.py::test_g2_unknown_and_emitter_devices_are_read_only_until_engagement
+FAILED tests/test_cl2_gates.py::test_g4_netpent_poc_targets_out_of_scope
+FAILED tests/test_cl2_gates.py::test_g4_ip_range_and_host_scope_entries
+FAILED tests/test_cl2_gates.py::test_g5_deauth_requires_and_scope_checks_the_client_poc
+FAILED tests/test_cl2_gates.py::test_g5_can_scope_is_interface_plus_id_range
+FAILED tests/test_cl2_gates.py::test_g5_zigbee_scope_is_pan_and_channel
+FAILED tests/test_cl2_gates.py::test_g5_unbindable_tools_say_label_only
+FAILED tests/test_cl2_gates.py::test_s2_scout_uses_real_netmask_and_netpent_gate
+FAILED tests/test_cl2_gates.py::test_s2_devterm_ble_mqtt_ssh_are_gated
+17 failed, 88 passed in 1.88s

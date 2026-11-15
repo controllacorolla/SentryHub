@@ -11,3 +11,22 @@ import sys
 SUITE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if SUITE_DIR not in sys.path:
     sys.path.insert(0, SUITE_DIR)
+
+
+import pytest  # noqa: E402
+
+TEST_OPERATOR = "KD0ABC"
+
+
+@pytest.fixture(autouse=True)
+def _cl2_operator_profile(monkeypatch):
+    """CL2/G13: the engagement operator comes from the operator profile, never free text. Tests get
+    a fixed profile identity instead of reading the developer's real ~/.config profile."""
+    try:
+        import engagement
+    except ImportError:
+        yield
+        return
+    monkeypatch.setattr(engagement, "_profile_operator", lambda: TEST_OPERATOR)
+    monkeypatch.delenv("PALISADE_GATE_STATE", raising=False)
+    yield

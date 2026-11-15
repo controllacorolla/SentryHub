@@ -16,6 +16,11 @@ import engagement
 HASHCAT_MODES = {"wpa_eapol": 22000, "pmkid": 22000, "wpa_pmk": 2500}
 
 
+# CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("hcxpcapngtool", "hashcat", "aircrack-ng"))
+
+
 def hcx_convert_argv(pcapng, out_hc22000):
     """Convert a capture to the hashcat 22000 format."""
     return ["hcxpcapngtool", "-o", out_hc22000, pcapng]
@@ -59,7 +64,8 @@ def strength_verdict(seconds):
 
 def prepare(action, target, hash_file="cap.hc22000", wordlist="rockyou.txt", mode=22000,
             mask=None, pcapng="cap.pcapng", evidence_chain=None):
-    """Gate + build a password-audit command for an in-scope capture. Returns (ok, reason, argv)."""
+    """Gate + build a password-audit command for an in-scope capture. Returns (ok, reason, ticket).
+    The target is the AP (BSSID) the capture belongs to."""
     if action == "convert":
         argv = hcx_convert_argv(pcapng, hash_file)
     elif action == "hashcat":
@@ -68,10 +74,8 @@ def prepare(action, target, hash_file="cap.hc22000", wordlist="rockyou.txt", mod
         argv = aircrack_argv(pcapng, wordlist, target)
     else:
         return False, "unknown action %r" % (action,), None
-    ok, why = engagement.authorize_action("passaudit:" + action, target, evidence_chain)
-    if not ok:
-        return False, why, None
-    return True, why, argv
+    return engagement.issue("passaudit:" + action, target, argv=argv,
+                            evidence_chain=evidence_chain, label="passaudit:" + action)
 
 
 def main(parent=None):

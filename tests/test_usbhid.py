@@ -33,7 +33,8 @@ def test_keycode():
 
 def test_injection_gated():
     assert U.prepare("STRING hi", "LAPTOP-7")[0] is False     # no engagement
-    E.start("usb audit", "self-owned", ["LAPTOP-*"], "KD0ABC")
-    ok, why, actions = U.prepare("GUI r\nSTRING cmd\nENTER", "LAPTOP-7")
-    assert ok and actions[1]["text"] == "cmd"
+    E.start("usb audit", "self-owned", ["LAPTOP-7"], "KD0ABC")
+    ok, why, t = U.prepare("GUI r\nSTRING cmd\nENTER", "LAPTOP-7")
+    assert ok and U.parse_ducky("GUI r\nSTRING cmd\nENTER")[1]["text"] == "cmd"
+    assert t.payload and len(t.payload) % 8 == 0 and "label-only authorization" in why
     assert U.prepare("STRING hi", "SERVER-1")[0] is False     # out of scope

@@ -13,7 +13,12 @@ import sys
 import engagement
 
 
-def gatt_argv(address, op, handle=None, value=None, adapter="hci0"):
+# CL2-fix2 R1: the only program this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("gatttool",))
+
+
+def _gatt_argv(address, op, handle=None, value=None, adapter="hci0"):
     """Build a gatttool command for one GATT operation against a device."""
     base = ["gatttool", "-i", adapter, "-b", address]
     if op == "enum":
@@ -37,18 +42,16 @@ OPS = ("enum", "characteristics", "read", "write")
 
 
 def prepare(action, address, handle=None, value=None, evidence_chain=None, adapter="hci0"):
-    """Gate + build an active BLE action. Returns (ok, reason, argv). Every op connects to the
-    target, so all are gated on an in-scope engagement."""
+    """Gate + build an active BLE action. Returns (ok, reason, ticket). Every op connects to the
+    target, so all are gated on an engagement with that BLE address (MAC / OUI) in scope."""
     if action not in OPS:
         return False, "unknown action %r" % (action,), None
     try:
-        argv = gatt_argv(address, action, handle, value, adapter)
+        argv = _gatt_argv(address, action, handle, value, adapter)
     except KeyError as e:
         return False, "missing parameter %s for %s" % (e, action), None
-    ok, why = engagement.authorize_action("ble:" + action, address, evidence_chain)
-    if not ok:
-        return False, why, None
-    return True, why, argv
+    return engagement.issue("ble:" + action, address, argv=argv, kind="mac",
+                            evidence_chain=evidence_chain, label="ble:" + action)
 
 
 def main(parent=None):

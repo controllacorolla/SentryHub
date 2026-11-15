@@ -6,14 +6,17 @@ engagement-gated. The relay detector flags inflated APDU latency.
 import pytest
 
 import engagement as E
+import txguard
 import flipper as FL
 
 
 @pytest.fixture(autouse=True)
 def _reset():
     E.reset()
+    txguard.reset_session()
     yield
     E.reset()
+    txguard.reset_session()
 
 
 def test_classify_read_vs_emit():
@@ -30,16 +33,18 @@ def test_classify_read_vs_emit():
 
 
 def test_read_command_ungated():
-    ok, why, cmd = FL.prepare_command("nfc detect")
-    assert ok and cmd == "nfc detect" and "ungated" in why
+    ok, why, t = FL.prepare_command("nfc detect", device="usb:0483:5740", kind="flipper")
+    assert ok and t.payload == b"nfc detect\r\n" and "ungated" in why
 
 
 def test_emit_command_gated():
     ok, why, cmd = FL.prepare_command("subghz tx_from_file /ext/g.sub", target="GARAGE-1")
     assert not ok and cmd is None and "engagement" in why.lower()
     E.start("rf audit", "ROE-14", ["GARAGE-1"], "KD0ABC")
-    ok, why, cmd = FL.prepare_command("subghz tx_from_file /ext/g.sub", target="GARAGE-1")
-    assert ok and cmd == "subghz tx_from_file /ext/g.sub"
+    txguard.arm(True)    # CL2-fix N2: an RF emitter also needs the TX kill switch armed
+    ok, why, t = FL.prepare_command("subghz tx_from_file /ext/g.sub", target="GARAGE-1")
+    assert ok and t.payload == b"subghz tx_from_file /ext/g.sub\r\n"
+    assert "label-only authorization" in why
     ok, why, cmd = FL.prepare_command("subghz tx_from_file /ext/g.sub", target="NOT-IN-SCOPE")
     assert not ok and cmd is None
 

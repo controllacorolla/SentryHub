@@ -1,0 +1,62 @@
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[Cyrillic look-alike]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[GNU Radio flowgraph]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[UHD tx_waveforms]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[URH urh_cli]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[bash -c ${var}]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[bash -c ANSI-C]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[bash -c empty-quote split]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[bash -c glob]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[declared name via a path]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[empty argv[0]]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[env wrapper]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[perl -e]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[python -c concat]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[python3.13 -c]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[renamed / symlinked binary]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[rpitx sendook]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[rpitx tune]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[sudo wrapper]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[trailing-space name]
+PASSED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[xargs wrapper]
+PASSED tests/test_cl2_fix2.py::test_r1_a_module_cannot_declare_a_shell_or_interpreter
+PASSED tests/test_cl2_fix2.py::test_r1_undeclared_module_runs_nothing
+PASSED tests/test_cl2_fix2.py::test_r1_this_modules_declared_tool_still_issues
+PASSED tests/test_cl2_fix2.py::test_r1_every_shipped_module_real_commands_still_issue
+PASSED tests/test_cl2_fix2.py::test_r1_static_every_argv_issuer_declares_allowed_programs
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[127.0.0.1]
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[127.8.9.10]
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[::1]
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[localhost]
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[LOCALHOST.]
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[::ffff:127.0.0.1]
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[0.0.0.0]
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[[::1]]
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_to_an_own_interface_address_refused
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_fails_closed_when_own_addresses_unknown
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_remote_host_is_pinned_label_only_and_not_rf_locked
+PASSED tests/test_cl2_fix2.py::test_r1_ssh_ra_poc_never_spawns
+PASSED tests/test_cl2_fix2.py::test_r2_scope_refusals_hold_when_armed_and_unlocked
+PASSED tests/test_cl2_fix2.py::test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc[input send ok short]
+PASSED tests/test_cl2_fix2.py::test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc[input send up press]
+PASSED tests/test_cl2_fix2.py::test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc[loader open Sub-GHz]
+PASSED tests/test_cl2_fix2.py::test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc[js /ext/apps/Scripts/tx.js]
+PASSED tests/test_cl2_fix2.py::test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc[subghz tx 0 433920000]
+PASSED tests/test_cl2_fix2.py::test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc[nfc emulate]
+PASSED tests/test_cl2_fix2.py::test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc[rfid emulate H10301 0]
+PASSED tests/test_cl2_fix2.py::test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc[bt tx_carrier 2402 0]
+PASSED tests/test_cl2_fix2.py::test_r4_input_not_in_non_rf_list
+PASSED tests/test_cl2_fix2.py::test_r6_argv_1090_on_a_915_authorization_refused_poc
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv0-exactly one -f]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv1-exactly one -f]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv2-cannot parse]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv3-cannot parse]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv4-no value]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv5-whole number]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv6-whole number]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv7-cannot verify]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv8-cannot verify]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv9-cannot verify]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv10-cannot verify]
+PASSED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv11-cannot verify]
+PASSED tests/test_cl2_fix2.py::test_r6_matching_argv_still_issues_and_builders_agree
+61 passed in 0.08s

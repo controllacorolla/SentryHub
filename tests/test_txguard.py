@@ -8,54 +8,76 @@ import txguard as G  # noqa: E402
 
 ENABLED = {"tx_enabled": True, "callsign": "KD0ABC"}
 
+# CL2/G8: decide() was a public, arm-less gate (and let service="lora" through at any frequency). It
+# is now the private band classifier; these band-policy tests run through the ONE public chain,
+# authorize(), with the kill switch armed and the session unlocked so only the band policy decides.
+
+
+def _open():
+    G.arm(True)
+    G.unlock_session(True)
+
+
+def _band(f, mode="aprs", callsign="", settings=None):
+    _open()
+    ok, why, _p = G.authorize(mode, f, callsign=callsign, settings=settings)
+    return ok, why
+
 
 def test_protected_bands_are_always_denied_even_with_a_callsign():
     for f, _name in [(1_575_420_000, "GPS L1"), (1_090_000_000, "ADS-B"), (978_000_000, "UAT"),
                      (121_500_000, "emergency"), (124_000_000, "aviation"), (156_800_000, "marine"),
                      (835_000_000, "cellular"), (1_750_000_000, "AWS uplink")]:
-        ok, why = G.decide(f, callsign="KD0ABC", settings=ENABLED)
-        assert ok is False, (f, why)
-        assert "protected" in why or "illegal" in why
+        for mode in ("aprs", "replay", "lora", "bench"):
+            ok, why = _band(f, mode, callsign="KD0ABC",
+                            settings=dict(ENABLED, bench_conducted_ack=True))
+            assert ok is False, (f, mode, why)
+            assert "protected" in why or "illegal" in why
 
 
 def test_ham_band_requires_a_valid_callsign():
     f = 144_200_000  # 2m
-    assert G.decide(f, settings=ENABLED)[0] is True                      # callsign from settings
-    assert G.decide(f, callsign="KD0ABC", settings={"tx_enabled": True})[0] is True
-    ok, why = G.decide(f, callsign="", settings={"tx_enabled": True})
+    assert _band(f, settings=ENABLED)[0] is True                       # callsign from settings
+    assert _band(f, callsign="KD0ABC", settings={"tx_enabled": True})[0] is True
+    ok, why = _band(f, callsign="", settings={"tx_enabled": True})
     assert ok is False and "callsign" in why
-    assert G.decide(f, callsign="NOT A CALL", settings={"tx_enabled": True})[0] is False
+    assert _band(f, callsign="NOT A CALL", settings={"tx_enabled": True})[0] is False
 
 
 def test_ism_bands_need_no_callsign_but_still_need_tx_enabled():
-    assert G.decide(915_000_000, settings={"tx_enabled": True})[0] is True
-    assert G.decide(433_920_000, settings={"tx_enabled": True})[0] is True
-    assert G.decide(2_450_000_000, settings={"tx_enabled": True})[0] is True
-    ok, why = G.decide(915_000_000, settings={"tx_enabled": False})
+    assert _band(915_000_000, "replay", settings={"tx_enabled": True})[0] is True
+    assert _band(2_450_000_000, "replay", settings={"tx_enabled": True})[0] is True
+    # 433.92 MHz is licence-free only outside the US (CL2/G10)
+    assert _band(433_920_000, "replay", settings={"tx_enabled": True})[0] is False
+    assert _band(433_920_000, "replay", settings={"tx_enabled": True, "tx_region": "EU"})[0] is True
+    ok, why = _band(915_000_000, "replay", settings={"tx_enabled": False})
     assert ok is False and "disabled" in why
 
 
-def test_lora_is_allowed_by_default_but_the_hard_env_lock_stops_everything(monkeypatch):
-    assert G.decide(service="lora", settings={"tx_enabled": False})[0] is True   # mesh default
-    assert G.decide(service="lora")[0] is True
+def test_lora_goes_through_the_same_chain_and_the_hard_env_lock_stops_everything(monkeypatch):
+    # owner decision 2, strict default: no service is exempt from arm / unlock / tx_enabled / band
+    assert G.EXEMPT_SERVICES == ()
+    assert G.authorize("lora", 915_000_000, settings={"tx_enabled": True})[0] is False  # disarmed
+    assert _band(915_000_000, "lora", settings={"tx_enabled": False})[0] is False
+    assert _band(915_000_000, "lora", settings={"tx_enabled": True})[0] is True
     monkeypatch.setenv("SUITE_TX_LOCK", "1")
-    assert G.decide(service="lora", settings=ENABLED)[0] is False                # lora too
-    assert G.decide(144_200_000, settings=ENABLED)[0] is False                   # ham too
-    assert G.decide(915_000_000, settings=ENABLED)[0] is False                   # ism too
+    assert _band(915_000_000, "lora", settings=ENABLED)[0] is False                # lora too
+    assert _band(144_200_000, settings=ENABLED)[0] is False                        # ham too
+    assert _band(915_000_000, "replay", settings=ENABLED)[0] is False              # ism too
 
 
 def test_unknown_or_bad_frequency_is_denied_by_default():
-    assert G.decide(5_000_000, settings=ENABLED)[0] is False        # 5 MHz: not ham, not ISM
-    assert G.decide(None, settings=ENABLED)[0] is False
-    assert G.decide("abc", settings=ENABLED)[0] is False
-    assert G.decide(-1, settings=ENABLED)[0] is False
-    assert G.decide(0, settings=ENABLED)[0] is False
+    assert _band(5_000_000, settings=ENABLED)[0] is False        # 5 MHz: not ham, not ISM
+    assert _band(None, settings=ENABLED)[0] is False
+    assert _band("abc", settings=ENABLED)[0] is False
+    assert _band(-1, settings=ENABLED)[0] is False
+    assert _band(0, settings=ENABLED)[0] is False
 
 
 def test_tx_defaults_closed_when_settings_do_not_enable_it():
-    assert G.decide(144_200_000, callsign="KD0ABC", settings={})[0] is False      # no tx_enabled
-    assert G.decide(144_200_000, callsign="KD0ABC", settings=None)[0] is False
-    assert G.decide(915_000_000, settings=None)[0] is False
+    assert _band(144_200_000, callsign="KD0ABC", settings={})[0] is False      # no tx_enabled
+    assert _band(144_200_000, callsign="KD0ABC", settings=None)[0] is False
+    assert _band(915_000_000, "replay", settings=None)[0] is False
 
 
 def test_classify_puts_protected_over_overlapping_allocations():
@@ -75,10 +97,12 @@ def test_valid_callsign():
         assert not G.valid_callsign(bad), bad
 
 
-def test_mesh_default_callsign_blank_still_allows_lora():
+def test_mesh_send_is_off_by_default_and_needs_the_chain():
     import mesh_dash
-    assert mesh_dash.DEFAULTS["tx_enabled"] is True
-    assert G.decide(service="lora", settings=mesh_dash.DEFAULTS)[0] is True
+    assert mesh_dash.DEFAULTS["tx_enabled"] is False             # strict default (CL2)
+    _open()
+    assert mesh_dash.authorize_send(mesh_dash.DEFAULTS)[0] is False
+    assert mesh_dash.authorize_send(dict(mesh_dash.DEFAULTS, tx_enabled=True))[0] is True
 
 
 # ---- Phase 3a: authorize() gate (kill switch, session unlock, per-mode caps) --------------

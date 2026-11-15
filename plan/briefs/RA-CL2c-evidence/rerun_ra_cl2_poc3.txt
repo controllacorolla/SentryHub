@@ -1,0 +1,7 @@
+G9 power denials (all should be False): [False, False, False, False, False]
+G9 sample-rate denials (all should be False): [False, False, False, False, False]
+G9 power 40 dBm -> allowed: True clamped to 10
+PASS
+sample_rate='2e6' -> (True, 'IQ replay: 915.0000 MHz license-free (915 ISM, region US) — authorized (<= 10 dBm); gain 42 dB (from 10 dBm)')
+sample_rate='2000000' -> (True, 'IQ replay: 915.0000 MHz license-free (915 ISM, region US) — authorized (<= 10 dBm); gain 42 dB (from 10 dBm)')
+sample_rate=2000000.0 -> (True, 'IQ replay: 915.0000 MHz license-free (915 ISM, region US) — authorized (<= 10 dBm); gain 42 dB (from 10 dBm)')

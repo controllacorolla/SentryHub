@@ -65,8 +65,9 @@ def test_flash_write_is_gated():
     ok, why, argv = B.prepare_flash_write("ch341a_spi", "fw.bin", target="ROUTER-1")
     assert not ok and argv is None and "engagement" in why.lower()
     E.start("fw audit", "ROE-11", ["ROUTER-1"], "KD0ABC")
-    ok, why, argv = B.prepare_flash_write("ch341a_spi", "fw.bin", target="ROUTER-1")
-    assert ok and argv == ["flashrom", "-p", "ch341a_spi", "-w", "fw.bin"]
+    ok, why, t = B.prepare_flash_write("ch341a_spi", "fw.bin", target="ROUTER-1")
+    assert ok and t.argv == ("flashrom", "-p", "ch341a_spi", "-w", "fw.bin")
+    assert "label-only authorization" in why and t.binding == "label-only"     # CL2/G5
     ok, why, argv = B.prepare_flash_write("ch341a_spi", "fw.bin", target="OTHER-DEV")
     assert not ok and argv is None
 
@@ -75,8 +76,8 @@ def test_jtag_write_is_gated():
     ok, why, argv = B.prepare_jtag_write("interface/stlink.cfg", "reset halt", target="MCU-1")
     assert not ok and argv is None
     E.start("mcu", "ROE-12", ["MCU-1"], "KD0ABC")
-    ok, why, argv = B.prepare_jtag_write("interface/stlink.cfg", "reset halt", target="MCU-1")
-    assert ok and "init; reset halt; shutdown" in argv[-1]
+    ok, why, t = B.prepare_jtag_write("interface/stlink.cfg", "reset halt", target="MCU-1")
+    assert ok and "init; reset halt; shutdown" in t.argv[-1]
 
 
 def test_detect_injected():

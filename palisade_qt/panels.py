@@ -5,12 +5,17 @@ D7) and float over the page area; Esc closes the top one.
 Moved here mechanically, behaviour unchanged:
   * RADIOS  <- OVERWATCH's RADIO sub-view (holder card, FREE THE RADIO, acquire/release history)
   * ENGAGEMENT <- RECON's ENGAGE sub-tab (operator / scope form, activate / end, action trail)
+
+CL2 (gates): the TX panel is the missing ARM / UNLOCK control (audit G8) — it calls txguard's own
+arm() / unlock_session(); every gate decision stays in the engine. The ENGAGEMENT panel's operator
+comes from the operator profile (read-only) and the authorization reference is never pre-filled
+(audit G13). Both panels follow the engines through chrome.gate_signals() (audit G12).
 """
 import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import eventbus, radio_arbiter, radios, theme
+from . import chrome, eventbus, radio_arbiter, radios, theme
 from .kit import FeedTable, DetailCard, micro
 from .kit.components import note
 
@@ -200,6 +205,65 @@ class RadiosPanel(Overlay):
         (self.takeover_btn if self.takeover_btn.isEnabled() else self.table.view).setFocus()
 
 
+# ======================= TX (arm / unlock) =======================
+
+class TxPanel(Overlay):
+    """The master kill switch and the per-session unlock (audit G8). Arming only makes TX possible;
+    a key-up still needs the unlock, the saved tx_enabled setting, the band and (for pentest tools)
+    an engagement — all decided by txguard / engagement, never here."""
+    TITLE = "TX — kill switch + session unlock"
+    SIZE = (760, 400)
+
+    def __init__(self, mode="dark", parent=None):
+        super().__init__(mode, parent)
+        self.state = DetailCard("TRANSMIT")
+        self.outer.addWidget(self.state, 1)
+        row = QtWidgets.QHBoxLayout()
+        self.arm_btn = QtWidgets.QPushButton("ARM")
+        self.arm_btn.clicked.connect(self._toggle_arm)
+        row.addWidget(self.arm_btn)
+        self.unlock_btn = QtWidgets.QPushButton("UNLOCK THIS SESSION")
+        self.unlock_btn.clicked.connect(self._toggle_unlock)
+        row.addWidget(self.unlock_btn)
+        row.addStretch(1)
+        self.outer.addLayout(row)
+        self.outer.addWidget(note("Unlock lasts until disarm, PANIC or exit and is never saved. "
+                                  "Disarming kills every running gated process."))
+        chrome.gate_signals().changed.connect(self.refresh)
+        self.refresh()
+
+    def _toggle_arm(self):
+        import txguard
+        txguard.arm(not txguard.is_armed())
+        self.refresh()
+
+    def _toggle_unlock(self):
+        import txguard
+        txguard.unlock_session(not txguard.session_unlocked())
+        self.refresh()
+
+    def refresh(self):
+        import txguard
+        armed, unlocked = txguard.is_armed(), txguard.session_unlocked()
+        locked, why = txguard.tx_locked({"tx_enabled": True})        # env hard lock only
+        self.arm_btn.setText("DISARM" if armed else "ARM")
+        self.unlock_btn.setEnabled(armed)
+        self.unlock_btn.setText("LOCK SESSION" if unlocked else "UNLOCK THIS SESSION")
+        if unlocked:
+            self.state.set_hero("UNLOCKED", "armed + unlocked — each key-up still passes the band, "
+                                "power, tx_enabled and engagement checks")
+        elif armed:
+            self.state.set_hero("ARMED", "armed, session locked — nothing can key up yet")
+        else:
+            self.state.set_hero("OFF", "kill switch off — every transmit is refused")
+        self.state.set_rows([("KILL SWITCH", "ARMED" if armed else "OFF"),
+                             ("SESSION", "UNLOCKED" if unlocked else "LOCKED"),
+                             ("ENV LOCK", why if locked else "none")])
+
+    def focus_first(self):
+        self.arm_btn.setFocus()
+
+
 # ======================= ENGAGEMENT =======================
 
 def _engagement():
@@ -226,10 +290,14 @@ class EngagePanel(Overlay):
         fl.setContentsMargins(12, 10, 12, 10)
         fl.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
         self.eng_operator = QtWidgets.QLineEdit()
+        self.eng_operator.setReadOnly(True)              # from the operator profile, never typed
+        self.eng_operator.setPlaceholderText("set callsign / name in the operator profile")
         self.eng_name = QtWidgets.QLineEdit()
         self.eng_auth = QtWidgets.QLineEdit()
+        self.eng_auth.setPlaceholderText("ticket / ROE / written consent reference")
         self.eng_scope = QtWidgets.QLineEdit()
-        self.eng_scope.setPlaceholderText("comma-separated targets or wildcards (AA:BB:CC:*, Net-*)")
+        self.eng_scope.setPlaceholderText("typed, comma-separated: 10.0.0.0/24, AA:BB:CC:DD:EE:FF, "
+                                          "can0:0x700-0x7FF, pan:0x1A2B@15, uid:04A22B3C, LAB-1")
         self._prefill_operator()
         fl.addRow(micro("Operator"), self.eng_operator)
         fl.addRow(micro("Engagement"), self.eng_name)
@@ -261,21 +329,28 @@ class EngagePanel(Overlay):
         split.addLayout(right, 3)
         self.outer.addLayout(split, 1)
 
+        chrome.gate_signals().changed.connect(self._on_gate)
+
     def _prefill_operator(self):
+        """The operator identity from the profile (read-only). The authorization reference is NOT
+        pre-filled: it is typed for each engagement (audit G13)."""
         try:
             import opprofile
             import suite
-            prof = opprofile.load(suite.settings)
-            self.eng_operator.setText(prof.get("callsign") or prof.get("name") or "")
-            self.eng_auth.setText(prof.get("authorization") or "")
+            self.eng_operator.setText(opprofile.operator_identity(opprofile.load(suite.settings)))
         except Exception:
             pass        # no suite/profile on the dev host: leave blank, never invent an identity
 
+    def _on_gate(self):
+        if self.isVisible():
+            self.refresh()
+
     def _activate(self):
         eng = _engagement()
+        self._prefill_operator()
         scope = [s.strip() for s in self.eng_scope.text().split(",") if s.strip()]
-        ok, why = eng.start(self.eng_name.text().strip(), self.eng_auth.text().strip(),
-                            scope, self.eng_operator.text().strip())
+        # operator=None: the ENGINE takes the operator from the profile (never this field's text)
+        ok, why = eng.start(self.eng_name.text().strip(), self.eng_auth.text().strip(), scope, None)
         # an open engagement is a hazard state, not a healthy one: amber, never green (D9)
         self.eng_msg.setStyleSheet("color:%s;" % self._tok["warn"])
         self.eng_msg.setText(("ACTIVE — " if ok else "REFUSED — ") + why)
@@ -293,21 +368,24 @@ class EngagePanel(Overlay):
         try:
             info = _engagement().info()
             active = bool(info["active"])
+            expired = bool(info.get("expired")) and bool(info.get("open"))
         except Exception as e:
-            self.eng_detail.set_hero("◌ UNKNOWN", "the engagement state could not be read")
+            self.eng_detail.set_hero("\u25cc UNKNOWN", "the engagement state could not be read")
             self.eng_detail.hero.setStyleSheet("color:%s;" % self._tok["warn"])
-            self.eng_detail.set_rows([("STATE", "UNKNOWN — %s" % e)])
+            self.eng_detail.set_rows([("STATE", "UNKNOWN \u2014 %s" % e)])
             self.render_actions()
             return
         self.eng_detail.hero.setStyleSheet("")
-        if active:
+        if active or expired:
             scope = list(info["scope"] or [])
             # parity with main's RECON banner: name, operator, authorization, target count
-            self.eng_detail.set_hero(info["name"], "active engagement")
+            self.eng_detail.set_hero(info["name"], "EXPIRED \u2014 END it and open a new one"
+                                     if expired else "active engagement")
             self.eng_detail.set_rows([
                 ("OPERATOR", info["operator"]), ("AUTHORIZATION", info["authorization"]),
                 ("TARGETS", "%d" % len(scope)), ("SCOPE", ", ".join(scope)),
-                ("STARTED", time.strftime("%H:%M:%S", time.localtime(info["started"])))])
+                ("STARTED", time.strftime("%H:%M:%S", time.localtime(info["started"]))),
+                ("EXPIRES", time.strftime("%H:%M:%S", time.localtime(info["expires"])))])
         else:
             self.eng_detail.set_hero("—", "no engagement")
             self.eng_detail.set_rows([])

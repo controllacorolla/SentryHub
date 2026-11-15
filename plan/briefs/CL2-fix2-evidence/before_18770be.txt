@@ -1,0 +1,55 @@
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[Cyrillic look-alike]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[GNU Radio flowgraph]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[UHD tx_waveforms]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[URH urh_cli]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[bash -c ${var}]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[bash -c ANSI-C]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[bash -c empty-quote split]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[bash -c glob]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[declared name via a path]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[empty argv[0]]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[env wrapper]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[perl -e]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[python -c concat]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[python3.13 -c]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[renamed / symlinked binary]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[rpitx sendook]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[rpitx tune]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[sudo wrapper]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[trailing-space name]
+FAILED tests/test_cl2_fix2.py::test_r1_every_ra_bypass_refused_through_the_engagement_gate_poc[xargs wrapper]
+FAILED tests/test_cl2_fix2.py::test_r1_a_module_cannot_declare_a_shell_or_interpreter
+FAILED tests/test_cl2_fix2.py::test_r1_undeclared_module_runs_nothing
+FAILED tests/test_cl2_fix2.py::test_r1_static_every_argv_issuer_declares_allowed_programs
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[127.0.0.1]
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[127.8.9.10]
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[::1]
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[localhost]
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[LOCALHOST.]
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[::ffff:127.0.0.1]
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[0.0.0.0]
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_to_loopback_refused_at_issue_poc[[::1]]
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_to_an_own_interface_address_refused
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_fails_closed_when_own_addresses_unknown
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_remote_host_is_pinned_label_only_and_not_rf_locked
+FAILED tests/test_cl2_fix2.py::test_r1_ssh_ra_poc_never_spawns
+FAILED tests/test_cl2_fix2.py::test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc[input send ok short]
+FAILED tests/test_cl2_fix2.py::test_r4_flipper_radio_driving_verbs_silenced_by_lock_and_disarm_poc[input send up press]
+FAILED tests/test_cl2_fix2.py::test_r4_input_not_in_non_rf_list
+FAILED tests/test_cl2_fix2.py::test_r6_argv_1090_on_a_915_authorization_refused_poc
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv0-exactly one -f]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv1-exactly one -f]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv2-cannot parse]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv3-cannot parse]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv4-no value]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv5-whole number]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv6-whole number]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv7-cannot verify]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv8-cannot verify]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv9-cannot verify]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv10-cannot verify]
+FAILED tests/test_cl2_fix2.py::test_r6_unparseable_or_ambiguous_tx_argv_refused[argv11-cannot verify]
+FAILED tests/test_cl2_fix2.py::test_r5_unbound_proxmark_writes_are_label_only_in_trail_ticket_and_ui[lf_t55_write-params0]
+FAILED tests/test_cl2_fix2.py::test_r5_unbound_proxmark_writes_are_label_only_in_trail_ticket_and_ui[hf_mf_restore-params1]
+FAILED tests/test_cl2_fix2.py::test_r5_unbound_proxmark_writes_are_label_only_in_trail_ticket_and_ui[hf_iclass_clone-params2]
+54 failed, 11 passed in 0.45s

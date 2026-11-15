@@ -1,0 +1,382 @@
+{
+ "r1a_ssh_option_injection": {
+  "KnownHostsCommand renamed binary": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option and could run it on this device)",
+   "argv": null,
+   "spawned": null
+  },
+  "KnownHostsCommand via sh, quoted name": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option and could run it on this device)",
+   "argv": null,
+   "spawned": null
+  },
+  "-F config (Match exec, pre-connect)": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option and could run it on this device)",
+   "argv": null,
+   "spawned": null
+  },
+  "PKCS11Provider local .so": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option and could run it on this device)",
+   "argv": null,
+   "spawned": null
+  },
+  "bundled -G proof": {
+   "issued": false,
+   "why": "refused: the remote command must not start with '-' (OpenSSH would read it as an option and could run it on this device)",
+   "argv": null,
+   "spawned": null
+  }
+ },
+ "own_addresses": [
+  "10.0.0.OWN10",
+  "127.0.0.1",
+  "2001:db8::own-global1",
+  "2001:db8::own-global6",
+  "2001:db8::own-global0",
+  "::1",
+  "fe80::own-ll11",
+  "fe80::own-ll2",
+  "fe80::own-ll5",
+  "fe80::own-ll8",
+  "fe80::own-ll7",
+  "fe80::own-ll9",
+  "fe80::own-ll4",
+  "fe80::own-ll3"
+ ],
+ "r1b_self_target": {
+  "127.0.0.1": {
+   "refused": true,
+   "why": "refused: 127.0.0.1 resolves to 127.0.0.1, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "127.1": {
+   "refused": true,
+   "why": "refused: '127.1' is not an address or hostname"
+  },
+  "0x7f000001": {
+   "refused": true,
+   "why": "refused: '0x7f000001' is not an address or hostname"
+  },
+  "2130706433": {
+   "refused": true,
+   "why": "refused: '2130706433' is not an address or hostname"
+  },
+  "0177.0.0.1": {
+   "refused": true,
+   "why": "refused: '0177.0.0.1' is not an address or hostname"
+  },
+  "0": {
+   "refused": true,
+   "why": "refused: '0' is not an address or hostname"
+  },
+  "0.0.0.0": {
+   "refused": true,
+   "why": "refused: 0.0.0.0 resolves to 0.0.0.0, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "::": {
+   "refused": true,
+   "why": "refused: :: resolves to ::, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "::1": {
+   "refused": true,
+   "why": "refused: ::1 resolves to ::1, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "[::1]": {
+   "refused": true,
+   "why": "refused: [::1] resolves to ::1, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "::ffff:127.0.0.1": {
+   "refused": true,
+   "why": "refused: ::ffff:127.0.0.1 resolves to 127.0.0.1, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "::127.0.0.1": {
+   "refused": true,
+   "why": "refused: ::127.0.0.1 resolves to ::7f00:1, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "::ffff:0:127.0.0.1": {
+   "refused": true,
+   "why": "refused: ::ffff:0:127.0.0.1 resolves to ::ffff:0:7f00:1, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "64:ff9b::7f00:1": {
+   "refused": true,
+   "why": "refused: 64:ff9b::7f00:1 resolves to 64:ff9b::7f00:1, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll11%lo0": {
+   "refused": true,
+   "why": "refused: fe80::own-ll11%lo0 resolves to fe80::own-ll11, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll11": {
+   "refused": true,
+   "why": "refused: fe80::own-ll11 resolves to fe80::own-ll11, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "localhost": {
+   "refused": true,
+   "why": "refused: localhost is this device \u2014 SSH only reaches other hosts"
+  },
+  "LocalHost.": {
+   "refused": true,
+   "why": "refused: LocalHost. is this device \u2014 SSH only reaches other hosts"
+  },
+  "this-host.local": {
+   "refused": true,
+   "why": "refused: this-host.local resolves to 10.0.0.OWN10, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll3%utun0": {
+   "refused": true,
+   "why": "refused: fe80::own-ll3%utun0 resolves to fe80::own-ll3, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll3": {
+   "refused": true,
+   "why": "refused: fe80::own-ll3 resolves to fe80::own-ll3, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll4%utun1": {
+   "refused": true,
+   "why": "refused: fe80::own-ll4%utun1 resolves to fe80::own-ll4, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll4": {
+   "refused": true,
+   "why": "refused: fe80::own-ll4 resolves to fe80::own-ll4, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll8%utun2": {
+   "refused": true,
+   "why": "refused: fe80::own-ll8%utun2 resolves to fe80::own-ll8, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll8": {
+   "refused": true,
+   "why": "refused: fe80::own-ll8 resolves to fe80::own-ll8, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll9%utun3": {
+   "refused": true,
+   "why": "refused: fe80::own-ll9%utun3 resolves to fe80::own-ll9, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll9": {
+   "refused": true,
+   "why": "refused: fe80::own-ll9 resolves to fe80::own-ll9, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll2%en0": {
+   "refused": true,
+   "why": "refused: fe80::own-ll2%en0 resolves to fe80::own-ll2, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll2": {
+   "refused": true,
+   "why": "refused: fe80::own-ll2 resolves to fe80::own-ll2, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "2001:db8::own-global1": {
+   "refused": true,
+   "why": "refused: 2001:db8::own-global1 resolves to 2001:db8::own-global1, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "2001:db8::own-global0": {
+   "refused": true,
+   "why": "refused: 2001:db8::own-global0 resolves to 2001:db8::own-global0, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "2001:db8::own-global6": {
+   "refused": true,
+   "why": "refused: 2001:db8::own-global6 resolves to 2001:db8::own-global6, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "10.0.0.OWN10": {
+   "refused": true,
+   "why": "refused: 10.0.0.OWN10 resolves to 10.0.0.OWN10, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll5%awdl0": {
+   "refused": true,
+   "why": "refused: fe80::own-ll5%awdl0 resolves to fe80::own-ll5, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll5": {
+   "refused": true,
+   "why": "refused: fe80::own-ll5 resolves to fe80::own-ll5, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll7%nan0": {
+   "refused": true,
+   "why": "refused: fe80::own-ll7%nan0 resolves to fe80::own-ll7, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll7": {
+   "refused": true,
+   "why": "refused: fe80::own-ll7 resolves to fe80::own-ll7, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  },
+  "fe80::own-ll5%llw0": {
+   "refused": true,
+   "why": "refused: fe80::own-ll5%llw0 resolves to fe80::own-ll5, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+  }
+ },
+ "r1c_allowlist": {
+  "nmap ok": {
+   "issued": true,
+   "why": "authorized: net:x on 192.0.2.10 (engagement 'job')"
+  },
+  "NMAP case": {
+   "issued": false,
+   "why": "refused: NMAP is not a program m may run (ALLOWED_PROGRAMS) \u2014 the engagement gate runs declared tools only"
+  },
+  "nmap\\x00": {
+   "issued": false,
+   "why": "refused: nmap\u0000 is not a program m may run (ALLOWED_PROGRAMS) \u2014 the engagement gate runs declared tools only"
+  },
+  "nmap.exe": {
+   "issued": false,
+   "why": "refused: nmap.exe is not a program m may run (ALLOWED_PROGRAMS) \u2014 the engagement gate runs declared tools only"
+  },
+  "./nmap": {
+   "issued": false,
+   "why": "refused: program './nmap' is not a bare declared tool name"
+  },
+  "nmap\\u200b": {
+   "issued": false,
+   "why": "refused: nmap\u200b is not a program m may run (ALLOWED_PROGRAMS) \u2014 the engagement gate runs declared tools only"
+  },
+  "empty": {
+   "issued": false,
+   "why": "refused: empty command"
+  },
+  "bytes argv0": {
+   "issued": false,
+   "why": "refused: b'nmap' is not a program m may run (ALLOWED_PROGRAMS) \u2014 the engagement gate runs declared tools only"
+  }
+ },
+ "r4_flipper": {
+  "'input send ok short'": {
+   "prepare_command_ok": false,
+   "why": "RF silenced: TX locked by SUITE_TX_LOCK in the environment",
+   "rfemit": "serial-rf"
+  },
+  "'INPUT send ok short'": {
+   "prepare_command_ok": false,
+   "why": "RF silenced: TX locked by SUITE_TX_LOCK in the environment",
+   "rfemit": "serial-rf"
+  },
+  "' input send ok short'": {
+   "prepare_command_ok": false,
+   "why": "RF silenced: TX locked by SUITE_TX_LOCK in the environment",
+   "rfemit": "serial-rf"
+  },
+  "'led r 0\\rinput send ok short'": {
+   "prepare_command_ok": false,
+   "why": "refused: control characters (CR/LF) in a serial command",
+   "rfemit": "serial-rf"
+  },
+  "'led r 0\\rsubghz tx 0 433920000'": {
+   "prepare_command_ok": false,
+   "why": "refused: control characters (CR/LF) in a serial command",
+   "rfemit": "serial-rf"
+  },
+  "'storage write /ext/subghz/x.sub'": {
+   "prepare_command_ok": true,
+   "why": "authorized: serial:flipper:storage on port:ttyACM0 (engagement 'job') \u2014 label-only authorization (the command is not bound to the scope)",
+   "rfemit": null
+  },
+  "'update install /ext/x.tar'": {
+   "prepare_command_ok": true,
+   "why": "authorized: serial:flipper:update on port:ttyACM0 (engagement 'job') \u2014 label-only authorization (the command is not bound to the scope)",
+   "rfemit": null
+  }
+ },
+ "r6_freq": {
+  "exact": {
+   "issued": true,
+   "why": "IQ replay: 915.0000 MHz license-free (915 ISM, region US) \u2014 authorized (<= 0 dBm)",
+   "power": 0
+  },
+  "1090 vs 915": {
+   "issued": false,
+   "why": "TX blocked: the command keys 1090000000 Hz but 915000000.0 Hz was authorized \u2014 refusing",
+   "power": 0
+  },
+  "attached -f1090": {
+   "issued": false,
+   "why": "TX blocked: cannot parse '-f1090000000' in the TX command \u2014 refusing",
+   "power": 0
+  },
+  "two -f": {
+   "issued": false,
+   "why": "TX blocked: the TX command must give exactly one -f frequency (found 2)",
+   "power": 0
+  },
+  "-t eats -f": {
+   "issued": true,
+   "why": "IQ replay: 915.0000 MHz license-free (915 ISM, region US) \u2014 authorized (<= 0 dBm)",
+   "power": 0
+  },
+  "leading zero": {
+   "issued": true,
+   "why": "IQ replay: 915.0000 MHz license-free (915 ISM, region US) \u2014 authorized (<= 0 dBm)",
+   "power": 0
+  },
+  "+sign": {
+   "issued": false,
+   "why": "TX blocked: TX command frequency '+915000000' is not a whole number of Hz \u2014 refusing",
+   "power": 0
+  },
+  "unicode digits": {
+   "issued": false,
+   "why": "TX blocked: TX command frequency '\uff19\uff11\uff15000000' is not a whole number of Hz \u2014 refusing",
+   "power": 0
+  },
+  "915e6": {
+   "issued": false,
+   "why": "TX blocked: TX command frequency '915e6' is not a whole number of Hz \u2014 refusing",
+   "power": 0
+  },
+  "-- then -f": {
+   "issued": false,
+   "why": "TX blocked: cannot parse '--' in the TX command \u2014 refusing",
+   "power": 0
+  },
+  "-a 1 amp": {
+   "issued": false,
+   "why": "TX blocked: cannot parse '-a' in the TX command \u2014 refusing",
+   "power": 0
+  },
+  "--freq long": {
+   "issued": false,
+   "why": "TX blocked: cannot parse '--freq=1090000000' in the TX command \u2014 refusing",
+   "power": 0
+  },
+  "-x 47 over cap": {
+   "issued": true,
+   "why": "IQ replay: 915.0000 MHz license-free (915 ISM, region US) \u2014 authorized (<= 0 dBm)",
+   "power": 0
+  },
+  "path argv0": {
+   "issued": false,
+   "why": "TX blocked: cannot verify the frequency of '/usr/bin/hackrf_transfer' \u2014 txguard issues only for hackrf_transfer",
+   "power": 0
+  },
+  "sudo": {
+   "issued": false,
+   "why": "TX blocked: cannot verify the frequency of 'sudo' \u2014 txguard issues only for hackrf_transfer",
+   "power": 0
+  },
+  "trailing positional": {
+   "issued": false,
+   "why": "TX blocked: cannot parse 'extra' in the TX command \u2014 refusing",
+   "power": 0
+  },
+  "-c CW": {
+   "issued": false,
+   "why": "TX blocked: cannot parse '-c' in the TX command \u2014 refusing",
+   "power": 0
+  }
+ },
+ "r5_label_only": {
+  "lf_t55_write": {
+   "issued": false,
+   "why": "RF silenced: the TX kill switch is OFF \u2014 arm it (TX slot) to emit",
+   "ticket_binding": null,
+   "trail_binding": null
+  },
+  "hf_mf_restore": {
+   "issued": false,
+   "why": "RF silenced: the TX kill switch is OFF \u2014 arm it (TX slot) to emit",
+   "ticket_binding": null,
+   "trail_binding": null
+  },
+  "hf_iclass_clone": {
+   "issued": false,
+   "why": "RF silenced: the TX kill switch is OFF \u2014 arm it (TX slot) to emit",
+   "ticket_binding": null,
+   "trail_binding": null
+  }
+ }
+}

@@ -51,19 +51,29 @@ def all_pass(results=None):
     return all(ok for _, ok, _ in results)
 
 
-def hardware_loopback_plan(mode, freq_hz, settings, iq_file="/tmp/selftest.iq", sample_rate=2_000_000):
+def hardware_loopback_plan(mode, freq_hz, settings, iq_file="/tmp/selftest.iq", sample_rate=2_000_000,
+                           devices=None):
     """Build the gated plan to TX a known burst and capture it back. Returns
-    (ok, reason, {tx_argv, rx_argv}) — argv only when txguard authorizes (into your own RX / load)."""
+    (ok, reason, {tx_ticket, rx_argv, power_dbm}) — the TX side is a single-use executor ticket,
+    issued only when txguard authorizes (into your own RX / load)."""
     import radio
+    import txguard
     req = radio.TxRequest(mode, freq_hz, settings=settings,
                           callsign=(settings or {}).get("callsign", ""))
-    ok, reason, power = req.authorize()
+    ok, reason, power = req.authorize(devices=devices)
     if not ok:
         return False, reason, None
+    argv = ["hackrf_transfer", "-t", iq_file, "-f", str(txguard.as_hz(freq_hz)),
+            "-s", str(txguard.as_hz(sample_rate)), "-x", "0"]
+    ok, why, ticket, _p = txguard.issue_ticket(mode, argv, freq_hz,
+                                               callsign=(settings or {}).get("callsign", ""),
+                                               settings=settings, sample_rate=sample_rate,
+                                               label="tx:loopback")
+    if not ok:
+        return False, why, None
     import iqtool
     return True, reason, {
-        "tx_argv": ["hackrf_transfer", "-t", iq_file, "-f", str(int(freq_hz)),
-                    "-s", str(int(sample_rate)), "-x", "0"],
+        "tx_ticket": ticket,
         "rx_argv": iqtool.capture_argv("rtlsdr", freq_hz, sample_rate, iq_file + ".rx", seconds=2),
         "power_dbm": power,
     }

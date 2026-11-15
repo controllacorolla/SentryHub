@@ -37,5 +37,8 @@ def test_hardware_loopback_gated(_reset, monkeypatch):
     txguard.arm(True)
     txguard.unlock_session(True)
     ok, why, plan = loopback.hardware_loopback_plan("replay", 433_920_000,
-                                                    {"tx_enabled": True})
-    assert ok and plan["tx_argv"][0] == "hackrf_transfer" and "rx_argv" in plan
+                                                    {"tx_enabled": True, "tx_region": "EU"})
+    assert ok and plan["tx_ticket"].argv[0] == "hackrf_transfer" and "rx_argv" in plan
+    # CL2/G10: in the US 433.92 MHz is the 70 cm amateur band, not licence-free ISM
+    ok, why, plan = loopback.hardware_loopback_plan("replay", 433_920_000, {"tx_enabled": True})
+    assert not ok and plan is None

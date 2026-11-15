@@ -2,14 +2,17 @@
 import pytest
 
 import engagement as E
+import txguard
 import zwave as Z
 
 
 @pytest.fixture(autouse=True)
 def _reset():
     E.reset()
+    txguard.reset_session()
     yield
     E.reset()
+    txguard.reset_session()
 
 
 def test_region_freq():
@@ -35,5 +38,6 @@ def test_sniff_ungated_query_gated():
     assert ok and argv[0] == "zwave-sniffer"
     assert Z.prepare("query", target="node5", node_id=5)[0] is False     # no engagement
     E.start("audit", "self-owned", ["node5"], "KD0ABC")
-    ok, _, argv = Z.prepare("query", target="node5", region="US", node_id=5)
-    assert ok and "5" in argv
+    txguard.arm(True)    # CL2-fix N2: an RF emitter also needs the TX kill switch armed
+    ok, why, t = Z.prepare("query", target="node5", region="US", node_id=5)
+    assert ok and "5" in t.argv and "label-only authorization" in why

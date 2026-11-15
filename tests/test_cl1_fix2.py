@@ -195,10 +195,14 @@ def test_panic_unchecks_the_bench_ack_and_the_slot_reads_the_gate():
         hub.open_callsign("BENCH")
         _pump(80)
         bench = hub.pages["BENCH"]
+        # CL2/G1: BENCH needs the kill switch armed + the session unlocked, not just the ack
+        import txguard
+        txguard.arm(True)
+        txguard.unlock_session(True)
         bench.ack.setChecked(True)
         _pump(30)
         hub.state.poll()
-        assert hub.topbar.slots["tx"].text() == "PERMITTED"
+        assert hub.topbar.slots["tx"].text() == "UNLOCKED"
         hub.panic()
         _pump(40)
         assert not bench.ack.isChecked()

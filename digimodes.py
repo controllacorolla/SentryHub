@@ -37,22 +37,26 @@ def installed_modes(which=shutil.which):
 
 
 def prepare(mode, freq_mhz=None, callsign="", settings=None, which=shutil.which):
-    """Gate opening the TX tool for `mode`. Returns (ok, reason, argv).
+    """Gate opening the TX tool for `mode`. Returns (ok, reason, ticket).
 
-    argv is the command to launch the backend, returned ONLY when txguard authorizes the band +
-    callsign + armed kill switch + session unlock, and the backend tool is installed."""
+    The ticket (run only through the executor) is issued ONLY when txguard authorizes the band +
+    callsign + armed kill switch + session unlock + tx_enabled, and the backend tool is installed."""
     import txguard
     m = MODES.get(mode)
     if not m:
         return False, "unknown mode %r" % (mode,), None
     if not which(m["tool"]):
         return False, "%s is not installed (backend for %s)" % (m["tool"], m["label"]), None
-    freq_hz = float(freq_mhz if freq_mhz is not None else m["default_mhz"]) * 1e6
-    ok, reason, _power = txguard.authorize(m["guard"], freq_hz, callsign=callsign,
-                                           settings=settings or {})
+    try:
+        freq_hz = float(freq_mhz if freq_mhz is not None else m["default_mhz"]) * 1e6
+    except (TypeError, ValueError):
+        return False, "frequency is not a number", None
+    ok, reason, ticket, _power = txguard.issue_ticket(m["guard"], [m["tool"]], freq_hz,
+                                                      callsign=callsign, settings=settings or {},
+                                                      label="tx:" + mode)
     if not ok:
         return False, reason, None
-    return True, "%s via %s authorized" % (m["label"], m["tool"]), [m["tool"]]
+    return True, "%s via %s authorized" % (m["label"], m["tool"]), ticket
 
 
 DEFAULTS = {"mode": "ft8", "freq_mhz": 14.074, "callsign": "", "tx_enabled": False}

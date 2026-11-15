@@ -28,6 +28,11 @@ JEDEC_MFR = {
 }
 
 
+# CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("flashrom", "openocd"))
+
+
 def printable_ratio(sample):
     """Fraction of bytes that are printable ASCII or common whitespace — the autobaud score."""
     if not sample:
@@ -102,23 +107,21 @@ def flashrom_read_argv(programmer, out_path):
 
 
 def prepare_flash_write(programmer, in_path, target, evidence_chain=None):
-    """Gate a flash WRITE. Returns (ok, reason, argv). argv is None unless an authorized, in-scope
-    engagement is open — flashing is destructive and always scope-checked + evidence-logged."""
-    ok, why = engagement.authorize_action("buslab:flash_write:%s" % programmer, target, evidence_chain)
-    if not ok:
-        return False, why, None
-    return True, why, ["flashrom", "-p", programmer, "-w", in_path]
+    """Gate a flash WRITE. Returns (ok, reason, ticket). Destructive; the target is a label the
+    operator typed — the command cannot be bound to it, so this is a label-only authorization."""
+    return engagement.issue("buslab:flash_write:%s" % programmer, target,
+                            argv=["flashrom", "-p", programmer, "-w", in_path], kind="label",
+                            evidence_chain=evidence_chain, label="buslab:flash_write")
 
 
 def prepare_jtag_write(interface_cfg, command, target, evidence_chain=None, target_cfg=None):
-    """Gate an active JTAG write/halt/flash command. Returns (ok, reason, argv)."""
-    ok, why = engagement.authorize_action("buslab:jtag:%s" % command.split()[0], target, evidence_chain)
-    if not ok:
-        return False, why, None
+    """Gate an active JTAG write/halt/flash command. Returns (ok, reason, ticket). Label-only."""
     argv = ["openocd", "-f", interface_cfg]
     if target_cfg:
         argv += ["-f", target_cfg]
-    return True, why, argv + ["-c", "init; %s; shutdown" % command]
+    argv += ["-c", "init; %s; shutdown" % command]
+    return engagement.issue("buslab:jtag:%s" % (command.split() or ["?"])[0], target, argv=argv,
+                            kind="label", evidence_chain=evidence_chain, label="buslab:jtag")
 
 
 def detect(which=shutil.which):

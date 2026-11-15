@@ -1,0 +1,66 @@
+{
+ "ssh fe80::own-ll2%en0 scope=['fe80::/10']": {
+  "start": [
+   false,
+   "scope refused: 'fe80::/10' is wider than /32"
+  ],
+  "issued": false,
+  "why": "refused: fe80::own-ll2%en0 resolves to fe80::own-ll2, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)",
+  "argv": null
+ },
+ "ssh fe80::own-ll2%en0 scope=['fe80::own-ll2']": {
+  "start": [
+   true,
+   "engagement 'job' active (1 targets in scope, expires in 8 h)"
+  ],
+  "issued": false,
+  "why": "refused: fe80::own-ll2%en0 resolves to fe80::own-ll2, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)",
+  "argv": null
+ },
+ "ssh fe80::own-ll2%en0 scope=['fe80::own-ll2%en0']": {
+  "start": [
+   true,
+   "engagement 'job' active (1 targets in scope, expires in 8 h)"
+  ],
+  "issued": false,
+  "why": "refused: fe80::own-ll2%en0 resolves to fe80::own-ll2, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)",
+  "argv": null
+ },
+ "ssh fe80::own-ll2%en0 scope=['::/0']": {
+  "start": [
+   false,
+   "scope refused: '::/0' is wider than /32"
+  ],
+  "issued": false,
+  "why": "refused: fe80::own-ll2%en0 resolves to fe80::own-ll2, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)",
+  "argv": null
+ },
+ "hostname this-host.local": [
+  null,
+  "refused: this-host.local resolves to 10.0.0.OWN10, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+ ],
+ "ssh ::127.0.0.1": {
+  "issued": false,
+  "why": "refused: ::127.0.0.1 resolves to ::7f00:1, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+ },
+ "r5": {
+  "lf_t55_write": {
+   "issued": true,
+   "why": "authorized: proxmark:lf_t55_write on uid:2006F623AE (engagement 'job') \u2014 written content is not bound to the scope (label-only for the data)",
+   "ticket_binding": "label-only",
+   "trail_binding": "label-only"
+  },
+  "hf_mf_restore": {
+   "issued": true,
+   "why": "authorized: proxmark:hf_mf_restore on uid:2006F623AE (engagement 'job') \u2014 written content is not bound to the scope (label-only for the data)",
+   "ticket_binding": "label-only",
+   "trail_binding": "label-only"
+  },
+  "hf_iclass_clone": {
+   "issued": true,
+   "why": "authorized: proxmark:hf_iclass_clone on uid:2006F623AE (engagement 'job') \u2014 written content is not bound to the scope (label-only for the data)",
+   "ticket_binding": "label-only",
+   "trail_binding": "label-only"
+  }
+ }
+}

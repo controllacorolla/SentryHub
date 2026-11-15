@@ -79,21 +79,23 @@ def test_bus_model_counts_period_and_changed_bytes():
 
 
 def test_cansend_argv_std_and_ext():
-    assert C.cansend_argv("can0", 0x123, [0xDE, 0xAD]) == ["cansend", "can0", "123#DEAD"]
-    assert C.cansend_argv("can0", 0x18DAF110, [0x02, 0x10, 0x01])[2].startswith("18DAF110#")
+    # the builder is private (CL2/G11); the gate is the only way to get one
+    assert C._cansend_argv("can0", 0x123, [0xDE, 0xAD]) == ["cansend", "can0", "123#DEAD"]
+    assert C._cansend_argv("can0", 0x18DAF110, [0x02, 0x10, 0x01])[2].startswith("18DAF110#")
 
 
 def test_transmit_is_gated():
     # no engagement -> refused, no argv built
     ok, why, argv = C.prepare_send("can0", 0x7DF, [0x02, 0x01, 0x0C], target="VIN-TESTCAR")
     assert not ok and argv is None and "engagement" in why.lower()
-    # open a scoped engagement -> authorized
-    E.start("ecu audit", "ROE-9", ["VIN-TESTCAR"], "KD0ABC")
-    ok, why, argv = C.prepare_send("can0", 0x7DF, [0x02, 0x01, 0x0C], target="VIN-TESTCAR")
-    assert ok and argv == ["cansend", "can0", "7DF#02010C"]
-    # out of scope -> refused
-    ok, why, argv = C.prepare_send("can0", 0x7DF, [0x02, 0x01, 0x0C], target="VIN-OTHERCAR")
+    # open a scoped engagement (interface + ID range, CL2/G5) -> authorized
+    E.start("ecu audit", "ROE-9", ["can0:0x7DF"], "KD0ABC")
+    ok, why, t = C.prepare_send("can0", 0x7DF, [0x02, 0x01, 0x0C], target="VIN-TESTCAR")
+    assert ok and t.argv == ("cansend", "can0", "7DF#02010C")
+    # out of scope (another ID / interface) -> refused
+    ok, why, argv = C.prepare_send("can0", 0x7E0, [0x02, 0x01, 0x0C], target="VIN-OTHERCAR")
     assert not ok and argv is None
+    assert C.prepare_send("can1", 0x7DF, [0x02], target="VIN-TESTCAR")[0] is False
 
 
 def test_detect_injected():

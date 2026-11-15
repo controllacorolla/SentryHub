@@ -63,47 +63,105 @@ def has_nmap():
     return bool(shutil.which("nmap"))
 
 
-def nmap_scan(cidr, on_host, on_progress, stop_flag, procs=None):
-    """Service/version scan of the LOCAL subnet with nmap (connect scan, no root needed).
-    Parses greppable output line by line and reports each host as it finishes."""
-    cmd = ["nmap", "-sV", "--version-light", "-T4", "--open", "-oG", "-", cidr]
-    try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                stdin=subprocess.DEVNULL, text=True, bufsize=1, start_new_session=True)
-    except OSError:
-        return False
-    if procs is not None:
-        procs.append(proc)     # so Stop / on_close can kill it without waiting for output
-    me = own_ipv4()
-    for line in proc.stdout:
-        if stop_flag.is_set():
+def parse_nmap_line(line, me=None):
+    """One host from nmap greppable (-oG) output, or None."""
+    line = line.strip()
+    if not line.startswith("Host:") or "Ports:" not in line:
+        return None
+    m = re.match(r"Host:\s+(\S+)\s+\(([^)]*)\)", line)
+    if not m:
+        return None
+    ip, name = m.group(1), m.group(2)
+    ports = []
+    pfield = line.split("Ports:", 1)[1].split("\t")[0]
+    for entry in pfield.split(","):
+        parts = entry.strip().split("/")
+        if len(parts) >= 5 and parts[1] == "open":
             try:
-                proc.terminate()
-            except OSError:
-                pass
-            break
-        line = line.strip()
-        if line.startswith("# ") and "scanned" in line.lower():
-            on_progress("scanning…", 0.5)
-        if not line.startswith("Host:") or "Ports:" not in line:
-            continue
-        m = re.match(r"Host:\s+(\S+)\s+\(([^)]*)\)", line)
+                port = int(parts[0])
+            except ValueError:
+                continue
+            ports.append({"port": port, "svc": parts[4] or "",
+                          "ver": (parts[6] if len(parts) > 6 else "").strip()})
+    return {"ip": ip, "name": name, "ports2": sorted(ports, key=lambda x: x["port"]),
+            "me": ip == me}
+
+
+def network_from_ip_addr(text, ip=None):
+    """The real network (address/prefix from the interface's netmask) from `ip -o -4 addr` output,
+    for the line carrying `ip` (or the first non-loopback line). Never assumes a /24 (audit S2)."""
+    import ipaddress
+    for line in str(text).splitlines():
+        m = re.search(r"\binet\s+(\d+\.\d+\.\d+\.\d+/\d+)", line)
         if not m:
             continue
-        ip, name = m.group(1), m.group(2)
-        ports = []
-        pfield = line.split("Ports:", 1)[1].split("\t")[0]
-        for entry in pfield.split(","):
-            parts = entry.strip().split("/")
-            if len(parts) >= 5 and parts[1] == "open":
-                port = int(parts[0])
-                svc = parts[4] or ""
-                ver = parts[6] if len(parts) > 6 else ""
-                ports.append({"port": port, "svc": svc, "ver": ver.strip()})
-        on_host({"ip": ip, "name": name, "ports2": sorted(ports, key=lambda x: x["port"]),
-                 "me": ip == me})
-    proc.wait()
-    return True
+        try:
+            iface = ipaddress.ip_interface(m.group(1))
+        except ValueError:
+            continue
+        if iface.ip.is_loopback or (ip and str(iface.ip) != ip):
+            continue
+        return str(iface.network)
+    return None
+
+
+def local_network():
+    """This device's network with its real netmask, or None (then nothing is scanned)."""
+    ip = own_ipv4()
+    if not ip:
+        return None
+    try:
+        r = subprocess.run(["ip", "-o", "-4", "addr", "show"], capture_output=True, text=True,
+                           timeout=4)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return network_from_ip_addr(r.stdout, ip)
+
+
+def scan_network(on_host, on_progress, stop_flag, spawner=None, local_net=None, wait=False,
+                 procs=None, ports=None, on_done=None):
+    """"Scan my network" (audit S2): the device's REAL network (netmask, not an assumed /24) goes
+    through netpent.prepare — an open engagement with that network in the typed scope, logged — and
+    nmap runs only through the executor ticket. Without nmap the built-in connect scanner runs
+    behind the same gate. Returns (ok, reason). Nothing is spawned or probed when refused."""
+    net = (local_net or local_network)()
+    if not net:
+        return False, "could not read this device's network and netmask — not scanning"
+    me = own_ipv4()
+    if spawner is not None or has_nmap():
+        import executor
+        import netpent
+        ok, why, ticket = netpent.prepare("survey", net)
+        if not ok:
+            return False, why
+
+        def on_line(line):
+            if stop_flag is not None and stop_flag.is_set():
+                return
+            if line.startswith("# ") and "scanned" in line.lower():
+                on_progress("scanning…", 0.5)
+            h = parse_nmap_line(line, me)
+            if h:
+                on_host(h)
+        try:
+            h = executor.start(ticket, spawner=spawner, on_line=on_line)
+        except (executor.TicketRefused, OSError) as e:
+            return False, "nmap not started: %s" % e
+        if procs is not None:
+            procs.append(h)
+        if wait:
+            h.wait()
+        return True, why
+    import engagement
+    ok, why = engagement.authorize_action("net:connect-scan", net, kind="ip")
+    if not ok:
+        return False, why
+    sc = NetScanner(ports or [22, 80, 443], on_host, on_done or (lambda ok: None), on_progress,
+                    net=net)
+    if procs is not None:
+        procs.append(sc)
+    sc.run()
+    return True, why
 
 
 BANDS = {
@@ -128,13 +186,15 @@ def own_ipv4():
         return None
 
 
-def subnet_hosts(ip):
-    """The /24 the device is on, as a list of host IPs (minus network/broadcast)."""
-    if not ip:
+def subnet_hosts(net):
+    """Host IPs of an authorized network (minus network/broadcast). Capped at a /22's worth."""
+    import ipaddress
+    try:
+        n = ipaddress.ip_network(net, strict=False)
+    except ValueError:
         return [], ""
-    parts = ip.split(".")
-    base = ".".join(parts[:3])
-    return ["%s.%d" % (base, i) for i in range(1, 255)], base + ".0/24"
+    hosts = [str(h) for h in n.hosts()][:1022]
+    return hosts, str(n)
 
 
 def arp_hosts():
@@ -172,12 +232,13 @@ def rdns(ip):
 class NetScanner:
     """Threaded host discovery + port scan of the local subnet. Progress via callbacks."""
 
-    def __init__(self, ports, on_host, on_done, on_progress):
+    def __init__(self, ports, on_host, on_done, on_progress, net=None):
         self.ports = ports
+        self.net = net            # the AUTHORIZED network (scan_network gated it); None = nothing
         self.on_host, self.on_done, self.on_progress = on_host, on_done, on_progress
         self.stop_flag = threading.Event()
 
-    def stop(self):
+    def stop(self, reason=None):
         self.stop_flag.set()
 
     def run(self, ping_sweep=True):
@@ -185,7 +246,10 @@ class NetScanner:
 
     def _run(self, ping_sweep):
         ip = own_ipv4()
-        hosts, cidr = subnet_hosts(ip)
+        hosts, cidr = subnet_hosts(self.net) if self.net else ([], "")
+        if not hosts:
+            self.on_done(False)
+            return
         self.on_progress("scanning %s …" % cidr, 0.0)
         live = dict(arp_hosts())
         live[ip] = True if ip else None
@@ -218,13 +282,9 @@ class NetScanner:
                     h = q.get_nowait()
                 except _q.Empty:
                     return
-                try:
-                    r = subprocess.run(["ping", "-c", "1", "-W", "1", h],
-                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
-                    if r.returncode == 0:
-                        live[h] = True
-                except (OSError, subprocess.TimeoutExpired):
-                    pass
+                # liveness by TCP connect (no ping subprocess): authorized hosts only
+                if any(tcp_open(h, p, timeout=0.3) for p in (22, 80, 443)):
+                    live[h] = True
         ts = [threading.Thread(target=worker, daemon=True) for _ in range(40)]
         for t in ts:
             t.start()
@@ -478,31 +538,28 @@ def main():
             net_state["hosts"] = []
             sid = net_state["sid"] = net_state.get("sid", 0) + 1
             S.set_btn(scan_btn, "Stop", "danger")
-            ip = own_ipv4()
-            _, cidr = subnet_hosts(ip)
-            net_prog.config(text=("nmap " if has_nmap() else "") + "scanning %s…" % cidr)
-            if has_nmap():
-                sf = threading.Event()
-                net_state["stop_flag"] = sf
+            sf = threading.Event()
+            net_state["stop_flag"] = sf
+            net_prog.config(text="checking authorization…")
 
-                def work():
-                    nmap_scan(cidr, lambda h: q.put(("net_host", h, sid)),
-                              lambda t, f: q.put(("net_prog", t, f, sid)), sf,
-                              procs=net_state.setdefault("nmap_procs", []))
+            def work():
+                # gated (audit S2): real netmask -> netpent.prepare -> executor ticket
+                ok, why = scan_network(lambda h: q.put(("net_host", h, sid)),
+                                       lambda t, f: q.put(("net_prog", t, f, sid)), sf,
+                                       wait=True, procs=net_state.setdefault("nmap_procs", []),
+                                       ports=s["ports"],
+                                       on_done=lambda ok: q.put(("net_done", ok, sid)))
+                if not ok:
+                    q.put(("net_prog", "NOT SCANNED — " + why, 0.0, sid))
+                    q.put(("net_done", False, sid))
+                elif has_nmap():
                     q.put(("net_done", not sf.is_set(), sid))
-                S.in_thread(work)
-            else:
-                sc = NetScanner(s["ports"],
-                                on_host=lambda h: q.put(("net_host", h, sid)),
-                                on_done=lambda ok: q.put(("net_done", ok, sid)),
-                                on_progress=lambda t, f: q.put(("net_prog", t, f, sid)))
-                net_state["scanner"] = sc
-                sc.run(ping_sweep=s.get("ping_sweep", True))
+            S.in_thread(work)
         net_state["toggle"] = toggle_scan
 
         def kill_nmap():
             for p in net_state.get("nmap_procs", []):
-                S.stop_group(p, grace=1.0)   # own session: it would outlive Scout otherwise
+                p.stop("Scout stop")         # executor handle (process group) or NetScanner
             net_state["nmap_procs"] = []
         net_state["kill_nmap"] = kill_nmap
         if os.environ.get("UCS_SCAN"):

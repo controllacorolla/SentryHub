@@ -28,6 +28,11 @@ DEFAULTS = {"broker": "127.0.0.1", "port": 1883, "topic": "#", "hosts": [],
 
 
 # ---- pure helpers (tested) ------------------------------------------------------------------
+# CL2-fix2 R1: the only program this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("ssh",))
+
+
 def fmt_rssi(rssi):
     """RSSI dBm -> a short strength word + bar glyph. None -> unknown."""
     if rssi is None:
@@ -116,6 +121,183 @@ def ssh_hosts(cfg_path=None, extra=()):
         if h and h not in hosts:
             hosts.append(h)
     return hosts
+
+
+# ---- gates (audit S2): connecting to a BLE device, publishing to a broker and running a command
+# over SSH all touch a target, so each needs an open engagement with that target in scope.
+def authorize_ble_connect(address):
+    import engagement
+    return engagement.authorize_action("devterm:ble-connect", address, kind="mac")
+
+
+def authorize_mqtt_publish(broker):
+    import engagement
+    return engagement.authorize_action("devterm:mqtt-publish", broker, kind="ip")
+
+
+def own_addresses():
+    """Every IP address on this device's interfaces (getifaddrs), as ipaddress objects. Raises
+    OSError when they cannot be listed — callers fail closed (CL2-fix2 R1)."""
+    import ctypes
+    import ctypes.util
+    import ipaddress
+    import socket
+
+    class _IfAddrs(ctypes.Structure):
+        pass
+    _IfAddrs._fields_ = [("ifa_next", ctypes.POINTER(_IfAddrs)), ("ifa_name", ctypes.c_char_p),
+                         ("ifa_flags", ctypes.c_uint), ("ifa_addr", ctypes.c_void_p),
+                         ("ifa_netmask", ctypes.c_void_p), ("ifa_dstaddr", ctypes.c_void_p),
+                         ("ifa_data", ctypes.c_void_p)]
+    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    head = ctypes.POINTER(_IfAddrs)()
+    if libc.getifaddrs(ctypes.byref(head)) != 0:
+        raise OSError(ctypes.get_errno(), "getifaddrs failed")
+    bsd = sys.platform == "darwin" or "bsd" in sys.platform     # sockaddr starts with sa_len
+    out = set()
+    try:
+        p = head
+        while p:
+            sa = p.contents.ifa_addr
+            if sa:
+                raw = ctypes.string_at(sa, 2)
+                fam = raw[1] if bsd else int.from_bytes(raw, sys.byteorder)
+                if fam == socket.AF_INET:
+                    out.add(ipaddress.ip_address(ctypes.string_at(sa + 4, 4)))
+                elif fam == socket.AF_INET6:
+                    out.add(ipaddress.ip_address(ctypes.string_at(sa + 8, 16)))
+            p = p.contents.ifa_next
+    finally:
+        libc.freeifaddrs(head)
+    if not out:
+        raise OSError("no interface addresses found")
+    return out
+
+
+# A host token may only be an address, a bracketed address with an optional %scope, or a
+# hostname. Nothing a shell, ssh or a terminal could interpret (RA-CL2d D1).
+_HOST_TOKEN = __import__("re").compile(r"^\[?[A-Za-z0-9.:%_-]{1,255}\]?$")
+_SCOPE_ID = __import__("re").compile(r"^[A-Za-z0-9_.-]{1,15}$")
+
+
+def _terminal_argv(term, host):
+    """argv for 'open a terminal running ssh <host>'. Never one command string: xterm falls back to
+    `$SHELL -c <string>` when a single -e argument is not an executable (RA-CL2d D1), and lxterminal
+    parses its -e string. ssh gets `--` so the host can never be read as an option."""
+    import shlex
+    if term == "lxterminal":
+        return [term, "-e", " ".join(shlex.quote(x) for x in ("ssh", "--", host))]
+    return [term, "-e", "ssh", "--", host]
+
+
+def _hostname_option(addr):
+    """HostName= value: OpenSSH percent-expands it, so a scope id's % is doubled (RA-CL2d D3)."""
+    return "HostName=" + str(addr).replace("%", "%%")
+
+
+def _canon(a):
+    """An address with its IPv6 scope id dropped and an IPv4-mapped form unwrapped (RA-CL2c C2)."""
+    import ipaddress
+    ip = ipaddress.ip_address(str(a).split("%")[0].strip("[]"))
+    if getattr(ip, "ipv4_mapped", None):
+        ip = ip.ipv4_mapped
+    return ip
+
+
+_V4_EMBED = ("::/96", "::ffff:0:0:0/96", "64:ff9b::/96", "64:ff9b:1::/48")   # compat, SIIT, NAT64, local NAT64
+
+
+def _embeds_v4(ip, mine):
+    """True when an IPv6 address carries an IPv4 address in its low 32 bits under one of the
+    translation / compatibility prefixes and that IPv4 is loopback, unspecified or ours
+    (RA-CL2c C3). Fail closed for the whole ::/96 and ::ffff:0:0:0/96 ranges too."""
+    import ipaddress
+    if ip.version != 6:
+        return False
+    for pre in _V4_EMBED:
+        if ip in ipaddress.ip_network(pre):
+            v4 = ipaddress.ip_address(int(ip) & 0xFFFFFFFF)
+            if not pre.startswith("64:ff9b") or v4.is_loopback or v4.is_unspecified or v4 in mine:
+                return True
+    return False
+
+
+def _self_target(host):
+    """(addresses, refusal): the addresses `host` resolves to, or a refusal when it is this device
+    — loopback, unspecified, localhost, or any address on this device's own interfaces (CL2-fix2
+    R1, owner decision: a remote command must not be a way to run tools on this device)."""
+    import engagement
+    import ipaddress
+    h = str(host or "").strip()
+    if not h or h.startswith("-") or any(c.isspace() for c in h):
+        return None, "host %r is not valid" % (host,)
+    if not _HOST_TOKEN.match(h):
+        return None, ("refused: host %r contains characters that are not part of an address or "
+                      "hostname (RA-CL2d D1)" % (host,))
+    if "%" in h:
+        scope = h.strip("[]").split("%", 1)[1]
+        if not _SCOPE_ID.match(scope):
+            return None, "refused: %r is not an interface name (IPv6 scope id)" % scope
+    if h.lower().rstrip(".") in ("localhost", "localhost.localdomain", "ip6-localhost"):
+        return None, "refused: %s is this device — SSH only reaches other hosts" % h
+    try:
+        addrs = engagement.pin_host(h)
+    except ValueError as e:
+        return None, "refused: %s" % e
+    if addrs is None:                               # a literal address
+        try:
+            addrs = [str(ipaddress.ip_address(h.strip("[]")))]
+        except ValueError:
+            return None, "refused: %r is not an address or hostname" % h
+    try:
+        mine = own_addresses()
+    except OSError as e:
+        return None, "refused: cannot list this device's addresses (%s) — fail closed" % e
+    mine = {_canon(m) for m in mine}
+    for a in addrs:
+        ip = _canon(a)
+        if ip.is_loopback or ip.is_unspecified or ip in mine or _embeds_v4(ip, mine):
+            return None, ("refused: %s resolves to %s, which is this device — SSH only reaches "
+                          "other hosts (a command here would bypass the TX gate)" % (h, ip))
+    return addrs, ""
+
+
+def authorize_ssh_host(host):
+    import engagement
+    _a, refusal = _self_target(host)
+    if refusal:
+        return False, refusal
+    return engagement.authorize_action("devterm:ssh-open", host, kind="ip")
+
+
+def prepare_ssh(host, cmd):
+    """Gate a one-shot remote command. Returns (ok, reason, ticket) for
+    ssh -o BatchMode=yes -o ConnectTimeout=8 -o HostName=<pinned> -o ProxyCommand=none
+    -o ProxyJump=none <host> <cmd>, run only through the executor.
+
+    CL2-fix2 R1 (owner decision): the target is resolved once and must not be this device; ssh is
+    pinned to that checked address with no proxy hop, so it cannot be redirected back here. The
+    remote command runs on the other host — label-only, and not subject to this device's RF hard
+    lock (none of the suite's radios are involved)."""
+    import engagement
+    addrs, refusal = _self_target(host)
+    if refusal:
+        return False, refusal, None
+    h = str(host).strip()
+    c = str(cmd)
+    if not c.strip() or c.lstrip().startswith("-"):
+        return False, ("refused: the remote command must not start with '-' (OpenSSH would read it "
+                       "as an option and could run it on this device)"), None
+    # RA-CL2c C1: '--' ends option parsing so nothing after it (host or command) is ever read as
+    # an ssh option such as -F / -oKnownHostsCommand / -oPKCS11Provider.
+    ok, why, t = engagement.issue(
+        "devterm:ssh", addrs[0],
+        argv=["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", _hostname_option(addrs[0]),
+              "-o", "ProxyCommand=none", "-o", "ProxyJump=none", "--", h, c],
+        kind="ip", label="devterm:ssh", also=tuple((a, "ip") for a in addrs[1:]))
+    if ok:
+        why += " — remote command is label-only (runs on the target, not this device's radios)"
+    return ok, why, t
 
 
 def term_launcher():
@@ -306,6 +488,11 @@ def main():
         connect_ble(d)
 
     def connect_ble(d):
+        if not demo:
+            ok, why = authorize_ble_connect(d["address"])
+            if not ok:
+                ble_status.config(text="NOT CONNECTED — " + why, fg=S.AMBER)
+                return
         ble_status.config(text="connecting to %s…" % (d["name"] or d["address"]), fg=T.TXT_3)
 
         def work():
@@ -488,6 +675,11 @@ def main():
         topic, val = pub_topic.get().strip(), pub_val.get()
         if not topic:
             return
+        if not demo:
+            ok, why = authorize_mqtt_publish(s.get("broker", ""))
+            if not ok:
+                mqtt_status.config(text="NOT PUBLISHED — " + why, fg=S.AMBER)
+                return
         try:
             m.publish(topic, val)
         except Exception as e:
@@ -591,13 +783,18 @@ def main():
             s.setdefault("hosts", []).append(host)
         save()
         render_hosts()
+        ok, why = authorize_ssh_host(host)
+        if not ok:
+            ssh_status.config(text="NOT OPENED — " + why, fg=S.AMBER)
+            return
         term = term_launcher()
         if not term:
             ssh_status.config(text="no terminal emulator found (install lxterminal)", fg=S.AMBER)
             return
         try:
-            S.spawn([term, "-e", "ssh %s" % host] if term in ("lxterminal", "xterm")
-                    else [term, "-e", "ssh", host])
+            import subprocess
+            subprocess.Popen(_terminal_argv(term, host), start_new_session=True,
+                             stdin=subprocess.DEVNULL)
             ssh_status.config(text="opened terminal to %s" % host, fg=T.TXT)
             slog.event("devterm", "ssh %s" % host, id="ssh:" + host)
         except Exception as e:
@@ -612,12 +809,20 @@ def main():
         cmd_out.delete("1.0", "end")
         cmd_out.insert("end", "$ ssh %s %s\n" % (host, cmd))
         cmd_out.config(state="disabled")
+        ok, why, ticket = prepare_ssh(host, cmd)
+        if not ok:
+            ssh_status.config(text="NOT RUN — " + why, fg=S.AMBER)
+            return
         ssh_status.config(text="running…", fg=T.TXT_3)
 
         def work():
-            # BatchMode: key-based only, never prompt for a password
-            rc, out = S.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host, cmd],
-                            timeout=30)
+            # BatchMode: key-based only, never prompt for a password; through the executor ticket
+            import executor
+            try:
+                r = executor.run(ticket, timeout=30)
+                rc, out = r.exit_code, "\n".join(r.lines)
+            except (executor.TicketRefused, OSError) as e:
+                rc, out = -1, str(e)
             q.put(("ssh_out", (rc, out)))
         S.in_thread(work)
 

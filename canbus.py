@@ -18,6 +18,11 @@ import sys
 import engagement
 
 # ---- OBD-II mode 01 live PIDs (SAE J1979). (name, n_bytes, decoder(data_bytes)->(value, unit)) ----
+# CL2-fix2 R1: the only program this module may run through the engagement gate (argv[0],
+# a bare name). engagement.issue refuses anything else.
+ALLOWED_PROGRAMS = frozenset(("cansend",))
+
+
 def _obd_rpm(d):      return ((d[0] << 8) + d[1]) / 4.0, "rpm"
 def _obd_speed(d):    return float(d[0]), "km/h"
 def _obd_coolant(d):  return d[0] - 40.0, "C"
@@ -189,9 +194,8 @@ def candump_argv(iface="can0"):
     return ["candump", "-ta", iface]
 
 
-def cansend_argv(iface, can_id, data, ext=None):
-    """Build a cansend invocation. NEVER call this directly for a transmit — go through prepare_send,
-    which gates it. Exposed only so the gated path and tests can build the string."""
+def _cansend_argv(iface, can_id, data, ext=None):
+    """Build a cansend invocation. Private: only prepare_send (the gate) builds one."""
     if ext is None:
         ext = can_id > 0x7FF
     width = 8 if ext else 3
@@ -199,13 +203,20 @@ def cansend_argv(iface, can_id, data, ext=None):
     return ["cansend", iface, frame]
 
 
-def prepare_send(iface, can_id, data, target, evidence_chain=None, ext=None):
-    """Gate a transmit onto the bus. Returns (ok, reason, argv). argv is None unless an authorized,
-    in-scope engagement is open — every frame that leaves the tool is scope-checked and logged."""
-    ok, why = engagement.authorize_action("canbus:tx:0x%X@%s" % (can_id, iface), target, evidence_chain)
-    if not ok:
-        return False, why, None
-    return True, why, cansend_argv(iface, can_id, data, ext=ext)
+def prepare_send(iface, can_id, data, target=None, evidence_chain=None, ext=None):
+    """Gate a transmit onto the bus. Returns (ok, reason, ticket). The scope is bound to the frame
+    (audit G5): the engagement must list this interface with an ID range containing can_id
+    (e.g. can0:0x700-0x7FF). `target` is kept for the trail label only."""
+    try:
+        cid = int(can_id)
+        payload = bytes(data)
+    except (TypeError, ValueError):
+        return False, "CAN id / data malformed", None
+    if not (0 <= cid <= 0x1FFFFFFF) or len(payload) > 8:
+        return False, "CAN id out of range or more than 8 data bytes", None
+    return engagement.issue("canbus:tx:0x%X@%s" % (cid, iface), (str(iface), cid),
+                            argv=_cansend_argv(iface, cid, payload, ext=ext), kind="can",
+                            evidence_chain=evidence_chain, label="canbus:tx")
 
 
 def detect(which=shutil.which):
@@ -235,6 +246,7 @@ class Demo:
 
 def main(parent=None):
     import queue
+    import subprocess
     import threading
     import time
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -285,7 +297,7 @@ def main(parent=None):
             return
         with S.errfile(os.path.join(S.CACHE, "canbus.err")) as err:
             p = S.spawn(" ".join(candump_argv(s.get("iface", "can0"))), shell=True,
-                        stdout=__import__("subprocess").PIPE, stderr=err, text=True)
+                        stdout=subprocess.PIPE, stderr=err, text=True)
         try:
             for line in p.stdout:
                 if not st["on"] or st["gen"] != gen:

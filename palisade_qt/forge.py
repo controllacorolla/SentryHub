@@ -10,10 +10,18 @@ Two gate types, same model as RECON (the engine enforces them, the UI only refle
   * txguard-gated (RF TX): replay (`replay.prepare_replay` → `txguard.authorize`) — needs an explicit
     per-burst confirm AND txguard armed/unlocked/band. Shown as a "TX GATED" banner.
 
-Passive read/monitor is always available: the hwlab serial console, canbus monitor, proxmark/flipper
-reads, rollcode RX analysis, sensors readout. No device → an honest "NO DEVICE" standby per tab; demo
-is the only synthetic path (flagged). Offscreen/offline seams mean tests never open real serial/USB/CAN.
-This UI never spawns a produced write/TX command and wires no new TX/inject path.
+Passive read/monitor is always available: canbus monitor, proxmark/flipper reads, rollcode RX
+analysis, sensors readout. The SERIAL console is NOT ungated (audit G2): every typed line goes through
+flipper.prepare_command (device identified by USB VID:PID — allowlisted Flipper reads pass; any other
+line, and any line to an ESP32 / slcan / unknown device, needs an engagement naming the device) and
+is written only by the executor, which logs it. No device → an honest "NO DEVICE" standby per tab;
+demo is the only synthetic path (flagged). Offscreen/offline seams mean tests never open real
+serial/USB/CAN.
+
+Gate state follows the engines (audit G12): cards and the replay banner subscribe to
+chrome.gate_signals(); the replay banner shows the engine's own answer for its frequency. A passed
+gate yields a single-use executor ticket (audit G11); this UI shows it and never spawns it
+(the executor output pane is CL6).
 """
 import os
 import sys
@@ -23,7 +31,7 @@ import time
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .app import PalisadeApp, _retain
-from . import theme, eventbus
+from . import chrome, theme, eventbus
 from .kit import ControlBar, FeedTable, DetailCard, micro, card
 from .worker import Worker
 
@@ -44,14 +52,17 @@ def _engagement():
     return engagement
 
 
-def _tx_state():
-    """(armed, unlocked) for the TX GATED banner — read-only view of txguard's kill switch."""
-    try:
-        import txguard
-        st = txguard._STATE
-        return bool(st.get("armed")), bool(st.get("unlocked"))
-    except Exception:
-        return False, False
+def _ticket_text(payload):
+    """What a gate produced, for display: a ticket's command + its binding, or plain text."""
+    if payload is None:
+        return ""
+    if hasattr(payload, "display"):
+        bind = getattr(payload, "binding", "") or ""
+        tail = " · LABEL-ONLY authorization" if bind == "label-only" else ""
+        return "%s\n(single-use ticket%s — runs only through the executor)" % (payload.display(), tail)
+    if isinstance(payload, (list, tuple)):
+        return " ".join(str(x) for x in payload)
+    return str(payload)
 
 
 # ======================= colored console (the multiplexer pane) =======================
@@ -134,6 +145,7 @@ class SerialWorker(Worker):
         super().__init__(demo=demo, interval_ms=300, parent=parent)
         self.port, self.baud = port, baud
         self._reader = None
+        self.device = ("demo", "demo") if demo else ("unknown", "port:?")
         self._pending = []
         self._lock = threading.Lock()           # guards _pending across GUI/worker threads
 
@@ -162,17 +174,26 @@ class SerialWorker(Worker):
                 self.status.emit({"standby": True,
                                   "sdr": {"text": "NO DEVICE — plug a USB-serial adapter", "ok": False}})
                 return
-            self.row.emit({"kind": "sys", "line": "connected %s" % (self.port or "demo ESP32")})
+            if not self.demo:
+                import flipper
+                try:
+                    self.device = flipper.identify_port(self.port)
+                except Exception:
+                    self.device = ("unknown", "port:?")
+            self.row.emit({"kind": "sys", "line": "connected %s (%s %s)" % (
+                self.port or "demo ESP32", self.device[1], self.device[0])})
             if not self.demo:
                 eventbus.bus.publish(eventbus.decode("FORGE", "SERIAL", self.port or "demo",
                                                      "serial device connected"))
         with self._lock:                        # atomic drain -> no lost keystroke on the swap
             pending, self._pending = self._pending, []
-        for text in pending:
+        for text in pending:                    # every line through the one serial gate (G2)
             try:
-                self._reader.write((text + "\r\n").encode())
-            except Exception:
-                pass
+                ok, why = hwlab.gated_send(self._reader, text, self.device, port_name=self.port or "demo")
+            except Exception as e:
+                ok, why = False, "NOT SENT — %s" % e
+            if not ok:
+                self.row.emit({"kind": "deny", "line": why})
         try:
             for line in self._reader.read_lines():
                 self.row.emit({"kind": "rx", "line": hwlab.clean_text(line)})
@@ -290,8 +311,7 @@ class _GateCardBase(QtWidgets.QFrame):
         # AUTHORIZED is a hazard state, not a healthy one: amber, never green (D9)
         self.result.setStyleSheet("color:%s;" % (self._tok["warn"] if ok else self._tok["muted"]))
         if ok:
-            tail = ("\n$ %s" % (" ".join(payload) if isinstance(payload, list) else payload)
-                    if payload else "")
+            tail = ("\n$ %s" % _ticket_text(payload)) if payload else ""
             self.result.setText("AUTHORIZED: %s%s" % (reason, tail))
             self._app.on_authorized(reason)
         else:
@@ -315,19 +335,25 @@ class EngagementCard(_GateCardBase):
         self._btn.clicked.connect(self._run)
         self._add(self._btn)
         self._result_label()
+        chrome.gate_signals().changed.connect(self.refresh)      # follows the engine (G12)
         self.refresh()
 
     def values(self):
         return {k: e.text().strip() for k, e in self._inputs.items()}
 
     def refresh(self):
-        active = _engagement().is_active()
+        eng = _engagement()
+        active = eng.is_active()
         self._btn.setEnabled(active)
         for e in self._inputs.values():
             e.setEnabled(active)
         if active:
             self.state.setStyleSheet("color:%s;" % self._tok["warn"])     # amber: armed, not healthy
             self.state.setText("◆ engagement active — actions authorized against the scope")
+        elif eng.expired():
+            self.state.setStyleSheet("color:%s;" % self._tok["alert"])
+            self.state.setText("▲ engagement EXPIRED — END it and open a new one (E)")
+            self.result.setText("")
         else:
             self.state.setStyleSheet("color:%s;" % self._tok["muted"])
             self.state.setText("○ REQUIRES ENGAGEMENT — open ENGAGEMENT in the top strip (E)")
@@ -340,15 +366,19 @@ class EngagementCard(_GateCardBase):
 
 class ReplayTxCard(_GateCardBase):
     """Signal replay — RF TX gated by txguard (via replay.prepare_replay). Needs an explicit
-    per-burst confirm AND txguard armed/unlocked/band. The built argv is shown, never executed."""
+    per-burst confirm AND the txguard chain. The banner is the ENGINE's answer for this frequency
+    with the saved replay settings (never a separate reading of arm / unlock), so it cannot claim
+    "armed + unlocked" while the engine says DENIED (G12). A passing gate yields a ticket, shown,
+    never executed here."""
 
     def __init__(self, app, tok, parent=None):
         super().__init__("REPLAY · RF TX — txguard-gated", app, tok)
         self.freq = QtWidgets.QDoubleSpinBox()
         self.freq.setRange(1.0, 6000.0)
-        self.freq.setValue(433.92)
+        self.freq.setValue(915.0)
         self.freq.setSuffix(" MHz")
         self.freq.setDecimals(3)
+        self.freq.valueChanged.connect(lambda _v: self.refresh())
         self._add(self.freq)
         self.confirm = QtWidgets.QCheckBox("I confirm this single authorized burst")
         self._add(self.confirm)
@@ -356,23 +386,36 @@ class ReplayTxCard(_GateCardBase):
         self._btn.clicked.connect(self._run)
         self._add(self._btn)
         self._result_label()
+        chrome.gate_signals().changed.connect(self.refresh)
         self.refresh()
 
+    def _saved(self):
+        """The saved replay settings (fail closed: tx_enabled defaults to False)."""
+        try:
+            import suite
+            s, _p = suite.settings("replay", {"tx_enabled": False, "tx_gain": 0, "tx_region": "US"})
+            return s
+        except Exception:
+            return {"tx_enabled": False}
+
     def refresh(self):
-        armed, unlocked = _tx_state()
-        if armed and unlocked:
+        import txguard
+        ok, why, _p = txguard.authorize("replay", int(self.freq.value() * 1e6),
+                                        settings=self._saved(), sample_rate=2_000_000)
+        if ok:
             self.state.setStyleSheet("color:%s;" % self._tok["alert"])    # red: armed, never green
-            self.state.setText("■ TX armed + unlocked — a burst still passes per-band txguard policy")
+            self.state.setText("■ TX armed + unlocked — replay PERMITTED at %.3f MHz (per-burst "
+                               "confirm still required)" % self.freq.value())
         else:
             self.state.setStyleSheet("color:%s;" % self._tok["muted"])
-            self.state.setText("○ TX GATED — kill switch %s, session %s (arm/unlock in the hub)" % (
-                "armed" if armed else "OFF", "unlocked" if unlocked else "locked"))
+            self.state.setText("○ TX GATED — DENIED: %s" % why)
 
     def _run(self):
         import replay
-        ok, reason, argv = replay.prepare_replay(
-            "capture.iq", int(self.freq.value() * 1e6), 2_000_000, self.confirm.isChecked())
-        self._show_result(ok, reason, argv)
+        ok, reason, ticket = replay.prepare_replay(
+            "capture.iq", int(self.freq.value() * 1e6), 2_000_000, self.confirm.isChecked(),
+            settings=self._saved())
+        self._show_result(ok, reason, ticket)
         self.refresh()
 
 
@@ -473,7 +516,7 @@ class ForgeApp(PalisadeApp):
         can_tx = EngagementCard(
             "CANBUS TX / inject", self, self._tok,
             [("id", "arbitration ID (hex, e.g. 7DF)"), ("data", "data bytes (hex)"),
-             ("target", "engagement target label")], "SEND FRAME",
+             ("target", "interface in scope (can0 — scope can0:0x700-0x7FF)")], "SEND FRAME",
             lambda v, ev: self._can_send(canbus, v, ev))
         self._cards.append(can_tx)
         split.addWidget(can_tx, 2)
@@ -486,8 +529,8 @@ class ForgeApp(PalisadeApp):
             data = bytes.fromhex(v.get("data", "").replace(" ", ""))
         except ValueError:
             return False, "id/data must be hex", None
-        # prepare_send gates via engagement.authorize_action and returns (ok, why, argv) AS-IS
-        return canbus.prepare_send("can0", can_id, data, v.get("target", ""), evidence_chain=ev)
+        # prepare_send binds the scope to interface + arbitration ID (G5) and returns a ticket
+        return canbus.prepare_send(v.get("target", "") or "can0", can_id, data, evidence_chain=ev)
 
     # ---- RFID: proxmark read + gated write ----
     def _rfid_page(self):
@@ -516,7 +559,8 @@ class ForgeApp(PalisadeApp):
         noparam = [o for o, v in proxmark.OPS.items() if v[0] and "{" not in v[1]]
         pm_write = EngagementCard(
             "PROXMARK write / clone / sim", self, self._tok,
-            [("op", "active op: %s" % " / ".join(noparam)), ("target", "tag/engagement target")],
+            [("op", "active op: %s" % " / ".join(noparam)),
+             ("target", "card UID in scope (uid:04A22B3C)")],
             "AUTHORIZE", lambda v, ev: self._pm_write(proxmark, v, ev))
         self._cards.append(pm_write)
         split.addWidget(pm_write, 2)
@@ -535,8 +579,14 @@ class ForgeApp(PalisadeApp):
 
     def _pm_write(self, proxmark, v, ev):
         op = v.get("op", "")
-        ok, reason, cmd = proxmark.prepare(op, v.get("target", ""), evidence_chain=ev)
-        return ok, reason, cmd
+        ok, reason, ticket = proxmark.prepare(op, v.get("target", ""), evidence_chain=ev,
+                                              read_uid=self._read_uid)
+        return ok, reason, ticket
+
+    def _read_uid(self):
+        """Read back the card on the antenna before an active op (G5). Demo: the synthetic card.
+        Live: no read-back path is wired in this UI yet (executor pane is CL6) -> None -> refused."""
+        return "04A22B3C" if self.demo else None
 
     # ---- RADIO: rollcode (RX) + replay (txguard) + usbhid (engagement) ----
     def _radio_page(self):
@@ -572,9 +622,10 @@ class ForgeApp(PalisadeApp):
         return page
 
     def _hid(self, usbhid, v, ev):
-        ok, reason, actions = usbhid.prepare(usbhid.DEMO_PAYLOAD, v.get("target", ""),
-                                             evidence_chain=ev)
-        detail = "%d actions" % len(actions) if ok and actions else None
+        ok, reason, ticket = usbhid.prepare(usbhid.DEMO_PAYLOAD, v.get("target", ""),
+                                            evidence_chain=ev)
+        detail = ("%d HID reports · LABEL-ONLY authorization · single-use ticket"
+                  % (len(ticket.payload) // 8)) if ok and ticket else None
         return ok, reason, detail
 
     # ---- SENSORS ----

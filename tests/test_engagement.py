@@ -17,21 +17,22 @@ def test_action_denied_without_engagement():
 
 
 def test_start_requires_scope_and_authorization():
-    assert E.start("job", "", ["X"], "op")[0] is False          # no authorization ref
-    assert E.start("job", "ROE-1", [], "op")[0] is False         # no scope
-    assert E.start("", "ROE-1", ["X"], "op")[0] is False         # no name
-    ok, why = E.start("job", "ROE-1", ["BADGE-*"], "KD0ABC")
+    assert E.start("job", "", ["X"], "KD0ABC")[0] is False          # no authorization ref
+    assert E.start("job", "ROE-1", [], "KD0ABC")[0] is False         # no scope
+    assert E.start("", "ROE-1", ["X"], "KD0ABC")[0] is False         # no name
+    assert E.start("job", "ROE-1", ["BADGE-*"], "KD0ABC")[0] is False   # glob: refused (CL2/G4)
+    ok, why = E.start("job", "ROE-1", ["BADGE-7"], "KD0ABC")
     assert ok and E.is_active()
 
 
-def test_in_scope_exact_and_wildcard():
-    E.start("job", "ROE-1", ["AA:BB:CC:*", "BADGE-7"], "op")
+def test_in_scope_exact_and_oui():
+    E.start("job", "ROE-1", ["AA:BB:CC:*", "BADGE-7"], "KD0ABC")      # a MAC OUI is the one wildcard
     assert E.in_scope("AA:BB:CC:11:22:33") and E.in_scope("BADGE-7")
     assert not E.in_scope("DD:EE:FF:00:00:00") and not E.in_scope("BADGE-8")
 
 
 def test_authorize_in_and_out_of_scope():
-    E.start("job", "ROE-1", ["BADGE-*"], "op")
+    E.start("job", "ROE-1", ["BADGE-9"], "KD0ABC")
     ok, why = E.authorize_action("rfid:clone", "BADGE-9")
     assert ok and "authorized" in why
     ok2, why2 = E.authorize_action("rfid:clone", "SERVER-ROOM")
@@ -41,7 +42,7 @@ def test_authorize_in_and_out_of_scope():
 def test_action_logged_to_evidence_chain():
     import evidence
     ch = evidence.EvidenceChain()
-    E.start("job", "ROE-1", ["BADGE-*"], "op")
+    E.start("job", "ROE-1", ["BADGE-1"], "KD0ABC")
     E.authorize_action("rfid:clone", "BADGE-1", evidence_chain=ch)
     assert len(ch.records) == 1 and ch.verify()[0] is True
     assert ch.records[0]["meta"]["target"] == "BADGE-1"
@@ -49,5 +50,5 @@ def test_action_logged_to_evidence_chain():
 
 
 def test_end_clears():
-    E.start("job", "ROE-1", ["X"], "op")
+    E.start("job", "ROE-1", ["X"], "KD0ABC")
     assert E.end() == "job" and not E.is_active()

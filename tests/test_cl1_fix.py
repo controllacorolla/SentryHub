@@ -382,16 +382,19 @@ def _clipped_labels(root):
 def test_engagement_panel_shows_whole_scope_three_evidence_rows_and_banner_parity():
     import engagement
     from palisade_qt import theme
-    scope = ["192.168.100.0/24", "10.0.0.*", "AA:BB:CC:*", "Net-*", "172.16.0.0/12", "Corp-Guest"]
+    # CL2/G4: typed scope only (an OUI is the one wildcard); operator from the profile (KD0ABC)
+    scope = ["192.168.100.0/24", "10.0.0.0/24", "AA:BB:CC:*", "Net-Core", "172.16.0.0/12",
+             "Corp-Guest"]
     hub = _hub(demo=False)
     try:
-        engagement.start("Operation LONG NAME 2026", "ROE-17/B", scope, "N0CALL")
+        ok, why = engagement.start("Operation LONG NAME 2026", "ROE-17/B", scope)
+        assert ok, why
         hub.open_panel("engagement")
         _pump(150)
         p = hub.engage_panel
         assert not _clipped_labels(p.eng_detail), _clipped_labels(p.eng_detail)
         text = " ".join(lbl.text() for lbl in p.eng_detail.findChildren(QtWidgets.QLabel))
-        for want in scope + ["Operation LONG NAME 2026", "N0CALL", "ROE-17/B"]:
+        for want in scope + ["Operation LONG NAME 2026", "KD0ABC", "ROE-17/B"]:
             assert want in text, want
         rows = dict((k, v) for k, v in _card_rows(p.eng_detail))
         assert rows.get("TARGETS") == "6"

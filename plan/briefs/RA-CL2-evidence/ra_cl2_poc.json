@@ -1,0 +1,207 @@
+[
+ {
+  "tag": "G1 PoC: disarmed + default saved settings, checkbox alone must not enable TX",
+  "ok": true,
+  "detail": "btn_enabled=False tx_enabled=False transmit=False calls=0"
+ },
+ {
+  "tag": "G1: 121.5 MHz preset removed",
+  "ok": true,
+  "detail": "[('20 m CW (ham)', 14060000), ('2 m (ham)', 144390000), ('70 cm (ham)', 433920000), ('915 MHz ISM', 915000000)]"
+ },
+ {
+  "tag": "G1/owner-1: conducted bench on 121.5 / 1090 / GPS denied even armed+unlocked+ack",
+  "ok": true,
+  "detail": "protected={121500000: False, 1090000000: False, 1575420000: False, 978000000: False} 915=True"
+ },
+ {
+  "tag": "G1: bench reports the runner's real exit code, not a synthetic success",
+  "ok": true,
+  "detail": "bad=(False, 'hackrf_transfer failed: exit 7', 7) good=(True, 'transmitted: ra_cl2_poc.py -> 915.0000 MHz (conducted): hackrf_transfer -t /private/tmp/claude-501/-Users-daltonhayes-SentryHub/d2575a71-1122-4b16-b8ed-a01a3e79db36/scratchpad/ra-cl2/../ra_cl2_poc.py -f 915000000 -s 2000000 -x 0 (exit 0)', 0)"
+ },
+ {
+  "tag": "G3 PoC: every audit emit example classifies as emit (allowlist, not denylist)",
+  "ok": true,
+  "detail": "misclassified_emit=[] misclassified_read=[]"
+ },
+ {
+  "tag": "G3: emit commands refused without engagement; CR/LF refused even with one",
+  "ok": true,
+  "detail": "refused=True crlf_refused=True emit_with_eng=True/label-only"
+ },
+ {
+  "tag": "G2 PoC: Qt SERIAL tab writes nothing ungated; unknown device read-only until engagement",
+  "ok": true,
+  "detail": "{'flipper': [b'device_info\\r\\n'], 'unknown': [], 'esp32': []}"
+ },
+ {
+  "tag": "G2: every line written through the executor is logged with port + device",
+  "ok": true,
+  "detail": "{'t': 1794768292.420324, 'port': '/dev/ttyACM0', 'device': 'usb:0483:5740', 'line': 'device_info', 'bytes': 13, 'binding': 'read-only', 'ticket': '096fa90cea8942178231e7749903715b'}"
+ },
+ {
+  "tag": "[NEW] G2: a ticket for device A can be written to port B (device not bound at write)",
+  "ok": false,
+  "detail": "wrote 7 bytes to a different port_name with an ESP32-scoped ticket (label-only, by design?)"
+ },
+ {
+  "tag": "G4 PoC: glob / wildcard / string / too-wide scopes are refused",
+  "ok": false,
+  "detail": "accepted=[['192.168.1.0/24 '], ['10.0.0.1-10.255.255.255']]"
+ },
+ {
+  "tag": "G4 PoC: netpent with scope 192.168.1.0/24 refuses the audit's targets + adversarial forms",
+  "ok": false,
+  "detail": "leaked=[' 192.168.1.5', '192.168.1.5 ', '192.168.1.5\\t'] wrongly_blocked=[]"
+ },
+ {
+  "tag": "[NEW] G4: hostname target is re-resolved by nmap at spawn (DNS rebinding window)",
+  "ok": false,
+  "detail": "argv=['nmap', '-sS', '-p', '1-1024', 'nas.lan'] recheck_denies_after_dns_flip=True (argv carries hostname: nmap's own lookup after the recheck is unchecked)"
+ },
+ {
+  "tag": "G5 PoC: pmkid carries a BSSID filter list; deauth needs an in-scope client, never broadcast",
+  "ok": true,
+  "detail": "pmkid=True deauth(no client)=False (oos client)=False (bcast)=False ok=True argv=('aireplay-ng', '--deauth', '10', '-a', 'AA:BB:CC:DD:EE:FF', '-c', '11:22:33:44:55:66', 'wlan0mon')"
+ },
+ {
+  "tag": "G5: CAN scope = interface + ID range; Zigbee = PAN@channel; Proxmark reads back the UID",
+  "ok": true,
+  "detail": "can=(True, False, False, False) zigbee=(True, False, False, False) proxmark=(True, False, False, False)"
+ },
+ {
+  "tag": "[NEW] G5: proxmark sim/clone PARAMETER (emulated UID) is not checked against scope",
+  "ok": false,
+  "detail": "authorized=True argv=('proxmark3', '-p', '/dev/ttyACM0', '-c', 'hf mf sim --1k -u CAFEBABE') (emulates CAFEBABE while scope/card is DEADBEEF)"
+ },
+ {
+  "tag": "G5: unbindable tools (USB-HID, flash, Z-Wave, Flipper) say label-only in reason + trail",
+  "ok": true,
+  "detail": "[(True, 'label-only'), (True, 'label-only'), (True, 'label-only')]"
+ },
+ {
+  "tag": "G8 PoC: decide() gone; service=lora cannot pass at any frequency without the chain",
+  "ok": true,
+  "detail": "decide=False denials=[False, False, False, False, False] armed_ok=True"
+ },
+ {
+  "tag": "G8: every public TX entry refuses while disarmed / locked (bench replay digimodes loopback radio mesh cw rtty)",
+  "ok": true,
+  "detail": "{'bench': False, 'replay': False, 'digimodes': False, 'loopback': False, 'radio': False, 'mesh': False, 'mesh_armed_locked': False, 'bench_armed_locked': False} calls=0"
+ },
+ {
+  "tag": "[NEW] G8: the Tk hub has an ARM control but no UNLOCK control (Tk TX permanently refused)",
+  "ok": false,
+  "detail": "hub.py arm()=True; non-Qt callers of unlock_session: []"
+ },
+ {
+  "tag": "G9 PoC: replay -x 47 / 999 under a 10 dBm cap must come back CLAMPED (and authorized)",
+  "ok": true,
+  "detail": "cap=42 out={47: (True, 42), 999: (True, 42), 20: (True, 20), 0: (True, 0)} bad={'nan': False, 'inf': False, \"'nan'\": False, '-1': False, '3.5': False, 'True': False, \"'47'\": True}"
+ },
+ {
+  "tag": "G9: non-finite power, bad sample rate, bool power denied; power clamped to the mode cap",
+  "ok": false,
+  "detail": "EXCEPTION:\nTraceback (most recent call last):\n  File \"/private/tmp/claude-501/-Users-daltonhayes-SentryHub/d2575a71-1122-4b16-b8ed-a01a3e79db36/scratchpad/ra-cl2/../ra_cl2_poc.py\", line 47, in deco\n    ok, detail = fn()\n                 ^^^^\n  File \"/private/tmp/claude-501/-Users-daltonhayes-SentryHub/d2575a71-1122-4b16-b8ed-a01a3e79db36/scratchpad/ra-cl2/../ra_cl2_poc.py\", line 423, in g9_power\n    sr = [replay.prepare_replay(\"b.iq\", 915_000_000, v, True, settings=s)[0] for v in (100_000_000, 0, -1, float(\"nan\"), 1_000, \"2e6\")]\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/claude-501/-Users-daltonhayes-SentryHub/d2575a71-1122-4b16-b8ed-a01a3e79db36/scratchpad/ra-cl2/replay.py\", line 44, in prepare_replay\n    argv = _replay_argv(iq_file, freq_hz, sample_rate, gain)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/private/tmp/claude-501/-Users-daltonhayes-SentryHub/d2575a71-1122-4b16-b8ed-a01a3e79db36/scratchpad/ra-cl2/replay.py\", line 18, in _replay_argv\n    \"-s\", str(int(sample_rate)), \"-x\", str(int(tx_gain))]\n              ^^^^^^^^^^^^^^^^\nValueError: invalid literal for int() with base 10: '2e6'\n"
+ },
+ {
+  "tag": "G10 PoC: tx_enabled truthy-but-not-True locks; any truthy SUITE_TX_LOCK locks; 433.92 is ham in US",
+  "ok": true,
+  "detail": "locks=True env={'1': False, 'true': False, 'TRUE': False, 'yes': False, 'on': False, 'x': False, ' 1 ': False} band=('ham', 'ism', False, False, True)"
+ },
+ {
+  "tag": "G11 PoC: ticket single-use, argv-bound, expiring, forged refused, re-checked at spawn",
+  "ok": true,
+  "detail": "{'reuse': 'refused', 'altered': 'refused', 'mutated': 'refused', 'expired': 'refused', 'forged': 'refused', 'bare_argv': 'refused', 'after_end': 'refused', 'non_gate_issue': 'refused'} calls=1"
+ },
+ {
+  "tag": "G11 PoC: END and disarm kill a RUNNING authorized process (process group)",
+  "ok": true,
+  "detail": "end_killed=True disarm_killed=True"
+ },
+ {
+  "tag": "[NEW] G11: race \u2014 END fires INSIDE spawn (after redeem, before register): child must still die",
+  "ok": true,
+  "detail": "child dead=True stopped='gate closed: no active engagement \u2014 open an authorized engagement first'"
+ },
+ {
+  "tag": "[NEW] G11: expiry of a running engagement kills its process without any UI call",
+  "ok": true,
+  "detail": "dead=True stopped=\"gate closed: engagement 'j' has expired \u2014 END it and open a new one\""
+ },
+ {
+  "tag": "[NEW] G11: tx_enabled flipped to False in settings mid-run does NOT stop the process (snapshot)",
+  "ok": false,
+  "detail": "still running after tx_enabled=False: True (recheck uses a settings snapshot)"
+ },
+ {
+  "tag": "G12 PoC: TX slot / ENGAGEMENT slot follow the engines with the poll timer stopped",
+  "ok": true,
+  "detail": "ARMED UNLOCKED ACTIVE \u00b7 10.0.0.1 ('OFF', 'NONE')"
+ },
+ {
+  "tag": "G12 PoC: FORGE replay banner never says armed+unlocked while the engine says DENIED; cards follow END",
+  "ok": true,
+  "detail": "mismatches=[] cards_before=True cards_stale_after_end=False"
+ },
+ {
+  "tag": "G13 PoC: second start refused + trail kept; expiry enforced; operator from profile; auth not prefilled",
+  "ok": true,
+  "detail": "second=False kept=True expired_denied=True free_text=False no_profile=False ui=True"
+ },
+ {
+  "tag": "L1 PoC: a real child follows the hub (arm/unlock/engagement), loses it on disarm, cannot arm itself",
+  "ok": true,
+  "detail": "armed={'armed': True, 'unlocked': True, 'eng': True, 'auth': True, 'tx': True, 'arm_self': True, 'unlock_self': True, 'start_self': False} disarmed={'armed': False, 'unlocked': False, 'eng': False, 'auth': False, 'tx': False, 'arm_self': False, 'unlock_self': False, 'start_self': False} lock_exported=True"
+ },
+ {
+  "tag": "L1: stale (dead hub pid), missing, foreign-writable, and malformed state files fail closed",
+  "ok": true,
+  "detail": "{'dead_pid': (False, False, False), 'world_writable': (False, False, False), 'non_bool': (False, False, False), 'malformed': (False, False, False), 'missing': (False, False, False)}"
+ },
+ {
+  "tag": "[NEW] L1: a forged state file naming any LIVE same-user pid is trusted (no nonce / hub identity check)",
+  "ok": false,
+  "detail": "child armed=True eng=True tx_authorized=True with a file written by this script naming the parent shell's pid"
+ },
+ {
+  "tag": "L1: child started while armed; hub disarms afterwards -> child's authorize() now denies (file re-read)",
+  "ok": true,
+  "detail": "before_disarm=True after_disarm=False"
+ },
+ {
+  "tag": "L1: Tk hub wires Publisher + child_env on every child launch (static)",
+  "ok": true,
+  "detail": "Popen lines=[791, 817] with child_env=[791, 817]; S.spawn/fire_and_forget lines (no env)=[645, 1391]"
+ },
+ {
+  "tag": "S2 PoC: Scout scans nothing (no nmap spawn, no TCP connect) without an engagement; real netmask used",
+  "ok": true,
+  "detail": "refusals=['no active engagement \u2014 open an authorize', 'no active engagement \u2014 open an authorize', \"'192.168.4.0/22' is not in the engagemen\", \"'192.168.4.0/22' is not in the engagemen\"] nmap_calls=0 tcp_connects=0 netmask=192.168.4.0/22"
+ },
+ {
+  "tag": "[NEW] S2: Scout's fallback connect-scanner (no nmap) runs OUTSIDE the executor; END does not stop it",
+  "ok": true,
+  "detail": "started=True connects_after_END=0 (in-process threads, no ticket, not in executor.running())"
+ },
+ {
+  "tag": "S2: dev terminal BLE connect / MQTT publish / SSH gated; terminal-ssh spawn is outside the executor",
+  "ok": true,
+  "detail": "no_eng=(False, False, False, False) with_eng=(True, True, True, False, False, False) terminal_ssh_direct_popen=True"
+ },
+ {
+  "tag": "S3 PoC: Tk USB-HID never reports 'sent' unless reports were written; nothing without engagement",
+  "ok": false,
+  "detail": "no_eng=(False, 0) epipe=(False, 0, 'Authorized, but NOT SENT: write to /dev/hidg0 fail') no_gadget=(False, 0) ok=(True, 6)"
+ },
+ {
+  "tag": "S3: Tk engagement can still never be opened (owner decision pending) \u2014 says so honestly",
+  "ok": true,
+  "detail": "engagement.main() text mentions the Qt ENGAGEMENT panel: True"
+ },
+ {
+  "tag": "Owner defaults: protected denied when conducted; no LoRa bypass; callsign never enables TX",
+  "ok": true,
+  "detail": "conducted_protected=[False, False] lora=[False, False] callsign_tx=(False, False)"
+ }
+]

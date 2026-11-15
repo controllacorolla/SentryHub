@@ -1,0 +1,94 @@
+{
+ "ssh fe80::own-ll-0%en0 scope=['fe80::/10']": {
+  "start": [
+   false,
+   "scope refused: 'fe80::/10' is wider than /32"
+  ],
+  "issued": false,
+  "why": "no active engagement \u2014 open an authorized engagement first",
+  "argv": null
+ },
+ "ssh fe80::own-ll-0%en0 scope=['fe80::own-ll-0']": {
+  "start": [
+   true,
+   "engagement 'job' active (1 targets in scope, expires in 8 h)"
+  ],
+  "issued": true,
+  "why": "authorized: devterm:ssh on fe80::own-ll-0%en0 (engagement 'job') \u2014 remote command is label-only (runs on the target, not this device's radios)",
+  "argv": [
+   "ssh",
+   "-o",
+   "BatchMode=yes",
+   "-o",
+   "ConnectTimeout=8",
+   "-o",
+   "HostName=fe80::own-ll-0%en0",
+   "-o",
+   "ProxyCommand=none",
+   "-o",
+   "ProxyJump=none",
+   "fe80::own-ll-0%en0",
+   "hackrf_trans''fer -t x.iq -f 1090000000 -x 47"
+  ]
+ },
+ "ssh fe80::own-ll-0%en0 scope=['fe80::own-ll-0%en0']": {
+  "start": [
+   true,
+   "engagement 'job' active (1 targets in scope, expires in 8 h)"
+  ],
+  "issued": true,
+  "why": "authorized: devterm:ssh on fe80::own-ll-0%en0 (engagement 'job') \u2014 remote command is label-only (runs on the target, not this device's radios)",
+  "argv": [
+   "ssh",
+   "-o",
+   "BatchMode=yes",
+   "-o",
+   "ConnectTimeout=8",
+   "-o",
+   "HostName=fe80::own-ll-0%en0",
+   "-o",
+   "ProxyCommand=none",
+   "-o",
+   "ProxyJump=none",
+   "fe80::own-ll-0%en0",
+   "hackrf_trans''fer -t x.iq -f 1090000000 -x 47"
+  ]
+ },
+ "ssh fe80::own-ll-0%en0 scope=['::/0']": {
+  "start": [
+   false,
+   "scope refused: '::/0' is wider than /32"
+  ],
+  "issued": false,
+  "why": "no active engagement \u2014 open an authorized engagement first",
+  "argv": null
+ },
+ "hostname this-host.local": [
+  null,
+  "refused: this-host.local resolves to 10.0.0.OWN, which is this device \u2014 SSH only reaches other hosts (a command here would bypass the TX gate)"
+ ],
+ "ssh ::127.0.0.1": {
+  "issued": true,
+  "why": "authorized: devterm:ssh on ::7f00:1 (engagement 'job') \u2014 remote command is label-only (runs on the target, not this device's radios)"
+ },
+ "r5": {
+  "lf_t55_write": {
+   "issued": true,
+   "why": "authorized: proxmark:lf_t55_write on uid:2006F623AE (engagement 'job') \u2014 written content is not bound to the scope (label-only for the data)",
+   "ticket_binding": "label-only",
+   "trail_binding": "label-only"
+  },
+  "hf_mf_restore": {
+   "issued": true,
+   "why": "authorized: proxmark:hf_mf_restore on uid:2006F623AE (engagement 'job') \u2014 written content is not bound to the scope (label-only for the data)",
+   "ticket_binding": "label-only",
+   "trail_binding": "label-only"
+  },
+  "hf_iclass_clone": {
+   "issued": true,
+   "why": "authorized: proxmark:hf_iclass_clone on uid:2006F623AE (engagement 'job') \u2014 written content is not bound to the scope (label-only for the data)",
+   "ticket_binding": "label-only",
+   "trail_binding": "label-only"
+  }
+ }
+}

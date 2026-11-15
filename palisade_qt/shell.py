@@ -10,8 +10,9 @@ TX / ENGAGEMENT) share one ≤ 40 px strip, and the page gets everything below i
 global panels (RADIOS, ENGAGEMENT, alerts, key map, command palette), routes the keyboard, and draws
 a hatched border round the window in DEMO.
 
-The shell reads engine state and calls existing engine functions (arbiter release, txguard.arm(False),
-engagement.end()); it adds no gate, changes no gate, and touches no decode path.
+The shell reads engine state and calls existing engine functions (arbiter release, txguard.arm /
+unlock_session from the TX panel, engagement.end(), executor.kill_all()); it adds no gate, changes no
+gate, and touches no decode path. The four slots follow the engines through chrome.gate_signals().
 """
 import os
 import sys
@@ -95,10 +96,11 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.radios_panel = panels.RadiosPanel(mode, central)
         self.engage_panel = panels.EngagePanel(mode, central)
         self.engage_panel.gate_changed.connect(self._gate_changed)
+        self.tx_panel = panels.TxPanel(mode, central)
         self.alerts_drawer = panels.AlertsDrawer(mode, central, store=self.alerts)
         self.keymap = panels.KeyMapOverlay(mode, central)
         self.palette = panels.CommandPalette(mode, central)
-        self._overlays = [self.radios_panel, self.engage_panel, self.alerts_drawer,
+        self._overlays = [self.radios_panel, self.engage_panel, self.tx_panel, self.alerts_drawer,
                           self.keymap, self.palette]
         self.panic_banner = QtWidgets.QLabel("", central)
         self.panic_banner.setProperty("class", "value")
@@ -188,11 +190,11 @@ class PalisadeHub(QtWidgets.QMainWindow):
 
     def _slot_clicked(self, key):
         self.open_panel({"radio": "radios", "engagement": "engagement", "alerts": "alerts",
-                         "tx": "radios", "mode": "keys"}[key])
+                         "tx": "tx", "mode": "keys"}[key])
 
     def open_panel(self, which):
         panel = {"radios": self.radios_panel, "engagement": self.engage_panel,
-                 "alerts": self.alerts_drawer, "keys": self.keymap,
+                 "tx": self.tx_panel, "alerts": self.alerts_drawer, "keys": self.keymap,
                  "palette": self.palette}.get(which)
         if panel is None:
             return
@@ -246,6 +248,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
         cmds += [
             ("RADIOS panel", lambda: self.open_panel("radios")),
             ("ENGAGEMENT panel", lambda: self.open_panel("engagement")),
+            ("TX panel — arm / unlock", lambda: self.open_panel("tx")),
             ("ALERTS drawer", lambda: self.open_panel("alerts")),
             ("Acknowledge all alerts", self.alerts_drawer.ack_all_seen),   # seen ones only
             ("Mute / unmute audio", self.topbar.toggle_mute),
@@ -277,6 +280,13 @@ class PalisadeHub(QtWidgets.QMainWindow):
             did.append("engagement %s ended" % was if was else "no engagement was open")
         except Exception as e:
             did.append("engagement end FAILED: %s" % e)
+        try:
+            import executor
+            n = executor.kill_all("PANIC")             # every registered gated process group
+            if n:
+                did.append("%d gated process(es) stopped" % n)
+        except Exception as e:
+            did.append("executor kill FAILED: %s" % e)
         try:
             for name, page in list(self.pages.items()):     # UI-held permits (BENCH's ack)
                 if self.stack.indexOf(page) >= 0:

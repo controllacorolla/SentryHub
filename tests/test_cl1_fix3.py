@@ -124,7 +124,9 @@ def test_strip_fits_1280_with_a_huge_scope(mode, demo):
         hub.state.stop()
         for n in (999, 1000, 100000):
             engagement.reset()
-            engagement.start("t", "ROE-1", ["10.0.%d.%d" % (i // 250, i % 250) for i in range(n)], "op")
+            ok, why = engagement.start("t", "ROE-1",
+                                       ["10.%d.%d.%d" % (i // 62500, (i // 250) % 250, i % 250) for i in range(n)])
+            assert ok, why                       # CL2: operator comes from the profile (conftest)
             st = chrome.read_engagement()
             assert st[0] == "ACTIVE" and st[1] in ("999 targets", "999+ tgts"), st
             for owner in ("PROWL SC", longest):
