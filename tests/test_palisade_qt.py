@@ -1700,3 +1700,51 @@ def test_more_open_pump_close_no_leaked_threads():
     _pump(200)
     p.stop()
     assert all(not w.isRunning() for w in p._workers) if p._workers else True
+
+
+def test_more_settings_persists_home_and_theme_no_false_save():
+    """Review fix: SETTINGS must actually apply HOME (live geo frame) + persist theme, and must
+    never report a bare 'saved' for fields it discards."""
+    _app()
+    from palisade_qt import system, eventbus
+    orig_home = eventbus.HOME
+    try:
+        p = system.MoreApp(demo=True, mode="dark")
+        captured = {}
+        p._write_settings = lambda data: (captured.update(data), True)[1]   # capture + 'persisted'
+        p.set_operator.setText("N0CALL")
+        p.set_home.setText("40.0000, -105.0000")
+        p.set_theme.setCurrentText("light")
+        p._save_settings()
+        assert eventbus.HOME == (40.0, -105.0), "HOME applied live to the shared geo frame"
+        assert captured.get("home") == [40.0, -105.0], "HOME persisted"
+        assert captured.get("theme") == "light", "Theme persisted (was silently discarded before)"
+        assert "NOT persisted" not in p.set_msg.text()
+        # invalid HOME -> honest rejection ("nothing saved"), never a false success
+        p.set_home.setText("garbage")
+        p._save_settings()
+        assert "must be" in p.set_msg.text() and "nothing saved" in p.set_msg.text()
+    finally:
+        eventbus.HOME = orig_home
+
+
+def test_more_doctor_stop_joins_during_a_blocking_check(monkeypatch):
+    """Review fix: DOCTOR's worker must honor stop() mid-check (no QThread-destroyed-while-running):
+    a 10 s blocking check must not stop stop()/wait() from joining within the lifetime budget."""
+    import doctor
+    import time as _t
+    _app()
+    from palisade_qt.system import DoctorWorker
+    monkeypatch.setattr(doctor, "CHECKS",
+                        [("Software", [("slow", lambda: (_t.sleep(10), (True, "done", ""))[1])])])
+    w = DoctorWorker()
+    w.start()
+    t0 = _t.time()
+    while not w.isRunning() and _t.time() - t0 < 2:
+        _t.sleep(0.02)
+    _t.sleep(0.2)                               # let it enter the blocking check
+    t1 = _t.time()
+    w.stop()
+    w.quit()
+    assert w.wait(3000), "DoctorWorker must join within 3s even though a check blocks for 10s"
+    assert _t.time() - t1 < 3.0

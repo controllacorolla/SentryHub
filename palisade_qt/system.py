@@ -15,6 +15,7 @@ shows an honest standby when its backend (network / LLM / Meshtastic node / TTS)
 """
 import os
 import sys
+import threading
 import time
 
 from PySide6 import QtWidgets
@@ -39,24 +40,51 @@ def _offscreen():
 # ======================= workers =======================
 
 class DoctorWorker(Worker):
-    """doctor.run_all() off the GUI thread. Network checks are skipped offscreen (hermetic)."""
+    """doctor.run_all() off the GUI thread. Network checks are skipped offscreen (hermetic). Each
+    check runs on a disposable helper thread the loop polls, so stop() joins promptly (the kit
+    lifecycle contract) even if a check is blocking on a slow urlopen; the in-flight check is then
+    abandoned (daemon, harmless) rather than making wait() time out and abort the QThread."""
 
     def run(self):
         import doctor
         for section, items in doctor.CHECKS:
             if self._stop:
-                break
+                return
             if _offscreen() and section == "Network":
-                continue                        # no HTTP HEAD in tests/CI
+                continue                        # no HTTP in tests/CI
             for name, fn in items:
                 if self._stop:
-                    break
-                try:
-                    ok, detail, _fix = fn()
-                except Exception as e:
-                    ok, detail = False, "check failed: %s" % str(e)[:60]
+                    return
+                res = self._run_check(fn)
+                if res is None:                 # stopped mid-check -> exit so stop()/wait() joins
+                    return
+                ok, detail = res
                 self.row.emit({"section": section, "name": name, "ok": ok, "detail": detail or ""})
-        self.status.emit({"sdr": {"text": "DOCTOR done", "ok": True}})
+        if not self._stop:
+            self.status.emit({"sdr": {"text": "DOCTOR done", "ok": True}})
+
+    def _run_check(self, fn):
+        """Run one check on a daemon thread, polling self._stop. (ok, detail), or None if stopped
+        before it finished — then the worker exits immediately and wait() joins without blocking on
+        the in-flight (e.g. 5 s urlopen) check."""
+        box = {}
+
+        def job():
+            try:
+                box["r"] = fn()
+            except Exception as e:
+                box["r"] = (False, "check failed: %s" % str(e)[:60], "")
+        t = threading.Thread(target=job, daemon=True)
+        t.start()
+        while t.is_alive():
+            if self._stop:
+                return None                     # abandon the in-flight check (daemon); exit promptly
+            t.join(0.05)
+        r = box.get("r")
+        if not r:
+            return None
+        ok, detail, _fix = r
+        return ok, detail
 
 
 def _demo_mesh():
@@ -181,24 +209,60 @@ class MoreApp(PalisadeApp):
         except Exception:
             pass        # no suite/profile on the dev host — leave blank, never invent an identity
 
-    def _save_settings(self):
-        # apply the live-safe bits (bus retention); persist the rest via suite settings on-device
+    def _parse_home(self):
+        """'lat, lon' -> (lat, lon) if valid, else None."""
         try:
-            eventbus.bus._log = type(eventbus.bus._log)(eventbus.bus._log,
-                                                        maxlen=self.set_retention.value())
-        except Exception:
-            pass
-        saved = False
+            lat, lon = [float(x.strip()) for x in self.set_home.text().split(",")]
+        except (ValueError, IndexError):
+            return None
+        return (lat, lon) if -90 <= lat <= 90 and -180 <= lon <= 180 else None
+
+    def _write_settings(self, data):
+        """Persist the UI settings to the suite store. Returns True if written, False if no store.
+        Seam: tests replace this to capture what would be persisted."""
         try:
             import suite
-            s, path = suite.settings("operator", {"callsign": ""})
-            s["callsign"] = self.set_operator.text().strip()
+            s, path = suite.settings("palisade_ui", {})
+            s.update(data)
             suite.save_json(path, s)
-            saved = True
+            return True
         except Exception:
-            saved = False
-        self.set_msg.setStyleSheet("color:%s;" % (self._tok["live"] if saved else self._tok["warn"]))
-        self.set_msg.setText("saved" if saved else "applied (settings store unavailable on this host)")
+            return False
+
+    def _save_settings(self):
+        # HOME is NOT just persisted — it is the shared geo frame, so apply it live immediately
+        # (ops/atlas to_xy read eventbus.HOME). Reject an invalid HOME rather than falsely report saved.
+        home = self._parse_home()
+        if home is None and self.set_home.text().strip():
+            self.set_msg.setStyleSheet("color:%s;" % self._tok["warn"])
+            self.set_msg.setText("HOME must be 'lat, lon' (e.g. 47.6, -122.3) — nothing saved")
+            return
+        live = []
+        if home is not None:
+            eventbus.HOME = home
+            live.append("HOME")
+        try:
+            from collections import deque
+            eventbus.bus._log = deque(eventbus.bus._log, maxlen=self.set_retention.value())
+            live.append("event-bus retention")
+        except Exception:
+            pass
+        # persist ALL displayed fields (operator + HOME + theme + retention)
+        persisted = self._write_settings({
+            "callsign": self.set_operator.text().strip(),
+            "home": list(home) if home else None,
+            "theme": self.set_theme.currentText(),
+            "retention": self.set_retention.value()})
+        theme_changed = self.set_theme.currentText() != self.mode
+        parts = ["applied now: " + ", ".join(live)] if live else []
+        if persisted:                               # operator + theme take effect via the store
+            parts.append("persisted: operator, theme" +
+                         (" (theme applies on restart)" if theme_changed else ""))
+            self.set_msg.setStyleSheet("color:%s;" % self._tok["live"])
+        else:                                       # honest: do NOT claim saved for discarded fields
+            parts.append("NOT persisted (no settings store on this host): operator, theme")
+            self.set_msg.setStyleSheet("color:%s;" % self._tok["warn"])
+        self.set_msg.setText(" · ".join(parts))
 
     # ---- DOCTOR ----
     def _doctor_page(self):
