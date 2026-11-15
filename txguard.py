@@ -103,6 +103,13 @@ def decide(freq_hz=None, service=None, callsign="", settings=None):
     Otherwise freq_hz is required and the band decides. A callsign is required on ham bands.
     """
     import os
+    # OPSEC RF-dark posture refuses every key-up, before any band / service logic (incl. LoRa).
+    try:
+        import opsec
+        if opsec.is_armed():
+            return False, opsec.BLOCK_REASON
+    except Exception:
+        pass
     if os.environ.get("SUITE_TX_LOCK") == "1":
         return False, "TX locked by SUITE_TX_LOCK=1 in the environment"
 
@@ -219,6 +226,25 @@ def reset_session():
     _STATE["unlocked"] = False
 
 
+def allowed_tx(settings=None):
+    """(ok, reason): may the radio key up at all right now, independent of band / mode? Returns
+    False whenever OPSEC is armed (regardless of every other check — the brief's dominant posture),
+    the environment hard-lock is set, or the master TX kill switch is OFF. The single 'am I allowed
+    to transmit?' predicate for callers that don't yet have a band/mode in hand."""
+    import os
+    try:
+        import opsec
+        if opsec.is_armed():
+            return False, opsec.BLOCK_REASON
+    except Exception:
+        pass
+    if os.environ.get("SUITE_TX_LOCK") == "1":
+        return False, "TX locked by SUITE_TX_LOCK=1 in the environment"
+    if not _STATE["armed"]:
+        return False, "TX kill switch is OFF — arm it in the hub toolbar to transmit"
+    return True, "TX permitted (OPSEC off, kill switch armed)"
+
+
 def authorize(mode, freq_hz=None, power_dbm=None, callsign="", settings=None):
     """The full gate for a real key-up. Returns (ok, reason, power_dbm_allowed).
 
@@ -229,6 +255,13 @@ def authorize(mode, freq_hz=None, power_dbm=None, callsign="", settings=None):
     prof = profile(mode)
     if prof is None:
         return False, "unknown TX mode %r" % (mode,), 0
+    # OPSEC RF-dark posture refuses every key-up, regardless of arm / unlock / band / power.
+    try:
+        import opsec
+        if opsec.is_armed():
+            return False, opsec.BLOCK_REASON, 0
+    except Exception:
+        pass
     if os.environ.get("SUITE_TX_LOCK") == "1":
         return False, "TX locked by SUITE_TX_LOCK=1 in the environment", 0
     if not _STATE["armed"]:

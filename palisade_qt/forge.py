@@ -318,6 +318,16 @@ class EngagementCard(_GateCardBase):
         return {k: e.text().strip() for k, e in self._inputs.items()}
 
     def refresh(self):
+        import opsec
+        if opsec.is_armed():
+            # RF-dark posture dominates: every active injection is refused at the gate, so the card
+            # must say so honestly (not "actions authorized") and disable its fire button.
+            self._btn.setEnabled(False)
+            for e in self._inputs.values():
+                e.setEnabled(False)
+            self.state.setStyleSheet("color:%s; font-weight:700;" % self._tok["alert"])
+            self.state.setText("TX BLOCKED BY OPSEC — RF-dark posture armed (disarm OPSEC to act)")
+            return
         active = _engagement().is_active()
         self._btn.setEnabled(active)
         for e in self._inputs.values():
@@ -356,6 +366,11 @@ class ReplayTxCard(_GateCardBase):
         self.refresh()
 
     def refresh(self):
+        import opsec
+        if opsec.is_armed():
+            self.state.setStyleSheet("color:%s; font-weight:700;" % self._tok["alert"])
+            self.state.setText("TX BLOCKED BY OPSEC — RF-dark posture armed (disarm OPSEC to transmit)")
+            return
         armed, unlocked = _tx_state()
         if armed and unlocked:
             self.state.setStyleSheet("color:%s;" % self._tok["live"])
@@ -627,7 +642,18 @@ class ForgeApp(PalisadeApp):
         self._workers.append(self._serial_worker)
         self._workers.append(self._spawn(CanWorker(demo=self.demo), self._on_can))
         self._workers.append(self._spawn(SensorWorker(demo=self.demo), self._on_sensor))
+        try:
+            import opsec
+            opsec.subscribe(self._on_opsec)          # re-render gate cards live on arm/disarm
+        except Exception:
+            pass
         self.refresh_gates()
+
+    def _on_opsec(self, _state):
+        try:
+            self.refresh_gates()
+        except RuntimeError:
+            pass
 
     def _spawn(self, worker, on_row):
         worker.row.connect(on_row)
@@ -639,6 +665,11 @@ class ForgeApp(PalisadeApp):
     def stop(self):
         if self._stopped:
             return
+        try:
+            import opsec
+            opsec.unsubscribe(self._on_opsec)
+        except Exception:
+            pass
         for w in getattr(self, "_workers", []):
             w.stop()
             w.quit()

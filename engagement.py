@@ -19,7 +19,9 @@ import time
 
 _ENG = {"active": False, "name": None, "authorization": None, "scope": [], "operator": None,
         "started": None}
-_ACTIONS = []                      # in-session audit trail (also mirrored to the evidence chain)
+_ACTIONS = []                      # in-session audit trail of authorized target ACTIONS (action/target)
+_EVENTS = []                       # non-action audit events (e.g. OPSEC posture changes) — kept
+#                                    separate so actions() stays a clean action/target trail
 
 
 def start(name, authorization, scope, operator):
@@ -63,6 +65,16 @@ def in_scope(target):
 def authorize_action(action, target, evidence_chain=None):
     """Gate one active action against `target`. Returns (ok, reason). On success, records the action
     to the in-session trail and, if given, to the evidence chain (hash-chained, tamper-evident)."""
+    # OPSEC RF-dark posture dominates: it refuses every emitting / target-touching action before the
+    # engagement + scope checks, so the operator sees one clear reason. (Pure offline analysis such
+    # as passaudit is not blocked — opsec.guard_action() exempts it.)
+    try:
+        import opsec
+        blocked, why = opsec.guard_action(action)
+        if blocked:
+            return False, why
+    except Exception:
+        pass
     if not _ENG["active"]:
         return False, "no active engagement — open an authorized engagement first"
     if not in_scope(target):
@@ -80,14 +92,38 @@ def authorize_action(action, target, evidence_chain=None):
     return True, "authorized: %s on %s (engagement '%s')" % (action, target, _ENG["name"])
 
 
+def record_evidence(name, meta=None, evidence_chain=None, data=None):
+    """Record a non-action audit event (e.g. an OPSEC posture change) to the in-session trail and,
+    when a chain is given, the tamper-evident evidence chain. Unlike authorize_action this is NOT a
+    target authorization — it is not gated on an open engagement or scope, because it logs a safety /
+    posture event, it does not permit touching a target. Never raises."""
+    rec = {"t": time.time(), "event": name, "meta": dict(meta or {}),
+           "engagement": _ENG["name"], "operator": _ENG["operator"]}
+    _EVENTS.append(rec)            # NOT _ACTIONS — posture events carry no action/target keys, and
+    #                                actions() consumers (e.g. RECON's trail) index a["action"]/["target"]
+    if evidence_chain is not None:
+        try:
+            evidence_chain.add(name, data=(data if data is not None else str(name).encode()),
+                               meta=rec)
+        except Exception:
+            pass
+    return rec
+
+
 def actions():
     return list(_ACTIONS)
+
+
+def events():
+    """The non-action audit events (OPSEC posture changes, …) recorded via record_evidence."""
+    return list(_EVENTS)
 
 
 def reset():
     """Drop any engagement + trail (startup and tests)."""
     end()
     _ACTIONS.clear()
+    _EVENTS.clear()
 
 
 def main(parent=None):

@@ -12,7 +12,9 @@ import sys
 from PySide6 import QtGui, QtWidgets
 
 from . import theme
+from . import eventbus
 from .kit import TopBar
+from .worker import Worker
 from .ops import OpsHome, CALLSIGNS, GROUPS
 from .prism import PrismApp
 from .babel import BabelApp
@@ -32,6 +34,19 @@ QT_PAGES = {
     "MORE": MoreApp,
 }
 TK_HOSTS = {}
+
+
+class OpsecWatchWorker(Worker):
+    """Background OPSEC watcher: while RF-dark, periodically checks for an observable contradiction
+    (a TX gate left live) and lets opsec publish a warning to OPS. Honest — it reports only what
+    opsec.poll() can actually compute, never invented RF."""
+
+    def __init__(self, parent=None):
+        super().__init__(demo=False, interval_ms=2500, parent=parent)
+
+    def step(self):
+        import opsec
+        opsec.poll()
 
 
 class NavRail(QtWidgets.QFrame):
@@ -94,6 +109,21 @@ class PalisadeHub(QtWidgets.QMainWindow):
         vbox.addLayout(hbox, 1)
 
         vbox.addWidget(self._foot())
+
+        # OPSEC: route arm/disarm + watcher warnings onto the bus OPS consumes, log posture changes
+        # to a tamper-evident chain, and run the background watcher. Enforcement is in the gates;
+        # this only feeds the operator's situational display.
+        self._opsec_watch = None
+        try:
+            import opsec
+            import evidence
+            opsec.set_bus(eventbus.bus)
+            self._opsec_evidence = evidence.EvidenceChain()
+            opsec.set_evidence_chain(self._opsec_evidence)
+            self._opsec_watch = OpsecWatchWorker()
+            self._opsec_watch.start()
+        except Exception:
+            pass
 
         self.pages = {}
         self.ops = OpsHome(demo=demo, mode=mode)
@@ -168,6 +198,11 @@ class PalisadeHub(QtWidgets.QMainWindow):
             return None
 
     def closeEvent(self, ev):
+        if self._opsec_watch is not None:
+            self._opsec_watch.stop()
+            self._opsec_watch.quit()
+            self._opsec_watch.wait(3000)      # join the watcher — no leaked QThread
+            self._opsec_watch = None
         for w in self.pages.values():
             if hasattr(w, "stop"):
                 w.stop()

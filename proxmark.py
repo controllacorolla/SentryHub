@@ -12,6 +12,9 @@ import shutil
 import sys
 
 import engagement
+import opsec
+
+opsec.register("PROXMARK", "active-tx", "RFID write / clone / sim — engagement-gated")
 
 # op -> (is_active, pm3 client command template, band). Active ops require an engagement.
 OPS = {
