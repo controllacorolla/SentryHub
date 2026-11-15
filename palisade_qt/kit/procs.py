@@ -8,8 +8,8 @@ and left zombies. This helper is the one way a Qt page runs a decoder:
     for line in pipe.stdout: …
     pipe.terminate()           # SIGTERM the whole session, wait, SIGKILL, wait — never a zombie
 
-Every stage shares the leader's new session (setsid) so PANIC and the arbiter can kill the lot
-by group; stderr goes to DEVNULL unless a stage asks for it (RDS decoders print on stderr).
+Every stage leads its own session (setsid) and terminate() signals every stage's group, so PANIC
+and the arbiter can kill the lot; stderr goes to DEVNULL unless a stage asks for it.
 """
 import os
 import signal
@@ -24,26 +24,21 @@ class Pipeline:
         self.stages = [list(s) for s in stages]
         self.procs = []
         prev = None
-        sid = None
         for i, argv in enumerate(self.stages):
             last = i == len(self.stages) - 1
             kw = dict(stdin=prev if prev is not None else subprocess.DEVNULL,
                       stdout=subprocess.PIPE,
                       stderr=(stderr_last if (last and stderr_last is not None)
                               else subprocess.DEVNULL),
-                      text=text, bufsize=bufsize, env=env)
-            if sid is None:
-                kw["start_new_session"] = True            # the leader opens the session
-            else:
-                kw["preexec_fn"] = _join_session(sid)     # the rest join it (same pgid)
-            p = subprocess.Popen(argv, **kw)
-            if sid is None:
-                sid = p.pid
-            if prev is not None:
+                      text=text, bufsize=bufsize, env=env,
+                      start_new_session=True)             # every stage leads its own group: a
+            p = subprocess.Popen(argv, **kw)              # process cannot join another session's
+            if prev is not None:                          # group, so we kill each group instead
                 prev.close()                              # only the next stage reads it
             prev = p.stdout
             self.procs.append(p)
-        self.sid = sid
+        self.sids = [p.pid for p in self.procs]
+        self.sid = self.sids[0]
         self.stdout = self.procs[-1].stdout
         self.stderr = self.procs[-1].stderr
         self.pid = self.procs[-1].pid
@@ -90,24 +85,16 @@ class Pipeline:
     kill = terminate
 
     def _signal(self, sig):
-        try:
-            os.killpg(self.sid, sig)
-        except (ProcessLookupError, PermissionError, OSError):
-            for p in self.procs:
+        for p in self.procs:
+            if p.poll() is not None:
+                continue
+            try:
+                os.killpg(p.pid, sig)                     # its whole group (children of a stage too)
+            except (ProcessLookupError, PermissionError, OSError):
                 try:
-                    if p.poll() is None:
-                        p.send_signal(sig)
+                    p.send_signal(sig)
                 except Exception:
                     pass
-
-
-def _join_session(sid):
-    def pre():
-        try:
-            os.setpgid(0, sid)
-        except OSError:
-            pass
-    return pre
 
 
 def split_shell_pipeline(cmd):

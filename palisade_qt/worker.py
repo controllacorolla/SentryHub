@@ -16,9 +16,37 @@ Apps subclass Worker and implement step() (periodic) or run() (own loop, still h
 self.stopping and using self.sleep()); PalisadeApp owns start/stop and never aborts the process
 if a worker refuses to join (see app.py).
 """
+import atexit
 import threading
+import weakref
 
 from PySide6 import QtCore
+
+_LIVE = weakref.WeakSet()          # every Worker ever constructed and still referenced
+
+
+def drain_all(wait_ms=2000):
+    """At interpreter exit: stop and join every worker still running; terminate() the ones that
+    will not join, so Python never finalizes with a running QThread (the SIGABRT the audit saw:
+    QThread::~QThread on a running thread at Py_Finalize). Also used by tests. Returns how many
+    had to be terminated."""
+    killed = 0
+    for w in list(_LIVE):
+        try:
+            if not w.isRunning():
+                continue
+            w.stop()
+            if w.wait(wait_ms):
+                continue
+            w.terminate()
+            w.wait(1000)
+            killed += 1
+        except Exception:
+            pass
+    return killed
+
+
+atexit.register(drain_all)
 
 
 class Worker(QtCore.QThread):
@@ -40,6 +68,7 @@ class Worker(QtCore.QThread):
         self._cv = threading.Condition()
         self._failures = 0
         self._faulted = False
+        _LIVE.add(self)
 
     # ---- control (any thread) ----
     def stop(self):

@@ -46,6 +46,10 @@ NWR_CHANNELS = [
 ]
 
 FM_DEFAULTS = {"freq": 97.3, "mode": "wbfm", "gain": 40, "squelch": 0, "rds": True}
+# B1: tuning steps — broadcast 200 kHz, NBFM 25 / 12.5 / 5 kHz (weather radio, marine, business)
+FM_STEPS = (("200 kHz", 0.2), ("100 kHz", 0.1), ("25 kHz", 0.025), ("12.5 kHz", 0.0125),
+            ("5 kHz", 0.005))
+FM_STEP_DEFAULT = 0
 
 
 def _offscreen():
@@ -131,9 +135,36 @@ class ScanWorker(_RadioWorker):
         self._bank = bank
         self._scan = None          # live scan state dict; kept on self so stop() can break the
         self._fatal = False        # blocking listen_channel (scan["on"]=False) — else it hangs
+        self._skip = set()         # E2: locked-out channels (MHz)
+        self._nfm_sq = None        # B2: live NFM squelch (rtl_fm -l units) set from the page
+        self._settings = None
 
     def set_bank(self, bank):
         self._bank = bank
+        self._skip.clear()
+
+    def skip_current(self):
+        """E2: lock out the channel the scanner is on right now (SCAN resumes elsewhere)."""
+        scan = self._scan
+        chans = getattr(self, "_channels", None)
+        if scan is None or not chans:
+            return None
+        freq = chans[scan["idx"] % len(chans)][0]
+        self._skip.add(freq)
+        scan["pause"] = True        # break the current listen; the loop clears pause itself
+        return freq
+
+    def clear_skips(self):
+        self._skip.clear()
+
+    def set_nfm_squelch(self, level):
+        """B2: the live squelch is the engine's rtl_fm -l level; a change retunes the current
+        channel at the new level (the engine's own 'retune' path)."""
+        self._nfm_sq = int(level)
+        if self._settings is not None:
+            self._settings["nfm_squelch"] = int(level)
+        if self._scan is not None:
+            self._scan["retune"] = True
 
     def run(self):
         if self.demo:
@@ -153,16 +184,14 @@ class ScanWorker(_RadioWorker):
         import scanner as engine
         s, _ = _load_scanner_settings(engine)
         channels = (engine.bank_channels(self._bank, s.get("custom", []))
-                    or engine.bank_channels("NOAA Wx", []))
+                    or engine.bank_channels(engine.DEFAULTS["bank"], []))
+        self._channels = channels
         scan = {"on": False, "pause": False, "idx": 0, "rms": 0.0}
         while not self._stop:
             self._emit_state(channels, {}, scan)   # channels listed, all quiet, no fabricated hits
             self.status.emit({"sdr": {"text": "SCAN STANDBY — no rtl_fm", "ok": False},
                               "standby": True})
-            waited = 0
-            while waited < 1000 and not self._stop:
-                self.msleep(20)
-                waited += 20
+            self.sleep(1000)
 
     def _run_demo(self):
         while not self._stop:
@@ -178,16 +207,17 @@ class ScanWorker(_RadioWorker):
             self.row.emit({"rows": rows, "active": active})
             if not active:
                 self.status.emit({"sdr": {"text": "SCAN DEMO", "state": "neutral"}})
-            waited = 0
-            while waited < self.interval_ms and not self._stop:
-                self.msleep(10)
-                waited += 10
+            self.sleep(self.interval_ms)
 
     def _run_live(self):
         import scanner as engine
         s, _ = _load_scanner_settings(engine)
+        if self._nfm_sq is not None:
+            s["nfm_squelch"] = self._nfm_sq
+        self._settings = s
         channels = (engine.bank_channels(self._bank, s.get("custom", []))
-                    or engine.bank_channels("NOAA Wx", []))
+                    or engine.bank_channels(engine.DEFAULTS["bank"], []))
+        self._channels = channels
         self._scan = {"on": True, "pause": False, "idx": 0, "rms": 0.0}
         scan = self._scan
         hits = {}
@@ -195,16 +225,21 @@ class ScanWorker(_RadioWorker):
         try:
             while not self._stop and scan["on"]:
                 if not self._ensure_lease():        # backgrounded or radio busy
-                    self.msleep(300)
+                    self.sleep(300)
                     continue
                 if not channels:
-                    self.msleep(500)
+                    self.sleep(500)
                     continue
                 if self.hold:
                     self._emit_state(channels, hits, scan, held=True)
-                    self.msleep(300)
+                    self.sleep(300)
                     continue
+                if scan.get("pause") and self._active:
+                    scan["pause"] = False       # a skip broke the listen; carry on scanning
                 idx = scan["idx"] % len(channels)
+                if channels[idx][0] in self._skip and len(self._skip) < len(channels):
+                    scan["idx"] = (idx + 1) % len(channels)
+                    continue
                 freq, label, mode = channels[idx]
                 scan["rms"] = 0.0
                 result = engine.listen_channel(freq, mode, s, scan,
@@ -214,12 +249,17 @@ class ScanWorker(_RadioWorker):
                     break
                 if self._fatal:                     # rtl_fm fault (surfaced by post): back off
                     self._fatal = False
-                    self.msleep(2000)
+                    self.sleep(2000)
                     continue
                 if result:
-                    hits[freq] = time.strftime("%H:%M:%S")
+                    hits[freq] = time.time()           # B3: epoch, never HH:MM:SS re-parsed
                 self._emit_state(channels, hits, scan)
-                scan["idx"] = (idx + 1) % len(channels)
+                nxt = (idx + 1) % len(channels)
+                tries = 0
+                while channels[nxt][0] in self._skip and tries < len(channels):   # E2: skip/lockout
+                    nxt = (nxt + 1) % len(channels)
+                    tries += 1
+                scan["idx"] = nxt
         finally:
             self._release_radio()
             self._scan = None
@@ -228,7 +268,7 @@ class ScanWorker(_RadioWorker):
         def post(msg):
             kind = msg[0] if isinstance(msg, tuple) else msg
             if kind == "hit":
-                hits[freq] = time.strftime("%H:%M:%S")
+                hits[freq] = time.time()                   # B3: epoch
                 # a real squelch-break -> the one typed decode event (no geo, so not a contact)
                 eventbus.bus.publish(eventbus.decode(
                     "PROWL", "SCAN", "%.4f" % freq, "%s active @ %.4f MHz" % (label, freq),
@@ -242,15 +282,17 @@ class ScanWorker(_RadioWorker):
     def _emit_state(self, channels, hits, scan, held=False):
         rows = []
         active = None
+        now = time.time()
         for freq, label, mode in channels:
-            hot = freq in hits and (time.time() - _parse_time(hits.get(freq, "")) < 30)
+            t_hit = hits.get(freq)
+            hot = t_hit is not None and (now - t_hit) < 30          # B3: epoch arithmetic
             rms = scan.get("rms", 0)
             sig = int(-40 - (1.0 - min(1.0, rms / 8000.0)) * 80) if hot else -100
-            last = hits.get(freq, "")
+            last = time.strftime("%H:%M:%S", time.localtime(t_hit)) if t_hit else ""
             if hot and not held:
                 active = (str(freq), label, sig)
-            rows.append({"freq": "%.4f" % freq, "label": label, "sig": "%d" % sig,
-                         "last": last, "_hot": hot})
+            rows.append({"freq": "%.4f" % freq, "label": label + (" ⊘" if freq in self._skip else ""),
+                         "sig": "%d" % sig, "last": last, "_hot": hot, "_skip": freq in self._skip})
         self.row.emit({"rows": rows, "active": active})
 
     def stop(self):
@@ -409,7 +451,7 @@ class NwrWorker(_RadioWorker):
             self._respawn()
         elif self._proc is None:
             self._spawn()
-        elif self._proc.poll() is not None:           # R3: a dead receiver must not look healthy
+        if self._proc is not None and self._proc.poll() is not None:   # R3: dead ≠ healthy
             rc = self._proc.poll()
             self._kill()
             self._down += 1
@@ -535,14 +577,6 @@ def _load_scanner_settings(engine):
     return dict(engine.DEFAULTS), path
 
 
-def _parse_time(s):
-    """Parse HH:MM:SS into a rough timestamp for today (for recency check)."""
-    try:
-        parts = s.split(":")
-        return time.mktime(time.localtime()[:3] + (int(parts[0]), int(parts[1]), int(parts[2]), 0, 0, -1))
-    except (ValueError, IndexError):
-        return 0
-
 
 def _describe_mhz(freq_mhz_str):
     """freqdb.describe for an 'MHz' string, reused as-is. '—' if unknown/unparseable."""
@@ -578,6 +612,9 @@ class ProwlApp(PalisadeApp):
             if text == " ":
                 self._toggle_hold()
                 return True
+            if text in "sS":                       # E2: skip / lock out the current channel
+                self._skip_current()
+                return True
             if text in "[]":
                 n = self.bank_combo.count()
                 if n:
@@ -585,7 +622,8 @@ class ProwlApp(PalisadeApp):
                     self.bank_combo.setCurrentIndex((self.bank_combo.currentIndex() + step) % n)
                 return True
         elif self._submode == "FM" and text in "[]":
-            self._fm_step(0.2 if text == "]" else -0.2)
+            st = self.fm_step.currentData() if hasattr(self, "fm_step") else 0.2
+            self._fm_step(st if text == "]" else -st)
             return True
         elif self._submode == "NWR" and text in "[]":
             n = self.nwr_combo.count()
@@ -640,13 +678,24 @@ class ProwlApp(PalisadeApp):
 
         self.bar = ControlBar()
         self.squelch = QtWidgets.QSpinBox()
-        self.squelch.setRange(-120, -20)
-        self.squelch.setValue(-70)
-        self.squelch.setSuffix(" dBm")
+        if self.demo:
+            self.squelch.setRange(-120, -20)
+            self.squelch.setValue(-70)
+            self.squelch.setSuffix(" dBm")
+            self.squelch.setToolTip("Demo squelch (synthetic levels)")
+        else:
+            # B2: the live control IS the engine's rtl_fm power squelch (-l), in its own units
+            self.squelch.setRange(0, 1000)
+            try:
+                import scanner as _eng
+                self.squelch.setValue(int(_load_scanner_settings(_eng)[0].get("nfm_squelch", 50)))
+            except Exception:
+                self.squelch.setValue(50)
+            self.squelch.setSuffix(" -l")
+            self.squelch.setToolTip("NFM squelch: rtl_fm -l level (0 = open). Raise it if the "
+                                    "scanner stops on empty channels, lower it if it misses traffic. "
+                                    "Applies to the live scan at once.")
         self.squelch.valueChanged.connect(self._sq)
-        self.squelch.setEnabled(self.demo)        # live squelch comes from the scanner engine
-        if not self.demo:                         # settings (scanner.json), not this preview knob
-            self.squelch.setToolTip("Live squelch is set by the scanner engine (scanner.json)")
         self.bar.add_field("squelch", self.squelch, "Squelch")
 
         self.bank_combo = QtWidgets.QComboBox()
@@ -656,7 +705,11 @@ class ProwlApp(PalisadeApp):
         except ImportError:
             banks = ["NOAA Wx", "CB", "GMRS/FRS", "Marine VHF", "Airband"]
         self.bank_combo.addItems(banks)
-        self.bank_combo.setCurrentText("NOAA Wx")
+        try:
+            import scanner as _eng2
+            self.bank_combo.setCurrentText(_eng2.DEFAULTS["bank"])   # E2: an intermittent bank
+        except ImportError:
+            self.bank_combo.setCurrentText("GMRS/FRS")
         self.bank_combo.currentTextChanged.connect(self._set_bank)
         self.bar.add_field("bank", self.bank_combo, "Bank")
 
@@ -721,14 +774,21 @@ class ProwlApp(PalisadeApp):
         bar = ControlBar()
         self.fm_freq = QtWidgets.QDoubleSpinBox()
         self.fm_freq.setRange(24.0, 1766.0)
-        self.fm_freq.setDecimals(1)
+        self.fm_freq.setDecimals(3)                 # B1: 162.550 stays 162.550, not 162.6
         self.fm_freq.setSingleStep(0.1)
         self.fm_freq.setValue(FM_DEFAULTS["freq"])
         self.fm_freq.setSuffix(" MHz")
         self.fm_freq.editingFinished.connect(self._fm_retune)
         bar.add_field("freq", self.fm_freq, "Tune")
-        bar.add_button("−", lambda: self._fm_step(-0.2))     # seek down (step tune)
-        bar.add_button("+", lambda: self._fm_step(0.2))           # seek up
+        self.fm_step = QtWidgets.QComboBox()        # B1: a step menu for narrow channels
+        for label, step in FM_STEPS:
+            self.fm_step.addItem(label, step)
+        self.fm_step.setCurrentIndex(FM_STEP_DEFAULT)
+        self.fm_step.currentIndexChanged.connect(
+            lambda _i: self.fm_freq.setSingleStep(self.fm_step.currentData()))
+        bar.add_field("step", self.fm_step, "Step")
+        bar.add_button("−", lambda: self._fm_step(-self.fm_step.currentData()))
+        bar.add_button("+", lambda: self._fm_step(self.fm_step.currentData()))
         self.fm_mode = QtWidgets.QComboBox()
         self.fm_mode.addItems(["wbfm", "nbfm"])
         self.fm_mode.currentTextChanged.connect(lambda _=None: self._fm_retune())
@@ -842,7 +902,16 @@ class ProwlApp(PalisadeApp):
 
     def _sq(self, v):
         if isinstance(self._worker, ScanWorker):
-            self._worker.squelch = v
+            if self.demo:
+                self._worker.squelch = v
+            else:
+                self._worker.set_nfm_squelch(v)      # B2: wired to the engine's live setting
+
+    def _skip_current(self):
+        if isinstance(self._worker, ScanWorker):
+            f = self._worker.skip_current()
+            if f is not None:
+                self.set_chip("scan", "locked out %.4f" % f, state="warn")
 
     def _fdb_query(self):
         """A bare number = MHz -> lookup/describe; text -> freqdb.search. Pure, no radio."""
@@ -917,7 +986,7 @@ class ProwlApp(PalisadeApp):
 
     # ---- FM handlers ----
     def _fm_step(self, delta):
-        self.fm_freq.setValue(round(self.fm_freq.value() + delta, 1))
+        self.fm_freq.setValue(round(self.fm_freq.value() + delta, 4))   # B1: keep kHz precision
         self._fm_retune()
 
     def _fm_retune(self):

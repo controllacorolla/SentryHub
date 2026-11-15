@@ -36,14 +36,34 @@ SSTV_DEFAULT_FREQ = 145.800
 LEASE_NAME = "BABEL"
 
 
-def _open_pipe(cmd, shell=True, stderr=subprocess.DEVNULL):
+def _open_pipe(cmd, shell=None, stderr=None):
     """Spawn a decoder capture pipeline — or None under offscreen/offline so tests and CI never
-    open a real radio. The caller has already confirmed the binary is present via _can_run()."""
+    open a real radio. The caller has already confirmed the binary is present via _can_run().
+    `cmd` may be a legacy `a | b` shell STRING (split into argv stages — never run through a
+    shell) or a list of argv lists. Every stage shares one session so PANIC / the arbiter kill
+    the whole pipeline (audit A4). stderr goes to a temp file so an early exit can show WHY (R2)."""
     if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
         return None
-    return subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, stderr=stderr,
-                            stdin=subprocess.DEVNULL, text=True, bufsize=1, errors="replace",
-                            start_new_session=True)
+    import tempfile
+    from .kit.procs import Pipeline, split_shell_pipeline
+    stages = split_shell_pipeline(cmd) if isinstance(cmd, str) else [list(x) for x in cmd]
+    err = tempfile.TemporaryFile(mode="w+", errors="replace")
+    pipe = Pipeline(stages, stderr_last=err)
+    pipe.errfile = err
+    return pipe
+
+
+def _stderr_tail(proc, n=3):
+    """The last n stderr lines of a Pipeline opened by _open_pipe (for the fault banner)."""
+    f = getattr(proc, "errfile", None)
+    if f is None:
+        return ""
+    try:
+        f.seek(0)
+        lines = [ln.rstrip() for ln in f.read().splitlines() if ln.strip()]
+        return " | ".join(lines[-n:])[:200]
+    except Exception:
+        return ""
 
 
 def _synth(mode):
@@ -326,36 +346,81 @@ _LIVE_RUNNERS = {"AIS": _run_ais, "ACARS": _run_acars, "POCSAG": _run_pocsag, "R
 
 
 def _stop_proc(proc):
-    """Graceful shutdown: SIGINT, then SIGTERM, then SIGKILL."""
+    """Stop a decoder pipeline: group SIGTERM, wait, SIGKILL, wait — every member, no zombie (A4)."""
     if not proc or proc.poll() is not None:
         return
-    import signal
-    for sig, wait in ((signal.SIGINT, 2.0), (signal.SIGTERM, 1.0), (signal.SIGKILL, 1.0)):
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+    f = getattr(proc, "errfile", None)
+    if f is not None:
         try:
-            os.killpg(proc.pid, sig)
-        except (ProcessLookupError, PermissionError):
-            return
-        try:
-            proc.wait(timeout=wait)
-            return
-        except subprocess.TimeoutExpired:
-            continue
+            f.close()
+        except Exception:
+            pass
+
+
+EARLY_EXIT_S = 5.0            # a decoder that dies this soon after spawn is a FAULT, not a retry
+FAULT_BACKOFF_S = (2, 4, 8, 16, 30, 60)
 
 
 class DecoderWorker(Worker):
+    """One live decoder at a time. The radio is taken only while the operator has pressed RUN
+    AND the page is in front (R1: release when hidden, never start a decoder until RUN). An early
+    decoder exit is a FAULT with its stderr shown, retried with backoff while KEEPING the lease
+    (R2: no release/re-acquire churn, so readsb is not restarted ten times)."""
+    PAUSE_WHEN_HIDDEN = False          # it must keep stepping to release the dongle when hidden
+
     def __init__(self, demo=True, mode="AIS", parent=None):
         super().__init__(demo=demo, interval_ms=600, parent=parent)
         self.mode = mode
         self._n = 0
         self._proc = None
         self._mode_changed = False
+        self._running = False          # RUN pressed
+        self._active = True            # page in front
+        self._faults = 0
+        radio_arbiter.arbiter.revoked.connect(self._on_revoked)
+
+    def set_running(self, on):
+        self._running = bool(on)
+        self._mode_changed = True      # re-evaluate at once (take the radio / give it back)
+        if not on:
+            self._kill_proc()
+
+    def set_active(self, on):
+        self._active = bool(on)
+        self._mode_changed = True
+        if not on:
+            self._kill_proc()
+
+    def _on_revoked(self, name):
+        if name == LEASE_NAME:
+            self._running = False
+            self._mode_changed = True
+            self._kill_proc()
+
+    def wants_radio(self):
+        return self._running and self._active and not self.demo
+
+    def _nap(self, ms):
+        """Sleep up to ms, waking early on stop() OR on a RUN / hidden / mode change."""
+        deadline = time.time() + ms / 1000.0
+        while not self._stop and not self._mode_changed and time.time() < deadline:
+            self.sleep(min(50, max(1, int((deadline - time.time()) * 1000))))
+        return self._stop or self._mode_changed
+
+    def _kill_proc(self):
+        if self._proc and self._proc.poll() is None:
+            _stop_proc(self._proc)
+        self._proc = None
 
     def set_mode(self, mode):
         self.mode = mode
         self._mode_changed = True
-        if self._proc and self._proc.poll() is None:
-            _stop_proc(self._proc)
-            self._proc = None
+        self._faults = 0
+        self._kill_proc()
 
     def run(self):
         while not self._stop:
@@ -368,13 +433,22 @@ class DecoderWorker(Worker):
                 self._run_practice(mode)      # live + no RX backend (CW/RTTY): honest, never synth
             elif not _can_run(mode):
                 self._run_standby(mode)       # live + no decoder binary: honest standby, no synth
+            elif not self.wants_radio():
+                self._run_idle(mode)          # R1: no RUN, or page hidden -> no radio taken
             else:
                 self._run_live(mode)
 
             if self._stop:
                 break
             if not self._mode_changed:
-                self.msleep(500)
+                self._nap(500)
+
+    def _run_idle(self, mode):
+        self.status.emit({"sdr": {"text": "%s IDLE — press RUN" % mode if self._active
+                                  else "%s paused (page hidden)" % mode, "state": "neutral"},
+                          "busy": None, "idle": True})
+        while not self._stop and not self._mode_changed and not self.wants_radio():
+            self.sleep(50)
 
     def _run_live(self, mode):
         """Acquire the single SDR via the shared arbiter, run the real decoder, then release. If
@@ -384,18 +458,48 @@ class DecoderWorker(Worker):
             self.status.emit({"sdr": {"text": "RADIO BUSY — %s" % owner, "ok": False},
                               "busy": owner})
             waited = 0                       # idle and retry while the radio is held elsewhere
-            while waited < 1500 and not self._stop and not self._mode_changed:
-                self.msleep(50)
+            while waited < 1500 and not self._stop and not self._mode_changed and self.wants_radio():
+                self.sleep(50)
                 waited += 50
             return
         self.status.emit({"busy": None})     # we hold the radio — clear any BUSY banner
         try:
-            _LIVE_RUNNERS[mode](self)
-        except Exception as e:
-            self.error.emit("%s: %s" % (mode, str(e)[:150]))
-            self.status.emit({"sdr": {"text": "%s ERROR" % mode, "ok": False}})
-            self.msleep(2000)
+            # R2: run the decoder; an exit within EARLY_EXIT_S is a fault. Retry with backoff
+            # while HOLDING the lease, so readsb is not paused/resumed on every attempt.
+            while not self._stop and not self._mode_changed and self.wants_radio():
+                t0 = time.time()
+                self._proc = None
+                try:
+                    _LIVE_RUNNERS[mode](self)
+                except Exception as e:
+                    self.error.emit("%s: %s" % (mode, str(e)[:150]))
+                if self._stop or self._mode_changed or not self.wants_radio():
+                    break
+                if self._proc is None:
+                    # the capture seam opened nothing (offscreen / offline): hold the lease and say
+                    # so — not a decoder fault, and no release/re-acquire churn
+                    self.status.emit({"sdr": {"text": "%s — no capture (offline)" % mode,
+                                              "ok": False}, "standby": True})
+                    self._nap(1000)
+                    continue
+                ran = time.time() - t0
+                tail = _stderr_tail(self._proc)
+                if ran < EARLY_EXIT_S:
+                    self._faults += 1
+                    wait = FAULT_BACKOFF_S[min(self._faults, len(FAULT_BACKOFF_S)) - 1]
+                    msg = "%s decoder exited after %.1fs (×%d)%s — retry in %ds" % (
+                        mode, ran, self._faults, (": " + tail) if tail else "", wait)
+                    self.fault.emit("FAULT: " + msg)
+                    self.status.emit({"sdr": {"text": "%s FAULT" % mode, "state": "alert",
+                                              "ok": False}, "fault": msg})
+                    self._nap(wait * 1000)        # keep the lease while backing off
+                else:
+                    self._faults = 0            # a long run that ended: plain restart
+                    if self._faulted:
+                        self._faulted = False
+                        self.fault.emit("")
         finally:
+            self._kill_proc()
             radio_arbiter.arbiter.release(LEASE_NAME)
 
     def _run_standby(self, mode):
@@ -404,7 +508,7 @@ class DecoderWorker(Worker):
         binary = _MODE_BINARY.get(mode, "decoder")
         self.status.emit({"sdr": {"text": "%s STANDBY — no %s" % (mode, binary), "ok": False}})
         while not self._stop and not self._mode_changed:
-            self.msleep(50)
+            self.sleep(100)
 
     def _run_practice(self, mode):
         """Live mode for a mode with NO live RX backend (CW/RTTY are txguard TX/practice tools
@@ -413,7 +517,7 @@ class DecoderWorker(Worker):
         self.status.emit({"sdr": {"text": "%s — practice only (no live decode)" % mode, "ok": False},
                           "practice": True})
         while not self._stop and not self._mode_changed:
-            self.msleep(50)
+            self.sleep(100)
 
     def _run_demo(self, mode):
         while not self._stop and not self._mode_changed:
@@ -426,13 +530,13 @@ class DecoderWorker(Worker):
                 self.status.emit({"sdr": {"text": "SDR DEMO", "ok": True}})
             waited = 0
             while waited < self.interval_ms and not self._stop and not self._mode_changed:
-                self.msleep(10)
-                waited += 10
+                self.sleep(20)
+                waited += 20
 
     def stop(self):
         super().stop()
-        if self._proc and self._proc.poll() is None:
-            _stop_proc(self._proc)
+        self._mode_changed = True
+        self._kill_proc()
         radio_arbiter.arbiter.release(LEASE_NAME)   # belt-and-suspenders if wait() ever times out
 
 
@@ -528,7 +632,7 @@ class SstvWorker(Worker):
         if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
             return None
         import sstv
-        return sstv.Recorder(path, self.freq, self.gain, monitor=False)
+        return sstv.Recorder(path, self.freq, self.gain, monitor=False)   # rolling window (R5)
 
     def _decode(self, path):
         import sstvdec
@@ -561,9 +665,9 @@ class SstvWorker(Worker):
                 return
             rec = self._rec
             if rec is None:
-                import tempfile
-                self._wav = os.path.join(tempfile.gettempdir(),
-                                         "palisade_sstv_%d.wav" % os.getpid())
+                import suite
+                os.makedirs(suite.CACHE, exist_ok=True)          # R5: under the cache dir, not /tmp
+                self._wav = os.path.join(suite.CACHE, "palisade_sstv_%d.wav" % os.getpid())
                 rec = self._rec = self._make_recorder(self._wav)
         if rec is None:                              # offscreen seam: hold lease, no capture
             self.status.emit({"sdr": {"text": "SSTV — capturing", "ok": True}, "busy": None})
@@ -685,6 +789,12 @@ class BabelApp(PalisadeApp):
         self.mode_combo.addItems(MODES)
         self.mode_combo.currentTextChanged.connect(self._set_mode)
         self.bar.add_field("mode", self.mode_combo, "Decoder")
+        self.run_btn = QtWidgets.QPushButton("RUN")      # R1: the radio is taken only on RUN
+        self.run_btn.setCheckable(True)
+        self.run_btn.setToolTip("Take the SDR and start this decoder. STOP releases it. The page "
+                                "releases it on its own when you leave it.")
+        self.run_btn.toggled.connect(self._toggle_run)
+        self.bar.lay.addWidget(self.run_btn)
         self.busy = QtWidgets.QLabel("")        # "RADIO BUSY — held by X" when another layer owns it
         self.busy.setProperty("class", "note")
         self.busy.setWordWrap(True)
@@ -715,6 +825,22 @@ class BabelApp(PalisadeApp):
         self._count = 0
         return body
 
+    def _toggle_run(self, on):
+        self.run_btn.setText("STOP" if on else "RUN")
+        w = self._worker
+        if w is not None and hasattr(w, "set_running"):
+            w.set_running(on)
+
+    def set_active(self, active):
+        super().set_active(active)
+        w = self._worker
+        if w is not None and hasattr(w, "set_active"):
+            w.set_active(active)          # R1: a hidden page gives the radio back
+
+    def primary_action(self):
+        self.run_btn.toggle()
+        return True
+
     def _set_mode(self, mode):
         prev_img, now_img = (self._cur_mode == "SSTV"), (mode == "SSTV")
         self._cur_mode = mode
@@ -734,26 +860,33 @@ class BabelApp(PalisadeApp):
         if not self._started or self._stopped:
             return
         if self._worker is not None:
-            self._worker.stop()
-            self._worker.quit()
-            self._worker.wait(3000)         # release the old lease before the new worker starts
+            from .app import stop_worker
+            stop_worker(self._worker, self.TITLE)   # release the old lease first; never abort (A2)
             self._worker = None
         self._worker = self.make_worker()
         if self._worker is not None:
             self._worker.row.connect(self.on_row)
             self._worker.status.connect(self.on_status)
             self._worker.error.connect(self.on_error)
+            if hasattr(self._worker, "fault"):
+                self._worker.fault.connect(self.on_fault)
             self._worker.start()
 
     def make_worker(self):
         if self.mode_combo.currentText() == "SSTV":
-            return SstvWorker(demo=self.demo)
-        return DecoderWorker(demo=self.demo, mode=self.mode_combo.currentText())
+            w = SstvWorker(demo=self.demo)
+        else:
+            w = DecoderWorker(demo=self.demo, mode=self.mode_combo.currentText())
+        if hasattr(w, "set_running"):
+            w.set_running(self.run_btn.isChecked())
+            w.set_active(self._active)
+        return w
 
     def on_status(self, status):
         super().on_status(status)
-        if status.get("practice") or status.get("standby"):   # no backend / no device: say so
-            self.busy.setText(status.get("sdr", {}).get("text", ""))
+        if status.get("practice") or status.get("standby") or status.get("idle") \
+                or status.get("fault"):                        # no backend / idle / fault: say so
+            self.busy.setText(status.get("fault") or status.get("sdr", {}).get("text", ""))
         elif "busy" in status:                   # the single-SDR banner, driven by the arbiter
             owner = status["busy"]
             self.busy.setText("RADIO BUSY — held by %s" % owner if owner else "")

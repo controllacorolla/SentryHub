@@ -171,13 +171,16 @@ class RidSource:
     BLE + Wi-Fi only (OpenDroneID) — NOT the SDR, so no lease is taken. The Wi-Fi-monitor path is
     device-only and left stubbed; BLE works on the dev Mac but sees zero without real beacons."""
 
-    def __init__(self):
+    def __init__(self, on_fault=None):
         import dronewatch
         self._dw = dronewatch
         self._drones = dronewatch.Drones()
         self._q = queue.Queue()
         self._on = False
         self._thread = None
+        self._fault = None             # E3: a scanner failure is surfaced, never swallowed
+        self._on_fault = on_fault
+        self.state = "off"             # off | scanning | fault | unavailable
 
     def start(self):
         if self._on:
@@ -188,14 +191,31 @@ class RidSource:
         # TODO(device-only): Wi-Fi monitor-mode OpenDroneID (NAN/beacon) — needs a monitor NIC;
         # validate on the uConsole. BLE covers the common case and runs here.
 
+    def _set_fault(self, msg, state="fault"):
+        self._fault = msg
+        self.state = state
+        if self._on_fault is not None:
+            try:
+                self._on_fault(msg)
+            except Exception:
+                pass
+
+    @staticmethod
+    def scanner_kwargs():
+        """E3: PASSIVE scanning only — Remote-ID beacons are broadcast; we never send scan
+        requests. bleak: scanning_mode='passive' (BlueZ needs or_patterns; an empty list = all)."""
+        return {"scanning_mode": "passive"}
+
     def _scan_ble(self):
         if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            self.state = "unavailable"
             return                      # never open a real BLE scan under tests/offline
         try:
             import asyncio
             from bleak import BleakScanner
-        except Exception:
-            return                      # no bleak: zero drones (honest), BLE path simply absent
+        except Exception as e:
+            self._set_fault("Remote-ID: bleak not installed (%s)" % str(e)[:60], "unavailable")
+            return
 
         async def run():
             def cb(dev, adv):
@@ -203,17 +223,25 @@ class RidSource:
                 p = sd.get(self._dw.ODID_SERVICE_UUID)
                 if p:
                     self._q.put((dev.address, bytes(p), getattr(adv, "rssi", None)))
-            scanner = BleakScanner(detection_callback=cb)
+            kw = self.scanner_kwargs()
+            try:
+                scanner = BleakScanner(detection_callback=cb, **kw)
+            except TypeError:           # backend without passive support: say so, stay off
+                self._set_fault("Remote-ID: BLE backend has no passive scan mode — not scanning")
+                return
             await scanner.start()
+            self.state = "scanning"
             try:
                 while self._on:
                     await asyncio.sleep(0.5)
             finally:
                 await scanner.stop()
+                if self.state == "scanning":
+                    self.state = "off"
         try:
             asyncio.run(run())
-        except Exception:
-            pass
+        except Exception as e:
+            self._set_fault("Remote-ID BLE scan failed: %s" % str(e)[:100])
 
     def ingest_payload(self, addr, payload, rssi=None):
         """Decode one BLE ODID service-data payload and fold it into the aggregator (dronewatch's
@@ -500,14 +528,8 @@ class AtlasLiveWorker(Worker):
             except Exception as e:   # no engine / no deps: stay at zero, surface once
                 self.error.emit("ADS-B engine unavailable: %s" % str(e)[:120])
                 self._adsb = None
-        if not self._rid_tried:
-            self._rid_tried = True
-            try:
-                self._rid = RidSource()
-                self._rid.start()
-            except Exception as e:
-                self.error.emit("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
-                self._rid = None
+        # E3: the BLE scan is an explicit layer (DRONES) with an off switch; it is NOT started
+        # merely because ATLAS opened. See _reconcile_rid().
 
     LEASE_LAYERS = {"station": AprsSource, "vessel": AisSource}
 
@@ -518,6 +540,19 @@ class AtlasLiveWorker(Worker):
             self._wanted.add(kind)
         else:
             self._wanted.discard(kind)
+
+    def _reconcile_rid(self):
+        want = "drone" in self._wanted
+        if want and self._rid is None:
+            try:
+                self._rid = RidSource(on_fault=lambda m: self.error.emit(m))
+                self._rid.start()
+            except Exception as e:
+                self.error.emit("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
+                self._rid = None
+        elif not want and self._rid is not None:
+            self._rid.stop()
+            self._rid = None
 
     def _reconcile_leases(self):
         for kind, cls in self.LEASE_LAYERS.items():
@@ -536,6 +571,7 @@ class AtlasLiveWorker(Worker):
 
     def step(self):
         self._ensure_sources()
+        self._reconcile_rid()
         self._reconcile_leases()
         # ADS-B is the baseline (reads readsb's json). If a lease-layer holds the radio, readsb is
         # paused -> ADS-B is BUSY (the app shows it) and we publish no stale aircraft.
@@ -589,6 +625,7 @@ class AtlasApp(PalisadeApp):
         if not self.demo:
             self._layers.discard("station")          # APRS + AIS hold the one SDR: opt-in in live
             self._layers.discard("vessel")
+            self._layers.discard("drone")            # E3: the BLE scan is opt-in too
 
         body = QtWidgets.QWidget()
         split = QtWidgets.QHBoxLayout(body)
@@ -658,9 +695,9 @@ class AtlasApp(PalisadeApp):
 
     def _toggle(self, kind, on):
         self._layers.add(kind) if on else self._layers.discard(kind)
-        if kind in self.LEASE_NAME and not self.demo and self._worker is not None \
-                and hasattr(self._worker, "set_layer"):
-            self._worker.set_layer(kind, on)     # acquire/release the SDR via the arbiter
+        if (kind in self.LEASE_NAME or kind == "drone") and not self.demo \
+                and self._worker is not None and hasattr(self._worker, "set_layer"):
+            self._worker.set_layer(kind, on)     # SDR layers via the arbiter; DRONES = BLE scan
         self._render()
 
     def make_worker(self):

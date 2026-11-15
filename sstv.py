@@ -9,6 +9,7 @@ with the built-in decoder - no qsstv, no audio routing.
 --demo shows the app without hardware (recording disabled; decoding still works).
 """
 import glob
+import collections
 import os
 import queue
 import shutil
@@ -70,15 +71,25 @@ def pass_line(p, now=None):
 class Recorder:
     """rtl_fm -> WAV file, optionally also to the speaker. One per recording."""
 
-    def __init__(self, path, freq, gain, monitor):
+    WINDOW_S = 240          # audit R5: keep at most this much audio (longest SSTV mode ~3 min)
+    FLUSH_S = 5
+
+    def __init__(self, path, freq, gain, monitor, window_s=None, proc=None):
         self.path, self.level, self.err = path, 0.0, ""
         self.proc = self.sink = None
         self.t0 = time.time()
         self.stop_flag = threading.Event()
-        errf = S.errfile(os.path.join(S.CACHE, "sstv_rtl.err"))
-        self.proc = subprocess.Popen(rec_cmd(freq, gain), stdout=subprocess.PIPE, stderr=errf,
-                                     start_new_session=True)
-        errf.close()
+        self.window_s = self.WINDOW_S if window_s is None else window_s
+        self._chunks = collections.deque()           # rolling window of raw PCM chunks
+        self._bytes = 0
+        self._written = 0.0                          # seconds of audio in the file on disk
+        if proc is None:
+            errf = S.errfile(os.path.join(S.CACHE, "sstv_rtl.err"))
+            self.proc = subprocess.Popen(rec_cmd(freq, gain), stdout=subprocess.PIPE, stderr=errf,
+                                         start_new_session=True)
+            errf.close()
+        else:
+            self.proc = proc                         # test seam: a fake producer
         if monitor:
             sc = shutil.which("pacat") and ["pacat", "--raw", "--format=s16le",
                                              "--rate=%d" % RATE, "--channels=1"]
@@ -89,11 +100,12 @@ class Recorder:
         self.thread.start()
 
     def _run(self):
+        """Read PCM, keep a ROLLING WINDOW in memory, and rewrite the WAV from that window every
+        FLUSH_S seconds (atomic replace). The file on disk never exceeds window_s of audio (R5:
+        it used to grow ~173 MB/h in /tmp and be re-read whole every 12 s)."""
         import array
-        w = wave.open(self.path, "wb")
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(RATE)
+        max_bytes = int(self.window_s * RATE * 2)
+        last_flush = time.time()
         try:
             while not self.stop_flag.is_set():
                 chunk = self.proc.stdout.read(4800)
@@ -101,7 +113,10 @@ class Recorder:
                     self.err = "rtl_fm stopped - is the SDR free?"
                     break
                 chunk = chunk[: len(chunk) // 2 * 2]
-                w.writeframes(chunk)
+                self._chunks.append(chunk)
+                self._bytes += len(chunk)
+                while self._bytes > max_bytes and len(self._chunks) > 1:
+                    self._bytes -= len(self._chunks.popleft())
                 a = array.array("h")
                 a.frombytes(chunk)
                 self.level = (sum(x * x for x in a[::8]) / max(1, len(a[::8]))) ** 0.5
@@ -110,8 +125,30 @@ class Recorder:
                         self.sink.stdin.write(chunk)
                     except (BrokenPipeError, ValueError, OSError):
                         self.sink = None
+                if time.time() - last_flush >= self.FLUSH_S:
+                    self.flush()
+                    last_flush = time.time()
+        finally:
+            self.flush()
+
+    def flush(self):
+        """Write the current window to self.path atomically. Returns seconds of audio written."""
+        tmp = self.path + ".tmp"
+        w = wave.open(tmp, "wb")
+        try:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(RATE)
+            for c in list(self._chunks):
+                w.writeframes(c)
         finally:
             w.close()
+        os.replace(tmp, self.path)
+        self._written = self._bytes / float(RATE * 2)
+        return self._written
+
+    def window_seconds(self):
+        return self._bytes / float(RATE * 2)
 
     def stop(self):
         self.stop_flag.set()
