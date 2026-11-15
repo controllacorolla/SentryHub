@@ -466,3 +466,74 @@ file was re-run alone: 16 passed.)
 
 Python 3.13, the uConsole panel and keyboard, a real window manager, real tiles. Device command as
 in the CL1 section above.
+
+---
+
+## CL1-fix3 — close RA-CL1c (brief `plan/briefs/CL1-fix3.md`)
+
+Branch `fix/cl1-screen-structure`, base `ee4ac57` (code identical to `c97a05b`; ee4ac57 adds only
+the RA-CL1c docs). Worktree `../wt-CL1-fix3`. Python 3.12 venv, PySide6 6.12.0, Qt offscreen, macOS.
+New tests: `tests/test_cl1_fix3.py` (16 tests). Fail-first on `ee4ac57`: the F1 tests (all six
+theme × on/off cases) failed, as did both F2 tests and the F4 test. F3 passed (the behaviour was
+already correct); it **fails under mutation m16** (`('vscroll appeared', 430, 420)`).
+
+| ID | Verdict | Fix (file) | Regression test |
+|---|---|---|---|
+| F1 | CLOSED | `theme.py` navkey focus: over- and underline only. Sides keep their unfocused width and colour (`bw`, transparent / accent), so nothing is painted in the glyph columns. Underline `focus_under` (2/2/3 px) fits the ink-free rows. Corners are square, because a rounded thick underline curled into the edge glyphs. `focus_on` + a double underline on the current-page key, because SUN black-on-black was invisible. The checked key is now square in both states, because its rounded 5 px accent corner sat inside the text rect and changed on focus. Width is unchanged. | `test_nav_key_focus_cue_never_paints_inside_the_text_rect[{dark,light,sun}-{off,on}]`: every pixel in both text rects (advance box ∪ ink, ink rows) is identical focused vs unfocused, and ≥ key-width pixels change elsewhere, so the cue is visible. `test_nav_key_focus_cue_does_not_widen_the_strip` |
+| F2 | CLOSED (wording deviates, see below) | `chrome.py` `SCOPE_MAX = 999` → `999+ tgts` | `test_scope_summary_caps_the_target_count`, `test_strip_fits_1280_with_a_huge_scope[{3 themes}-{live,demo}]`: through `engagement.start` at 999, 1000 and 100000 targets, owner `PROWL SC` and the longest owner label, PERMITTED, 99+, focus on SYSTEM; hub and strip ≤ 1280 |
+| F3 | CLOSED | none (test gap only) | `test_feed_table_refits_when_the_viewport_gains_a_vscroll_or_narrows`: m16 caught |
+| F4 | CLOSED | `atlas.py` `_render` → `_show_lost()`: hero keeps the label, sub `LOST · NO LONGER REPORTED`, rows replaced by `STATUS LOST` (last alt/speed/range dropped), `_selected` cleared | `test_atlas_detail_marks_a_vanished_selected_contact_lost`: also checks that 123456 / `ft` are gone and that selecting another contact shows it normally |
+| F5 | DEFERRED | none | No zero-width option exists. A separator in the keys' existing transparent `bw` side border costs no width, but it would sit under ink at x=1 (PROWL) and x=68 (ATLAS, the key's last column). That is the F1 defect again. |
+
+### Where the brief was wrong
+
+- **F2 `999+ targets` does not fit.** It is 12 characters. `999 targets` (11) is the widest value the
+  strip is sized for, and the extra character overflowed in a measured run (dark demo 1282 px). So the
+  capped form is `999+ tgts`. The test asserts it is never longer than `999 targets`. If the owner
+  wants the full word, the strip needs about 10 px from somewhere else.
+- RA-CL1c PoC column "glyph-cols-under-ring" is computed from `focus_w` and no longer means anything,
+  because the side ring is gone. The pixel column is the truth: it now reads **0 px in every key
+  in every theme**.
+
+### Found, not fixed (not CL1-fix3 scope)
+
+- Low: `ChromeState.stop()` called twice (explicit `hub.state.stop()` then `close()`) logs a
+  PySide `Failed to disconnect` RuntimeWarning (`chrome.py:136`). It is harmless, but `stop()` is not idempotent.
+- Low: after LOST, if the contact reappears it is not auto-reselected. That is deliberate: the
+  operator must re-pick it.
+
+### Measurements (render script, worst case `PROWL SC` / PERMITTED / `999+ tgts` / 99+)
+
+dark demo hub_min 1253 · dark live 1241 · sun demo 1260 · sun live 1248 (all ≤ 1280).
+`poc_focus_ring.py` after the fix: overpainted glyph pixels = 0 for all 8 keys × 3 themes.
+
+### Suite and lint
+
+```
+$ QT_QPA_PLATFORM=offscreen python -m pytest -q tests
+FAILED tests/test_audit_tiles.py::test_undecodable_tile_is_marked_failed - As...
+FAILED tests/test_hwlab.py::test_doctor_hwbench_check - assert (None is True)
+FAILED tests/test_sstvdec.py::test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone
+3 failed, 977 passed, 14 skipped, 6 warnings in 278.38s (0:04:38)
+$ python -m pyflakes palisade_qt tests/test_cl1_fix3.py tests/test_cl1_fix2.py tests/test_cl1_screen.py tests/test_cl1_fix.py plan/briefs/CL1-fix3-renders/render.py
+(clean)
+```
+These are the same 3 failures as on `main` and in RA-CL1c. The run was on the committed tree.
+
+### Renders (1280×720, PNGs git-ignored)
+
+`python3 plan/briefs/CL1-fix3-renders/render.py <repo> <out>` writes
+`strip_{dark,sun}_{demo,live}_worst_focus<KEY>.png` (full 1280×720 frame, focus on each of the 8 keys),
+`zoom_strip_*` (2× zoom of the strip), and `atlas_{dark,sun}_{selected,lost}.png`. The local copies are in
+`~/palisade-renders/CL1-fix3/` on the dev Mac, plus `cl1fix3_ops_grid.png` (current-page key,
+unfocused | focused, sun/dark/light).
+
+### Stage → model
+
+| Stage | Model |
+|---|---|
+| Implementation, tests, mutation m16, renders, suite, verdicts | session model (Opus 5.5), run directly. No subagents. |
+
+### Not checked here
+
+Python 3.13, the uConsole panel and keyboard, a real window manager.

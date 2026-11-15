@@ -65,12 +65,19 @@ SCOPE_CHARS = 10          # a single target this short is shown as itself; longe
 STATE_WORDS = {"NONE", "OFF", "UNKNOWN", "FREE", "ACTIVE", "ARMED", "PERMITTED", "LIVE", "DEMO"}
 
 
+SCOPE_MAX = 999
+
+
 def scope_summary(scope):
     """Short, never-elided scope text for the strip: the target itself when there is one short
     target, else the count. The full list is in the ENGAGEMENT panel."""
     scope = [str(s) for s in scope or []]
     if len(scope) == 1 and len(scope[0]) <= SCOPE_CHARS and scope[0].strip().upper() not in STATE_WORDS:
         return scope[0]
+    if len(scope) > SCOPE_MAX:
+        # RA-CL1c F2: "1000 targets" pushed the strip past 1280 px. "999 targets" (11 chars) is the
+        # widest value the strip is sized for, so the capped form may not be longer than that.
+        return "%d+ tgts" % SCOPE_MAX
     return "%d target%s" % (len(scope), "" if len(scope) == 1 else "s")
 
 

@@ -26,6 +26,7 @@ DARK = {
     "field": "#0E1115", "accent_dim": "rgba(164,146,218,0.15)",
     "row_alt": "rgba(255,255,255,0.035)", "row_hover": "rgba(255,255,255,0.06)",
     "focus": "#FFFFFF", "focus_w": "2px", "bw": "1px",
+    "focus_on": "#FFFFFF", "focus_under": "2px",
     "check_bg": "rgba(164,146,218,0.22)", "check_fg": "#C9BCF2", "disabled": "#5F6772",
 }
 LIGHT = {
@@ -37,6 +38,7 @@ LIGHT = {
     "field": "#FFFFFF", "accent_dim": "rgba(90,71,144,0.12)",
     "row_alt": "rgba(0,0,0,0.04)", "row_hover": "rgba(0,0,0,0.07)",
     "focus": "#000000", "focus_w": "2px", "bw": "1px",
+    "focus_on": "#000000", "focus_under": "2px",
     "check_bg": "rgba(90,71,144,0.18)", "check_fg": "#3B2C6B", "disabled": "#8A9099",
 }
 # SUN: direct-sunlight theme. Black and white only, nothing under 7:1, 2 px borders. Colour carries
@@ -50,6 +52,7 @@ SUN = {
     "field": "#FFFFFF", "accent_dim": "#D9D9D9",
     "row_alt": "#EEEEEE", "row_hover": "#DDDDDD",
     "focus": "#000000", "focus_w": "4px", "bw": "2px",
+    "focus_on": "#FFFFFF", "focus_under": "3px",
     "check_bg": "#000000", "check_fg": "#FFFFFF", "disabled": "#595959",
 }
 MODES = {"dark": DARK, "light": LIGHT, "sun": SUN}
@@ -168,12 +171,17 @@ QFrame#top_bar {{ background: {p1}; border: none; border-bottom: {bw} solid {hai
 QPushButton.navkey {{ background: transparent; border: {bw} solid transparent; border-radius: 5px;
                       padding: 0; min-height: 0; text-align: left; }}
 QPushButton.navkey:hover {{ background: {row_hover}; }}
-QPushButton.navkey:focus {{ border: {focus_w} solid {focus}; border-top-width: {bw};
-                            border-bottom-width: {bw}; }}   /* two text lines: keep glyphs clear */
-QPushButton.navkey_on {{ background: {check_bg}; border: {bw} solid {accent}; border-radius: 5px;
+/* focus on a nav key: over- and underline only (RA-CL1c F1). Both text lines run edge to edge
+   (SIDE = 1 px), so a side ring painted over the first/last glyph columns ('8 SYSTEM' read
+   '3 SYSTEM' in SUN). The sides keep their unfocused width + colour; focus_under fits the ink-free
+   rows under the label; corners are square (a rounded thick underline curls up into the edge
+   glyphs); focus_on is the cue on the current page's filled key (SUN: white on black). No width. */
+QPushButton.navkey:focus {{ border-style: solid; border-color: {focus} transparent;
+                            border-width: {bw} {bw} {focus_under} {bw}; border-radius: 0; }}
+QPushButton.navkey_on {{ background: {check_bg}; border: {bw} solid {accent}; border-radius: 0;
                          padding: 0; min-height: 0; text-align: left; }}
-QPushButton.navkey_on:focus {{ border: {focus_w} solid {focus}; border-top-width: {bw};
-                               border-bottom-width: {bw}; }}
+QPushButton.navkey_on:focus {{ border-style: solid solid double solid; border-color: {focus_on} {accent};
+                               border-width: {bw} {bw} {focus_under} {bw}; border-radius: 0; }}
 QLabel.navcall {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QLabel.navcall_on {{ color: {check_fg}; font-size: {status}px; font-weight: 600; }}
 QLabel.navlabel {{ color: {muted}; font-size: {status}px; }}

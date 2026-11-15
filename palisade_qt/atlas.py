@@ -680,6 +680,8 @@ class AtlasApp(PalisadeApp):
                          "rng": "%.0f" % c["rng"], "alt": "%d" % c["alt"] if c["alt"] else "—",
                          "_src": c, "_colors": {"rng": self._color(c["kind"], c["severity"])}})
         self.feed.model.set_rows(rows)
+        if self._selected is not None and self._selected not in {c["id"] for c in shown}:
+            self._show_lost()
         self.set_chip("sdr", ("%d CONTACTS" % len(shown)) if (self.demo or shown) else "NO FEED",
                       state="neutral")
         self._update_busy()
@@ -720,6 +722,14 @@ class AtlasApp(PalisadeApp):
             ("SPEED", "%d kt" % c["spd"] if c.get("spd") else "—"),
             ("RANGE", "%.0f nm" % c.get("rng", 0)),
             ("BEARING", "%03d°" % c.get("brg", 0))])
+
+    def _show_lost(self):
+        """The selected contact is gone (stale or its layer hidden): say so, and drop its last fix
+        so the card never reads as a current position (RA-CL1c F4)."""
+        label = self.detail.hero.text()
+        self._selected = None
+        self.detail.set_hero(label, "LOST · no longer reported")
+        self.detail.set_rows([("STATUS", "LOST")])
 
     def stop(self):
         try:
