@@ -1077,3 +1077,106 @@ def test_forge_serial_write_queue_drains_atomically():
     w.step()                                     # locked drain -> no lost keystroke
     assert w._pending == []
     w.stop()
+
+
+# ---- OVERWATCH: sky dome (sun/moon always live), passes (hermetic TLE), radio director ----
+
+def test_overwatch_sky_sun_moon_always_live():
+    from palisade_qt import overwatch
+    w = overwatch.SkyWorker(demo=True)
+    rows = []
+    w.row.connect(lambda m: rows.append(m))
+    w.step()
+    assert rows and len(rows[0]["sun"]) == 2 and len(rows[0]["moon"]) == 3
+    assert rows[0]["daylight"] in ("day", "civil twilight", "nautical twilight",
+                                   "astronomical twilight", "night")
+    assert rows[0]["sats"], "demo shows a synthetic satellite"
+
+
+def test_overwatch_passes_demo_and_no_tle_standby():
+    from palisade_qt import overwatch
+    # demo -> synthetic flagged passes
+    w = overwatch.PassWorker(demo=True)
+    got = []
+    w.row.connect(lambda m: got.append(m))
+    w.step()
+    assert got and got[0]["status"] == "demo" and got[0]["passes"]
+    assert all(p.get("demo") for p in got[0]["passes"])
+    # live + a missing TLE path -> honest NO-TLE standby, no passes
+    w2 = overwatch.PassWorker(demo=False, tle_path="/nonexistent/weather.tle")
+    got2 = []
+    w2.row.connect(lambda m: got2.append(m))
+    w2.step()
+    assert got2 and got2[0]["status"] == "no-tle" and got2[0]["passes"] == []
+
+
+def test_overwatch_passes_predict_real_from_injected_tle(tmp_path):
+    """Hermetic: inject a fake ISS TLE file and predict AS-IS via wxsat/skyfield — never network."""
+    import pytest as _pt
+    try:
+        import skyfield  # noqa: F401
+    except ImportError:
+        _pt.skip("skyfield not installed")
+    import sys
+    sys.path.insert(0, "tests")
+    from iss_tle_fixture import iss_tle
+    from palisade_qt import overwatch
+    tle = tmp_path / "iss.tle"
+    tle.write_text(iss_tle())
+    w = overwatch.PassWorker(demo=False, tle_path=str(tle))
+    got = []
+    w.row.connect(lambda m: got.append(m))
+    w.step()
+    assert got and got[0]["status"] == "live"
+    assert any(p["sat"].startswith("ISS") for p in got[0]["passes"]), "real ISS passes predicted"
+    p0 = got[0]["passes"][0]
+    assert len(p0["track"]) == 41 and "aos" in p0 and "max" in p0
+
+
+def test_overwatch_radio_director_tracks_arbiter_and_frees(monkeypatch):
+    _app()
+    from palisade_qt import overwatch, radio_arbiter as ra
+    ra.arbiter._owner = None
+    ra.arbiter._lease = None
+    monkeypatch.setattr(ra, "_make_lease", lambda n: None)
+    p = overwatch.OverwatchApp(demo=True, mode="dark")
+    p.start()
+    _pump(100)
+    ra.arbiter.request("ATLAS-APRS")
+    _pump(100)
+    assert p.hist_feed.model.rowCount() >= 1
+    assert "APRS" in p.holder.hero.text()
+    p._free_radio()
+    assert ra.arbiter.owner() is None
+    p.stop()
+    ra.arbiter._owner = None
+
+
+def test_overwatch_next_pass_alerts_ops_for_real_passes():
+    _app()
+    from palisade_qt import overwatch, eventbus
+    eventbus.bus.clear()
+    alerts = []
+    eventbus.bus.published.connect(lambda e: alerts.append(e) if e["type"] == "alert" else None)
+    p = overwatch.OverwatchApp(demo=False, mode="dark")
+    import time as _t
+    now = _t.time()
+    real = [{"sat": "NOAA-19", "freq": 137.1, "aos": now + 600, "los": now + 1300, "max": 62.0,
+             "track": [(0, 0)], "dir": "southbound"}]
+    p._on_passes({"passes": real, "status": "live"})
+    assert any(e["source"] == "OVERWATCH" and "next pass" in e["payload"]["text"] for e in alerts)
+    # demo passes must NOT alert OPS
+    alerts.clear()
+    p._on_passes({"passes": overwatch._demo_passes(now), "status": "demo"})
+    assert alerts == []
+
+
+def test_overwatch_open_pump_close_no_leaked_threads():
+    _app()
+    from palisade_qt import overwatch, radio_arbiter as ra
+    ra.arbiter._owner = None
+    p = overwatch.OverwatchApp(demo=False, mode="dark")
+    p.start()
+    _pump(200)
+    p.stop()
+    assert all(not w.isRunning() for w in p._workers) if p._workers else True

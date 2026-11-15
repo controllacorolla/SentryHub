@@ -16,8 +16,22 @@ Absorbs: field_status, sensors, powergov, doctor (status), sitrep (summary), liv
 - ➕ one unified alert/timeline strip fed by every callsign
 
 ## OVERWATCH — sky dome + radio director
-Absorbs: overwatch, astro, radio (SDR lease/autopilot), scout.
-- ⬜ sky dome (sun/moon/sat passes via astro), autopilot radio rotation, pass scheduling
+Absorbs: overwatch, astro, skyintel(ADS-B, NOT sat), wxsat(passes), passsched, radio arbiter.
+- ◐ **OVERWATCH page wired** — sub-views SKY DOME / RADIO / PASSES, all backends AS-IS.
+  - **SKY DOME** — a QPainter polar dome (zenith centre, horizon rim, N/E/S/W, elevation rings)
+    with the sun + moon from pure `astro.sun_azel`/`moon_azel` (always live — deterministic math)
+    and satellite positions + pass arcs; projection reuses `overwatch.project`/`dome_r`/`compass`.
+  - **RADIO** (the director seed) — the operator's view into the one-owner dongle: current
+    `radio_arbiter` holder, acquire/release history (from the arbiter's `changed` signal), and a
+    "FREE THE RADIO" hand-over that releases the holder so the next layer can take it.
+  - **PASSES** — upcoming passes from `wxsat.predict` (skyfield + TLE) scheduled via
+    `passsched.schedule`/`next_pass`/`assign_decoder`; the next real pass raises an
+    `alert(source=OVERWATCH)` for the OPS next-pass card. No TLE → "NO TLE — update required"
+    standby, no synthetic passes in live; demo passes are flagged; tests inject a fake TLE file and
+    never fetch from network.
+- Scout (site survey) stays under **RECON** (network/RF survey fits there, not the sky/radio view).
+- ⬜ autopilot radio rotation, per-pass arbiter record (acquire on AOS / release on LOS) on-device,
+  live TLE refresh.
 
 ## ATLAS — the map
 Absorbs: sky_app (ADS-B), skyintel, mlat, balloons, aprs, dronewatch (Remote ID), kraken (DF),
