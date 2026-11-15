@@ -247,7 +247,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
             ("RADIOS panel", lambda: self.open_panel("radios")),
             ("ENGAGEMENT panel", lambda: self.open_panel("engagement")),
             ("ALERTS drawer", lambda: self.open_panel("alerts")),
-            ("Acknowledge all alerts", self.alerts.ack_all),
+            ("Acknowledge all alerts", self.alerts_drawer.ack_all_seen),   # seen ones only
             ("Mute / unmute audio", self.topbar.toggle_mute),
             ("Key map", lambda: self.open_panel("keys")),
             ("PANIC — disarm TX, end engagement, kill child processes", self.panic),
@@ -278,6 +278,12 @@ class PalisadeHub(QtWidgets.QMainWindow):
         except Exception as e:
             did.append("engagement end FAILED: %s" % e)
         try:
+            for name, page in list(self.pages.items()):     # UI-held permits (BENCH's ack)
+                if self.stack.indexOf(page) >= 0:
+                    did += page.on_panic()
+        except Exception as e:
+            did.append("permit revoke FAILED: %s" % e)
+        try:
             roots = list(self._list_children())
             did.append(procs.describe(self._stop_tree(roots)))
         except Exception as e:
@@ -287,10 +293,14 @@ class PalisadeHub(QtWidgets.QMainWindow):
             self.state.poll()
         except Exception as e:
             did.append("gate re-read FAILED: %s" % e)
-        # PANIC has no API to revoke a page's own acknowledgement (that is CL2's): say so, and
-        # leave the TX slot showing the gate's real answer instead of a cleared label
-        for src in chrome.tx_permit_sources():
-            did.append("%s ack not revoked — TX still PERMITTED" % src)
+        # the banner says what the gates say after the re-read, never what PANIC hoped for
+        tx = chrome.read_tx()
+        if tx == "OFF":
+            did.append("TX OFF")
+        elif tx == "PERMITTED":
+            did.append("TX still PERMITTED (%s)" % ", ".join(chrome.tx_permit_sources()))
+        else:
+            did.append("TX %s" % tx)
         text = "PANIC — " + " · ".join(did)
         try:
             eventbus.bus.publish(eventbus.alert("SHELL", text, severity="alert"))

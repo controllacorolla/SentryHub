@@ -152,7 +152,17 @@ class RadiosPanel(Overlay):
         self._refresh_holder()
 
     def _refresh_holder(self):
-        owner = radio_arbiter.arbiter.owner()
+        try:
+            owner = radio_arbiter.arbiter.owner()
+        except Exception as e:
+            # never fall back to FREE: an unreadable arbiter is UNKNOWN (amber word + its own shape)
+            self.holder.set_hero("◌ UNKNOWN", "the radio arbiter could not be read")
+            self.holder.hero.setStyleSheet("color:%s;" % self._tok["warn"])
+            self.holder.set_rows([("STATE", "UNKNOWN — %s" % e)])
+            self.takeover_btn.setEnabled(False)
+            self._refresh_table()
+            return
+        self.holder.hero.setStyleSheet("")
         if owner:
             self.holder.set_hero(radio_arbiter.owner_label() or owner, "holds the single SDR")
             self.holder.set_rows([("LEASE", owner), ("STATE", "BUSY — one owner at a time")])
@@ -171,7 +181,13 @@ class RadiosPanel(Overlay):
 
     # ---- inventory ----
     def _refresh_table(self):
-        rows = radios.inventory(owner_label=radio_arbiter.owner_label(), sys_root=self._sys_root)
+        try:
+            rows = radios.inventory(owner_label=radio_arbiter.owner_label(), sys_root=self._sys_root)
+        except Exception as e:
+            warn = self._tok["warn"]
+            rows = [{"radio": "◌ UNKNOWN", "present": "UNKNOWN", "power": "UNKNOWN",
+                     "owner": "cannot read: %s" % e,
+                     "_colors": {"radio": warn, "present": warn, "power": warn}}]
         self.table.model.set_rows(rows)
         self.device_pick.clear()
         present = [r["radio"] for r in rows if r["present"] == "PRESENT"]
@@ -274,8 +290,17 @@ class EngagePanel(Overlay):
         self.gate_changed.emit()
 
     def refresh(self):
-        info = _engagement().info()
-        if info["active"]:
+        try:
+            info = _engagement().info()
+            active = bool(info["active"])
+        except Exception as e:
+            self.eng_detail.set_hero("◌ UNKNOWN", "the engagement state could not be read")
+            self.eng_detail.hero.setStyleSheet("color:%s;" % self._tok["warn"])
+            self.eng_detail.set_rows([("STATE", "UNKNOWN — %s" % e)])
+            self.render_actions()
+            return
+        self.eng_detail.hero.setStyleSheet("")
+        if active:
             scope = list(info["scope"] or [])
             # parity with main's RECON banner: name, operator, authorization, target count
             self.eng_detail.set_hero(info["name"], "active engagement")
@@ -289,9 +314,13 @@ class EngagePanel(Overlay):
         self.render_actions()
 
     def render_actions(self):
-        rows = [{"t": time.strftime("%H:%M:%S", time.localtime(a["t"])),
-                 "action": a["action"], "target": a["target"]}
-                for a in reversed(_engagement().actions())]
+        try:
+            rows = [{"t": time.strftime("%H:%M:%S", time.localtime(a["t"])),
+                     "action": a["action"], "target": a["target"]}
+                    for a in reversed(_engagement().actions())]
+        except Exception as e:
+            rows = [{"t": "—", "action": "UNKNOWN — evidence trail unreadable", "target": str(e),
+                     "_colors": {"action": self._tok["warn"]}}]
         self.eng_actions.model.set_rows(rows)
 
     def focus_first(self):
@@ -350,12 +379,19 @@ class AlertStore(QtCore.QObject):
             return True
         return False
 
-    def ack_all(self):
-        if self.unacked():
-            for a in self.items:
-                a["acked"] = True
+    def last_id(self):
+        return self._next_id - 1
+
+    def ack_all(self, upto_id=None):
+        """Acknowledge every alert (upto_id None) or only those with id <= upto_id — the ones the
+        operator has seen. An alert that arrived later is never acknowledged sight unseen."""
+        hit = [a for a in self.items if not a["acked"] and (upto_id is None or a["id"] <= upto_id)]
+        for a in hit:
+            a["acked"] = True
+        if hit:
             self._trim()
             self.changed.emit()
+        return len(hit)
 
     def clear(self):
         self.items = []
@@ -401,8 +437,9 @@ class AlertsDrawer(Overlay):
         row = QtWidgets.QHBoxLayout()
         self.ack_btn = QtWidgets.QPushButton("ACKNOWLEDGE SELECTED")
         self.ack_btn.clicked.connect(self.ack_selected)
-        self.ack_all_btn = QtWidgets.QPushButton("ACKNOWLEDGE ALL")
-        self.ack_all_btn.clicked.connect(self.store.ack_all)
+        self.ack_all_btn = QtWidgets.QPushButton("ACKNOWLEDGE ALL SEEN")
+        self.ack_all_btn.clicked.connect(self.ack_all_seen)
+        self._seen_id = 0          # newest alert id on screen when the drawer was last opened
         row.addWidget(self.ack_btn)
         row.addWidget(self.ack_all_btn)
         row.addStretch(1)
@@ -422,8 +459,12 @@ class AlertsDrawer(Overlay):
         self.table.model.set_rows(rows)
         self.select_id(keep)            # the cursor stays on the same ALERT, not the same row
         n = self.store.unacked()
-        self.count.setText("%d alert(s) since launch · %d unacknowledged" % (len(self.store.items), n)
-                           if self.store.items else "No alerts since launch.")
+        late = sum(1 for a in self.store.items if not a["acked"] and a["id"] > self._seen_id)
+        text = ("%d alert(s) since launch · %d unacknowledged" % (len(self.store.items), n)
+                if self.store.items else "No alerts since launch.")
+        if late and self.isVisible():
+            text += " · %d arrived since opened (not in ACK ALL SEEN; reopen to include)" % late
+        self.count.setText(text)
 
     def selected_id(self):
         row = self.table.view.currentIndex().row()
@@ -442,6 +483,15 @@ class AlertsDrawer(Overlay):
                 return
         self.table.view.clearSelection()
         self.table.view.setCurrentIndex(QtCore.QModelIndex())
+
+    def open(self):
+        self._seen_id = self.store.last_id()       # what the operator is about to see
+        super().open()
+
+    def ack_all_seen(self, _checked=False):
+        """Acknowledge everything up to the newest alert shown when the drawer was last opened.
+        Alerts that arrived after that stay NEW until the drawer is opened again."""
+        return self.store.ack_all(upto_id=self._seen_id)
 
     def ack_selected(self):
         """Acknowledge the alert under the cursor — identified by id, so an alert that arrived

@@ -151,6 +151,11 @@ class PalisadeApp(QtWidgets.QWidget):
     def on_gate_changed(self):
         """The shell calls this when the engagement / TX state changes."""
 
+    def on_panic(self):
+        """PANIC: drop any transmit permission this page holds in its own UI state (UI-only; never
+        a gate change). Returns a list of short lines for the PANIC banner."""
+        return []
+
     # ---- page-owned status (never the top strip) ----
     def set_chip(self, key, text=None, state=None, ok=None):
         if state is None:
@@ -407,6 +412,12 @@ class CompositeApp(PalisadeApp):
     def on_gate_changed(self):
         for c in self._children.values():
             c.on_gate_changed()
+
+    def on_panic(self):
+        did = []
+        for c in self._children.values():
+            did += c.on_panic()
+        return did
 
     def stop(self):
         if self._stopped:

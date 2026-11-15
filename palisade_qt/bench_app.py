@@ -157,6 +157,15 @@ class BenchApp(PalisadeApp):
         if not self._stopped:
             self._refresh_gate()
 
+    def on_panic(self):
+        """PANIC revokes the conducted-only acknowledgement. In this app the ack IS this checkbox
+        (bench.preflight reads it from the settings this page builds), so unchecking it is a pure
+        UI action; the gate then refuses on its own logic (owner decision, CL1-fix2)."""
+        if self._stopped or not self.ack.isChecked():
+            return []
+        self.ack.setChecked(False)          # toggled -> _refresh_gate -> re-reads bench.preflight
+        return ["BENCH ack revoked"]
+
     def make_worker(self):
         return None             # the self-test runs on demand, not continuously
 

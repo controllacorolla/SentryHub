@@ -168,10 +168,12 @@ QFrame#top_bar {{ background: {p1}; border: none; border-bottom: {bw} solid {hai
 QPushButton.navkey {{ background: transparent; border: {bw} solid transparent; border-radius: 5px;
                       padding: 0; min-height: 0; text-align: left; }}
 QPushButton.navkey:hover {{ background: {row_hover}; }}
-QPushButton.navkey:focus {{ border: {focus_w} solid {focus}; }}
+QPushButton.navkey:focus {{ border: {focus_w} solid {focus}; border-top-width: {bw};
+                            border-bottom-width: {bw}; }}   /* two text lines: keep glyphs clear */
 QPushButton.navkey_on {{ background: {check_bg}; border: {bw} solid {accent}; border-radius: 5px;
                          padding: 0; min-height: 0; text-align: left; }}
-QPushButton.navkey_on:focus {{ border: {focus_w} solid {focus}; }}
+QPushButton.navkey_on:focus {{ border: {focus_w} solid {focus}; border-top-width: {bw};
+                               border-bottom-width: {bw}; }}
 QLabel.navcall {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QLabel.navcall_on {{ color: {check_fg}; font-size: {status}px; font-weight: 600; }}
 QLabel.navlabel {{ color: {muted}; font-size: {status}px; }}

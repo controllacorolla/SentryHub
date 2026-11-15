@@ -139,9 +139,16 @@ class StatusSlot(QtWidgets.QFrame):
 
 
 class NavKey(QtWidgets.QPushButton):
-    """A numbered page key: '<n> CALLSIGN' at status size. The function word lives in the
-    tooltip, the key map (?) and the palette (/): on a 5" ~294 ppi panel an 11 px caption is
-    under 1 mm tall, so the owner ruled out any strip text below 16 px (planner decision, CL1)."""
+    """A numbered page key: '<n> CALLSIGN' over its function label ('map', 'listen' …), both at
+    status size (16 px) — owner decision D7, 2026-11-15: the function is visible beside every key.
+
+    Two 16 px lines are 2 × 20 px line boxes, more than the key's 36 px. But the callsign line is
+    caps and digits (no descender) and the label line is lower case, so the INK of both is about
+    12 + 17 rows. The two labels are therefore placed by their measured ink (tightBoundingRect),
+    overlapping only in empty line-box space, with a 2 px gap between the glyphs. Nothing is shrunk
+    and nothing is clipped (the test compares painted pixels with the text drawn unclipped)."""
+    GAP = 2            # px between the callsign's baseline ink and the label's tallest ascender
+    SIDE = 1           # px left/right inside the key
 
     def __init__(self, number, callsign, label, parent=None):
         super().__init__(parent)
@@ -149,32 +156,64 @@ class NavKey(QtWidgets.QPushButton):
         self.setProperty("class", "navkey")
         self.setFocusPolicy(QtCore.Qt.TabFocus)
         self.setFixedHeight(STRIP_H - 4)
-        v = QtWidgets.QVBoxLayout(self)
-        v.setContentsMargins(1, 1, 1, 1)
-        v.setSpacing(0)
-        self.call = QtWidgets.QLabel("%d %s" % (number, callsign))
+        self.call = QtWidgets.QLabel("%d %s" % (number, callsign), self)
         self.call.setProperty("class", "navcall")
-        self.call.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-        v.addStretch(1)
-        v.addWidget(self.call)
-        v.addStretch(1)
+        self.label = QtWidgets.QLabel(label, self)
+        self.label.setProperty("class", "navlabel")
+        for w in (self.call, self.label):
+            w.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+            w.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop)
         self.function = label
         self.setToolTip("%d — %s: %s" % (number, callsign, label))
         self.setAccessibleName("%s %s" % (callsign, label))
 
+    def _ink(self, w):
+        """(top, bottom) of the text's painted pixels relative to its baseline, at the polished font."""
+        w.ensurePolished()
+        r = w.fontMetrics().tightBoundingRect(w.text())
+        return r.top(), r.bottom()
+
+    def _text_w(self):
+        return max(w.fontMetrics().horizontalAdvance(w.text()) for w in (self.call, self.label))
+
     def sizeHint(self):
-        return self.layout().sizeHint()
+        for w in (self.call, self.label):
+            w.ensurePolished()
+        return QtCore.QSize(self._text_w() + 2 * self.SIDE, STRIP_H - 4)
 
     def minimumSizeHint(self):
-        return self.layout().sizeHint()
+        return self.sizeHint()
+
+    def _place(self):
+        c_top, c_bot = self._ink(self.call)
+        l_top, l_bot = self._ink(self.label)
+        ink_h = (c_bot - c_top + 1) + self.GAP + (l_bot - l_top + 1)
+        y0 = (self.height() - ink_h) // 2              # top row of the callsign's ink
+        fm_c, fm_l = self.call.fontMetrics(), self.label.fontMetrics()
+        c_base = y0 - c_top                            # AlignTop: baseline = label top + ascent
+        l_base = c_base + c_bot + 1 + self.GAP - l_top
+        w = self.width() - 2 * self.SIDE
+        self.call.setGeometry(self.SIDE, c_base - fm_c.ascent(), w, fm_c.height())
+        self.label.setGeometry(self.SIDE, l_base - fm_l.ascent(), w, fm_l.height())
+        self.label.raise_()
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._place()
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        self._place()
 
     def set_on(self, on):
         suffix = "_on" if on else ""
         self.setProperty("class", "navkey" + suffix)
         self.call.setProperty("class", "navcall" + suffix)
-        for w in (self, self.call):
+        self.label.setProperty("class", "navlabel" + suffix)
+        for w in (self, self.call, self.label):
             w.style().unpolish(w)
             w.style().polish(w)
+        self._place()
 
 
 def _shield_pixmap(color):

@@ -594,8 +594,11 @@ class AtlasApp(PalisadeApp):
         self._busy_label.setWordWrap(True)
         self._busy_label.hide()
         right.addWidget(self._busy_label)
-        self.feed = FeedTable([("label", "CONTACT"), ("kind", "TYPE"),
-                               ("rng", "NM"), ("alt", "ALT")])
+        # TYPE is not a column: it is on the map (colour + label), the layer chips and the detail
+        # card. Four columns did not fit 1280x720 and cut altitudes off at the edge (RA-CL1b N1);
+        # the three that remain always fit, and a value too wide elides with its full text as tooltip
+        self.feed = FeedTable([("label", "CONTACT"), ("rng", "NM"), ("alt", "ALT")],
+                              fit_viewport=True)
         self.feed.selected.connect(self._show)
         right.addWidget(self.feed, 3)
         self.detail = DetailCard("CONTACT")
@@ -672,7 +675,8 @@ class AtlasApp(PalisadeApp):
                               colors=[self._color(c["kind"], c["severity"]) for c in shown])
         rows = []
         for c in sorted(shown, key=lambda c: c["rng"]):
-            rows.append({"label": c["label"], "kind": KIND_LABEL.get(c["kind"], c["kind"]),
+            rows.append({"_id": c["id"], "label": c["label"],
+                         "kind": KIND_LABEL.get(c["kind"], c["kind"]),
                          "rng": "%.0f" % c["rng"], "alt": "%d" % c["alt"] if c["alt"] else "—",
                          "_src": c, "_colors": {"rng": self._color(c["kind"], c["severity"])}})
         self.feed.model.set_rows(rows)

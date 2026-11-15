@@ -134,33 +134,9 @@ def test_panic_never_signals_its_own_process_group():
 
 
 # ================================================================ 2. PANIC and BENCH's TX permit
-def test_panic_leaves_tx_slot_on_the_real_bench_gate_and_says_ack_not_revoked():
-    """RA-CL1: PANIC cleared the PERMITTED label while BENCH's gate still passed. The slot must
-    show what the gate says, and the banner must say the ack was not revoked (CL2 hand-off)."""
-    hub = _hub(demo=False)
-    try:
-        hub._list_children = lambda: []
-        hub.open_callsign("BENCH")
-        _pump(80)
-        bench = hub.pages["BENCH"]
-        bench.ack.setChecked(True)
-        _pump(40)
-        hub.state.poll()
-        assert hub.topbar.slots["tx"].text() == "PERMITTED"
-        hub.panic()
-        _pump(40)
-        import bench as bench_engine
-        still, _why = bench_engine.preflight(bench._settings(), bench._band_freq())
-        assert still, "precondition: PANIC has no API to revoke the bench ack"
-        assert hub.topbar.slots["tx"].text() == "PERMITTED"
-        assert "BENCH ack not revoked" in hub.panic_banner.text()
-        bench.ack.setChecked(False)
-        _pump(40)
-        hub.state.poll()
-        assert hub.topbar.slots["tx"].text() == "OFF"
-    finally:
-        hub.close()
-        _pump(150)
+# test_panic_leaves_tx_slot_on_the_real_bench_gate_and_says_ack_not_revoked was retired by the
+# owner decision of 2026-11-15 (CL1-fix2): PANIC now revokes the BENCH ack (it is page state). Its
+# replacement is tests/test_cl1_fix2.py::test_panic_unchecks_the_bench_ack_and_the_slot_reads_the_gate
 
 
 # ================================================================ 3. mute / volume

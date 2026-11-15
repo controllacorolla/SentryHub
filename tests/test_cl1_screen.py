@@ -402,9 +402,8 @@ def test_eight_keys_in_order_with_function_labels():
         for i, (name, label) in enumerate(CALLSIGNS, start=1):
             key = hub.topbar.nav_keys[name]
             assert key.call.text() == "%d %s" % (i, name)
-            # the function word is not drawn in the strip (nothing there under 16 px); it is
-            # in the tooltip, the key map and the palette
-            assert key.function == label and label in key.toolTip()
+            # D7 (owner, 2026-11-15): the function word is drawn under the callsign, at 16 px
+            assert key.function == label and key.label.text() == label and label in key.toolTip()
     finally:
         hub.close()
         _pump(150)

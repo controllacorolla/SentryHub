@@ -375,3 +375,94 @@ and five evidence rows. Regenerate with
 | Render sweep (6 runs) + visual check of 30 views | sonnet (1 agent) |
 | Re-render after the fixes + check of the 4 affected views | session model, directly (no agent) |
 | Inventory / search | none needed |
+
+---
+
+## CL1-fix2 — closing RA-CL1b (branch `fix/cl1-screen-structure`, on `5cbc1de`)
+
+Brief: `plan/briefs/CL1-fix2.md`. Tests: `tests/test_cl1_fix2.py`. Every new test failed on `5cbc1de`
+(13 of 15 then; the 2 N10 tests passed because the behaviour was already right; they are proven
+by mutation below). Python 3.12.16 venv, PySide6 6.12.0, Qt offscreen.
+
+| Item | Status | Where | Test |
+|---|---|---|---|
+| N1 ATLAS fits, never clips a value | CLOSED | `atlas.py`: TYPE column dropped (type is on the map colour + label, the layer chips and the detail card); `kit/feed.py` `FeedTable(fit_viewport=True)`: every section sized explicitly to the viewport (refit on viewport resize, needs clamped to the header minimum), sideways scroll off, too-wide values elide with "…", every cell's tooltip is its full value | `test_atlas_table_fits_without_hscroll_and_never_clips_a_value[dark/light/sun]` (with a 30-char ID and a 6-digit altitude injected) |
+| N2 selection follows the item | CLOSED | `kit/feed.py` `row_key` (`_id`, else the row's whole content), `_remember_row`/`_restore_row` re-select by key, emit `selected` with the fresh row (detail follows), clear the highlight if the item is gone. ATLAS rows carry `_id` | `test_feed_selection_follows_the_item_across_a_resort_and_the_detail_matches`, `test_atlas_keeps_the_same_aircraft_selected_when_it_resorts` |
+| N10 PANIC escalation + group kill pinned | CLOSED | (behaviour unchanged) | `test_panic_kills_a_pipeline_that_ignores_sigterm` (real `sh -c "trap '' TERM; sleep \| sleep"`), `test_panic_group_kill_reaches_members_the_snapshot_missed` (same pipeline, child listing blinded so only `killpg` reaches the members) |
+| N3 PANIC revokes the BENCH ack | CLOSED | `app.py` `on_panic()` hook (composite forwards); `bench_app.py` `on_panic` unchecks the ack (pure UI; the gate then refuses on its own logic); `shell.py` `panic()` calls the hook, re-reads, and the banner reports `chrome.read_tx()` — `TX OFF`, or `TX still PERMITTED (<source>)` if any gate still passes. The "ack not revoked" path is gone | `test_panic_unchecks_the_bench_ack_and_the_slot_reads_the_gate`, `test_panic_banner_reports_a_permit_that_survives` |
+| D7 function label beside every key | CLOSED | `kit/topbar.py` `NavKey`: callsign over label, both 16 px, placed by measured ink (`tightBoundingRect`), 2 px gap; labels `home · map · spectrum · listen · sweep · survey · hardware · settings` (`ops.py`); nav focus ring keeps full width left/right, normal border width top/bottom (`theme.py`) so no ring covers a glyph | `test_every_nav_key_shows_its_function_label_beside_the_callsign[dark/light/sun]` — compares the strip's painted pixels with the same text drawn unclipped, per line, ≥ 99 %; checks ≥ 16 px, ≤ 40 px strip, ≤ 1280 px |
+| Item 6 panels fail to UNKNOWN | CLOSED | `panels.py` `RadiosPanel._refresh_holder/_refresh_table`, `EngagePanel.refresh/render_actions`: a raising read shows `◌ UNKNOWN` (amber) with the error, never FREE / NONE; FREE THE RADIO disabled | `test_radios_panel_shows_unknown_when_the_arbiter_read_raises`, `test_engagement_panel_shows_unknown_when_the_engine_read_raises` |
+| Ack all = seen only | CLOSED | `panels.py` `AlertStore.ack_all(upto_id)`; `AlertsDrawer.open` snapshots the newest id shown, `ack_all_seen` acks up to it (button "ACKNOWLEDGE ALL SEEN"; count line says how many arrived since opening); palette "Acknowledge all alerts" uses the same rule | `test_ack_all_never_acks_an_alert_that_arrived_after_the_drawer_was_viewed` |
+| RA-CL1b N4 (Low) | CLOSED | `chrome.STATE_WORDS`: a single target spelled like a state word shows as `1 target` | `test_a_scope_target_spelled_like_a_state_word_is_never_the_slot_word` |
+
+Superseded tests: `test_cl1_fix.py::test_panic_leaves_tx_slot_on_the_real_bench_gate_and_says_ack_not_revoked`
+retired (owner decision 1 reverses it; comment left in place). `test_cl1_screen.py::test_eight_keys_…`
+now asserts the label is drawn.
+
+### Mutations (each applied to a copy, `tests/test_cl1_fix2.py` run)
+
+| Mutation | Caught by |
+|---|---|
+| no SIGKILL fallback (`procs.py`) | `test_panic_kills_a_pipeline_that_ignores_sigterm`, `test_panic_group_kill_…` |
+| no `killpg` (`procs.py`) | `test_panic_group_kill_reaches_members_the_snapshot_missed` |
+| nav lines overlap (GAP −8) | `test_every_nav_key_shows_its_function_label_…[all 3]` |
+| nav key 8 px shorter | `test_every_nav_key_shows_its_function_label_…[all 3]` |
+| restore by row number | `test_feed_selection_follows_…`, `test_atlas_keeps_the_same_aircraft_…` |
+| ATLAS `fit_viewport=False` | `test_atlas_table_fits_…[all 3]` (survived before the long-ID case was added to the test; it was added, and it then also exposed two real fit bugs — stale stretch section, header minimum — both fixed) |
+| PANIC does not uncheck the ack | `test_panic_unchecks_the_bench_ack_…` |
+| ack all acks everything | `test_ack_all_never_acks_an_alert_that_arrived_…` |
+
+### Measurements
+
+- Two 16 px lines: line box 20 px each (40 > the key's 36), but ink is 12 rows (callsign, caps +
+  digits) + 17 rows (label, ascender to descender). Placed by ink: rows 3–32 of a 36 px key.
+- Strip width: 1078 px live default; worst case (DEMO, `PROWL SC`, PERMITTED, `999 targets`, 99+)
+  hub minimum **1279 px in SUN, 1272 in dark** — fits 1280 with **1 px to spare in SUN**. Any new
+  strip content needs width from somewhere else.
+- ATLAS at 1280×720: CONTACT / NM / ALT sum = viewport width (438 px dark/light, 433 sun); no
+  sideways scroll; a 30-char ID elides, 123456 ft shows whole.
+
+### Renders (1280×720, ATLAS + top strip, dark + sun live, plus a stress pass)
+
+`atlas_{dark,sun}_live.png`, `atlas_{sun,dark}_stress.png` (demo, long ID selected, strip worst
+case): `python3 plan/briefs/CL1-renders/render_fix2.py <outdir>`; PNGs are git-ignored.
+Checked by eye: labels under every key, nothing cut in the table, `…` on the long ID.
+
+### Found, not fixed
+
+- **DetailCard hero clips a long unbreakable token** (pre-existing): the stress render shows
+  `RID-1581F5FAB2C3D4E5F…` cut at the card edge (no ellipsis) at hero size. The full value is in the
+  table cell's tooltip, so decision 3 holds, but the card should wrap anywhere or elide. Medium; CL4.
+- RA-CL1b N2 class elsewhere: lists without an `_id` (RECON Wi-Fi/BLE, PROWL, MESH…) now keep the
+  selection only while the row's content is unchanged, else clear it — honest, but a changing RSSI
+  drops the cursor. Give them ids (bssid, address) in their own clusters.
+- RA-CL1b N5 (daemonized member escapes PANIC) → CL2 process registry. N6 (page status row
+  captioned "SDR") → CL4. N7 (double-M; M during first read dropped), N8 (PANIC blocks ≤ 2.5 s),
+  N9 (unreachable `ACQUIR…` branch) — Low, not fixed.
+- Strip has 1 px of headroom in SUN + DEMO worst case (see Measurements).
+
+### Suite and lint
+
+```
+$ QT_QPA_PLATFORM=offscreen python -m pytest -q tests        (python3.12 venv: PySide6 6.12, pyqtgraph, flask, numpy)
+FAILED tests/test_audit_tiles.py::test_undecodable_tile_is_marked_failed - As...
+FAILED tests/test_hwlab.py::test_doctor_hwbench_check - assert (None is True)
+FAILED tests/test_sstvdec.py::test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone
+3 failed, 961 passed, 14 skipped in 236.74s (0:03:56)
+$ python -m pyflakes palisade_qt tests/test_cl1_fix2.py tests/test_cl1_fix.py tests/test_cl1_screen.py plan/briefs/CL1-renders/render.py plan/briefs/CL1-renders/render_fix2.py
+(clean)
+```
+The 3 failures are pre-existing on `main` (verified in RA-CL1b: same venv, `git archive main`, same 3).
+(After the suite run, one unused import in `tests/test_cl1_fix2.py` was removed for pyflakes; that
+file was re-run alone: 16 passed.)
+
+### Stage → model
+
+| Stage | Model |
+|---|---|
+| Implementation, tests, mutations, renders, verdicts | session model (Opus 5.5), run directly — no subagents |
+
+### Not checked here
+
+Python 3.13, the uConsole panel and keyboard, a real window manager, real tiles. Device command as
+in the CL1 section above.

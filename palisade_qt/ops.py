@@ -26,7 +26,7 @@ from .worker import Worker
 # PROWL, OVERWATCH's sky views into ATLAS, BENCH into SYSTEM; SWEEP is promoted from RECON/COUNTER.
 CALLSIGNS = [
     ("OPS", "home"), ("ATLAS", "map"), ("PRISM", "spectrum"), ("PROWL", "listen"),
-    ("SWEEP", "counter-surv"), ("RECON", "survey+assess"), ("FORGE", "hardware"),
+    ("SWEEP", "sweep"), ("RECON", "survey"), ("FORGE", "hardware"),
     ("SYSTEM", "settings"),
 ]
 
