@@ -140,13 +140,28 @@ bugsweep, jammer (detector), imsicatch (detector), gnss, + engagement/opprofile/
 
 ## BENCH — conducted TX self-test
 Absorbs: bench, loopback, txguard UI.
-- ◐ self-test UI → wire bench/loopback engines behind txguard; show the gate state live
+- ◐ **BENCH wired** — `loopback.software_selftests()` (CW/RTTY/AIS/OpenDroneID encode→decode
+  round-trips, pure, always runs) with real pass/fail, plus a conducted TX card gated by
+  `bench.preflight`/`txguard` — a live **TX SAFE** (conducted ack set) / **TX GATED** (amber + the
+  exact txguard reason) chip. Conducted-only: `bench.transmit` runs only via an injected seam, so
+  tests never key a transmitter and nothing goes OTA. Honest: loopback has **no VSWR/power meter**,
+  so no return/power numbers are shown or invented (the old placeholder faked SNR/BER — removed).
 
-## MORE / SYSTEM (under a gear/overflow)
+## MORE / SYSTEM (a SYSTEM nav callsign)
 Absorbs: settings_ui, doctor, assistant (AI), sitrep (spoken), transcriber, mesh_dash
-(Meshtastic), engagement, opprofile, evidence, fusion.
-- ⬜ settings, device doctor, **AI assistant tied to live context**, spoken sitrep, transcriber,
-  Meshtastic chat/nodes, session logging (engagement/evidence)
+(Meshtastic), engagement/opprofile/evidence (governance lives in RECON's ENGAGE).
+- ◐ **MORE wired** — sub-tabs SETTINGS / DOCTOR / ASSISTANT / MESH / SITREP.
+  - **SETTINGS**: operator (opprofile), HOME, theme, event-bus retention; persisted via suite settings.
+  - **DOCTOR**: `doctor.run_all()` health checks with honest pass/fail/info + fix hints (network
+    checks skipped offscreen so tests never hit the network).
+  - **ASSISTANT**: answers from the live event-bus context (alerts / contacts / decodes) and honestly
+    reports "AI backend offline" when no Ollama host is reachable (`assistant.pick_host`).
+  - **MESH**: Meshtastic node list + message log (demo mirrors `mesh_dash.FakeIface`'s data; no node
+    → honest standby). *Note: FakeIface's live chatter uses an unstoppable daemon, so the demo uses
+    its data shape statically, not the class.*
+  - **SITREP**: a plain-language situation report from the current bus state + an optional
+    `sitrep.speak` read-out (no TTS → the text stands on its own).
+- **Phase 1 complete — all 9 callsigns + MORE are wired.**
 
 ---
 

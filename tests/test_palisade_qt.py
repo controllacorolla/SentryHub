@@ -137,7 +137,7 @@ def test_hub_embeds_prism_as_qt_page():
     assert not (prism_worker and prism_worker.isRunning())
 
 
-ALL_CALLSIGNS = ["OVERWATCH", "ATLAS", "BABEL", "PRISM", "PROWL", "FORGE", "RECON", "BENCH"]
+ALL_CALLSIGNS = ["OVERWATCH", "ATLAS", "BABEL", "PRISM", "PROWL", "FORGE", "RECON", "BENCH", "MORE"]
 
 
 @pytest.mark.parametrize("name", ALL_CALLSIGNS)
@@ -1206,3 +1206,132 @@ def test_overwatch_predict_error_shows_warn_standby():
         p._on_passes({"passes": [], "status": status})
         assert p.pass_feed.model.rowCount() == 0
         assert "passes in the next" not in p.pass_note.text(), "%s must not read as a clear sky" % status
+
+
+# ---- BENCH: conducted TX self-test (loopback software tests + txguard conducted gate) ----
+
+def test_bench_gate_safe_with_ack_gated_without():
+    _app()
+    from palisade_qt.bench_app import BenchApp
+    p = BenchApp(demo=False, mode="dark")
+    p.ack.setChecked(False)
+    p._refresh_gate()
+    assert "GATED" in p.gate.text() and not p.tx_btn.isEnabled()
+    p.ack.setChecked(True)
+    p._refresh_gate()
+    assert "TX SAFE" in p.gate.text() and p.tx_btn.isEnabled()
+
+
+def test_bench_software_selftests_pass():
+    """The pure encode->decode round-trips (CW/RTTY/AIS/OpenDroneID) run AS-IS and pass — no radio."""
+    import loopback
+    results = loopback.software_selftests()
+    assert results and loopback.all_pass(results), "software self-tests must pass"
+    _app()
+    from palisade_qt.bench_app import BenchApp
+    p = BenchApp(demo=False, mode="dark")
+    p._on_results({"results": results, "all_pass": True})
+    assert p.feed.model.rowCount() == len(results)
+    assert all(r["ok"] == "PASS" for r in p.feed.model.rows)
+
+
+def test_bench_conducted_tx_is_gated_and_hermetic():
+    _app()
+    from palisade_qt.bench_app import BenchApp
+    p = BenchApp(demo=False, mode="dark")
+    spawned = []
+    import bench
+    # no conducted ack -> txguard blocks before any transmit; the run seam is never called
+    p.ack.setChecked(False)
+    ok, msg = bench.transmit(p._settings(), run=lambda a: spawned.append(a))
+    assert ok is False and "conducted" in msg.lower() and spawned == []
+    # offscreen _tx never spawns regardless
+    p.ack.setChecked(True)
+    p._tx()
+    assert "no antenna" in p.card.sub.text().lower() or p.card.hero.text() in ("KEYED", "BLOCKED")
+
+
+def test_bench_open_pump_close_no_leak():
+    _app()
+    from palisade_qt.bench_app import BenchApp
+    p = BenchApp(demo=False, mode="dark")
+    p.start()
+    p._run_selftest()
+    _pump(200)
+    p.stop()
+    stw = getattr(p, "_stw", None)
+    assert stw is None or not stw.isRunning()
+
+
+# ---- MORE / SYSTEM: settings, doctor, assistant (bus context), mesh, sitrep ----
+
+def test_more_registered_as_a_callsign():
+    from palisade_qt.shell import QT_PAGES
+    from palisade_qt.ops import CALLSIGNS
+    assert "MORE" in QT_PAGES and any(n == "MORE" for n, _ in CALLSIGNS)
+
+
+def test_more_doctor_runs_checks_and_skips_network_offscreen(monkeypatch):
+    import doctor
+    monkeypatch.setattr(doctor, "CHECKS", [
+        ("Software", [("t1", lambda: (True, "ok", "")), ("t2", lambda: (False, "bad", ""))]),
+        ("Network", [("n1", lambda: (True, "net", ""))])])
+    from palisade_qt.system import DoctorWorker
+    rows = []
+    w = DoctorWorker()
+    w.row.connect(lambda m: rows.append(m))
+    w.run()                                      # synchronous (plain method) -> deterministic
+    secs = {r["section"] for r in rows}
+    assert "Software" in secs and "Network" not in secs, "network checks skipped offscreen (hermetic)"
+    assert any(r["ok"] is True for r in rows) and any(r["ok"] is False for r in rows)
+
+
+def test_more_mesh_demo_nodes_and_live_standby():
+    from palisade_qt import system
+    w = system.MeshWorker(demo=True)
+    rows = []
+    w.row.connect(lambda m: rows.append(m))
+    w.step()
+    nodes = [m for m in rows if m["kind"] == "nodes"]
+    assert nodes and len(nodes[0]["nodes"]) >= 3
+    w.stop()
+    w2 = system.MeshWorker(demo=False)
+    seen, rows2 = [], []
+    w2.status.connect(lambda s: seen.append(s))
+    w2.row.connect(lambda m: rows2.append(m))
+    w2.step()
+    assert rows2 == [] and any(s.get("standby") for s in seen)
+
+
+def test_more_assistant_answers_from_bus_and_offline_llm():
+    _app()
+    from palisade_qt import system, eventbus
+    eventbus.bus.clear()
+    eventbus.bus.publish(eventbus.alert("ATLAS", "drone inbound", severity="alert"))
+    eventbus.bus.publish(eventbus.contact("ADS-B", "a1", 47.6, -122.3, kind="aircraft"))
+    p = system.MoreApp(demo=True, mode="dark")
+    assert "1 alert" in p._answer("any alerts?")
+    assert "aircraft" in p._answer("what's on the map?")
+    assert "offline" in p._answer("write me a sonnet").lower(), "LLM request honestly reports offline"
+
+
+def test_more_sitrep_from_bus_state():
+    _app()
+    from palisade_qt import system, eventbus
+    eventbus.bus.clear()
+    eventbus.bus.publish(eventbus.decode("BABEL", "AIS", "1", "vessel"))
+    p = system.MoreApp(demo=True, mode="dark")
+    lines = p._sitrep_lines()
+    assert lines[0].startswith("Situation report") and any("decode" in ln for ln in lines)
+    eventbus.bus.clear()
+    assert "All quiet" in " ".join(p._sitrep_lines())
+
+
+def test_more_open_pump_close_no_leaked_threads():
+    _app()
+    from palisade_qt.system import MoreApp
+    p = MoreApp(demo=False, mode="dark")
+    p.start()
+    _pump(200)
+    p.stop()
+    assert all(not w.isRunning() for w in p._workers) if p._workers else True
