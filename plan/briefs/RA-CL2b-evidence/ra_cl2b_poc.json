@@ -1,0 +1,117 @@
+[
+ {
+  "probe": "N1 E.issue refuses SDR TX in every argv shape (string-level classifier)",
+  "hold": false,
+  "detail": "engagement minted tickets for: {\"bash -c empty-quote split\": null, \"bash -c glob\": null, \"bash -c ANSI-C\": null, \"bash -c var concat\": null, \"unicode look-alike (Cyrillic e)\": null, \"renamed/symlinked binary\": null, \"rpitx family: tune\": null, \"rpitx family: sendook\": null, \"UHD example tx_waveforms\": null, \"URH CLI\": null, \"GNU Radio flowgraph\": null, \"SDRangel server\": null, \"GPS-SDR-SIM pipe\": null}"
+ },
+ {
+  "probe": "N1 DEVTERM SSH (shipped, free-text cmd) to an in-scope self address runs SDR TX",
+  "hold": false,
+  "detail": "{\"hackrf_transfer\": {\"issued\": false, \"spawned\": false, \"why\": \"refused: ssh keys an SDR transmitter \\u2014 only the TX gate (txguard: band\"}, \"hackrf_trans''fer\": {\"issued\": true, \"spawned\": true, \"why\": \"authorized: devterm:ssh on 127.0.0.1 (engagement 'j')\"}}"
+ },
+ {
+  "probe": "N1 DEVTERM SSH remote deauth ignores the RF hard lock (classified non-emitter)",
+  "hold": false,
+  "detail": "issued under SUITE_TX_LOCK=1 + disarmed: True (authorized: devterm:ssh on 192.168.1.20 (engagement 'j'))"
+ },
+ {
+  "probe": "N1 txguard ticket: argv -f differs from the authorized freq_hz",
+  "hold": false,
+  "detail": "issue_ticket authorized freq=915 MHz for an argv keying 1090 MHz: True"
+ },
+ {
+  "probe": "N1 executor.issue direct from a non-gate module refused",
+  "hold": true,
+  "detail": "only a gate (txguard, engagement, flipper) may issue tickets, not '__main__'"
+ },
+ {
+  "probe": "N2 issue refused under SUITE_TX_LOCK=1 (armed+unlocked otherwise) for every emitter class",
+  "hold": true,
+  "detail": "leaked={} probe-errors={}"
+ },
+ {
+  "probe": "N2 issue refused while disarmed (kill switch OFF) for every emitter class",
+  "hold": true,
+  "detail": "leaked={}"
+ },
+ {
+  "probe": "N2 issued armed, then lock/disarm before spawn: refused at spawn for every class",
+  "hold": true,
+  "detail": "ran or failed to issue: {}"
+ },
+ {
+  "probe": "N2 disarm kills a running emitter (deauth, zigbee inject, proxmark sim)",
+  "hold": true,
+  "detail": "killed by disarm: {'wifi deauth': True, 'zigbee inject': True, 'proxmark sim': True}"
+ },
+ {
+  "probe": "N2 SUITE_TX_LOCK set mid-run kills a running deauth (monitor poll)",
+  "hold": true,
+  "detail": "killed within 2.2s: True"
+ },
+ {
+  "probe": "N2 wired tools are NOT silenced by the RF lock (no over-blocking): nmap, CAN, USB-HID",
+  "hold": true,
+  "detail": "nmap issued=True \u00b7 usbhid=True authorized: usbhid:inject on BADGE-7 (engagement '"
+ },
+ {
+  "probe": "N2 rfemit misses real RF emitters (default non-RF for unknown programs)",
+  "hold": false,
+  "detail": "classified as NOT an emitter: ['SDRangel sdrangelsrv', 'UHD tx_bursts', 'UHD tx_waveforms', 'URH urh_cli', 'airgeddon', 'btlejuice', 'crazyradio/mousejack', 'direwolf (APRS TX)', 'eaphammer', 'hciconfig (BT adv)', 'jackit (nRF24)', 'l2ping (BT)', 'meshtastic CLI', 'mfoc', 'minimodem --tx (rig audio)', 'nfc-mfsetuid', 'nfc-relay-picc', 'rfcomm (BT)', 'rpitx pichirp', 'rpitx pisstv', 'rpitx pocsag', 'rpitx sendook', 'rpitx spectrumpaint', 'rpitx tune', 'ubertooth-btle', 'wifiphisher', 'wpa_supplicant']"
+ },
+ {
+  "probe": "N2 Flipper verbs the RF lock lets through that can still key RF",
+  "hold": false,
+  "detail": "issued under SUITE_TX_LOCK=1: ['input send ok short']"
+ },
+ {
+  "probe": "N3 recycled pid / crash-stale / other hub / forged nonce all read as STALE",
+  "hold": true,
+  "detail": "{\"recycled pid (start differs)\": true, \"crash-stale (pid dead)\": true, \"other hub (nonce mismatch)\": true, \"no nonce in env\": true, \"forged: parent pid + its real start, wrong nonce\": true, \"group/other-writable\": true, \"start differs by pid (distinct)\": true}"
+ },
+ {
+  "probe": "N3 bound child end-to-end: hub armed -> child armed; hub gone -> child STALE/locked",
+  "hold": true,
+  "detail": "genuine='True True False' forged-nonce='False False True' hub-closed='False False True'"
+ },
+ {
+  "probe": "N3 Linux /proc/<pid>/stat parser picks field 22 (starttime), comm with ') ' inside",
+  "hold": true,
+  "detail": "parsed 'linux:22' from a comm containing ') ' (want 'linux:22')"
+ },
+ {
+  "probe": "N4 Proxmark sim/clone: out-of-scope identity, ';' chaining, other separators",
+  "hold": true,
+  "detail": "leaked={} \u00b7 in-scope sim ok=True (proxmark3 -p /dev/ttyACM0 -c hf mf sim --1k -u DEADBEEF)"
+ },
+ {
+  "probe": "N4 sim scope revoked mid-run (END) kills it; out-of-scope also re-checked at spawn",
+  "hold": true,
+  "detail": "gate no longer passes: 'uid:CAFEBABE' is not in the engagement scope \u2014 refusing (out of au"
+ },
+ {
+  "probe": "N5 hostname pinned: nmap argv carries the checked address only (DNS change is moot)",
+  "hold": true,
+  "detail": "argv=['nmap', '-sS', '-p', '1-1024', '10.0.0.7'] \u00b7 after DNS change: SPAWNED"
+ },
+ {
+  "probe": "N5 multi-address name: one address out of scope refuses the whole scan",
+  "hold": true,
+  "detail": "issued=False '8.8.8.8' is not in the engagement scope \u2014 refusing (out of authorizat"
+ },
+ {
+  "probe": "N6 sample rate as text: '2e6' builds, 'nan'/'inf'/'1e400'/True refused cleanly",
+  "hold": true,
+  "detail": "{\"2e6\": [true, \"2000000\"], \"2.5e6\": [true, \"2500000\"], \"nan\": [false, \"sample rate 'nan' outside 2000000..20000\"], \"inf\": [false, \"sample rate 'inf' outside 2000000..20000\"], \"1e400\": [false, \"sample rate '1e400' outside 2000000..200\"], \"True\": [false, \"sample rate True outside 2000000..200000\"], \"0x200000\": [false, \"sample rate '0x200000' outside 2000000..\"]}"
+ },
+ {
+  "probe": "N8 clearing tx_enabled in the LIVE settings kills a running replay; bench opt_in too",
+  "hold": true,
+  "detail": "replay killed=True \u00b7 bench issued=True (tmp7jlv369_.iq -> 915.0000 MHz (conducted): hackrf) killed=True"
+ },
+ {
+  "probe": "N9a demo ticket refused on a real port; written to DemoSerial",
+  "hold": true,
+  "detail": "real port: refused \u00b7 DemoSerial wrote 6"
+ }
+]
