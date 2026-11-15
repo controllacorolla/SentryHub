@@ -8,7 +8,7 @@ PALISADE — module UI overhaul
 REPO: github.com/controllacorolla/SentryHub
   - main = full suite, 85 modules, 732 tests green (source of truth)
 PALISADE (formerly "Sentry") is a Python/Tkinter SDR + field-signals suite on a ClockworkPi
-uConsole (CM5, screen 1280x480). It also ships as a self-contained bash installer; the live
+uConsole (CM5, screen 1280x720). It also ships as a self-contained bash installer; the live
 app on the device is at ~/.local/share/uconsole-suite/app (data path name kept).
 
 RULE ZERO — INSPECT, READ, AND LOOK BEFORE YOU TOUCH ANYTHING.
@@ -30,7 +30,7 @@ template with no thought in it.
 PER-MODULE UX PASS (required before any layout — this is the point, not decoration)
 For each module write a short "use brief" and design to it:
   - What is this module FOR, in one sentence? What decision/task does it serve?
-  - WHO uses it and WHERE: a handheld in the field — 1280x480, outdoors, sometimes one-handed,
+  - WHO uses it and WHERE: a handheld in the field — 1280x720, outdoors, sometimes one-handed,
     quick in-and-out, not a desk.
   - The ONE thing the operator must see at a glance (biggest, clearest element).
   - The 2-3 secondary things, on demand, not competing with the primary.
@@ -80,7 +80,7 @@ CONSTRAINTS
 
 ENV / how to see the UI
   python3.12 + tkinter; tests via xvfb. Render a screen headless:
-    xvfb-run -a -s "-screen 0 1280x480x24" bash -c \
+    xvfb-run -a -s "-screen 0 1280x720x24" bash -c \
       'python3.12 hub.py --demo --no-splash --no-ops & sleep 8; import -window root out.png; kill %1'
 
 START HERE
