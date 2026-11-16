@@ -140,3 +140,33 @@ ACQUIRING → HELD → RELEASE, no forced free, no rtl_ais), `prowl_switch_waiti
 3.5 s release: GUI blocked 0.004 s, "FM: waiting for the previous mode to give the radio back",
 chip "SDR — switching modes", strip FREE), `prowl_switch_done_*` (PROWL-FM HELD). The CL5-fix
 PNGs are re-rendered and now committed.
+
+---
+
+# CL5-fix3 — the RA-CL5c findings (`fix/cl5-radio`, after `9b2f940`)
+
+Written by the planner (Opus 5.5). This is a self-report; **RA-CL5d** decides. The regression
+tests are in `tests/test_cl5_fix3.py`: 8 tests, using real processes, real threads and RA-CL5b's
+SIGTERM-trap fakes; only `_make_lease` is patched. **All 8 fail on `f8172c7`** (the RA-CL5c tip)
+on the behaviour they target.
+
+| ID | Finding | Status | Where | Test (`test_cl5_fix3.py`) |
+|---|---|---|---|---|
+| N-k | A revoke during a pending switch was acked by the retiring worker, then the new mode took the radio back | CLOSED | `PalisadeApp._on_revoked_during_swap`: while a switch is pending, a `revoked` for a retiring worker's lease (`NAME`; `DecoderWorker.NAME = "BABEL"` added) cancels the switch. This is the same rule as steady state: the page stays off until the operator resumes. BABEL unticks RUN (`on_swap_revoked`), and RUN with no worker starts the shown mode. PROWL says "press Enter to start" | `test_nk_a_revoke_during_a_prowl_switch_sticks`, `test_nk_a_revoke_during_a_babel_switch_sticks_and_unticks_run` (revoke while the old mode still HOLDS, asserted) |
+| N-l | NWR heartbeat counted rtl_fm's writes: stderr chatter and pipe fills read LIVE | CLOSED | `NwrWorker._audio_flowing` reads the **decoder's** (multimon-ng, last stage) `rchar`. LIVE needs reads with no gap > `AUDIO_GAP_S` = 1 s, continuously for `AUDIO_SETTLE_S` = 2 s, so a one-off burst (the decoder's own start-up reads, a pipe flush) is not a receiver | `test_nl_rtl_fm_that_only_writes_stderr_never_reads_live`, `test_nl_a_decoder_that_never_reads_never_reads_live` (both sampled every 0.1 s for 5 s), `test_nl_flapping_decoder_never_reports_live` |
+| weak test | `test_nd_a_flapping…` never asserted on `live` | CLOSED | — | `test_nl_flapping_decoder_never_reports_live` asserts no `live: True` at all |
+| N-m | A complete SSTV frame decoded just after STOP / hide / revoke was dropped | CLOSED | `_decode_job` → `_fold_stale`: shows the frame from a superseded recorder (one decode event per frame; a refinement of the frame that recorder was receiving is a row only). Only the clock write is dropped | `test_nm_a_frame_decoded_after_stop_is_still_shown_once` |
+| N-n | A status the retiring worker queued before the disconnect still repainted the page | CLOSED | `app._Relay`: each worker's signals go through a GUI-thread relay. `_retire` cuts it, and signals already queued are dropped on arrival (Qt delivers them after a disconnect) | `test_nn_a_retired_workers_late_status_is_ignored` (status queued from another thread before the switch) |
+| N-n (b) | A parked worker finishing after its page is deleted raised RuntimeError | CLOSED | `_emit_quiet` | — |
+| N-q | NWR dropped SAME headers parsed in the last poll before a stop | CLOSED | `NwrWorker._kill` drains after the pipeline is reaped | `test_nq_nwr_emits_alerts_parsed_before_a_stop` |
+| N-o | Another page can be granted the radio while readsb is still restarting (pre-existing) | OPEN (follow-up) | Arbiter design: needs a RELEASING state. Not changed here | — |
+| N-p | One retained QThread per switch (pre-existing `_retain` policy) | OPEN (follow-up) | — | — |
+| N13 | Legacy Tk `shell=True` | OPEN (follow-up) | — | — |
+
+**Suite** (Python 3.12.3, PySide6 6.12.0, offscreen + xvfb): `1073 passed, 3 failed, 3 skipped`.
+The 3 failures are the same baseline ones. pyflakes is clean on touched files.
+
+**Tests changed** (vs `9b2f940`): none. Only `test_cl5_fix3.py` was added.
+
+**Renders:** `plan/briefs/CL5-fix-renders/`, re-rendered on this tip.
+- The page and strip states are unchanged. NWR LIVE now appears about 2.4 s after spawn, because of the settle time.
