@@ -867,6 +867,7 @@ class SstvWorker(Worker):
                 os.makedirs(suite.CACHE, exist_ok=True)          # R5: under the cache dir, not /tmp
                 self._wav = os.path.join(suite.CACHE, "palisade_sstv_%d.wav" % os.getpid())
                 rec = self._rec = self._make_recorder(self._wav)
+                self._rec_t0 = time.time()
         if rec is not None and (not self.wants_radio()
                                 or not radio_arbiter.arbiter.held_by(self.NAME)):
             self._stop_rec()                         # RUN off / revoke / PANIC while starting
@@ -876,10 +877,31 @@ class SstvWorker(Worker):
                               "busy": None, "live": False})
             return
         if rec.err:                                  # rtl_fm died: reap + restart on the next step
+            err = rec.err
             self._stop_rec()
-            self.status.emit({"sdr": {"text": "SSTV — %s (retrying)" % rec.err[:34], "ok": False}})
+            # RA-CL8e NEW-T: an rtl_fm that dies within 5 s of starting, 3 times in a row, is a
+            # fault: stop, say so, give the radio back — not a respawn every second on a held radio
+            quick = time.time() - getattr(self, "_rec_t0", 0) < 5.0
+            self._early = getattr(self, "_early", 0) + 1 if quick else 0
+            if self._early >= 3:
+                self._early = 0
+                msg = "SSTV rtl_fm exits at once (×3): %s" % err[:60]
+                self._running = False
+                self._why = "FAULT — rtl_fm exits at once"
+                self._give_back(self._why)
+                self.fault.emit("FAULT: " + msg)
+                self.status.emit({"run_off": True, "live": False, "fault": msg,
+                                  "sdr": {"text": "SSTV FAULT — RTL_FM EXITS AT ONCE",
+                                          "state": "alert", "ok": False}})
+                return
+            self.status.emit({"sdr": {"text": "SSTV — %s (retrying)" % err[:34], "ok": False},
+                              "live": False})
             return
         secs = rec.seconds()
+        if rec.total_samples() <= 0:                 # RA-CL8e: no audio yet: not live
+            self.status.emit({"sdr": {"text": "SSTV — starting rtl_fm", "ok": False},
+                              "busy": None, "live": False})
+            return
         self.status.emit({"sdr": {"text": "SSTV — capturing %ds (lvl %.0f)" % (secs, rec.level),
                                   "ok": True}, "busy": None, "live": True})
         # run the CPU-bound decode on a DISPOSABLE daemon thread so step() stays responsive to

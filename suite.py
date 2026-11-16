@@ -879,9 +879,15 @@ def _restores_tx_setting(tf, member):
     import json
     try:
         f = tf.extractfile(member)
-        d = json.loads(f.read(1 << 20).decode("utf-8", "replace")) if f else None
-    except (ValueError, OSError):
-        return False
+        raw = f.read() if f else b""
+    except OSError:
+        return True                 # unreadable: do not restore it (fail closed, RA-CL8e NEW-U)
+    if b"tx_" in raw.lower():
+        return True                 # any tx_ key, however the file is padded or malformed
+    try:
+        d = json.loads(raw.decode("utf-8", "replace"))
+    except ValueError:
+        return False                # not JSON and no tx_ text: harmless to restore
     return isinstance(d, dict) and any(str(k).lower().startswith("tx_") for k in d)
 
 

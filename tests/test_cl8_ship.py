@@ -1545,3 +1545,67 @@ def test_ra8d_prowl_enter_restarts_scan_after_a_fault(monkeypatch):
     app._submode = "SCAN"
     monkeypatch.setattr(app, "swapping", lambda: False)
     assert app._resume_radio() is True and calls == [1]
+
+
+# ================================================================== CL8-fix5 (RA-CL8e findings)
+def test_ra8e_babel_sstv_rtl_fm_exiting_at_once_is_a_fault_and_gives_the_radio_back(monkeypatch, fakebin):
+    """RA-CL8e NEW-T: SSTV respawned rtl_fm every second on a held radio, flipping to 'capturing'."""
+    home, marker = fakebin
+    _fake(home, "rtl_fm", 'echo rtl_fm >> "%s"; exit 1' % marker)
+    from palisade_qt import babel, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    w = babel.SstvWorker(demo=False)
+    faults, statuses = [], []
+    w.fault.connect(faults.append)
+    w.status.connect(statuses.append)
+    w.set_running(True)
+    w.start()
+    try:
+        assert _until(lambda: any("exits at once" in f for f in faults), 12000), statuses[-3:]
+        assert _until(lambda: ra.arbiter.owner() is None, 3000) and lease.released
+        n = marker.read_text().count("rtl_fm")
+        time.sleep(2.5)
+        _app().processEvents()
+        assert marker.read_text().count("rtl_fm") == n and n <= 4, n
+        assert not any(st.get("live") for st in statuses), "showed live while rtl_fm kept dying"
+    finally:
+        w.stop()
+        assert w.wait(5000)
+
+
+def test_ra8e_scan_am_rtl_fm_alive_but_silent_is_a_fault(monkeypatch, fakebin):
+    """RA-CL8e NEW-S: on an AM bank rtl_fm always sends audio; silence means a dead dongle."""
+    home, marker = fakebin
+    _fake(home, "rtl_fm", 'echo rtl_fm >> "%s"; exec sleep 1000' % marker)
+    from palisade_qt import prowl, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    w = prowl.ScanWorker(demo=False, bank="Airband")
+    faults = []
+    w.fault.connect(faults.append)
+    w.set_active(True)
+    w.start()
+    try:
+        assert _until(lambda: any("exits at once" in f or "SDR" in f for f in faults), 20000), faults
+        assert _until(lambda: ra.arbiter.owner() is None, 3000)
+    finally:
+        w.stop()
+        assert w.wait(6000)
+
+
+def test_ra8e_restore_tx_check_cannot_be_padded_past(tmp_path, monkeypatch):
+    import tarfile
+    import suite as S
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(S, "HOME", str(home))
+    pad = tmp_path / "pad.json"
+    pad.write_text('{"tx_enabled": true, "tx_region": "EU"' + " " * (1 << 20) + "}")
+    broken = tmp_path / "broken.json"
+    broken.write_text('{"TX_ENABLED": true,')
+    arc = str(tmp_path / "b.tar.gz")
+    with tarfile.open(arc, "w:gz") as tf:
+        tf.add(str(pad), arcname=".config/uconsole-suite/replay.json")
+        tf.add(str(broken), arcname=".config/uconsole-suite/cw.json")
+    assert S.restore_configs(arc) == []

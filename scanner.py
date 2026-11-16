@@ -207,7 +207,8 @@ def listen_channel(freq, mode, s, scan, post, popen=subprocess.Popen, sink_fn=No
             elif deadline is not None and now > deadline:
                 break
             elif deadline is None and now - t0 > TUNE_SETTLE + 3.0:
-                break                           # software gate, but rtl_fm never sent audio
+                early_exit = True               # RA-CL8e NEW-S: rtl_fm alive but silent (AM never
+                break                           # gates samples away): a dead dongle, not quiet
         if result != "retune":
             result = active
     finally:

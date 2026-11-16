@@ -163,3 +163,22 @@ Tests `test_ra8d_*` (9 new).
 missing multimon-ng label; BABEL fault text replaced by IDLE after 0.5 s); NEW-R restoring your
 own backup no longer brings back NET mode, Remote Mode token, or TX settings (by design now; the
 operator sets them on the device); NEW-K residue (`kit.procs.Pipeline` accepts a flat argv).
+
+## CL8-fix5 (after RA-CL8e: DO NOT MERGE on SSTV + NFM SCAN liveness, all pre-existing on main)
+
+Tests `test_ra8e_*` (3 new).
+
+| RA-CL8e finding | Fix | Test |
+|---|---|---|
+| **NEW-T** (High) BABEL SSTV respawned a dying rtl_fm every second on a held radio, "capturing" live | rtl_fm dying within 5 s, 3 times in a row = SSTV FAULT, radio given back, RUN off; live only once audio has arrived | `test_ra8e_babel_sstv_rtl_fm_exiting_at_once_…` |
+| **NEW-S** (AM part) rtl_fm alive but silent shown as quiet | on an AM (software-gate) bank, no audio for tune + 3 s counts as a dead rtl_fm (AM always carries noise) | `test_ra8e_scan_am_rtl_fm_alive_but_silent_is_a_fault` |
+| NEW-U restore TX check padded past 1 MiB | the whole file is read; any `tx_` text (any case), or an unreadable member, is not restored | `test_ra8e_restore_tx_check_cannot_be_padded_past` |
+
+**Flagged to the owner, not fixed (design limit, same on main):** NEW-M remainder + NEW-S NFM
+part. On an NFM (hardware-squelch) bank rtl_fm sends nothing on an empty channel and the scanner
+stops it itself after tune + dwell (1.0 s), so a dongle that dies after 1 s, or hangs silent,
+looks like a quiet band while SCAN keeps the radio. An instant failure (busy/unplugged dongle,
+the common case) IS caught. Fixing the rest means reading rtl_fm's stderr or running it with
+zero-padding (`-E pad`), which changes the scan engine: proposed as a CL5 follow-up.
+NEW-R (files with any tx_ key are skipped whole, silently) and NEW-W (SCAN HOLD keeps the radio
+with no rtl_fm) are follow-ups too.
