@@ -80,6 +80,9 @@ class Timeline:
 
 # ---- Evidence chain (append-only, hash-chained, tamper-evident) ---------------------------
 class EvidenceChain:
+    """LEGACY (pre-CL3) in-memory chain. Kept for existing tests / exports only; the authoritative,
+    durable, keyed chain is `chain.Chain` (one per engagement). Do not use for new evidence."""
+
     def __init__(self, path=None):
         self.records = []
         self.path = path
@@ -141,17 +144,36 @@ class Vault:
         return bool(which("age" if self.backend == "age" else "cryptsetup"))
 
     def lock_argv(self, src_dir, recipient):
-        """age: tar src_dir and encrypt to self.path for `recipient` (an age pubkey or passphrase)."""
+        """age: tar src_dir and encrypt to self.path for `recipient`. Returns a LIST OF ARGV LISTS
+        to be connected by a pipe (audit C2: never a `sh -c` string built from paths and the
+        recipient). LUKS: a single argv."""
         if self.backend == "age":
-            return ["sh", "-c", "tar -C %s -cf - . | age -r %s -o %s"
-                    % (src_dir, recipient, self.path)]
-        return ["cryptsetup", "luksClose", os.path.basename(self.path)]
+            return [["tar", "-C", str(src_dir), "-cf", "-", "."],
+                    ["age", "-r", str(recipient), "-o", self.path]]
+        return [["cryptsetup", "luksClose", os.path.basename(self.path)]]
 
     def unlock_argv(self, dest_dir, identity):
         if self.backend == "age":
-            return ["sh", "-c", "age -d -i %s %s | tar -C %s -xf -"
-                    % (identity, self.path, dest_dir)]
-        return ["cryptsetup", "luksOpen", self.path, os.path.basename(self.path)]
+            return [["age", "-d", "-i", str(identity), self.path],
+                    ["tar", "-C", str(dest_dir), "-xf", "-"]]
+        return [["cryptsetup", "luksOpen", self.path, os.path.basename(self.path)]]
+
+    @staticmethod
+    def run_pipeline(stages, popen=None):
+        """Run argv stages connected stdout→stdin with no shell. Returns the last exit code (or
+        the first non-zero one). `popen` is injectable for tests."""
+        import subprocess
+        popen = popen or subprocess.Popen
+        procs, prev = [], None
+        for i, argv in enumerate(stages):
+            last = i == len(stages) - 1
+            p = popen(list(argv), stdin=prev, stdout=None if last else subprocess.PIPE)
+            if prev is not None:
+                prev.close()
+            prev = p.stdout
+            procs.append(p)
+        codes = [p.wait() for p in procs]
+        return next((c for c in codes if c), 0)
 
 
 # ---- QSO / contact logger + ADIF ----------------------------------------------------------
@@ -252,6 +274,48 @@ def report_html(title, timeline_events=None, evidence_records=None, findings=Non
         parts.append("</table>")
     parts.append("</body></html>")
     return "".join(parts)
+
+
+def export_engagement_report(out_dir=None, chain_id=None):
+    """E5: write <reports>/<chain id>.html from the durable evidence chain (CL3). The open
+    engagement's chain by default; any chain by id. Returns the path. Raises if the chain does
+    not verify — a report is never written from a trail that fails its own check."""
+    import chain as _chain
+    import suite
+    if chain_id:
+        ch = _chain.Chain.open(chain_id)
+    else:
+        import engagement
+        info = engagement.chain_info()
+        if not info:
+            raise RuntimeError("no engagement chain is open")
+        ch = _chain.Chain.open(info["id"])
+    ok, why = ch.verify()
+    if not ok:
+        raise RuntimeError("chain does not verify: %s" % why)
+    out_dir = out_dir or os.path.join(suite.DATA, "reports")
+    os.makedirs(out_dir, mode=0o700, exist_ok=True)
+    opened = next((r for r in ch.records if r.get("event") == "engagement.open"), {})
+    states = ch.states()
+    findings = [{"title": "%s · %s" % (r["state"], r["action"]),
+                 "detail": "%s %s %s" % (r["target"], r.get("binding") or "", r["detail"])}
+                for r in states]
+    timeline = [{"ts": r["t"], "module": r.get("event", ""), "type": r.get("event", ""),
+                 "text": " ".join("%s=%s" % (k, v) for k, v in r.items()
+                                  if k not in ("h", "prev", "seq", "t", "mono_ns", "event"))[:200],
+                 "contact": None} for r in ch.records]
+    doc = report_html(opened.get("name") or ch.id, timeline_events=timeline,
+                      evidence_records=[{"seq": r["seq"], "ts": r["t"], "name": r.get("event", ""),
+                                         "sha256": r["h"], "file": None} for r in ch.records],
+                      findings=findings,
+                      meta={"Operator": opened.get("operator", ""), "Chain": ch.id,
+                            "Authorization": opened.get("authorization", ""),
+                            "Scope": ", ".join(opened.get("scope", []) or []),
+                            "Records": str(len(ch.records)), "Verified": why})
+    path = os.path.join(out_dir, ch.id + ".html")
+    with open(path, "w") as f:
+        f.write(doc)
+    return path
 
 
 def write_report(path, *args, **kw):

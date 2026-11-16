@@ -81,9 +81,13 @@ def test_vault_commands_and_availability():
     assert v.available(which=lambda n: "/usr/bin/age" if n == "age" else None) is True
     assert v.available(which=lambda n: None) is False
     lock = v.lock_argv("/tmp/findings", "age1recipientkey")
-    assert "age -r age1recipientkey -o /tmp/eng.age" in lock[2]
+    # audit C2: argv lists joined by a pipe — never a `sh -c` string built from paths
+    assert lock == [["tar", "-C", "/tmp/findings", "-cf", "-", "."],
+                    ["age", "-r", "age1recipientkey", "-o", "/tmp/eng.age"]]
     unlock = v.unlock_argv("/tmp/out", "/tmp/key.txt")
-    assert "age -d -i /tmp/key.txt /tmp/eng.age" in unlock[2]
+    assert unlock == [["age", "-d", "-i", "/tmp/key.txt", "/tmp/eng.age"],
+                      ["tar", "-C", "/tmp/out", "-xf", "-"]]
+    assert all("sh" not in stage[0] for stage in lock + unlock)
 
 
 # ---- report -------------------------------------------------------------------------------

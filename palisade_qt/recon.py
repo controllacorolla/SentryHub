@@ -305,8 +305,7 @@ class ReconApp(PalisadeApp):
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._subtab = "WIFI"
         self._gated = []                                 # cards to refresh on gate change
-        import evidence
-        self.evidence = evidence.EvidenceChain()        # one tamper-evident chain per session
+        self.evidence = None      # CL3: the ONE chain lives with the engagement (engagement.chain_states)
         super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
 
     def current_subtab(self):

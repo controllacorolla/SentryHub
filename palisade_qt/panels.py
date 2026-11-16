@@ -276,7 +276,7 @@ class EngagePanel(Overlay):
     state, so it opens from the ENGAGEMENT slot in the top strip. The gate itself is the engine's
     (engagement.start / end); this only calls it."""
     TITLE = "ENGAGEMENT"
-    SIZE = (1040, 640)
+    SIZE = (1220, 640)          # CL3: the trail gained STATE + RESULT columns; no h-scroll at 1280
     MIN_EVIDENCE_ROWS = 3
     gate_changed = QtCore.Signal()
 
@@ -310,6 +310,11 @@ class EngagePanel(Overlay):
         self.eng_end.clicked.connect(self._deactivate)
         btns.addWidget(self.eng_start)
         btns.addWidget(self.eng_end)
+        self.eng_report = QtWidgets.QPushButton("EXPORT REPORT")
+        self.eng_report.setToolTip("Write the engagement report (HTML) from the evidence chain "
+                                   "to ~/.local/share/uconsole-suite/reports/")
+        self.eng_report.clicked.connect(self._export_report)
+        btns.addWidget(self.eng_report)
         fl.addRow(btns)
         self.eng_msg = note("")
         fl.addRow(self.eng_msg)
@@ -322,8 +327,10 @@ class EngagePanel(Overlay):
         self.eng_detail.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                       QtWidgets.QSizePolicy.Minimum)
         right.addWidget(self.eng_detail)
-        right.addWidget(micro("Authorized actions (evidence chain)"))
-        self.eng_actions = FeedTable([("t", "TIME"), ("action", "ACTION"), ("target", "TARGET")])
+        self.eng_chain = micro("Evidence chain")
+        right.addWidget(self.eng_chain)
+        self.eng_actions = FeedTable([("t", "TIME"), ("state", "STATE"), ("action", "ACTION"),
+                                      ("target", "TARGET"), ("detail", "RESULT")])
         self.eng_actions.view.setMinimumHeight(theme.ROW_H * (self.MIN_EVIDENCE_ROWS + 1) + 8)
         right.addWidget(self.eng_actions, 1)
         split.addLayout(right, 3)
@@ -391,15 +398,38 @@ class EngagePanel(Overlay):
             self.eng_detail.set_rows([])
         self.render_actions()
 
-    def render_actions(self):
+    def _export_report(self):
+        """E5: the report generator finally has a caller. Pure file write; nothing is sent."""
         try:
-            rows = [{"t": time.strftime("%H:%M:%S", time.localtime(a["t"])),
-                     "action": a["action"], "target": a["target"]}
-                    for a in reversed(_engagement().actions())]
+            import evidence
+            path = evidence.export_engagement_report()
+            self.eng_msg.setText("report written: %s" % path)
         except Exception as e:
-            rows = [{"t": "—", "action": "UNKNOWN — evidence trail unreadable", "target": str(e),
-                     "_colors": {"action": self._tok["warn"]}}]
-        self.eng_actions.model.set_rows(rows)
+            self.eng_msg.setText("report NOT written: %s" % e)
+
+    def render_actions(self):
+        """H9: AUTHORIZED and EXECUTED are different states; the rows come from the durable chain,
+        never from an in-memory list. The caption says whether the chain verifies."""
+        eng = _engagement()
+        try:
+            info = eng.chain_info()
+            rows = eng.chain_states()
+        except Exception as e:
+            info = {"id": "?", "records": 0, "verified": False, "why": str(e)}
+            rows = [{"t": 0, "state": "UNKNOWN", "action": "UNKNOWN — evidence trail unreadable",
+                     "target": str(e)[:40], "detail": "",
+                     "_colors": {"state": self._tok["warn"], "action": self._tok["warn"]}}]
+        if info is None:
+            self.eng_chain.setText("Evidence chain — none open")
+        elif info["verified"]:
+            self.eng_chain.setText("Evidence chain %s — %d records, VERIFIED" % (
+                info["id"][:17], info["records"]))
+        else:
+            self.eng_chain.setText("Evidence chain %s — NOT VERIFIED: %s" % (
+                info["id"][:17], info.get("why", "")[:60]))
+        self.eng_actions.model.set_rows([
+            dict(r, t=(time.strftime("%H:%M:%S", time.localtime(r["t"])) if r["t"] else "—"))
+            for r in rows])
 
     def focus_first(self):
         self.eng_name.setFocus()

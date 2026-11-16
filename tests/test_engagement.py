@@ -40,12 +40,19 @@ def test_authorize_in_and_out_of_scope():
 
 
 def test_action_logged_to_evidence_chain():
+    """CL3: the ONE durable chain (chain.Chain) records the authorization; a legacy per-page
+    EvidenceChain passed as evidence_chain= is accepted for API compatibility but no longer
+    consulted (audit G7: one chain, not one per page)."""
+    import chain
     import evidence
-    ch = evidence.EvidenceChain()
+    legacy = evidence.EvidenceChain()
     E.start("job", "ROE-1", ["BADGE-1"], "KD0ABC")
-    E.authorize_action("rfid:clone", "BADGE-1", evidence_chain=ch)
-    assert len(ch.records) == 1 and ch.verify()[0] is True
-    assert ch.records[0]["meta"]["target"] == "BADGE-1"
+    assert E.authorize_action("rfid:clone", "BADGE-1", evidence_chain=legacy)[0]
+    assert legacy.records == []
+    info = E.chain_info()
+    ch = chain.Chain.open(info["id"])
+    auth = [r for r in ch.records if r["event"] == "authorize"]
+    assert len(auth) == 1 and auth[0]["target"] == "BADGE-1" and ch.verify()[0] is True
     assert len(E.actions()) == 1
 
 

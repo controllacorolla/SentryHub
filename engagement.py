@@ -45,7 +45,9 @@ BOUND_KINDS = ("ip", "host", "mac", "oui", "can", "zigbee", "uid")
 LABEL_ONLY = "label-only"
 
 _ENG = {"active": False, "name": None, "authorization": None, "scope": [], "entries": [],
-        "operator": None, "started": None, "expires": None, "expiry_notified": False}
+        "operator": None, "started": None, "expires": None, "expiry_notified": False,
+        "chain": None}
+_CHAIN = {"obj": None}             # the open engagement's evidence chain (chain.Chain), CL3
 _ACTIONS = []                      # in-session audit trail (also mirrored to the evidence chain)
 _LISTENERS = []
 
@@ -435,7 +437,7 @@ def _eng():
             rec = {"active": True, "name": e.get("name"), "authorization": e.get("authorization"),
                    "scope": list(e.get("scope", [])), "entries": entries,
                    "operator": e.get("operator"), "started": float(e.get("started")),
-                   "expires": float(e.get("expires"))}
+                   "expires": float(e.get("expires")), "chain": e.get("chain")}
         except Exception:
             rec = {"active": False, "name": None, "authorization": None, "scope": [],
                    "entries": [], "operator": None, "started": None, "expires": None}
@@ -449,7 +451,8 @@ def export_state():
         return None
     return {"name": _ENG["name"], "authorization": _ENG["authorization"],
             "scope": list(_ENG["scope"]), "entries": [e.to_json() for e in _ENG["entries"]],
-            "operator": _ENG["operator"], "started": _ENG["started"], "expires": _ENG["expires"]}
+            "operator": _ENG["operator"], "started": _ENG["started"], "expires": _ENG["expires"],
+            "chain": _ENG.get("chain")}
 
 
 def _expired(e):
@@ -484,13 +487,174 @@ def start(name, authorization, scope, operator=None, hours=ENGAGEMENT_HOURS_DEFA
     if not ok:
         return False, why
     t = _now()
+    # CL3 (G6/G7): the durable evidence chain is opened FIRST; no chain, no engagement.
+    import chain as _chain
+    try:
+        ch = _chain.Chain.create(name=name.strip())
+        ch.record("engagement.open", name=name.strip(), authorization=str(authorization).strip(),
+                  scope=[e.text for e in entries], operator=str(prof).strip(), started=t,
+                  expires=t + float(h) * 3600.0, hours=float(h))
+    except Exception as e:                     # RA-CL3 N7: never raise out of start()
+        return False, "cannot open the evidence chain (%s) — refusing to start (fail closed)" % e
     _ENG.update(active=True, name=name.strip(), authorization=str(authorization).strip(),
                 scope=[e.text for e in entries], entries=entries, operator=str(prof).strip(),
-                started=t, expires=t + float(h) * 3600.0, expiry_notified=False)
+                started=t, expires=t + float(h) * 3600.0, expiry_notified=False, chain=ch.id)
+    _CHAIN["obj"] = ch
+    _chain.set_open(ch)
     _ACTIONS.clear()
     _notify()
     return True, "engagement '%s' active (%d targets in scope, expires in %g h)" % (
         name, len(entries), h)
+
+
+END_DRAIN_S = 2.0                   # how long END waits for bound children to record kill/exit
+
+
+def _open_tickets(ch):
+    """{ticket: info} for every ENGAGEMENT-issued ticket of `ch` (the ones END voids and kills; a
+    txguard bench ticket is not ended by END and keeps its own outcome) without a final outcome
+    yet, re-read from disk so a
+    bound child's records are seen. info["spawned"]: it has a spawn record (a process exists);
+    info["killed"]: a kill is recorded but its exit is not (yet). Outcome = exit (process), write
+    (device), or refuse_ticket (void). None if the chain does not verify."""
+    ok, _why = ch.verify()
+    if not ok:
+        return None
+    out = {}
+    for r in ch.records:
+        tid, ev = r.get("ticket"), r.get("event")
+        if not tid:
+            continue
+        if ev == "issue":
+            if r.get("issuer") != "engagement":
+                continue                # txguard / ungated tickets do not end with the engagement
+            out.setdefault(tid, {"label": r.get("label", ""), "target": str(r.get("target", "")),
+                                 "spawned": False, "killed": False})
+        elif tid not in out:
+            continue
+        elif ev == "spawn":
+            out[tid]["spawned"] = True
+            out[tid]["pid"], out[tid]["pstart"] = r.get("pid"), r.get("pstart")
+        elif ev == "kill":
+            out[tid]["killed"] = True
+        elif ev in ("exit", "write", "refuse_ticket", "unconfirmed"):
+            out[tid]["done"] = True
+    return {t: i for t, i in out.items() if not i.get("done")}
+
+
+def _ticket_events(records, tid):
+    return [r.get("event") for r in records if r.get("ticket") == tid]
+
+
+def _same_process(pid, pstart):
+    """True only if `pid` is alive AND its start time equals the one logged at launch (the
+    gatestate.proc_start identity check — a recycled pid never matches; unknown is no)."""
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1 or not pstart:
+        return False
+    if pid == os.getpid():
+        return False
+    import gatestate
+    if gatestate.proc_start(pid) != pstart:
+        return False
+    return not _zombie(pid)                 # exited, only the reap is pending: it is gone
+
+
+def _zombie(pid):
+    try:
+        if sys.platform.startswith("linux"):
+            with open("/proc/%d/stat" % pid) as fh:
+                raw = fh.read()
+            return raw[raw.rindex(")") + 2:].split()[0] == "Z"
+        # elsewhere (macOS) no spawn from a gate module (CL2 one-gate rule): an orphan's zombie is
+        # reaped by launchd within moments; if not, END says "still alive" (UNCONFIRMED), never
+        # a false KILLED
+        return False
+    except (OSError, ValueError, IndexError):
+        return True                         # the process is gone
+    except Exception:
+        return False
+
+
+def _kill_orphan(pid, pstart, grace=1.0):
+    """SIGTERM then SIGKILL the orphan's process group (gated processes lead their own group), only
+    while the pid still proves to be the launched process. Returns True when verified gone."""
+    import signal
+    for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, 1.0)):
+        if not _same_process(pid, pstart):
+            return True
+        try:
+            if os.getpgid(pid) == pid and pid != os.getpgrp():
+                os.killpg(pid, sig)
+            else:
+                os.kill(pid, sig)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            return False
+        t_end = time.monotonic() + wait
+        while time.monotonic() < t_end:
+            if not _same_process(pid, pstart):
+                return True
+            time.sleep(0.05)
+    return not _same_process(pid, pstart)
+
+
+def _settle_tickets(ch):
+    """RA-CL3b B3 / RA-CL3c N16 N17 N18: before engagement.close, every ticket of this engagement
+    has an outcome in THIS chain, so no row stays RUNNING / ISSUED after END — and END never
+    writes an outcome it has not observed.
+
+    The engagement has just been marked expired and published (the caller's _notify): this
+    process's executor has already killed its own processes (kill + exit recorded), and every bound
+    child's executor sees the expired engagement on its next sweep, kills its process and records
+    kill + exit — in this chain, because a ticket is bound to the chain it was issued under. Wait up
+    to END_DRAIN_S for every spawned ticket's exit. Then, for any ticket still open, each record is
+    appended under the chain's EXCLUSIVE lock and only if, at that instant, it is still true (N17):
+      spawned, no kill/exit  -> an orphan (its child died without reporting). Owner decision N16:
+                                if its pid AND the start time logged at spawn still match, END
+                                kills its process group and, once verified gone, records `kill`
+                                "orphan at END". Otherwise (no match, unknown, or it survived)
+                                `unconfirmed` — never KILLED. A later exit from it overrides.
+      no spawn/write/outcome -> `refuse_ticket`: END saw no use of the ticket; from now on its
+                                re-check fails. If a use that had already passed its gate lands
+                                after this (N18), its spawn/kill/exit follow and the row shows them."""
+    deadline = time.monotonic() + END_DRAIN_S
+    open_ = _open_tickets(ch)
+    while open_ and any(i["spawned"] for i in open_.values()) and time.monotonic() < deadline:
+        time.sleep(0.05)
+        open_ = _open_tickets(ch)
+
+    def unreported(t):
+        return lambda recs: not ({"kill", "exit"} & set(_ticket_events(recs, t)))
+    for tid, i in (open_ or {}).items():
+        common = dict(ticket=tid, label=i["label"], target=i["target"], by="end")
+        try:
+            if i["spawned"]:
+                pid, pstart = i.get("pid"), i.get("pstart")
+                fresh = _open_tickets(ch) or {}
+                if tid not in fresh or fresh[tid].get("killed"):
+                    continue                    # the process reported (or its child killed it)
+                if _same_process(pid, pstart):
+                    if _kill_orphan(pid, pstart):
+                        ch.record("kill", _only_if=unreported(tid), reason="orphan at END",
+                                  pid=pid, pstart=pstart, verified_gone=True, **common)
+                    else:
+                        ch.record("unconfirmed", _only_if=unreported(tid),
+                                  reason="orphan at END: signalled, still alive", pid=pid,
+                                  **common)
+                else:
+                    ch.record("unconfirmed", _only_if=unreported(tid),
+                              reason="engagement ended — exit not confirmed; pid %s does not match "
+                                     "the process logged at launch, END sent no signal" % pid,
+                              pid=pid, **common)
+            else:
+                ch.record("refuse_ticket", _only_if=lambda recs, t=tid: not (
+                    {"spawn", "write", "exit", "kill", "refuse_ticket"}
+                    & set(_ticket_events(recs, t))),
+                    reason="engagement ended — no use of this ticket recorded by then; it can no "
+                           "longer pass its gate", **common)
+        except Exception:
+            pass                        # END is the kill path; never block it on a record
 
 
 def end():
@@ -498,10 +662,28 @@ def end():
         return None
     was = _ENG["name"]
     changed = _ENG["active"]
-    _ENG.update(active=False, name=None, authorization=None, scope=[], entries=[], operator=None,
-                started=None, expires=None, expiry_notified=False)
+    ch = _active_chain() if changed else None
     if changed:
+        # the executor kills registered processes on _notify() (here, and in every bound child via
+        # the published state); their kill/exit records must land in THIS chain, so the engagement
+        # stays routable (active, expired) until every ticket has an outcome (RA-CL3b B3)
+        _ENG["expires"] = _now()
         _notify()
+        if ch is not None:
+            try:
+                _settle_tickets(ch)
+            except Exception:
+                pass
+    _ENG.update(active=False, name=None, authorization=None, scope=[], entries=[], operator=None,
+                started=None, expires=None, expiry_notified=False, chain=None)
+    if ch is not None:
+        try:
+            ch.record("engagement.close", name=was, actions=len(_ACTIONS))
+        except Exception:
+            pass                        # closing never blocks END (it is the kill path)
+    _CHAIN["obj"] = None
+    if changed:
+        _notify()                       # listeners now see NONE
     return was
 
 
@@ -572,21 +754,82 @@ def authorize_action(action, target, evidence_chain=None, kind=None, binding=Non
     binding when the caller knows the command is less bound than the target (e.g. "label-only"
     for written content the scope cannot bind — CL2-fix2 R5)."""
     ok, why, chk_binding = check(action, target, kind)
+    e = _eng()
     if not ok:
+        _record_soft("refuse", action=action, target=str(target), reason=why,
+                     engagement=e.get("name"))
         return False, why
     binding = binding or chk_binding
-    e = _eng()
     rec = {"t": _now(), "action": action, "target": str(target), "engagement": e["name"],
            "operator": e["operator"], "binding": binding}
+    # CL3 (G6): the record is written durably BEFORE the authorization exists. If it cannot be
+    # written, there is no authorization. A legacy per-page EvidenceChain is no longer consulted.
+    ch = _active_chain()
+    if ch is None:
+        return False, ("no evidence chain is open for this engagement — refusing (no durable "
+                       "record, no authorization)")
+    try:
+        ch.record("authorize", action=action, target=str(target), binding=binding,
+                  engagement=e["name"], operator=e["operator"], authorization=e["authorization"])
+    except Exception as ex:
+        return False, "evidence chain write failed (%s) — refusing (no durable record, no " \
+                      "authorization)" % ex
     _ACTIONS.append(rec)
-    if evidence_chain is not None:
-        try:
-            evidence_chain.add("%s:%s" % (action, target),
-                               data=("%s|%s|%s" % (action, target, e["authorization"])).encode(),
-                               meta=rec)
-        except Exception:
-            pass
     return True, why
+
+
+def current_chain_id():
+    """The chain id of the engagement in force RIGHT NOW — this process's own engagement, or the
+    hub's as published to a bound child — or None. Always re-derived; never a cached object, so an
+    engagement rollover (END alpha, START bravo) can never route a record to alpha (RA-CL3 B2)."""
+    e = _eng()
+    if not isinstance(e, dict) or not e.get("active"):
+        return None
+    cid = e.get("chain")
+    return cid if cid else None
+
+
+def _active_chain():
+    """The open engagement's chain, by its CURRENT id (RA-CL3 B1/B2), or None."""
+    cid = current_chain_id()
+    if not cid:
+        return None
+    import chain as _chain
+    try:
+        return _chain.for_id(cid)
+    except _chain.ChainError:
+        return None
+
+
+def _record_soft(event, **fields):
+    """Record something that must never block (a refusal, a close). With no engagement the record
+    goes to the session chain (RA-CL3 N9). Errors are dropped."""
+    try:
+        import chain as _chain
+        _chain.record(event, **fields)
+    except Exception:
+        pass
+
+
+def chain_states():
+    """H9 view: rows with AUTHORIZED / ISSUED / RUNNING / EXECUTED / KILLED / REFUSED / FAILED."""
+    ch = _active_chain()
+    if ch is None:
+        return []
+    try:
+        ch.verify()
+    except Exception:
+        return []
+    return ch.states()
+
+
+def chain_info():
+    """(id, path, records, verified) for the open chain, or None."""
+    ch = _active_chain()
+    if ch is None:
+        return None
+    ok, why = ch.verify()
+    return {"id": ch.id, "path": ch.path, "records": len(ch.records), "verified": ok, "why": why}
 
 
 # CL2-fix2 R1: argv[0] basenames the engagement gate never runs, whatever a module declares —
@@ -668,7 +911,15 @@ def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=Non
     import executor
     binding = _ACTIONS[-1]["binding"] if _ACTIONS else None
 
+    issued_under = current_chain_id()
+
     def recheck():
+        # RA-CL3b B3: the ticket belongs to the engagement it was issued under. After END + START
+        # (even within the ticket TTL, even if the new scope covers the target) it is void, and a
+        # process it started is killed — its evidence lives in the old engagement's chain.
+        if current_chain_id() != issued_under:
+            return False, ("engagement changed since this ticket was issued — authorize again "
+                           "under the current engagement")
         r = check(action, target, kind)
         if not r[0]:
             return r[0], r[1]
@@ -677,9 +928,11 @@ def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=Non
             if not x[0]:
                 return x[0], x[1]
         return r[0], r[1]
+    m = dict(meta or {})
+    m.setdefault("target", str(target))
     try:
         t = executor.issue(argv=argv, payload=payload, recheck=recheck, label=label or action,
-                           binding=binding, reason=why, files=files, meta=meta)
+                           binding=binding, reason=why, files=files, meta=m)
     except executor.TicketRefused as e:
         return False, "refused: %s" % e, None
     return True, why, t
@@ -694,6 +947,7 @@ def reset():
     if _shared() is None:
         end()
     _ACTIONS.clear()
+    _CHAIN["obj"] = None
     _SHARED_CACHE.update(key=None, eng=None)
 
 
