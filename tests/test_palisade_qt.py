@@ -220,7 +220,7 @@ def test_eventbus_typed_contract():
     for e in (c, d, a):
         eventbus.bus.publish(e)
     for e in (c, d, a):
-        assert set(e) == {"type", "source", "severity", "ts", "payload"}
+        assert set(e) == {"type", "source", "severity", "ts", "payload", "demo"}   # H7: demo flag
     assert c["type"] == "contact" and c["payload"]["lat"] == 47.5 and c["payload"]["lon"] == -122.3
     assert c["payload"]["kind"] == "air" and c["payload"]["mil"] is True
     assert d["type"] == "decode" and d["payload"]["proto"] == "ADS-B"
@@ -1768,14 +1768,19 @@ def test_more_mesh_demo_nodes_and_live_standby():
 
 def test_more_assistant_answers_from_bus_and_offline_llm():
     _app()
-    from palisade_qt import system, eventbus
+    from palisade_qt import system, eventbus, panels
     eventbus.bus.clear()
+    panels.reset_alert_store()
+    panels.alert_store()             # CL4 H17: alerts are answered from the acknowledgement store
     eventbus.bus.publish(eventbus.alert("ATLAS", "drone inbound", severity="alert"))
     eventbus.bus.publish(eventbus.contact("ADS-B", "a1", 47.6, -122.3, kind="aircraft"))
+    _pump(100)
     p = system.MoreApp(demo=True, mode="dark")
-    assert "1 alert" in p._answer("any alerts?")
+    assert "1 unacknowledged alert" in p._answer("any alerts?")
     assert "aircraft" in p._answer("what's on the map?")
-    assert "offline" in p._answer("write me a sonnet").lower(), "LLM request honestly reports offline"
+    # CL4 H18: free-form is NOT IMPLEMENTED here (no LLM probe from the GUI thread)
+    assert p._answer("write me a sonnet").startswith("NOT IMPLEMENTED")
+    panels.reset_alert_store()
 
 
 def test_more_sitrep_from_bus_state():
@@ -1787,7 +1792,9 @@ def test_more_sitrep_from_bus_state():
     lines = p._sitrep_lines()
     assert lines[0].startswith("Situation report") and any("decode" in ln for ln in lines)
     eventbus.bus.clear()
-    assert "All quiet" in " ".join(p._sitrep_lines())
+    # CL4 H17: with no feed running SITREP must not say "All quiet" — it says nothing is watched
+    text = " ".join(p._sitrep_lines())
+    assert "All quiet" not in text and "No feed is running" in text
 
 
 def test_more_open_pump_close_no_leaked_threads():

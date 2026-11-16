@@ -27,6 +27,8 @@ from .worker import Worker
 
 BINS = 512
 NAME = "PRISM"
+STALE_AFTER_S = 5.0          # H2: no assembled sweep for this long -> STALE, never a green chip
+FAULT_RETRY_S = 5.0          # rtl_power died: wait this long before respawning it
 
 
 class _SweepAssembler:
@@ -62,9 +64,14 @@ class _SweepAssembler:
         return freqs, power
 
 
+def _offline():
+    return bool(os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen")
+
+
 def _open_rtl_power(lo_mhz, hi_mhz, gain):
     """Stream rtl_power over the band to stdout (argv list, no shell). None under tests/offline or
-    without rtl_power, so CI never opens a real radio. Reuses waterfall's argv builder."""
+    without rtl_power, so CI never opens a real radio. Reuses waterfall's argv builder. stderr is a
+    pipe, so an rtl_power that dies can say why (H2)."""
     if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
         return None
     if not shutil.which("rtl_power"):
@@ -73,14 +80,15 @@ def _open_rtl_power(lo_mhz, hi_mhz, gain):
     bin_hz = max(1, int((hi_mhz - lo_mhz) * 1e6 / BINS))
     argv = waterfall.rtl_power_sweep_argv(int(lo_mhz * 1e6), int(hi_mhz * 1e6), bin_hz, "-",
                                           gain, "1")
+    import subprocess
     from .kit.procs import Pipeline
-    return Pipeline([argv])                         # own session; killed + waited as a group (A4)
+    return Pipeline([argv], stderr_last=subprocess.PIPE)   # own session; killed + waited (A4)
 
 
 class SweepWorker(Worker):
     """Demo -> synthetic sweeps. Live -> rtl_power through the arbiter, but only while `active`."""
 
-    def __init__(self, demo=True, lo=430.0, hi=440.0, gain=0, parent=None):
+    def __init__(self, demo=False, lo=430.0, hi=440.0, gain=0, parent=None):
         super().__init__(demo=demo, interval_ms=80, parent=parent)
         self.lo, self.hi, self.gain = lo, hi, gain
         self._t0 = time.time()
@@ -93,6 +101,11 @@ class SweepWorker(Worker):
         self._band_dirty = False
         self._held_off = False
         self._why = "page hidden"
+        # H2: the chip is LIVE only while assembled sweeps really arrive
+        self._spawned_at = None          # monotonic time rtl_power was started
+        self._last_sweep = None          # monotonic time of the last assembled sweep
+        self._err_tail = []              # last stderr lines of the current rtl_power
+        self._fault = None               # (why, monotonic) when rtl_power exited on its own
         radio_arbiter.arbiter.revoked.connect(self._on_revoked)
 
     PAUSE_WHEN_HIDDEN = False          # keeps stepping while hidden so it can release the dongle
@@ -149,7 +162,11 @@ class SweepWorker(Worker):
             self._kill_rtl()                         # revoke / PANIC while spawning: never keep it
             return
         if self._proc is not None:
+            self._spawned_at, self._last_sweep, self._err_tail = time.monotonic(), None, []
             threading.Thread(target=self._read, args=(self._proc,), daemon=True).start()
+            err = getattr(self._proc, "stderr", None)
+            if err is not None:
+                threading.Thread(target=self._read_err, args=(self._proc, err), daemon=True).start()
 
     def _read(self, proc):
         try:
@@ -160,8 +177,34 @@ class SweepWorker(Worker):
                 if done is not None:
                     with self._lock:
                         self._latest = done
+                        self._last_sweep = time.monotonic()
         except Exception:
             pass
+
+    def _read_err(self, proc, err):
+        try:
+            for line in err:
+                line = line.strip() if isinstance(line, str) else \
+                    line.decode("utf-8", "replace").strip()
+                if line and proc is self._proc:
+                    self._err_tail = (self._err_tail + [line])[-4:]
+        except Exception:
+            pass
+
+    def _live_status(self, now=None):
+        """(text, state) for the SDR chip while rtl_power should be sweeping (H2): LIVE only if a
+        sweep arrived within STALE_AFTER_S; STARTING before the first one; STALE after."""
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            last = self._last_sweep
+        if last is not None and now - last <= STALE_AFTER_S:
+            return "SDR PRISM", "live"
+        if last is None:
+            age = now - (self._spawned_at or now)
+            if age <= STALE_AFTER_S:
+                return "SDR PRISM — starting", "warn"
+            return "SDR STALE — no sweep in %ds" % int(age), "alert"
+        return "SDR STALE — last sweep %ds ago" % int(now - last), "alert"
 
     def _kill_rtl(self):
         self._asm = None
@@ -195,7 +238,8 @@ class SweepWorker(Worker):
                 self._has_radio = True
             else:
                 self.status.emit({"busy": radio_arbiter.owner_label(),
-                                  "sdr": {"text": "SDR BUSY", "state": "warn"}})
+                                  "sdr": {"text": radio_arbiter.busy_text(NAME).replace(
+                                      "RADIO BUSY", "SDR BUSY"), "state": "warn"}})
                 return
         st, owner = arb.state()
         if owner != NAME:                            # freed under us (forced free / PANIC)
@@ -204,21 +248,45 @@ class SweepWorker(Worker):
             self._held_off = True
             self._active = False
             self.status.emit({"busy": None, "live": False, "off": True,
-                              "sdr": {"text": "SDR OFF — radio taken back", "state": "warn"}})
+                              "sdr": {"text": "SDR OFF — %s" % radio_arbiter.lost_reason(NAME),
+                                      "state": "warn"}})
             return
         if st != "HELD":                             # CL5-fix 1: no rtl_power until HELD
             self.status.emit({"busy": None, "live": False, "acquiring": True,
                               "sdr": {"text": "SDR ACQUIRING", "state": "warn"}})
             return
+        proc = self._proc
+        if proc is not None and proc.poll() is not None:     # H2: it died on its own -> FAULT
+            rc = proc.poll()
+            tail = " · ".join(self._err_tail[-2:])
+            self._kill_rtl()
+            self._fault = ("rtl_power exited (%s)%s" % (rc, (": " + tail) if tail else ""),
+                           time.monotonic())
+        if self._fault is not None:
+            why, t = self._fault
+            if time.monotonic() - t < FAULT_RETRY_S and not self._band_dirty:
+                self.status.emit({"busy": None, "fault": why,
+                                  "sdr": {"text": ("SDR FAULT — " + why)[:80], "state": "alert"}})
+                return
+            self._fault = None                       # retry (or the operator retuned)
         if self._asm is None:                        # not sweeping yet (or given back): start
             self._start_rtl()
         if self._band_dirty:                         # retune -> respawn rtl_power on the new band
-            self._kill_rtl()
+            self._kill_rtl()                         # (terminate() waits until it has exited)
             self._start_rtl()
         with self._lock:
             row, self._latest = self._latest, None
-        if shutil.which("rtl_power"):
-            self.status.emit({"busy": None, "sdr": {"text": "SDR PRISM", "state": "live"}})
+        if self._proc is not None:
+            text, state = self._live_status()
+            self.status.emit({"busy": None, "sdr": {"text": text, "state": state},
+                              "stale": state != "live"})
+        elif shutil.which("rtl_power") and not _offline():
+            self.status.emit({"busy": None, "sdr": {"text": "SDR FAULT — rtl_power did not start",
+                                                    "state": "alert"}})
+        elif shutil.which("rtl_power"):
+            self.status.emit({"busy": None, "standby": True,
+                              "sdr": {"text": "SDR STANDBY — offline (no capture)",
+                                      "state": "warn"}})
         else:
             # we hold the radio but there's no rtl_power to sweep: say STANDBY, never synthesise.
             # (The scope already stays empty — a row is only emitted from a real assembled sweep.)
@@ -306,7 +374,7 @@ class PrismApp(PalisadeApp):
         self.bar.add_stretch()
         self.readout = QtWidgets.QLabel("—")
         self.readout.setProperty("class", "value")
-        self.bar.lay.addWidget(micro("PEAK"))
+        self.bar.lay.addWidget(micro("PEAK · dB (relative)"))    # H13: rtl_power is uncalibrated
         self.bar.lay.addWidget(self.readout)
         self.send_btn = QtWidgets.QPushButton("PEAK → PROWL FM")
         self.send_btn.setToolTip("Tune the PROWL FM receiver to the current peak (Enter)")
@@ -364,7 +432,12 @@ class PrismApp(PalisadeApp):
             self.busy.setText(text)
             self.busy.show()
         elif status.get("standby"):                    # live + no rtl_power: honest, no fake sweep
-            self.busy.setText("STANDBY — no rtl_power (no synthetic sweep)")
+            self.busy.setText("STANDBY — %s (no synthetic sweep)" % (
+                (status.get("sdr") or {}).get("text", "").replace("SDR STANDBY — ", "")
+                or "no rtl_power"))
+            self.busy.show()
+        elif status.get("fault") or status.get("stale"):    # H2: frozen sweep is never green
+            self.busy.setText((status.get("sdr") or {}).get("text", ""))
             self.busy.show()
         elif "busy" in status:
             owner = status["busy"]
@@ -379,6 +452,6 @@ class PrismApp(PalisadeApp):
         self.scope.push(freqs, power)
         peak = float(np.max(power))
         pf = float(freqs[int(np.argmax(power))])
-        self.readout.setText("%.0f dBm @ %.2f MHz" % (peak, pf))
+        self.readout.setText("%.0f dB rel @ %.2f MHz" % (peak, pf))   # H13: uncalibrated
         self._peak_mhz = pf
         self.send_btn.setEnabled(True)

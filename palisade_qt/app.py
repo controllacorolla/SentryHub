@@ -348,6 +348,16 @@ class PalisadeApp(QtWidgets.QWidget):
             if k in status:
                 v = status[k]
                 self.set_chip(k, v.get("text"), state=v.get("state"), ok=v.get("ok"))
+        if status.get("standby") and isinstance(status.get("sdr"), dict):
+            for t in self.standby_tables():          # D4: the reason fills the empty table
+                t.set_empty("offline", status["sdr"].get("text") or "OFFLINE")
+
+    def standby_tables(self):
+        """Tables a worker's standby reason applies to. Default: the page's only feed table; a
+        page with several tables (whose workers differ) routes reasons itself."""
+        from .kit import FeedTable
+        tables = self.findChildren(FeedTable)
+        return tables if len(tables) == 1 else []
 
     def on_error(self, msg):
         # R2: surface, don't swallow. Subclasses can show it in the UI; default routes to stderr.

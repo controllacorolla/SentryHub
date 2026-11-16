@@ -25,13 +25,23 @@ from . import theme, eventbus
 from .kit import FeedTable, micro
 from .kit.components import note
 from .worker import Worker
+from .timebase import zulu, age_text
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 SUBVIEWS = ("SKY DOME", "PASSES")
-HOME_LAT, HOME_LON = eventbus.HOME
+TLE_STALE_S = 7 * 86400          # a TLE older than a week predicts passes minutes off
+
+
+def _home(demo=False):
+    """H5: the operator's HOME read when it is needed (never copied once at import), or None.
+    Demo falls back to the flagged demo frame."""
+    h = eventbus.home()
+    if h is None and demo:
+        h = eventbus.DEMO_HOME
+    return h
 
 
 def _offscreen():
@@ -137,7 +147,7 @@ class SkyWorker(Worker):
     """Ticks the dome: sun + moon from pure astro (always live), satellites from the current passes
     (interpolated) or demo_orbiter. No network, no TLE here."""
 
-    def __init__(self, demo=True, parent=None):
+    def __init__(self, demo=False, parent=None):
         super().__init__(demo=demo, interval_ms=1000, parent=parent)
         self._passes = []
 
@@ -147,8 +157,12 @@ class SkyWorker(Worker):
     def step(self):
         import astro
         now = time.time()
-        sun = astro.sun_azel(HOME_LAT, HOME_LON, now)
-        moon = astro.moon_azel(HOME_LAT, HOME_LON, now)
+        home = _home(self.demo)
+        if home is None:                       # H5: no observer -> no sky, said plainly
+            self.row.emit({"no_home": True})
+            return
+        sun = astro.sun_azel(home[0], home[1], now)
+        moon = astro.moon_azel(home[0], home[1], now)
         sats, arcs = self._sat_overlay(now)
         self.row.emit({"sun": sun, "moon": moon, "sats": sats, "arcs": arcs,
                        "daylight": astro.daylight(sun[1])})
@@ -178,7 +192,7 @@ class PassWorker(Worker):
 
     RE_PREDICT_S = 3600                       # re-predict hourly so the horizon stays fresh
 
-    def __init__(self, demo=True, tle_path=None, parent=None):
+    def __init__(self, demo=False, tle_path=None, parent=None):
         super().__init__(demo=demo, interval_ms=60000, parent=parent)
         self._tle_path = tle_path
         self._last_predict = 0.0
@@ -189,7 +203,13 @@ class PassWorker(Worker):
             return
         self._last_predict = now
         passes, status = self._predict()
-        self.row.emit({"passes": passes, "status": status})
+        self.row.emit({"passes": passes, "status": status,
+                       "tle_age_s": getattr(self, "tle_age_s", None)})
+
+    def repredict(self):
+        """HOME changed: predict again on the next step (thread-safe: a flag + poke)."""
+        self._last_predict = 0.0
+        self.poke()
 
     def _predict(self):
         if self.demo:
@@ -202,11 +222,18 @@ class PassWorker(Worker):
             return [], "offscreen"
         if not os.path.exists(tle):
             return [], "no-tle"
+        home = _home(False)
+        if home is None:
+            return [], "no-home"                 # H5: never predict for a default location
+        try:
+            self.tle_age_s = max(0.0, time.time() - os.path.getmtime(tle))    # H19: TLE age
+        except OSError:
+            self.tle_age_s = None
         try:
             s = dict(wxsat.DEFAULTS)
             s["satellites"] = s["satellites"] + [{"name": "ISS (ZARYA)", "norad": 25544,
                                                   "freq": 145.8}]
-            passes = wxsat.predict(s, {"lat": HOME_LAT, "lon": HOME_LON, "alt_m": 50},
+            passes = wxsat.predict(s, {"lat": home[0], "lon": home[1], "alt_m": 50},
                                    hours=24, path=tle)
             return passes, "live"
         except ImportError:
@@ -297,7 +324,7 @@ class OverwatchApp(PalisadeApp):
         pl.setSpacing(10)
         self.pass_note = note("")
         pl.addWidget(self.pass_note)
-        self.pass_feed = FeedTable([("sat", "SATELLITE"), ("aos", "AOS"), ("max", "MAX EL"),
+        self.pass_feed = FeedTable([("sat", "SATELLITE"), ("aos", "AOS (Z)"), ("max", "MAX EL"),
                                     ("freq", "FREQ"), ("decoder", "DECODER")])
         pl.addWidget(self.pass_feed, 1)
         return page
@@ -326,10 +353,21 @@ class OverwatchApp(PalisadeApp):
         self._passw.error.connect(self.on_error)
         self._passw.start()
         self._workers.append(self._passw)
+        eventbus.bus.home_changed.connect(self._on_home_changed)
+
+    def _on_home_changed(self):
+        """H5: HOME set in SETTINGS -> predict for it now (it used to be copied once at import)."""
+        w = getattr(self, "_passw", None)
+        if w is not None and not self._stopped:
+            w.repredict()
 
     def stop(self):
         if self._stopped:
             return
+        try:
+            eventbus.bus.home_changed.disconnect(self._on_home_changed)
+        except (RuntimeError, TypeError):
+            pass
         for w in getattr(self, "_workers", []):
             w.stop()
             w.quit()
@@ -340,6 +378,10 @@ class OverwatchApp(PalisadeApp):
 
     # ---- worker outputs ----
     def _on_sky(self, msg):
+        if msg.get("no_home"):                       # H5
+            self.sky_chip.setText("HOME NOT SET — set it in SYSTEM › SETTINGS")
+            self.obj_feed.model.set_rows([])
+            return
         sun, moon = msg["sun"], msg["moon"]
         sats, arcs = msg["sats"], msg["arcs"]
         self.dome.set_sky(sun, moon, sats, arcs)
@@ -357,6 +399,7 @@ class OverwatchApp(PalisadeApp):
         if sky is not None:
             sky.set_passes(passes)           # feed the dome the pass arcs
         standby = {"no-tle": "NO TLE — update required",
+                   "no-home": "HOME NOT SET — set it in SYSTEM › SETTINGS; no passes predicted",
                    "no-skyfield": "Skyfield not installed — satellite passes unavailable",
                    "error": "pass prediction failed — standby",
                    "offscreen": "pass prediction unavailable (offscreen)"}
@@ -365,22 +408,24 @@ class OverwatchApp(PalisadeApp):
             self.pass_note.setText(standby[status])
             self.pass_feed.model.set_rows([])
             return
-        sched = passsched.schedule([_remap(p) for p in passes], min_elev=15.0)
-        chosen_keys = {(p["sat"], p["aos"]) for p in sched}
         rows = []
         for p in sorted(passes, key=lambda x: x["aos"]):
             dec = passsched.assign_decoder(p["sat"])
+            # H19: no "record" marker — nothing records a pass yet (the scheduler only ranks them)
             rows.append({"sat": p["sat"] + (" ·DEMO" if p.get("demo") else ""),
-                         "aos": time.strftime("%H:%M", time.localtime(p["aos"])),
+                         "aos": zulu(p["aos"], secs=False),
                          "max": "%.0f°" % p.get("max", 0), "freq": "%.1f" % p.get("freq", 0),
-                         "decoder": (dec or "—") + (" ◀record" if (p["sat"], p["aos"]) in chosen_keys
-                                                    else ""),
-                         "_colors": {"decoder": self._tok["live"]} if (p["sat"], p["aos"])
-                         in chosen_keys else {}})
+                         "decoder": dec or "—"})
         self.pass_feed.model.set_rows(rows)
         tag = " (demo)" if status == "demo" else ""
-        self.pass_note.setStyleSheet("color:%s;" % self._tok["muted"])
-        self.pass_note.setText("%d passes in the next 24h%s" % (len(passes), tag))
+        age = msg.get("tle_age_s")
+        stale_tle = age is not None and age > TLE_STALE_S
+        tle = "" if status == "demo" else (" · TLE age %s" % age_text(age) if age is not None
+                                           else " · TLE age unknown")
+        self.pass_note.setStyleSheet("color:%s;" % (self._tok["warn"] if stale_tle
+                                                    else self._tok["muted"]))
+        self.pass_note.setText("%d passes in the next 24h%s%s%s" % (
+            len(passes), tag, tle, " — update the TLE" if stale_tle else ""))
         self._alert_next(passsched.next_pass(passes, time.time()), status)
 
     def _alert_next(self, nxt, status):
@@ -392,7 +437,7 @@ class OverwatchApp(PalisadeApp):
         self._next_alerted = key
         eventbus.bus.publish(eventbus.alert(
             "OVERWATCH", "next pass: %s at %s (max %.0f°, %.1f MHz)" % (
-                nxt["sat"], time.strftime("%H:%M", time.localtime(nxt["aos"])),
+                nxt["sat"], zulu(nxt["aos"], secs=False),
                 nxt.get("max", 0), nxt.get("freq", 0)),
             severity="info", sat=nxt["sat"], aos=nxt["aos"], max_el=nxt.get("max"),
             freq=nxt.get("freq")))

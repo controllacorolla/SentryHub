@@ -50,4 +50,4 @@ def test_empty_scan():
 
 
 def test_scan_argv():
-    assert W.scan_argv("wlan1") == ["iw", "dev", "wlan1", "scan"]
+    assert W.scan_argv("wlan1") == ["iw", "dev", "wlan1", "scan", "passive"]   # H3

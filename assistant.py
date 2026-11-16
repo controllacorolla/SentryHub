@@ -24,8 +24,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite as S  # noqa: E402
 
 DEFAULTS = {
+    # H18: no default remote host. A remote Ollama box is the operator's to add in settings —
+    # the suite must not reach out to a hostname it was never given.
     "hosts": [
-        {"name": "Desktop", "url": "http://desktop:11434", "model": ""},
         {"name": "uConsole", "url": "http://127.0.0.1:11434", "model": "llama3.2:3b"},
     ],
     "local_threads": 2,     # CPU threads for a model on this device (0 = all cores)

@@ -216,22 +216,112 @@ class DetailCard(QtWidgets.QFrame):
 
 
 class EmptyState(QtWidgets.QFrame):
-    """Shown when there's no signal / the hardware is absent — a first-class state, not a blank."""
+    """The one empty-state component (D4). A panel with no data says WHY, in one of three looks:
 
-    def __init__(self, text="NO SIGNAL", hint="", parent=None):
+      OFFLINE  — hatched panel, amber: the reason and what to do ("NO DEVICE — plug in …").
+      WATCHING — green: the feed runs and nothing is above baseline; sample count + last-sample age.
+      STALE    — the last data is old: its age in red.
+
+    `text`/`hint` keep the pre-CL4 call signature (a plain OFFLINE panel)."""
+    LOOKS = ("offline", "watching", "stale")
+
+    def __init__(self, text="NO SIGNAL", hint="", parent=None, state="offline"):
         super().__init__(parent)
         self.setProperty("class", "well")
+        self.setObjectName("emptystate")
         lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(16, 12, 16, 12)
         lay.addStretch(1)
-        big = QtWidgets.QLabel(text)
-        big.setAlignment(QtCore.Qt.AlignCenter)
-        big.setProperty("class", "value")
-        big.setWordWrap(True)
-        lay.addWidget(big)
-        if hint:
-            h = QtWidgets.QLabel(hint)
-            h.setAlignment(QtCore.Qt.AlignCenter)
-            h.setProperty("class", "note")
-            h.setWordWrap(True)
-            lay.addWidget(h)
+        self.big = QtWidgets.QLabel()
+        self.big.setAlignment(QtCore.Qt.AlignCenter)
+        self.big.setProperty("class", "value")
+        self.big.setWordWrap(True)
+        lay.addWidget(self.big)
+        self.hint = QtWidgets.QLabel()
+        self.hint.setAlignment(QtCore.Qt.AlignCenter)
+        self.hint.setProperty("class", "note")
+        self.hint.setWordWrap(True)
+        lay.addWidget(self.hint)
         lay.addStretch(1)
+        self.state = None
+        self.set_state(state, text, hint)
+
+    def set_state(self, state, title, detail=""):
+        if state not in self.LOOKS:
+            raise ValueError("EmptyState look must be one of %s" % (self.LOOKS,))
+        self.state = state
+        word = {"offline": "OFFLINE", "watching": "WATCHING", "stale": "STALE"}[state]
+        t = title or word
+        if not t.upper().startswith(word) and state != "offline":
+            t = "%s — %s" % (word, t)
+        self.big.setText(t)
+        self.hint.setText(detail or "")
+        self.hint.setVisible(bool(detail))
+        tok = _tokens_for(self)
+        col = {"offline": tok["warn"], "watching": tok["live"], "stale": tok["alert"]}[state]
+        self.big.setStyleSheet("color:%s;" % col)
+        self.hint.setStyleSheet("color:%s;" % (tok["alert"] if state == "stale" else tok["text"]))
+        self.update()
+
+    def text(self):
+        return self.big.text() + ("\n" + self.hint.text() if self.hint.text() else "")
+
+    def paintEvent(self, ev):
+        super().paintEvent(ev)
+        if self.state != "offline":
+            return
+        from PySide6 import QtGui
+        tok = _tokens_for(self)
+        c = QtGui.QColor(tok["warn"])
+        c.setAlpha(60)
+        p = QtGui.QPainter(self)
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(QtGui.QBrush(c, QtCore.Qt.BDiagPattern))
+        p.drawRect(self.rect().adjusted(1, 1, -1, -1))
+        pen = QtGui.QPen(QtGui.QColor(tok["warn"]))
+        pen.setWidth(2)
+        p.setPen(pen)
+        p.setBrush(QtCore.Qt.NoBrush)
+        p.drawRect(self.rect().adjusted(1, 1, -2, -2))
+        p.end()
+
+
+class Cover(QtCore.QObject):
+    """An EmptyState laid over another widget (same rect, kept in step on resize). Used where a
+    view must not be drawn at all — e.g. a range picture with no HOME (N26)."""
+
+    def __init__(self, target, state="offline", title="", detail=""):
+        super().__init__(target)
+        self._target = target
+        self.empty = EmptyState(title, detail, parent=target, state=state)
+        self.empty.hide()
+        target.installEventFilter(self)
+
+    def show(self, on=True, state=None, title=None, detail=None):
+        if title is not None:
+            self.empty.set_state(state or self.empty.state, title, detail or "")
+        self.empty.setGeometry(self._target.rect())
+        self.empty.setVisible(bool(on))
+        if on:
+            self.empty.raise_()
+
+    def shown(self):
+        return not self.empty.isHidden()
+
+    def eventFilter(self, obj, ev):
+        if obj is self._target and ev.type() == QtCore.QEvent.Resize:
+            self.empty.setGeometry(self._target.rect())
+        return False
+
+
+def _tokens_for(widget):
+    """The theme tokens the app is drawn in (matched on the application palette's window colour)."""
+    from .. import theme
+    app = QtWidgets.QApplication.instance()
+    if app is not None:
+        bg = app.palette().color(app.palette().ColorRole.Window).name().lower()
+        for mode, tok in theme.MODES.items():
+            if tok["bg"].lower() == bg:
+                return tok
+    return theme.tokens("dark")
+

@@ -17,6 +17,7 @@ antenna port), never an antenna, every key-up gated by txguard. Two parts, both 
 No OTA ever leaves BENCH. Offscreen (tests) the key-up is never spawned.
 """
 import os
+import time
 import sys
 
 from PySide6 import QtCore, QtWidgets
@@ -50,6 +51,9 @@ class SelfTestWorker(Worker):
         results = loopback.software_selftests()
         self.row.emit({"results": results, "all_pass": loopback.all_pass(results)})
         self._stop = True          # one-shot
+
+
+KEYED_AFTER_S = 1.0       # H8: the runner must stay up this long before the page says KEYED
 
 
 class BenchApp(PalisadeApp):
@@ -234,13 +238,22 @@ class BenchApp(PalisadeApp):
         self._handle = h
         self.tx_btn.setText("STOP CONDUCTED TX")
         self.tx_btn.setEnabled(True)
-        self.card.set_hero("KEYED", "conducted into a load — no antenna, no OTA")
+        # H8: a spawned process is not a keyed transmitter. STARTING until the runner has stayed
+        # up for KEYED_AFTER_S; if it exits first, _check_handle shows FAILED with its exit code.
+        self._keyed_at = time.monotonic() + KEYED_AFTER_S
+        self._keyed = False
+        self.card.set_hero("STARTING", "conducted into a load — no antenna, no OTA")
         self.card.set_rows([("TXGUARD", "PERMITTED — conducted"), ("RUNNING", message)])
         self._poll.start()
 
     def _check_handle(self):
         h = self._handle
-        if h is None or h.running():
+        if h is None:
+            return
+        if h.running():
+            if not getattr(self, "_keyed", True) and time.monotonic() >= self._keyed_at:
+                self._keyed = True
+                self.card.set_hero("KEYED", "conducted into a load — no antenna, no OTA")
             return
         self._poll.stop()
         self._handle = None
@@ -250,8 +263,9 @@ class BenchApp(PalisadeApp):
             result = "stopped (%s) · exit %s" % (h.stopped, code)
         else:
             result = "exit %s%s" % (code, "" if code == 0 else " — FAILED")
-        self.card.set_hero("DONE" if code == 0 and not h.stopped else "ENDED",
-                           "conducted into a load — no antenna, no OTA")
+        hero = ("ENDED" if h.stopped else "DONE" if code == 0 else
+                "FAILED" if getattr(self, "_keyed", True) else "FAILED TO KEY")
+        self.card.set_hero(hero, "conducted into a load — no antenna, no OTA")
         self.card.set_rows([("RESULT", result), ("OUTPUT", (h.lines[-1] if h.lines else "—"))])
         self._refresh_gate()
 

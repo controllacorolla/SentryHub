@@ -81,11 +81,11 @@ def _linux_start(pid):
         return None
 
 
-def _darwin_start(pid):
-    """p_starttime from sysctl(KERN_PROC_PID) — the first timeval of struct kinfo_proc."""
+def _darwin_kinfo(pid):
+    """The raw struct kinfo_proc for pid from sysctl(KERN_PROC_PID), or None (no such process /
+    cannot ask)."""
     import ctypes
     import ctypes.util
-    import struct
     try:
         libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
         mib = (ctypes.c_int * 4)(1, 14, 1, int(pid))       # CTL_KERN, KERN_PROC, KERN_PROC_PID
@@ -95,10 +95,107 @@ def _darwin_start(pid):
             return None
         if size.value < 16:
             return None                                      # no such process
-        sec, usec = struct.unpack_from("qi", buf.raw, 0)
-    except (OSError, ValueError, TypeError, AttributeError, struct.error):
+        return buf.raw[:size.value]
+    except (OSError, ValueError, TypeError, AttributeError):
         return None
-    return "darwin:%d.%06d" % (sec, usec) if sec > 0 else None
+
+
+# struct extern_proc (kp_proc, offset 0 of kinfo_proc) on 64-bit macOS: p_un (16: the start
+# timeval), p_vmspace (8), p_sigacts (8), p_flag (int, 4) -> p_stat (char) at 36, p_pid (int) at 40.
+_DARWIN_P_STAT, _DARWIN_P_PID, _DARWIN_SZOMB = 36, 40, 5
+
+
+def _darwin_parse(raw, pid=None):
+    """(start, stat) from a kinfo_proc buffer. stat is None when the layout cannot be confirmed
+    (p_pid does not equal pid) — callers then treat zombie-ness as unknown."""
+    import struct
+    try:
+        sec, usec = struct.unpack_from("qi", raw, 0)
+    except struct.error:
+        return None, None
+    start = "darwin:%d.%06d" % (sec, usec) if sec > 0 else None
+    stat = None
+    try:
+        p_stat = raw[_DARWIN_P_STAT]
+        p_pid = struct.unpack_from("i", raw, _DARWIN_P_PID)[0]
+        if pid is None or p_pid == int(pid):
+            stat = p_stat
+    except (IndexError, struct.error, ValueError, TypeError):
+        stat = None
+    return start, stat
+
+
+def _darwin_start(pid):
+    """p_starttime from sysctl(KERN_PROC_PID) — the first timeval of struct kinfo_proc."""
+    raw = _darwin_kinfo(pid)
+    if raw is None:
+        return None
+    return _darwin_parse(raw, pid)[0]
+
+
+def is_zombie(pid):
+    """True if pid has exited and only its reap is pending (Linux: /proc state Z; macOS: kp_proc
+    p_stat == SZOMB, RA-CL3d N25), False if it is a live process, None if that cannot be told.
+    A pid that does not exist at all is reported as None (callers decide what gone means)."""
+    import sys
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if sys.platform.startswith("linux"):
+        try:
+            with open("/proc/%d/stat" % pid) as fh:
+                raw = fh.read()
+            return raw[raw.rindex(")") + 2:].split()[0] == "Z"
+        except (OSError, ValueError, IndexError):
+            return None
+    if sys.platform == "darwin":
+        raw = _darwin_kinfo(pid)
+        if raw is None:
+            return None
+        stat = _darwin_parse(raw, pid)[1]
+        return None if stat is None else stat == _DARWIN_SZOMB
+    return None
+
+
+def group_members(pgid):
+    """Live (non-zombie) pids in process group pgid. [] when the group is empty or gone. Where
+    the members cannot be listed (no /proc), a group that still answers killpg(pgid, 0) is
+    reported as [pgid] — alive, members unknown — so callers never claim it is gone."""
+    try:
+        os.killpg(int(pgid), 0)
+    except ProcessLookupError:
+        return []
+    except (PermissionError, OSError, ValueError, TypeError):
+        return [int(pgid)] if isinstance(pgid, int) else []
+    if not os.path.isdir("/proc"):
+        return [int(pgid)]
+    out = []
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            with open("/proc/%s/stat" % d) as fh:
+                st = fh.read()
+        except OSError:
+            continue
+        rest = st[st.rfind(")") + 2:].split()            # state ppid pgrp …
+        if len(rest) >= 3 and rest[2] == str(pgid) and rest[0] != "Z":
+            out.append(int(d))
+    return out
+
+
+def group_alive(pgid, grace_s=0.0):
+    """Does process group pgid still have a live member? Waits up to grace_s for it to empty
+    (orphaned zombies are reaped by init within moments). RA-CL3d N20: a group is gone only when
+    the probe says so — never because its leader alone exited."""
+    end = time.monotonic() + max(0.0, grace_s)
+    while True:
+        if not group_members(pgid):
+            return False
+        if time.monotonic() >= end:
+            return True
+        time.sleep(0.02)
 
 
 def proc_start(pid):

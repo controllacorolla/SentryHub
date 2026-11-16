@@ -21,23 +21,41 @@ import time
 from PySide6 import QtCore
 
 REVOKE_TIMEOUT_S = 5.0
+FAIL_RETRY_S = 20.0          # H4: after a failed acquire, the same holder is not re-granted for this
+
+
+class LeaseFailed(Exception):
+    """The real lease could not be taken (readsb would not stop, sudo refused …). The radio is NOT
+    granted (audit H4): the arbiter returns to FREE and says why."""
 
 
 def _make_lease(name):
-    """Acquire the shared SDR lease (pauses readsb, frees the dongle). None if unavailable.
-    SLOW — never call under the arbiter lock."""
+    """Acquire the shared SDR lease (pauses readsb, frees the dongle). SLOW — never call under the
+    arbiter lock. Returns the lease, or None when there is no suite lease module on this host (the
+    dev host / tests: nothing else uses the dongle, so the radio is ours). Raises LeaseFailed when
+    the module is there and the acquire failed (H4: that used to be swallowed and the radio granted
+    anyway, so a decoder raced readsb for the dongle under a HELD chip)."""
     try:
         import suite
-        lease = suite.RtlLease(name)
-        lease.acquire()
-        return lease
+        lease_cls = suite.RtlLease
     except Exception:
         return None
+    lease = lease_cls(name)
+    try:
+        lease.acquire()
+    except Exception as e:
+        try:
+            lease.release()               # put back whatever it paused before failing
+        except Exception:
+            pass
+        raise LeaseFailed(str(e)[:160] or type(e).__name__)
+    return lease
 
 
 class RadioArbiter(QtCore.QObject):
     changed = QtCore.Signal(str)        # owner name ("" when free) — also fires on ACQUIRING→HELD
     revoked = QtCore.Signal(str)        # the named holder must stop its pipeline and release()
+    failed = QtCore.Signal(str, str)    # (name, why): the acquire failed, the radio was NOT granted
     # (event, owner, note) captured AT the transition (N11: changed() + a late state() read logged
     # HELD, HELD for a fast acquire). event: ACQUIRING | HELD | RELEASE; note on a RELEASE says
     # how ("" = the holder released, "FORCED FREE …", "PANIC").
@@ -51,12 +69,16 @@ class RadioArbiter(QtCore.QObject):
         self._lock = threading.Lock()
         self._gen = 0                   # bumps on every ownership change; stale acquires drop out
         self._revoke_timer = None
+        self._failures = {}             # name -> why its last acquire failed (H4); cleared on grant
 
     # ---- ownership ----
     def request(self, name):
         """Become the single radio owner. Returns True if granted (now or already ours), False if
         another holder has it. Never blocks on the radio."""
         with self._lock:
+            f = self._failures.get(name)
+            if f is not None and self._owner is None and time.monotonic() - f[1] < FAIL_RETRY_S:
+                return False                 # H4: back off after a failed acquire, say why
             if self._owner is None:
                 self._owner, self._state = name, "ACQUIRING"
                 self._gen += 1
@@ -74,13 +96,35 @@ class RadioArbiter(QtCore.QObject):
         return True
 
     def _acquire(self, name, gen):
-        lease = _make_lease(name)            # slow; outside the lock
+        try:
+            lease = _make_lease(name)        # slow; outside the lock
+        except Exception as e:               # H4: a failed acquire is NOT a grant
+            why = str(e) or type(e).__name__
+            with self._lock:
+                mine = self._gen == gen and self._owner == name
+                if mine:
+                    self._owner, self._state, self._lease = None, "FREE", None
+                    self._gen += 1
+                    self._failures[name] = (why, time.monotonic())
+                    t, self._revoke_timer = self._revoke_timer, None
+                else:
+                    t = None
+            if t is not None:
+                t.cancel()
+            if mine:
+                import sys
+                print("[radio] %s: acquire failed — %s" % (name, why), file=sys.stderr)
+                self.transition.emit("FAILED", name, why)
+                self.failed.emit(name, why)
+                self.changed.emit("")
+            return
         with self._lock:
             if self._gen != gen or self._owner != name:
                 stale = True                 # released / revoked while acquiring
             else:
                 stale = False
                 self._lease, self._state = lease, "HELD"
+                self._failures.pop(name, None)
         if stale:
             if lease is not None:
                 try:
@@ -177,11 +221,26 @@ class RadioArbiter(QtCore.QObject):
         with self._lock:
             return self._revoke_timer is not None
 
+    def failure(self, name):
+        """Why `name`'s last acquire failed, or None (H4). Cleared when it is next granted."""
+        with self._lock:
+            f = self._failures.get(name)
+            return f[0] if f else None
+
+    def retry_in(self, name):
+        """Seconds until `name` may request again after a failed acquire (0 = now)."""
+        with self._lock:
+            f = self._failures.get(name)
+        if not f:
+            return 0
+        return max(0, int(FAIL_RETRY_S - (time.monotonic() - f[1]) + 0.999))
+
     def reset_for_tests(self):
         with self._lock:
             self._owner, self._state, self._lease = None, "FREE", None
             self._gen += 1
             t, self._revoke_timer = self._revoke_timer, None
+            self._failures.clear()
         if t is not None:
             t.cancel()
 
@@ -194,6 +253,21 @@ arbiter = RadioArbiter()
 OWNER_LABELS = {"ATLAS-APRS": "APRS", "ATLAS-AIS": "AIS", "BABEL": "BABEL",
                 "PROWL-SCAN": "PROWL SC", "PROWL-FM": "PROWL FM", "PROWL-NWR": "PROWL WX",
                 "BABEL-SSTV": "SSTV", "PRISM": "PRISM"}
+
+
+def lost_reason(name, default="radio taken back"):
+    """What a holder that found itself not owning the radio should say: the acquire failure when
+    that is what happened (H4), else `default`."""
+    why = arbiter.failure(name)
+    return ("radio acquire failed: %s" % why)[:90] if why else default
+
+
+def busy_text(name):
+    """The status word for a refused request(name): the acquire failure (H4), or RADIO BUSY."""
+    why = arbiter.failure(name)
+    if why and arbiter.owner() is None:
+        return ("RADIO FAILED — %s (retry in %ds)" % (why, arbiter.retry_in(name)))[:90]
+    return "RADIO BUSY"
 
 
 def owner_label():

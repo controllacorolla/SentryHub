@@ -18,6 +18,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from . import chrome, eventbus, radio_arbiter, radios, theme
 from .kit import FeedTable, DetailCard, micro
 from .kit.components import note
+from .timebase import zulu
 
 
 # ======================= overlay base =======================
@@ -112,7 +113,7 @@ class RadiosPanel(Overlay):
         row.addLayout(left, 2)
         right = QtWidgets.QVBoxLayout()
         right.addWidget(micro("Acquire / release history"))
-        self.hist_feed = FeedTable([("t", "TIME"), ("event", "EVENT"), ("owner", "LAYER")])
+        self.hist_feed = FeedTable([("t", "TIME (Z)"), ("event", "EVENT"), ("owner", "LAYER")])
         right.addWidget(self.hist_feed, 1)
         row.addLayout(right, 3)
         self.outer.addLayout(row, 4)
@@ -153,7 +154,7 @@ class RadiosPanel(Overlay):
     def _on_transition(self, event, owner, note):
         """History row per arbiter transition, with the state as it was AT the transition (N11),
         and a forced free / PANIC marked as such (a forced free can leave a pipeline behind)."""
-        now = time.strftime("%H:%M:%S")
+        now = zulu()
         lbl = radio_arbiter.OWNER_LABELS.get(owner, owner) if owner else "—"
         if event == "RELEASE" and note:
             event = "RELEASE · %s" % note
@@ -342,9 +343,13 @@ class EngagePanel(Overlay):
                                       QtWidgets.QSizePolicy.Minimum)
         right.addWidget(self.eng_detail)
         self.eng_chain = micro("Evidence chain")
+        self.eng_chain.setWordWrap(True)          # RA-CL4 N34: never clipped at the panel edge
         right.addWidget(self.eng_chain)
-        self.eng_actions = FeedTable([("t", "TIME"), ("state", "STATE"), ("action", "ACTION"),
-                                      ("target", "TARGET"), ("detail", "RESULT")])
+        # N11: the trail fits the panel width (long targets/results elide, full text in the
+        # tooltip) — no sideways scroll hiding the RESULT column
+        self.eng_actions = FeedTable([("t", "TIME (Z)"), ("state", "STATE"), ("action", "ACTION"),
+                                      ("target", "TARGET"), ("detail", "RESULT")],
+                                     fit_viewport=True)
         self.eng_actions.view.setMinimumHeight(theme.ROW_H * (self.MIN_EVIDENCE_ROWS + 1) + 8)
         right.addWidget(self.eng_actions, 1)
         split.addLayout(right, 3)
@@ -405,8 +410,8 @@ class EngagePanel(Overlay):
             self.eng_detail.set_rows([
                 ("OPERATOR", info["operator"]), ("AUTHORIZATION", info["authorization"]),
                 ("TARGETS", "%d" % len(scope)), ("SCOPE", ", ".join(scope)),
-                ("STARTED", time.strftime("%H:%M:%S", time.localtime(info["started"]))),
-                ("EXPIRES", time.strftime("%H:%M:%S", time.localtime(info["expires"])))])
+                ("STARTED", zulu(info["started"])),
+                ("EXPIRES", zulu(info["expires"]))])
         else:
             self.eng_detail.set_hero("—", "no engagement")
             self.eng_detail.set_rows([])
@@ -433,8 +438,32 @@ class EngagePanel(Overlay):
             rows = [{"t": 0, "state": "UNKNOWN", "action": "UNKNOWN — evidence trail unreadable",
                      "target": str(e)[:40], "detail": "",
                      "_colors": {"state": self._tok["warn"], "action": self._tok["warn"]}}]
+        bad = None
         if info is None:
+            try:
+                bad = eng.chain_unreadable()
+            except Exception as e:
+                bad = str(e)[:120]
+        # D4: the empty trail says why — and never claims "nothing authorized" when it cannot
+        # read the trail (RA-CL4 N27 tampered, N28 unreadable while an engagement is active)
+        if bad:
+            self.eng_chain.setText("Evidence chain UNREADABLE — %s" % bad[:60])
+            self.eng_actions.set_empty("stale", "TRAIL UNREADABLE",
+                                       "the engagement's evidence chain cannot be opened: %s — "
+                                       "actions are refused until it is" % bad)
+        elif info is None:
             self.eng_chain.setText("Evidence chain — none open")
+            self.eng_actions.set_empty("offline", "NO ENGAGEMENT",
+                                       "the trail starts when an engagement is activated")
+        elif not info["verified"]:
+            self.eng_actions.set_empty("stale", "TRAIL UNREADABLE",
+                                       "the chain failed verification — nothing it holds can be "
+                                       "shown as fact")
+        else:
+            self.eng_actions.set_empty("watching", "nothing authorized yet",
+                                       "every authorization and execution is recorded here")
+        if info is None:
+            pass
         elif info["verified"]:
             self.eng_chain.setText("Evidence chain %s — %d records, VERIFIED" % (
                 info["id"][:17], info["records"]))
@@ -442,7 +471,7 @@ class EngagePanel(Overlay):
             self.eng_chain.setText("Evidence chain %s — NOT VERIFIED: %s" % (
                 info["id"][:17], info.get("why", "")[:60]))
         self.eng_actions.model.set_rows([
-            dict(r, t=(time.strftime("%H:%M:%S", time.localtime(r["t"])) if r["t"] else "—"))
+            dict(r, t=(zulu(r["t"]) if r["t"] else "—"))
             for r in rows])
 
     def focus_first(self):
@@ -553,7 +582,7 @@ class AlertsDrawer(Overlay):
         self.store = store or alert_store()
         self.count = note("")
         self.outer.addWidget(self.count)
-        self.table = FeedTable([("t", "TIME"), ("state", "STATE"), ("sev", "SEV"),
+        self.table = FeedTable([("t", "TIME (Z)"), ("state", "STATE"), ("sev", "SEV"),
                                 ("source", "SOURCE"), ("text", "ALERT")])
         self.outer.addWidget(self.table, 1)
         row = QtWidgets.QHBoxLayout()
@@ -573,7 +602,7 @@ class AlertsDrawer(Overlay):
         sev_col = {"alert": self._tok["alert"], "warn": self._tok["warn"]}
         rows = []
         for a in self.store.items:
-            rows.append({"_id": a["id"], "t": time.strftime("%H:%M:%S", time.localtime(a["ts"])),
+            rows.append({"_id": a["id"], "t": zulu(a["ts"]),
                          "state": "acked" if a["acked"] else "NEW",
                          "sev": a["severity"].upper(), "source": a["source"], "text": a["text"],
                          "_colors": {"sev": sev_col.get(a["severity"], self._tok["muted"]),

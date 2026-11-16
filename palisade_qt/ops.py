@@ -12,13 +12,14 @@ import math
 import os
 import random
 import time
+from collections import deque
 
 from PySide6 import QtCore, QtWidgets
 
 from .app import PalisadeApp
 from . import theme, eventbus
 from .kit import card, micro, PpiScope
-from .kit.components import note
+from .kit.components import note, Cover
 from .worker import Worker
 
 # The eight page keys, in key order (1-8), each with the function label shown beside the callsign
@@ -49,17 +50,18 @@ class DemoFeedWorker(Worker):
         if random.random() < 0.5:
             proto, summ = random.choice(self._decodes)
             eventbus.bus.publish(eventbus.decode("BABEL", proto,
-                                                 "%04X" % random.randint(0x1000, 0xFFFF), summ))
+                                                 "%04X" % random.randint(0x1000, 0xFFFF), summ,
+                                                 demo=True))
         if random.random() < 0.12:
             kind, sev, src = random.choice([
                 ("Drone Remote-ID", "alert", "ATLAS"),
                 ("Open AP · linksys", "warn", "RECON"),
                 ("MIL contact inbound", "info", "ATLAS")])
-            eventbus.bus.publish(eventbus.alert(src, kind, severity=sev))
+            eventbus.bus.publish(eventbus.alert(src, kind, severity=sev, demo=True))
         batt = max(5, 96 - (now - self._t0) * 0.02)
         eventbus.bus.publish(eventbus.make_event("decode", "OPS", {
             "kind": "telemetry", "temp": 62 + 3 * math.sin((now - self._t0) * 0.1),
-            "batt": batt, "gps": 9}, severity="info"))
+            "batt": batt, "gps": 9}, severity="info", demo=True))
         self.status.emit({"sdr": {"text": "SDR DEMO", "state": "neutral"},
                           "gps": {"text": "GPS 9 SV", "state": "neutral"},
                           "pwr": {"text": "PWR %d%%" % batt,
@@ -67,22 +69,39 @@ class DemoFeedWorker(Worker):
                                   else "neutral"}})
 
 
+def sdr_chip(sys_root="/sys"):
+    """H6: the SDR chip from the USB ID and the bound kernel driver, and who holds it (the radio
+    arbiter) — not from /dev/swradio0, which appears exactly when the kernel's DVB driver has bound
+    the dongle and the SDR tools usually cannot claim it."""
+    from . import radios, radio_arbiter
+    st = radios.sdr_state(sys_root)
+    if st["present"] is None:
+        return {"text": "SDR ?", "state": "neutral"}             # no USB sysfs here: cannot tell
+    if not st["present"]:
+        return {"text": "SDR ABSENT", "state": "warn"}
+    if not st["usable"]:
+        return {"text": "SDR BLOCKED — %s bound" % st["driver"], "state": "alert"}
+    owner = radio_arbiter.owner_label()
+    if owner:
+        return {"text": "SDR HELD · %s" % owner, "state": "neutral"}
+    return {"text": "SDR PRESENT", "state": "neutral"}
+
+
 class LiveStatusWorker(Worker):
     """Live mode: publish only real device telemetry; backends publish their own feeds."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, sys_root="/sys"):
         super().__init__(demo=False, interval_ms=2000, parent=parent)
+        self._sys_root = sys_root
 
     def step(self):
         temp = _read_cpu_temp()
         batt = _read_battery()
-        sdr_ok = os.path.exists("/dev/swradio0") or os.path.exists("/dev/rtlsdr0")
         eventbus.bus.publish(eventbus.make_event("decode", "OPS", {
             "kind": "telemetry", "temp": temp, "batt": batt,
             "gps": _read_gps_sats()}, severity="info"))
         self.status.emit({
-            "sdr": {"text": "SDR OK" if sdr_ok else "SDR —",
-                    "state": "live" if sdr_ok else "neutral"},
+            "sdr": sdr_chip(self._sys_root),
             "pwr": {"text": "PWR %d%%" % batt if batt is not None else "PWR —",
                     "state": ("alert" if batt is not None and batt <= 10
                               else "warn" if batt is not None and batt <= 20 else "neutral")}})
@@ -170,6 +189,7 @@ class OpsHome(PalisadeApp):
         self._contacts = {}
         self._selected = None
         self._decodes = []
+        self._decode_times = deque()          # H14: real decode timestamps, last 60 s
 
         body = QtWidgets.QWidget()
         row = QtWidgets.QHBoxLayout(body)
@@ -199,6 +219,9 @@ class OpsHome(PalisadeApp):
         stat.addStretch(1)
         hv.addLayout(stat)
         self.ppi = PpiScope(span_nm=80, mode=self.mode)
+        self._home_cover = Cover(self.ppi, "offline", "HOME NOT SET",
+                                 "Range rings need your position — set HOME in SYSTEM › SETTINGS")
+        self._home_cover.show(not self.demo and not eventbus.home_set())
         hv.addWidget(self.ppi, 1)
         row.addWidget(hero, 1)
         # the scope is round: keep its column only as wide as it is tall, and give the rest of
@@ -268,6 +291,7 @@ class OpsHome(PalisadeApp):
         elif et == "decode":
             self._decodes.insert(0, (src, pl.get("proto", ""), pl.get("summary", "")))
             self._decodes = self._decodes[:3]
+            self._decode_times.append(ev["ts"])
             self._render_decodes()
 
     def _telemetry(self, pl):
@@ -286,20 +310,35 @@ class OpsHome(PalisadeApp):
         self._contacts = {c["id"]: c for c in live}
         if self._selected not in self._contacts:
             self._selected = None
-        self.ppi.set_contacts(live, selected=self._selected)
+        no_home = not self.demo and not eventbus.home_set()
+        self._home_cover.show(no_home)               # N26: no rings from a guessed origin
+        self.ppi.set_contacts([] if no_home else live, selected=self._selected)
         n = len(live)
-        mil = sum(1 for c in live if c.get("mil"))
         if n:
-            nearest = min(c.get("rng", 999) for c in live)
             self.big.setText(str(n))
-            self.sub.setText("%d military · nearest %.0f NM" % (mil, nearest))
+            parts = []
+            if self.demo:                 # H15: only demo tracks carry a military flag; live has
+                parts.append("%d military (demo)" % sum(1 for c in live if c.get("mil")))
+            if eventbus.home_set():       # H5: no range from a guessed HOME
+                parts.append("nearest %.0f NM" % min(c.get("rng", 999) for c in live))
+            else:
+                parts.append("HOME NOT SET")
+            self.sub.setText(" · ".join(parts))
         else:
             self.big.setText("0")
             self.sub.setText("no contacts" if not self.demo else "standby")
 
+    def decode_rate(self, now=None):
+        """H14: decodes actually received in the last 60 s (it was min(60, n * 6): one decode
+        ever read "6/min")."""
+        now = time.time() if now is None else now
+        while self._decode_times and now - self._decode_times[0] > 60.0:
+            self._decode_times.popleft()
+        return len(self._decode_times)
+
     def _render_decodes(self):
         self.card_babel.clear_body()
-        self.card_babel.set_note("%d/min" % min(60, len(self._decodes) * 6))
+        self.card_babel.set_note("%d in the last min" % self.decode_rate())
         for src, proto, summ in self._decodes:
             r = QtWidgets.QHBoxLayout()
             a = QtWidgets.QLabel(proto)

@@ -75,7 +75,8 @@ def open_networks(aps):
 
 
 def scan_argv(iface="wlan0"):
-    return ["iw", "dev", iface, "scan"]
+    # H3: `scan passive` — listen for beacons only, send no probe requests
+    return ["iw", "dev", iface, "scan", "passive"]
 
 
 def main(parent=None):

@@ -21,7 +21,8 @@ import time
 from PySide6 import QtWidgets
 
 from .app import PalisadeApp, _retain
-from . import theme, eventbus
+from . import theme, eventbus, panels
+from .timebase import zulu
 from .kit import ControlBar, FeedTable, DetailCard, micro, card
 from .worker import Worker
 
@@ -30,6 +31,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 SUBTABS = ("SETTINGS", "DOCTOR", "ASSISTANT", "MESH", "SITREP")
+DECODE_WINDOW_S = 600                 # decodes "recent" = the last 10 minutes (H17)
 
 
 def _offscreen():
@@ -110,7 +112,7 @@ class MeshWorker(Worker):
     """Meshtastic node list + messages. Demo -> a static mirror of mesh_dash.FakeIface's data; live
     needs a real node (device-only) -> honest standby. Receive-only here (send is a separate action)."""
 
-    def __init__(self, demo=True, parent=None):
+    def __init__(self, demo=False, parent=None):
         super().__init__(demo=demo, interval_ms=2000, parent=parent)
         self._iface = None
         self._emitted = False
@@ -118,7 +120,8 @@ class MeshWorker(Worker):
     def step(self):
         if not self.demo:
             self.status.emit({"standby": True,
-                              "sdr": {"text": "NO NODE — attach a Meshtastic device", "ok": False}})
+                              "sdr": {"text": "MESH NOT IMPLEMENTED — the Meshtastic link is not wired"
+                                              " into this screen", "ok": False}})
             self._stop = True                   # live + no device: standby once, nothing to poll
             return
         if self._emitted:
@@ -179,13 +182,16 @@ class MoreApp(PalisadeApp):
         fl.setContentsMargins(14, 12, 14, 12)
         self.set_operator = QtWidgets.QLineEdit()
         self.set_home = QtWidgets.QLineEdit()
-        self.set_home.setText("%.4f, %.4f" % eventbus.HOME)
+        h = eventbus.home()
+        if h and eventbus.HOME_SOURCE != "demo":
+            self.set_home.setText("%.4f, %.4f" % h)
+        self.set_home.setPlaceholderText("HOME NOT SET — enter lat, lon (e.g. 47.6, -122.3)")
         self.set_theme = QtWidgets.QComboBox()
         self.set_theme.addItems(["dark", "light", "sun"])
         self.set_theme.setCurrentText(self.mode)
         self.set_retention = QtWidgets.QSpinBox()
         self.set_retention.setRange(100, 5000)
-        self.set_retention.setValue(eventbus.bus._log.maxlen)
+        self.set_retention.setValue(eventbus.bus.retention())
         self._prefill_settings()
         fl.addRow(micro("Operator"), self.set_operator)
         fl.addRow(micro("HOME (lat, lon)"), self.set_home)
@@ -241,18 +247,17 @@ class MoreApp(PalisadeApp):
             return
         live = []
         if home is not None:
-            eventbus.HOME = home
+            eventbus.set_home(home, "settings")
             live.append("HOME")
         try:
-            from collections import deque
-            eventbus.bus._log = deque(eventbus.bus._log, maxlen=self.set_retention.value())
+            eventbus.bus.set_retention(self.set_retention.value())
             live.append("event-bus retention")
         except Exception:
             pass
         # persist ALL displayed fields (operator + HOME + theme + retention)
         persisted = self._write_settings({
             "callsign": self.set_operator.text().strip(),
-            "home": list(home) if home else None,
+            "home": list(home) if home else (list(eventbus.home()) if eventbus.HOME_SOURCE == "settings" else None),
             "theme": self.set_theme.currentText(),
             "retention": self.set_retention.value()})
         theme_changed = self.set_theme.currentText() != self.mode
@@ -313,7 +318,7 @@ class MoreApp(PalisadeApp):
         self.asst_log = QtWidgets.QPlainTextEdit()
         self.asst_log.setReadOnly(True)
         self.asst_log.setPlainText("Ask about the live picture: 'what's on the map?', 'any alerts?',"
-                                   " 'recent decodes?'. Full LLM replies need a reachable Ollama host.")
+                                   " 'recent decodes?'. Free-form questions: NOT IMPLEMENTED here.")
         pl.addWidget(self.asst_log, 1)
         row = QtWidgets.QHBoxLayout()
         self.asst_input = QtWidgets.QLineEdit()
@@ -335,41 +340,49 @@ class MoreApp(PalisadeApp):
         self.asst_log.appendPlainText(self._answer(q))
 
     def _answer(self, q):
+        """Answers from the live state only (H17/H18): contacts from the latest-state store,
+        alerts from the store that keeps them until acknowledged. Anything else is NOT
+        IMPLEMENTED here — no network probe, and never on the GUI thread."""
         ql = q.lower()
-        evs = eventbus.bus.recent(80)
-        contacts = [e for e in evs if e["type"] == "contact"]
-        alerts = [e for e in evs if e["type"] == "alert"]
-        decodes = [e for e in evs if e["type"] == "decode"]
         if "alert" in ql:
-            if not alerts:
-                return "No alerts on the bus right now."
-            return "%d alert(s): %s" % (len(alerts), "; ".join(a["payload"].get("text", "")
-                                                              for a in alerts[-5:]))
+            items = panels.alert_store().items
+            open_ = [a for a in items if not a["acked"]]
+            if not open_:
+                return "No unacknowledged alerts (%d acknowledged this session)." % (
+                    len(items) - len(open_))
+            return "%d unacknowledged alert(s): %s" % (
+                len(open_), "; ".join(a["text"] for a in open_[:5]))
         if "map" in ql or "contact" in ql or "overhead" in ql:
+            contacts = eventbus.bus.contacts()
             if not contacts:
-                return "No contacts on the map right now."
+                return "No contacts on the map right now." + self._feed_note()
             kinds = {}
             for c in contacts:
-                kinds[c["payload"].get("kind", "?")] = kinds.get(c["payload"].get("kind", "?"), 0) + 1
-            return "%d contacts: %s" % (len(contacts), ", ".join("%d %s" % (n, k)
-                                                                 for k, n in kinds.items()))
+                k = c["payload"].get("kind", "?")
+                kinds[k] = kinds.get(k, 0) + 1
+            return "%d contacts heard in the last %d min: %s" % (
+                len(contacts), int(eventbus.CONTACT_TTL_S // 60),
+                ", ".join("%d %s" % (n, k) for k, n in kinds.items()))
         if "decode" in ql or "signal" in ql:
+            decodes = self._recent_decodes()
             srcs = sorted({d["source"] for d in decodes})
-            return ("%d recent decodes from %s" % (len(decodes), ", ".join(srcs))) if decodes \
-                else "No decodes on the bus right now."
-        # anything else needs the LLM backend
-        host = None if _offscreen() else self._pick_host()
-        if host is None:
-            return ("AI backend offline — no Ollama host reachable. I can still answer from the live "
-                    "bus: try 'any alerts?', 'what's on the map?', or 'recent decodes?'.")
-        return "LLM host %s reachable — on-device this would answer freely." % host[0]
+            return ("%d decodes in the last %d min from %s" % (
+                len(decodes), DECODE_WINDOW_S // 60, ", ".join(srcs))) if decodes \
+                else "No decodes in the last %d min." % (DECODE_WINDOW_S // 60) + self._feed_note()
+        return ("NOT IMPLEMENTED — free-form questions are not wired into this screen. I answer "
+                "from the live state only: try 'any alerts?', 'what's on the map?', or "
+                "'recent decodes?'.")
 
-    def _pick_host(self):
-        try:
-            import assistant
-            return assistant.pick_host(assistant.DEFAULTS)
-        except Exception:
-            return None
+    @staticmethod
+    def _recent_decodes():
+        now = time.time()
+        return [d for d in eventbus.bus.recent(eventbus.bus.retention(), "decode")
+                if now - d.get("ts", now) <= DECODE_WINDOW_S and not eventbus.is_telemetry(d)]
+
+    @staticmethod
+    def _feed_note():
+        return "" if eventbus.bus.feeds() else \
+            " No feed is running, so nothing is being watched."
 
     # ---- MESH ----
     def _mesh_page(self):
@@ -405,7 +418,7 @@ class MoreApp(PalisadeApp):
         if not text:
             return
         # live would hand this to the Meshtastic iface; in demo/no-node it is a local echo only
-        tail = "" if self.demo else " (no node — not transmitted)"
+        tail = "" if self.demo else " (NOT IMPLEMENTED — not transmitted)"
         self.mesh_log.appendPlainText("→ (me) %s%s" % (text, tail))
         self.mesh_input.clear()
 
@@ -431,27 +444,34 @@ class MoreApp(PalisadeApp):
         return page
 
     def _sitrep_lines(self):
-        evs = eventbus.bus.recent(100)
-        contacts = [e for e in evs if e["type"] == "contact"]
-        alerts = [e for e in evs if e["type"] == "alert"]
-        decodes = [e for e in evs if e["type"] == "decode"]
-        lines = ["Situation report, %s." % time.strftime("%H:%M")]
+        """H17: contacts from the latest-state store, decodes from their own log, alerts from the
+        acknowledgement store. With no feed running it says so — never "all quiet"."""
+        contacts = eventbus.bus.contacts()
+        decodes = self._recent_decodes()
+        alerts = [a for a in panels.alert_store().items if not a["acked"]]
+        feeds = eventbus.bus.feeds()
+        lines = ["Situation report, %s." % zulu(secs=False)]
+        if not feeds:
+            lines.append("No feed is running — nothing is being watched. This is not an "
+                         "all-clear.")
         if contacts:
-            lines.append("%d contacts tracked." % len({c["payload"]["id"] for c in contacts}))
+            lines.append("%d contacts tracked." % len(contacts))
         if decodes:
-            lines.append("%d decodes across %s." % (len(decodes),
-                                                    ", ".join(sorted({d["source"] for d in decodes}))))
+            lines.append("%d decodes in the last %d minutes across %s." % (
+                len(decodes), DECODE_WINDOW_S // 60,
+                ", ".join(sorted({d["source"] for d in decodes}))))
         if alerts:
-            lines.append("%d alerts. %s" % (len(alerts), " ".join(a["payload"].get("text", "")
-                                                                  for a in alerts[-3:])))
-        if len(lines) == 1:
-            lines.append("All quiet — no contacts, decodes, or alerts on the bus.")
+            lines.append("%d unacknowledged alerts. %s" % (
+                len(alerts), " ".join(a["text"] for a in alerts[:3])))
+        if feeds and not (contacts or decodes or alerts):
+            lines.append("Watching %s: no contacts, decodes, or open alerts." %
+                         ", ".join(sorted(feeds)))
         return lines
 
     def _gen_sitrep(self):
         lines = self._sitrep_lines()
         self._sitrep_text = " ".join(lines)
-        self.sitrep_card.set_hero("SITREP", time.strftime("%H:%M"))
+        self.sitrep_card.set_hero("SITREP", zulu(secs=False))
         self.sitrep_card.set_rows([("", ln) for ln in lines])
 
     def _speak(self):

@@ -94,7 +94,10 @@ class MapPanel(QtWidgets.QFrame):
         self._combo.currentIndexChanged.connect(self._style_changed)
         self._combo.raise_()
 
-        self._tiles = TileLayer(home_lat=home_lat, home_lon=home_lon,
+        # N26: no HOME -> no basemap. Tiles are never requested for a placeholder origin.
+        self._can_fetch = home_lat is not None and home_lon is not None
+        self._tiles = TileLayer(home_lat=home_lat if self._can_fetch else 0.0,
+                                home_lon=home_lon if self._can_fetch else 0.0,
                                 span_nm=span_nm, parent=self)
         self._tiles.ready.connect(self._on_tiles)
         self._current_style = "dark"
@@ -104,6 +107,18 @@ class MapPanel(QtWidgets.QFrame):
         self._combo.setCurrentIndex(0)
         self._style_changed(0)
 
+    def set_home(self, lat, lon, known=True):
+        """H5: re-centre the basemap on a new HOME (it was fixed at construction). known=False hides
+        the HOME marker: the map is then relative to a provisional origin, not the operator."""
+        self.home.setVisible(bool(known))
+        if lat is None or lon is None:
+            return
+        if not self._can_fetch or (self._tiles.home_lat, self._tiles.home_lon) != (lat, lon):
+            self._can_fetch = True
+            self._tiles.home_lat, self._tiles.home_lon = lat, lon
+            self._tile_img.clear()
+            self._tiles.fetch(self._current_style)
+
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
         self._combo.move(self.width() - self._combo.width() - 10, 10)
@@ -111,7 +126,8 @@ class MapPanel(QtWidgets.QFrame):
     def _style_changed(self, idx):
         style = self._styles[idx]
         self._current_style = style
-        self._tiles.fetch(style)
+        if self._can_fetch:
+            self._tiles.fetch(style)
 
     def current_style(self):
         return self._current_style

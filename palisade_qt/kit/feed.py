@@ -115,7 +115,28 @@ class FeedTable(QtWidgets.QFrame):
         self._keep_key = None
         self.model.modelAboutToBeReset.connect(self._remember_row)
         self.model.modelReset.connect(self._restore_row)
-        lay.addWidget(self.view)
+        # D4: a table with no rows is never blank — it shows the one EmptyState component, saying
+        # why (OFFLINE / WATCHING / STALE). Pages set the reason with set_empty().
+        from .components import EmptyState
+        self.empty = EmptyState("NO DATA YET", "nothing has arrived on this feed")
+        self._stack = QtWidgets.QStackedWidget()
+        self._stack.addWidget(self.view)
+        self._stack.addWidget(self.empty)
+        lay.addWidget(self._stack)
+        for sig in (self.model.modelReset, self.model.rowsInserted, self.model.rowsRemoved):
+            sig.connect(self._sync_empty)
+        self._sync_empty()
+
+    def set_empty(self, state, title, detail=""):
+        """What this table says while it has no rows: state is offline / watching / stale."""
+        self.empty.set_state(state, title, detail)
+        self._sync_empty()
+
+    def showing_empty(self):
+        return self._stack.currentWidget() is self.empty
+
+    def _sync_empty(self, *_):
+        self._stack.setCurrentWidget(self.empty if not self.model.rows else self.view)
 
     def fit_columns(self, sample=200):
         """Size every column but the last to its widest header / value (first `sample` rows)."""

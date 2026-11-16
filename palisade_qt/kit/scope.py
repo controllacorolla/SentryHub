@@ -47,7 +47,7 @@ class ScopePanel(QtWidgets.QFrame):
         self.peak_hold = np.full(bins, -115.0, dtype=np.float32)
         self.peak_curve = self.spectrum.plot(
             pen=pg.mkPen(tok["muted"], width=1, style=pg.QtCore.Qt.DotLine))
-        self._peak_decay = 0.97
+        self._peak_decay_db = 0.5            # dB per sweep the held peak falls back
         lay.addWidget(self.spectrum, 35)
 
         sep = QtWidgets.QFrame()
@@ -93,7 +93,9 @@ class ScopePanel(QtWidgets.QFrame):
         self.buf = np.roll(self.buf, -1, axis=0)
         self.buf[-1] = power
         self.curve.setData(self.freqs, power)
-        self.peak_hold = np.maximum(power, self.peak_hold * self._peak_decay)
+        # H12: decay by a fixed step in dB (multiplying a NEGATIVE dB value by 0.97 made it RISE,
+        # so a flat -105 dB floor read -0.2 dB after 200 sweeps)
+        self.peak_hold = np.maximum(power, self.peak_hold - self._peak_decay_db)
         self.peak_curve.setData(self.freqs, self.peak_hold)
         self._refresh()
 

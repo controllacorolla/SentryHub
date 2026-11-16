@@ -24,6 +24,7 @@ from PySide6 import QtCore, QtWidgets
 
 from .app import PalisadeApp
 from . import theme, radio_arbiter, eventbus
+from .timebase import zulu
 from .kit import ControlBar, FeedTable, DetailCard, micro, card
 from .worker import Worker
 from .kit.components import StatusLine
@@ -147,13 +148,13 @@ class _RadioWorker(Worker):
         if not self._has_radio:
             if not arb.request(self.NAME):
                 self.status.emit({"src": self.LABEL, "busy": radio_arbiter.owner_label(), "live": False,
-                                  "sdr": {"text": "RADIO BUSY", "ok": False}})
+                                  "sdr": {"text": radio_arbiter.busy_text(self.NAME), "ok": False}})
                 return False
             self._has_radio = True
         st, owner = arb.state()
-        if owner != self.NAME:                       # freed under us (forced free / PANIC)
+        if owner != self.NAME:                       # freed under us (forced free / PANIC / H4)
             self._has_radio = False
-            self._give_back("radio taken back")
+            self._give_back(radio_arbiter.lost_reason(self.NAME))
             return False
         if st != "HELD":
             self.status.emit({"src": self.LABEL, "busy": None, "live": False, "acquiring": True,
@@ -200,7 +201,7 @@ class ScanWorker(_RadioWorker):
     NAME = "PROWL-SCAN"
     LABEL = "SCAN"
 
-    def __init__(self, demo=True, bank="NOAA Wx", squelch=-70, parent=None):
+    def __init__(self, demo=False, bank="NOAA Wx", squelch=30, parent=None):
         super().__init__(demo=demo, interval_ms=350, parent=parent)
         self.squelch = squelch
         self.hold = False
@@ -274,11 +275,11 @@ class ScanWorker(_RadioWorker):
             active = None
             for freq, label in DEMO_CHANNELS:
                 hot = random.random() < 0.12
-                sig = random.randint(-55, -35) if hot else random.randint(-115, -95)
-                if hot and sig > self.squelch:
-                    active = (freq, label, sig)
-                rows.append({"_id": freq, "freq": freq, "label": label, "sig": "%d" % sig,
-                             "last": time.strftime("%H:%M:%S") if hot else "", "_hot": hot})
+                level = random.randint(40, 95) if hot else None     # synthetic (demo) level %
+                if hot and level > self.squelch:
+                    active = (freq, label, level)
+                rows.append({"_id": freq, "freq": freq, "label": label, "sig": _level_text(level),
+                             "_level": level, "last": zulu() if hot else "", "_hot": hot})
             self.row.emit({"rows": rows, "active": active})
             if not active:
                 self.status.emit({"sdr": {"text": "SCAN DEMO", "state": "neutral"}})
@@ -359,17 +360,24 @@ class ScanWorker(_RadioWorker):
         rows = []
         active = None
         now = time.time()
+        # H11: the only thing measured is the AUDIO level of the channel being listened to right
+        # now (rtl_fm's output RMS). It is shown as a unitless level on THAT channel only; every
+        # other channel is blank — never an invented dBm, never a constant -100.
+        cur = channels[scan.get("idx", 0) % len(channels)][0] if channels else None
+        rms = float(scan.get("rms", 0) or 0)
         for freq, label, mode in channels:
             t_hit = hits.get(freq)
             hot = t_hit is not None and (now - t_hit) < 30          # B3: epoch arithmetic
-            rms = scan.get("rms", 0)
-            sig = int(-40 - (1.0 - min(1.0, rms / 8000.0)) * 80) if hot else -100
-            last = time.strftime("%H:%M:%S", time.localtime(t_hit)) if t_hit else ""
+            level = None
+            if hot and not held and freq == cur and rms > 0:
+                level = int(round(min(1.0, rms / 8000.0) * 100))
+            last = zulu(t_hit) if t_hit else ""
             if hot and not held:
-                active = (str(freq), label, sig)
+                active = (str(freq), label, level)
             rows.append({"_id": freq,          # the cursor follows the channel across refreshes
                          "freq": "%.4f" % freq, "label": label + (" ⊘" if freq in self._skip else ""),
-                         "sig": "%d" % sig, "last": last, "_hot": hot, "_skip": freq in self._skip})
+                         "sig": _level_text(level), "_level": level, "last": last, "_hot": hot,
+                         "_skip": freq in self._skip})
         self.row.emit({"rows": rows, "active": active})
 
     def stop(self):
@@ -385,7 +393,7 @@ class FmWorker(_RadioWorker):
     NAME = "PROWL-FM"
     LABEL = "FM"
 
-    def __init__(self, demo=True, freq=97.3, mode="wbfm", gain=40, squelch=0, rds=True, parent=None):
+    def __init__(self, demo=False, freq=97.3, mode="wbfm", gain=40, squelch=0, rds=True, parent=None):
         super().__init__(demo=demo, interval_ms=500, parent=parent)
         self.freq, self.mode, self.gain, self.squelch, self.rds = freq, mode, gain, squelch, rds
         self._pipe = None
@@ -493,7 +501,7 @@ class NwrWorker(_RadioWorker):
     NAME = "PROWL-NWR"
     LABEL = "NWR"
 
-    def __init__(self, demo=True, channel="162.400M", label="WX2", gain=0, parent=None):
+    def __init__(self, demo=False, channel="162.400M", label="WX2", gain=0, parent=None):
         super().__init__(demo=demo, interval_ms=400, parent=parent)
         self.channel, self.label, self.gain = channel, label, gain
         self._proc = None
@@ -707,7 +715,7 @@ class NwrWorker(_RadioWorker):
     def _emit_alert(self, a, demo=False):
         import nwr
         mins = nwr.purge_minutes(a.get("purge"))
-        row = {"kind": "nwr", "time": time.strftime("%H:%M:%S"),
+        row = {"kind": "nwr", "time": zulu(),
                "event": a["event_name"], "code": a["event"],
                "areas": ", ".join(a.get("areas", [])), "org": a.get("org_name", ""),
                "station": a.get("station", ""), "urgent": a.get("urgent", False),
@@ -768,6 +776,11 @@ def _load_scanner_settings(engine):
         pass
     return dict(engine.DEFAULTS), path
 
+
+
+def _level_text(level):
+    """H11: a unitless audio level (0-100 %) or blank — never dBm, which nothing here measures."""
+    return "%d%%" % level if level is not None else ""
 
 
 def _describe_mhz(freq_mhz_str):
@@ -873,10 +886,10 @@ class ProwlApp(PalisadeApp):
         self.bar = ControlBar()
         self.squelch = QtWidgets.QSpinBox()
         if self.demo:
-            self.squelch.setRange(-120, -20)
-            self.squelch.setValue(-70)
-            self.squelch.setSuffix(" dBm")
-            self.squelch.setToolTip("Demo squelch (synthetic levels)")
+            self.squelch.setRange(0, 100)
+            self.squelch.setValue(30)
+            self.squelch.setSuffix(" %")
+            self.squelch.setToolTip("Demo squelch on the synthetic audio level (0-100)")
         else:
             # B2: the live control IS the engine's rtl_fm power squelch (-l), in its own units
             self.squelch.setRange(0, 1000)
@@ -918,7 +931,7 @@ class ProwlApp(PalisadeApp):
         split = QtWidgets.QHBoxLayout()
         split.setSpacing(10)
         self.feed = FeedTable([("freq", "FREQUENCY"), ("label", "CHANNEL"),
-                               ("sig", "dBm"), ("last", "LAST")])
+                               ("sig", "LEVEL"), ("last", "LAST (Z)")])
         self.feed.selected.connect(self._show)
         split.addWidget(self.feed, 3)
 
@@ -1170,18 +1183,15 @@ class ProwlApp(PalisadeApp):
         # green means a real, healthy signal: synthetic demo rows never get it (D9 / RA-CL1)
         return self._tok["accent"] if self.demo else self._tok["live"]
 
-    def _sig_color(self, sig, hot):
+    def _sig_color(self, level, hot):
         if hot:
             return self._hot_color()
-        if sig > -60:
-            return self._tok["warn"]
         return self._tok["muted"]
 
     def _on_scan_row(self, msg):
         rows = msg["rows"]
         for r in rows:
-            sig = int(r["sig"])
-            r["_colors"] = {"sig": self._sig_color(sig, r.get("_hot", False))}
+            r["_colors"] = {"sig": self._sig_color(r.get("_level"), r.get("_hot", False))}
             if r.get("_hot"):
                 r["_colors"]["label"] = self._hot_color()
                 r["_colors"]["freq"] = self._hot_color()
@@ -1189,12 +1199,14 @@ class ProwlApp(PalisadeApp):
         self.header.set_chip("sdr", "%d CH" % len(rows), state="neutral")
         act = msg.get("active")
         if act:
-            self.active.setText("%s  %s  %d dBm" % (act[0], act[1], act[2]))
+            level = act[2]
+            self.active.setText("%s  %s  %s" % (act[0], act[1],
+                                                ("level %d%%" % level) if level is not None
+                                                else "level not measured"))
             self.active.setProperty("class", "value live")
-            pct = max(0, min(100, int((act[2] + 120) * 100 / 80)))
-            self.sig_bar.setValue(pct)
-            self._show({"freq": act[0], "label": act[1], "sig": str(act[2]),
-                        "last": time.strftime("%H:%M:%S"), "_hot": True})
+            self.sig_bar.setValue(level if level is not None else 0)
+            self._show({"freq": act[0], "label": act[1], "sig": _level_text(level),
+                        "last": zulu(), "_hot": True})
         else:
             self.active.setText("—  scanning")
             self.active.setProperty("class", "value")
@@ -1205,7 +1217,7 @@ class ProwlApp(PalisadeApp):
     def _show(self, row):
         self.detail.set_hero(row.get("label", "—"), row.get("freq", "") + " MHz")
         self.detail.set_rows([
-            ("SIGNAL", row.get("sig", "") + " dBm"),
+            ("AUDIO LEVEL", row.get("sig") or "not measured"),
             ("LAST HEARD", row.get("last", "—")),
             ("STATUS", "ACTIVE" if row.get("_hot") else "quiet"),
             ("ALLOCATION", _describe_mhz(row.get("freq", ""))),
