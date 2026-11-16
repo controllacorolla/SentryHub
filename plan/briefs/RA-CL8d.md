@@ -1,11 +1,10 @@
 # RA-CL8d — cold re-audit of CL8-fix3 (`fix/cl8-ship`)
 
 **FRESH session, Opus.** Auditor only. Own worktree off `origin/fix/cl8-ship`. Read first:
-`plan/briefs/RA-CL8.md` and `RA-CL8b.md` (the briefs), then `plan/briefs/RA-CL8-report.md` and
-`RA-CL8b-report.md`, `RA-CL8c-report.md` on the branch. Read `plan/briefs/CL8-report.md` (sections "CL8-fix" and
-"CL8-fix2") only at step 3.
+`plan/briefs/RA-CL8.md`, `RA-CL8b.md`, `RA-CL8c.md` (the briefs), then `plan/briefs/RA-CL8-report.md` and
+`RA-CL8b-report.md`, `RA-CL8c-report.md` on the branch. Read `plan/briefs/CL8-report.md` (sections "CL8-fix", "CL8-fix2", "CL8-fix3") only at step 3.
 
-1. Re-run every RA-CL8 and RA-CL8b PoC against the branch head. In particular:
+1. Re-run every RA-CL8, RA-CL8b and RA-CL8c PoC against the branch head. In particular:
    - Blocker 3 / NEW-A: every BABEL mode (POCSAG, AIS, RDS, ACARS, TPMS) and every PROWL sub-mode
      (SCAN, FM, NWR) live, with fake decoder binaries on PATH that record their argv: does the
      decoder start with the expected argv? With malformed settings, missing binaries, a binary
