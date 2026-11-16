@@ -147,3 +147,19 @@ Tests `test_ra8c_*` (7 new).
 
 NEW-L Lows (bare RTL serial refused — fails safe; vdl2 standby label; brief LIVE on BABEL retry;
 stderr temp file on failed spawn) are follow-ups.
+
+## CL8-fix4 (after RA-CL8d: DO NOT MERGE on two more pre-existing radio holds)
+
+Tests `test_ra8d_*` (9 new).
+
+| RA-CL8d finding | Fix | Test |
+|---|---|---|
+| **NEW-M** (High) SCAN: rtl_fm dying after 1 s was not counted | any rtl_fm self-exit during a listen counts (the scanner stops it only after the loop); 3 in a row = SCAN FAULT, radio given back. Limit: on a hardware-squelch bank the scanner stops rtl_fm itself at tune + dwell (1.0 s), so a death after that cannot be told from a quiet channel | `test_ra8d_prowl_scan_rtl_fm_dying_after_tuning_…` (Airband 1.2 s / 2.5 s, NOAA 0.8 s) |
+| **NEW-N** (High) ATLAS APRS/AIS kept the radio with a dead or missing decoder | a dead pipeline or a missing binary / refused setting = FAULT in the session log, radio given back, layer unticked with "APRS OFF — FAULT — …" | `test_ra8d_atlas_layer_with_a_dead_decoder_…` (3), `test_ra8d_atlas_layer_with_a_missing_decoder_…` |
+| NEW-O SCAN could not be restarted after a fault | Enter starts a finished SCAN worker again | `test_ra8d_prowl_enter_restarts_scan_after_a_fault` |
+| NEW-Q restore could switch transmit on (replay.json tx_enabled/tx_region) | a settings file carrying any `tx_*` key is not restored (the whole file) | `test_ra8d_restore_never_switches_transmit_on` |
+
+**Follow-ups (not fixed):** NEW-P Lows (FM decoder dying after > 3 s respawns each cycle; NWR
+missing multimon-ng label; BABEL fault text replaced by IDLE after 0.5 s); NEW-R restoring your
+own backup no longer brings back NET mode, Remote Mode token, or TX settings (by design now; the
+operator sets them on the device); NEW-K residue (`kit.procs.Pipeline` accepts a flat argv).

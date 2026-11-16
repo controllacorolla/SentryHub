@@ -873,6 +873,18 @@ def backup_configs(dest=None):
     return dest, n
 
 
+def _restores_tx_setting(tf, member):
+    """True if this settings file carries a TX setting (tx_enabled, tx_region, …). A backup may
+    not switch transmit on or move the region: those are set on this device, by its operator."""
+    import json
+    try:
+        f = tf.extractfile(member)
+        d = json.loads(f.read(1 << 20).decode("utf-8", "replace")) if f else None
+    except (ValueError, OSError):
+        return False
+    return isinstance(d, dict) and any(str(k).lower().startswith("tx_") for k in d)
+
+
 def restore_configs(archive):
     """Restore a backup_configs archive into HOME. Overwrites existing settings.
     Returns the list of restored member names."""
@@ -887,6 +899,7 @@ def restore_configs(archive):
                      ("sky_records.json", "sky_coverage.json", "sky_types.json", "logbook")} | \
         {".cache/uconsole-suite/bingo.json", ".cache/sky-app/bingo.json",
          ".config/uconsole-suite", ".config/sky-app"}
+    skipped_tx = []
     with tarfile.open(archive, "r:gz") as tf:
         for m in tf.getmembers():
             rel = os.path.normpath(m.name).replace(os.sep, "/")
@@ -896,6 +909,9 @@ def restore_configs(archive):
                 continue                              # no links, devices or fifos
             if rel in (".config/uconsole-suite/net.json", ".config/uconsole-suite/headless.json"):
                 continue      # RA-CL8c NEW-J: network mode and Remote Mode token stay this device's
+            if m.isfile() and rel.endswith(".json") and _restores_tx_setting(tf, m):
+                skipped_tx.append(m.name)
+                continue      # RA-CL8d NEW-Q: TX enable/region stay this device's (txguard)
             # defensive: never let an archive write outside HOME
             target = os.path.normpath(os.path.join(HOME, m.name))
             if not target.startswith(os.path.normpath(HOME) + os.sep):

@@ -1442,3 +1442,106 @@ def test_ra8c_scan_checks_dwell_hold_and_max_active(fakebin):
         with pytest.raises(argsafe.SettingsRefused):
             w._check_scanner_settings(dict(scanner.DEFAULTS, **{k: "x"}))
     w._check_scanner_settings(dict(scanner.DEFAULTS))
+
+
+# ================================================================== CL8-fix4 (RA-CL8d findings)
+@pytest.mark.parametrize("bank,after", [("Airband", 1.2), ("Airband", 2.5), ("NOAA Wx", 0.8)])
+def test_ra8d_prowl_scan_rtl_fm_dying_after_tuning_is_a_fault_too(monkeypatch, fakebin, bank, after):
+    """RA-CL8d NEW-M: only an exit < 1 s counted; rtl_fm dying later looped on a held radio.
+    (On a hardware-squelch bank the scanner itself stops rtl_fm at tune + dwell = 1.0 s, so a
+    death after that is indistinguishable from a quiet channel; before it, it is caught.)"""
+    home, marker = fakebin
+    _fake(home, "rtl_fm", 'echo rtl_fm >> "%s"; sleep %s; exit 1' % (marker, after))
+    from palisade_qt import prowl, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    w = prowl.ScanWorker(demo=False, bank=bank)
+    faults = []
+    w.fault.connect(faults.append)
+    w.set_active(True)
+    w.start()
+    try:
+        assert _until(lambda: any("exits at once" in f for f in faults), 15000), faults
+        assert _until(lambda: ra.arbiter.owner() is None, 3000)
+        n = marker.read_text().count("rtl_fm")
+        time.sleep(1.5)
+        assert marker.read_text().count("rtl_fm") == n and n <= 4, n
+    finally:
+        w.stop()
+        assert w.wait(6000)
+
+
+@pytest.mark.parametrize("kind,dead", [("aprs", "rtl_fm"), ("aprs", "multimon-ng"),
+                                       ("ais", "rtl_ais")])
+def test_ra8d_atlas_layer_with_a_dead_decoder_gives_the_radio_back(monkeypatch, fakebin, kind, dead):
+    """RA-CL8d NEW-N: a dead APRS/AIS decoder kept the radio (readsb paused) and showed nothing."""
+    home, marker = fakebin
+    for b in ("rtl_fm", "multimon-ng", "rtl_ais"):
+        _fake(home, b, "cat >/dev/null; sleep 30" if b != "rtl_fm" else "sleep 30")
+    _fake(home, dead, 'echo %s >> "%s"; exit 1' % (dead, marker))
+    from palisade_qt import atlas, radio_arbiter as ra, sessionlog
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    src = atlas.AprsSource() if kind == "aprs" else atlas.AisSource()
+    src.start()
+    try:
+        assert _until(lambda: (src.poll() is not None) and bool(src.given_back), 5000), src.given_back
+        assert "FAULT" in src.given_back and ra.arbiter.owner() is None and lease.released
+        assert any(it["level"] == "fault" and it["source"] == "ATLAS"
+                   for it in sessionlog.log().snapshot())
+    finally:
+        src.stop()
+
+
+def test_ra8d_atlas_layer_with_a_missing_decoder_never_holds_the_radio(monkeypatch, fakebin):
+    home, marker = fakebin
+    import shutil as _sh
+    real = _sh.which
+    monkeypatch.setattr(_sh, "which", lambda b, *a, **k: None if b == "multimon-ng" else real(b, *a, **k))
+    from palisade_qt import atlas, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    src = atlas.AprsSource()
+    src.start()
+    try:
+        assert _until(lambda: (src.poll() is not None) and bool(src.given_back), 3000)
+        assert "no multimon-ng" in src.given_back and ra.arbiter.owner() is None
+    finally:
+        src.stop()
+
+
+def test_ra8d_restore_never_switches_transmit_on(tmp_path, monkeypatch):
+    """RA-CL8d NEW-Q: a backup could restore replay.json {tx_enabled: true, tx_region: EU}."""
+    import tarfile
+    import suite as S
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(S, "HOME", str(home))
+    tx = tmp_path / "tx.json"
+    tx.write_text('{"tx_enabled": true, "tx_region": "EU", "gain": 10}')
+    ok = tmp_path / "ok.json"
+    ok.write_text('{"freq": 101.5}')
+    arc = str(tmp_path / "b.tar.gz")
+    with tarfile.open(arc, "w:gz") as tf:
+        tf.add(str(tx), arcname=".config/uconsole-suite/replay.json")
+        tf.add(str(tx), arcname=".config/uconsole-suite/cw.json")
+        tf.add(str(ok), arcname=".config/uconsole-suite/fm.json")
+    names = S.restore_configs(arc)
+    assert names == [".config/uconsole-suite/fm.json"]
+    assert not (home / ".config/uconsole-suite/replay.json").exists()
+
+
+def test_ra8d_prowl_enter_restarts_scan_after_a_fault(monkeypatch):
+    from palisade_qt import prowl
+    app = prowl.ProwlApp(demo=False)
+    calls = []
+    monkeypatch.setattr(app, "swap_worker", lambda: calls.append(1))
+
+    class Done(prowl.ScanWorker):
+        def isFinished(self):
+            return True
+    app._worker = Done(demo=False)
+    app._active = True
+    app._submode = "SCAN"
+    monkeypatch.setattr(app, "swapping", lambda: False)
+    assert app._resume_radio() is True and calls == [1]

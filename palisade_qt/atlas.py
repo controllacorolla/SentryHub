@@ -313,8 +313,9 @@ def _open_aprs_pipe(gain):
     import shutil
     if _seam_offscreen():
         return None
-    if not shutil.which("rtl_fm") or not shutil.which("multimon-ng"):
-        return None
+    for b in ("rtl_fm", "multimon-ng"):
+        if not shutil.which(b):        # RA-CL8d NEW-N: say so; never hold the radio for nothing
+            raise FileNotFoundError("no %s" % b)
     import aprs
     from .kit.procs import Pipeline
     return Pipeline(aprs.pipeline_argv(gain))          # one session: PANIC/arbiter kill the lot (A4)
@@ -325,7 +326,7 @@ def _open_ais_pipe(gain):
     if _seam_offscreen():
         return None
     if not shutil.which("rtl_ais"):
-        return None
+        raise FileNotFoundError("no rtl_ais")      # RA-CL8d NEW-N
     import ais
     from .kit.procs import Pipeline
     return Pipeline(ais.pipeline_argv(gain))           # one session: PANIC/arbiter kill the lot (A4)
@@ -471,8 +472,19 @@ class LeaseSource:
             return []
         if st != "HELD":
             return []                                # ACQUIRING: readsb is still being paused
+        alive = getattr(self._proc, "poll", None)
+        if self._proc is not None and alive is not None and alive() is not None:
+            # RA-CL8d NEW-N: the decoder died. Holding the radio for a dead pipe pauses readsb and
+            # shows "no stations": give it back and say why (the page unticks the layer)
+            self._fault("decoder exited — is the SDR free?")
+            return []
         if self._proc is None and self._thread is None:
-            self._proc = self._open_pipe()
+            try:
+                self._proc = self._open_pipe()
+            except Exception as e:              # missing binary, refused settings
+                self._proc = None
+                self._fault("cannot start: %s" % (str(e)[:80] or type(e).__name__))
+                return []
             if self._proc is not None and not arb.held_by(self.NAME):
                 self._has_radio = False              # N-j: lost it while spawning — reap first
                 self._give_back(radio_arbiter.lost_reason(self.NAME))
@@ -483,6 +495,16 @@ class LeaseSource:
             else:
                 self._thread = False                 # seam opened nothing: don't retry each poll
         return self._contacts()
+
+    def _fault(self, why):
+        label = (self.NAME or "ATLAS").replace("ATLAS-", "")
+        try:
+            from . import sessionlog
+            sessionlog.record("fault", "ATLAS", "%s %s" % (label, why))
+        except Exception:
+            pass
+        self.given_back = "FAULT — %s" % why
+        self._give_back(self.given_back)
 
     def acquiring(self):
         st, owner = radio_arbiter.arbiter.state()

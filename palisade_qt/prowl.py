@@ -1222,6 +1222,11 @@ class ProwlApp(PalisadeApp):
             w.set_active(True)
             self.busy.setText("")
             return True
+        if w is not None and not self.demo and self._active and not self.swapping() \
+                and isinstance(w, ScanWorker) and w.isFinished():
+            # RA-CL8d NEW-O: SCAN stopped on a fault or refused settings; Enter starts it again
+            self.swap_worker()
+            return True
         return False
 
     # ---- SCAN handlers ----
