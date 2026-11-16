@@ -200,14 +200,17 @@ def _run_acars(worker):
     import signals as engine
     s = _load_settings("signals", engine.DEFAULTS)
     engine.migrate(s)
+    if s.get("source") not in ("acars", "vdl2"):
+        # RA-CL8b NEW-E: signals.json's default source is the Tk app's "sensors" (rtl_433); BABEL's
+        # ACARS mode decodes ACARS, so it never runs the sensor decoder under an ACARS label
+        s = dict(s, source="acars")
     argv = engine.build_argv(s)
     parser = engine.parse_acars if s.get("source") != "vdl2" else engine.parse_vdl2
     n = 0
-    try:
-        proc = _open_pipe(argv, shell=False, stderr=subprocess.STDOUT)
-    except FileNotFoundError:
-        worker.error.emit("acarsdec not found — install it or use --demo")
-        return
+    # RA-CL8b NEW-A: one stage. A flat argv given to _open_pipe was read as one stage per string
+    # (Popen('a'), …): FileNotFoundError every time, caught here, and the worker held the radio.
+    # A missing binary now raises into the worker loop: FAULT, radio released, no retry.
+    proc = _open_pipe([argv], shell=False, stderr=subprocess.STDOUT)
     if proc is None:
         return                       # offscreen/offline seam: never open a real radio in tests
     if not worker._adopt(proc):      # RUN off / hidden / revoked / PANIC while spawning
@@ -347,7 +350,7 @@ def _run_tpms(worker):
     import tpms as engine
     s = _load_settings("tpms", {"freqs": ["315M", "433.92M"], "gain": 0, "hop_s": TPMS_HOP_S})
     argv = tpms_argv(s)
-    proc = _open_pipe(argv, shell=False)
+    proc = _open_pipe([argv], shell=False)          # one stage (RA-CL8b NEW-B)
     if proc is None:
         return                       # offscreen/offline seam: never open a real radio in tests
     if not worker._adopt(proc):      # RUN off / hidden / revoked / PANIC while spawning

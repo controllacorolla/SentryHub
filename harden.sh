@@ -65,7 +65,8 @@ if [ "$PROFILE" = "field" ]; then
   trap 'rc=$?; if [ "${REENABLE:-0}" = 1 ]; then
           printf "harden: a step failed after the reset; turning the firewall back on, inbound denied\n" >&2
           sudo ufw default deny incoming || true
-          sudo ufw --force enable || true
+          if sudo ufw --force enable; then printf "harden: firewall is ON (inbound denied)\n" >&2
+          else printf "harden: COULD NOT turn the firewall back on - it is OFF. Run: sudo ufw enable\n" >&2; fi
         fi; exit $rc' EXIT
   sudo ufw --force reset
   sudo ufw default deny incoming

@@ -113,3 +113,21 @@ Commit `ccdbbed`; tests `test_ra_*` in `tests/test_cl8_ship.py` (36 new, 122 tot
   allowlisted; no settings value can now choose the program or add options.
 - Duplicate settings loaders (babel/prowl), standalone Tk `dronewatch.py` single-advert alert
   (not on any hub or menu).
+
+## CL8-fix2 (after RA-CL8b: DO NOT MERGE, blocker 3 still open via NEW-A)
+
+Tests `test_ra8b_*` (10 new, 132 in `test_cl8_ship.py`).
+
+| RA-CL8b finding | Fix | Test |
+|---|---|---|
+| **NEW-A** (High, blocker 3) BABEL ACARS never started and held the radio | `_run_acars` hands `_open_pipe` one stage (`[argv]`); the FileNotFoundError catch that returned without a process is gone, so a missing binary is a FAULT · FAILED TO START with the radio released | `test_ra8b_babel_acars_starts_acarsdec_…` (real fake binary, argv checked, lease released on stop) |
+| **NEW-B** TPMS never started (hop never reached rtl_433) | same one-stage fix; B6 now reaches rtl_433 | `test_ra8b_babel_tpms_runs_rtl_433_with_the_hop` |
+| **NEW-C** (High, pre-existing) `hub --restore` wrote any file under HOME | restore keeps only what `backup_configs` writes (suite + Sky settings, records, logbook, bingo); regular files and dirs only (no links/devices) | `test_ra8b_restore_writes_only_suite_settings` |
+| **NEW-D** malformed scanner.json crashed PROWL SCAN silently | gain/squelch/custom checked; SCAN FAULT · SETTINGS REFUSED, radio not taken | `test_ra8b_prowl_scan_refuses_…` (5 cases) |
+| **NEW-E** BABEL ACARS ran rtl_433 with the default `source: sensors` | ACARS mode always runs acarsdec (or dumpvdl2 when `source: vdl2`) | `test_ra8b_babel_acars_…[None / sensors]` |
+| C4 PARTIAL: opening marked off-screen faults seen | faults are marked seen per row when the row is on screen (open, scroll, live update) | `test_ra8b_session_log_marks_only_rows_on_screen` |
+| NEW-F Lows | `-d`/`--rtlsdr` digits or `:serial` only (no `rtl_tcp`, `soapy`); harden.sh says COULD NOT if `ufw enable` fails in the trap | `test_ra_decoder_templates_…`, `test_ra8b_harden_says_so_…` |
+
+Still follow-ups: session log cap can drop an unseen fault after 1000 entries; nmcli option
+values; proxy env read at check time vs urllib's opener (same env in practice); the items listed
+under CL8-fix.

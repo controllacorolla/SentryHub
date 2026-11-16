@@ -293,11 +293,30 @@ class ScanWorker(_RadioWorker):
                 self.status.emit({"sdr": {"text": "SCAN DEMO", "state": "neutral"}})
             self.sleep(self.interval_ms)
 
+    def _check_scanner_settings(self, s):
+        """RA-CL8b NEW-D: a malformed scanner.json crashed the worker with only 'SCAN OFF'. Check
+        the values listen_channel uses; raise SettingsRefused so the page says why."""
+        import argsafe
+        argsafe.gain_arg(s.get("gain"))
+        for k in ("squelch", "nfm_squelch"):
+            v = s.get(k)
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 1e6:
+                raise argsafe.SettingsRefused("bad %s in scanner settings: %r" % (k, v))
+        c = s.get("custom", [])
+        if not isinstance(c, list) or not all(isinstance(x, str) for x in c):
+            raise argsafe.SettingsRefused("bad custom channel list in scanner settings: %r" % (c,))
+
     def _run_live(self):
         import scanner as engine
+        import argsafe
         s, _ = _load_scanner_settings(engine)
         if self._nfm_sq is not None:
             s["nfm_squelch"] = self._nfm_sq
+        try:
+            self._check_scanner_settings(s)
+        except argsafe.SettingsRefused as e:
+            self._refuse_settings(e)
+            return
         self._settings = s
         channels = (engine.bank_channels(self._bank, s.get("custom", []))
                     or engine.bank_channels(engine.DEFAULTS["bank"], []))

@@ -880,8 +880,20 @@ def restore_configs(archive):
     if not os.path.exists(archive):
         raise FileNotFoundError(archive)
     names = []
+    # RA-CL8b NEW-C: restore only what backup_configs writes. An archive is data; it may not drop
+    # a .bashrc, suite code, or another program's config (rtl_433.conf) into HOME.
+    allowed_dirs = (".config/uconsole-suite/", ".config/sky-app/", ".local/share/uconsole-suite/logbook/")
+    allowed_files = {".local/share/uconsole-suite/" + n for n in
+                     ("sky_records.json", "sky_coverage.json", "sky_types.json", "logbook")} | \
+        {".cache/uconsole-suite/bingo.json", ".cache/sky-app/bingo.json",
+         ".config/uconsole-suite", ".config/sky-app"}
     with tarfile.open(archive, "r:gz") as tf:
         for m in tf.getmembers():
+            rel = os.path.normpath(m.name).replace(os.sep, "/")
+            if not (rel in allowed_files or any(rel.startswith(d) for d in allowed_dirs)):
+                continue
+            if not (m.isfile() or m.isdir()):
+                continue                              # no links, devices or fifos
             # defensive: never let an archive write outside HOME
             target = os.path.normpath(os.path.join(HOME, m.name))
             if not target.startswith(os.path.normpath(HOME) + os.sep):

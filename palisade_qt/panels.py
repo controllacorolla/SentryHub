@@ -607,6 +607,8 @@ class SessionLogPanel(Overlay):
                                 ("text", "MESSAGE")])
         self.outer.addWidget(self.table, 1)
         self.log.changed.connect(self._changed)
+        self.table.view.verticalScrollBar().valueChanged.connect(
+            lambda *_: self._mark_visible_seen())
 
     NET_NOTE = {"OFFLINE": "Nothing leaves the device (loopback only: readsb, local model).",
                 "LAN": "This device and private addresses only. No internet.",
@@ -633,17 +635,22 @@ class SessionLogPanel(Overlay):
     def _changed(self):
         if self.isVisible():
             self.refresh()
-            first = self.log.first_unseen_id()
-            if first is not None and self._row_on_screen(first):
-                self.log.mark_seen()             # on screen now: seen (RA-CL8: really on screen)
+            self._mark_visible_seen()
 
-    def _row_on_screen(self, item_id):
+    def _mark_visible_seen(self):
+        """RA-CL8b: a fault is seen when its row is on screen, one row at a time — never because
+        the panel opened while it sat off screen. Scrolling to it marks it."""
+        if self.isHidden():
+            return
         v = self.table.view
+        vp = v.viewport().rect()
+        ids = []
         for i, r in enumerate(self.table.model.rows):
-            if r.get("_id") == item_id:
-                rect = v.visualRect(self.table.model.index(i, 0))
-                return rect.isValid() and rect.intersects(v.viewport().rect())
-        return False
+            rect = v.visualRect(self.table.model.index(i, 0))
+            if rect.isValid() and rect.intersects(vp) and "_id" in r:
+                ids.append(r["_id"])
+        if ids:
+            self.log.mark_seen(ids)
 
     def refresh(self):
         m = self._netpolicy().mode()
@@ -680,7 +687,8 @@ class SessionLogPanel(Overlay):
                     self.table.view.setCurrentIndex(idx)
                     self.table.view.scrollTo(idx, QtWidgets.QAbstractItemView.PositionAtCenter)
                     break
-        self.log.mark_seen()
+        QtCore.QTimer.singleShot(0, self._mark_visible_seen)    # after layout: what is on screen
+        self._mark_visible_seen()
 
 
 class AlertsDrawer(Overlay):

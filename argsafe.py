@@ -92,7 +92,7 @@ def _word(v):
 def _device(v):
     # a dongle index or :serial only; rtl_433 -d rtl_tcp:host:port / soapy driver=remote would
     # stream from another host
-    if not re.match(r"^:?[A-Za-z0-9_]{1,32}$", v):
+    if not re.match(r"^(\d{1,2}|:[A-Za-z0-9_]{1,32})$", v):
         raise SettingsRefused("device %r refused: a dongle index or :serial only" % (v,))
 
 

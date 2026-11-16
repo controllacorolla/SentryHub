@@ -39,7 +39,8 @@ class SessionLog(QtCore.QObject):
         self._lock = threading.Lock()
         self.items = []              # newest first: {id, ts, level, source, text, count}
         self._next_id = 1
-        self._seen_id = 0
+        self._seen_id = 0            # everything up to here is seen …
+        self._seen_ids = set()       # … plus these (seen one by one, on screen: RA-CL8b)
 
     # ---- write (any thread) ----
     def record(self, level, source, text):
@@ -55,7 +56,7 @@ class SessionLog(QtCore.QObject):
                         now - it["ts"] < DEDUPE_S:
                     it["count"] += 1
                     it["ts"] = now
-                    if it["id"] <= self._seen_id:
+                    if self._is_seen(it["id"]):
                         # RA-CL8: a repeat after the operator saw it is news again: new id, so the
                         # fault indicator lights; moved to the top where the newest entries are
                         it["id"] = self._next_id
@@ -94,19 +95,33 @@ class SessionLog(QtCore.QObject):
     def faults_unseen(self):
         """Faults/errors recorded since the operator last opened the log (the strip indicator)."""
         with self._lock:
-            return sum(1 for it in self.items if it["level"] in ATTENTION and it["id"] > self._seen_id)
+            return sum(1 for it in self.items if it["level"] in ATTENTION and not self._is_seen(it["id"]))
 
     def first_unseen_id(self):
         """Id of the oldest fault/error not yet seen, or None."""
         with self._lock:
             ids = [it["id"] for it in self.items
-                   if it["level"] in ATTENTION and it["id"] > self._seen_id]
+                   if it["level"] in ATTENTION and not self._is_seen(it["id"])]
         return min(ids) if ids else None
 
-    def mark_seen(self):
+    def _is_seen(self, item_id):
+        return item_id <= self._seen_id or item_id in self._seen_ids
+
+    def mark_seen(self, ids=None):
+        """Mark faults seen: all of them (ids=None), or only these ids (the rows the operator
+        actually has on screen). Emits changed only when the unseen count moved."""
         with self._lock:
-            self._seen_id = self._next_id - 1
-        self.changed.emit()
+            before = sum(1 for it in self.items if it["level"] in ATTENTION
+                         and not self._is_seen(it["id"]))
+            if ids is None:
+                self._seen_id = self._next_id - 1
+                self._seen_ids.clear()
+            else:
+                self._seen_ids.update(ids)
+            after = sum(1 for it in self.items if it["level"] in ATTENTION
+                        and not self._is_seen(it["id"]))
+        if after != before:
+            self.changed.emit()
 
     def clear_for_tests(self):
         with self._lock:

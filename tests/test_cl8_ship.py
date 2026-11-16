@@ -962,6 +962,8 @@ def test_ra_scout_wifi_cmd_from_settings_never_reaches_another_program(monkeypat
     ("sensors", "rtl_433 -S all"),
     ("sensors", "rtl_433 -r file.cu8"),
     ("sensors", "rtl_433 -d rtl_tcp:203.0.113.5:1234"),
+    ("sensors", "rtl_433 -d rtl_tcp"),
+    ("sensors", "rtl_433 -d soapy"),
     ("sensors", "rtl_433 -d driver=remote,remote=203.0.113.5"),
     ("sensors", "rtl_433 {gain[0]}"),
     ("acars", "acarsdec --output json:udp:address=203.0.113.5,port=5555 {freqs}"),
@@ -995,7 +997,7 @@ def test_ra_shipped_and_old_default_templates_still_build():
 
 
 @pytest.mark.parametrize("name,settings,mode", [
-    ("signals", {"source": "sensors", "rtl433_cmd": "rtl_433 {gain[0]}"}, "ACARS"),
+    ("signals", {"source": "acars", "acars_cmd": "acarsdec {gain[0]} {freqs}"}, "ACARS"),
     ("signals", {"source": "acars", "acars_freqs": 5}, "ACARS"),
     ("tpms", {"freqs": 5}, "TPMS"),
 ])
@@ -1171,3 +1173,137 @@ def test_ra_keymap_says_seven_pages_and_sky_menu_uses_the_root_launcher():
     assert panels.KEYMAP[0][0] == "1 – 7"
     tail = open(os.path.join(SUITE_DIR, "install_tail.sh")).read()
     assert "Exec=/usr/local/bin/sky" in tail and "Exec=$HOME/.local/bin/sky" not in tail
+
+
+
+# ================================================================== CL8-fix2 (RA-CL8b findings)
+def _live_decoder(monkeypatch, fakebin, mode, binary, settings=None, name=None):
+    """Run BABEL `mode` live against a fake `binary` that records its argv and prints nothing."""
+    home, marker = fakebin
+    p = home / "fakebin" / binary
+    p.write_text('#!/bin/sh\necho "%s $*" >> "%s"\nsleep 30\n' % (binary, marker))
+    p.chmod(0o755)
+    if settings is not None:
+        cfg = home / ".config" / "uconsole-suite"
+        cfg.mkdir(parents=True, exist_ok=True)
+        (cfg / ("%s.json" % name)).write_text(json.dumps(settings))
+    from palisade_qt import babel, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    statuses = []
+    w = babel.DecoderWorker(demo=False, mode=mode)
+    w.status.connect(statuses.append)
+    w.set_running(True)
+    w.start()
+    return w, lease, statuses, marker
+
+
+@pytest.mark.parametrize("settings", [None, {"source": "sensors"}, {"source": "acars"}])
+def test_ra8b_babel_acars_starts_acarsdec_never_the_sensor_decoder(monkeypatch, fakebin, settings):
+    """RA-CL8b NEW-A/NEW-E: ACARS handed _open_pipe a flat argv (one stage per string), so it
+    never started and held the radio; with the default source it would have run rtl_433."""
+    from palisade_qt import radio_arbiter as ra
+    w, lease, statuses, marker = _live_decoder(monkeypatch, fakebin, "ACARS", "acarsdec",
+                                               settings, "signals")
+    try:
+        assert _until(lambda: marker.exists(), 4000), statuses[-3:]
+        assert _until(lambda: any((st.get("sdr") or {}).get("text") == "ACARS LIVE"
+                                  for st in statuses), 2000)
+        ran = marker.read_text()
+        assert ran.startswith("acarsdec --output json:file:path=- --rtlsdr 0"), ran
+        assert "131.550" in ran and "rtl_433" not in ran
+        assert ra.arbiter.owner() == "BABEL"
+    finally:
+        w.stop()
+        assert w.wait(5000)
+    assert lease.released and ra.arbiter.owner() is None
+
+
+def test_ra8b_babel_tpms_runs_rtl_433_with_the_hop(monkeypatch, fakebin):
+    w, lease, statuses, marker = _live_decoder(monkeypatch, fakebin, "TPMS", "rtl_433")
+    try:
+        assert _until(lambda: marker.exists(), 4000), statuses[-3:]
+        ran = marker.read_text()
+        assert "-f 315M -f 433.92M -H 30" in ran, ran
+        assert _until(lambda: any((st.get("sdr") or {}).get("text") == "TPMS LIVE"
+                                  for st in statuses), 2000)
+    finally:
+        w.stop()
+        assert w.wait(5000)
+    assert lease.released
+
+
+def test_ra8b_restore_writes_only_suite_settings(tmp_path, monkeypatch):
+    """RA-CL8b NEW-C: a restored archive could drop .bashrc, suite code or rtl_433.conf in HOME."""
+    import tarfile
+    import suite as S
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(S, "HOME", str(home))
+    src = tmp_path / "src"
+    src.mkdir()
+    f = src / "f"
+    f.write_text("x")
+    arc = str(tmp_path / "b.tar.gz")
+    good = [".config/uconsole-suite/fm.json", ".config/sky-app/settings.json",
+            ".local/share/uconsole-suite/sky_records.json", ".local/share/uconsole-suite/logbook/a.jsonl",
+            ".cache/uconsole-suite/bingo.json"]
+    bad = [".bashrc", ".profile", "uconsole-suite/hub.py", ".config/rtl_433/rtl_433.conf",
+           ".local/share/uconsole-suite/other.py", ".config/autostart/x.desktop",
+           ".config/uconsole-suite-evil/x.json"]
+    with tarfile.open(arc, "w:gz") as tf:
+        for n in good + bad:
+            tf.add(str(f), arcname=n)
+        ln = tarfile.TarInfo(".config/uconsole-suite/link.json")
+        ln.type, ln.linkname = tarfile.SYMTYPE, "/etc/passwd"
+        tf.addfile(ln)
+    names = S.restore_configs(arc)
+    for n in good:
+        assert (home / n).exists(), n
+    for n in bad + [".config/uconsole-suite/link.json"]:
+        assert not os.path.lexists(home / n), n
+    assert sorted(names) == sorted(good)
+
+
+def test_ra8b_session_log_marks_only_rows_on_screen(net, slog):
+    from palisade_qt.panels import SessionLogPanel
+    lg = slog.log()
+    lg.record("fault", "BABEL", "older fault")
+    for i in range(60):
+        lg.record("info", "NET", "request %d allowed" % i)
+    lg.record("fault", "PRISM", "newer fault")
+    assert lg.faults_unseen() == 2
+    p = SessionLogPanel(mode="dark")
+    p.resize(1000, 400)
+    p.open()
+    _app().processEvents()
+    assert lg.faults_unseen() == 1, "the off-screen fault was marked seen"
+    p.table.view.scrollToTop()
+    _app().processEvents()
+    assert lg.faults_unseen() == 0
+    p.close()
+
+
+def test_ra8b_prowl_scan_refuses_malformed_scanner_settings(monkeypatch, fakebin):
+    home, marker = fakebin
+    from palisade_qt import prowl, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    cfg = home / ".config" / "uconsole-suite"
+    cfg.mkdir(parents=True)
+    for bad in ({"gain": "x"}, {"gain": [1]}, {"custom": 5}, {"squelch": "loud"},
+                {"custom": [5]}):
+        (cfg / "scanner.json").write_text(json.dumps(bad))
+        w = prowl.ScanWorker(demo=False)
+        statuses = []
+        w.status.connect(statuses.append)
+        w._run_live()
+        _app().processEvents()
+        assert any("SETTINGS REFUSED" in (st.get("sdr") or {}).get("text", "") for st in statuses), bad
+        assert not marker.exists() and ra.arbiter.owner() is None
+
+
+def test_ra8b_harden_says_so_when_the_firewall_cannot_be_turned_back_on(tmp_path):
+    r, ran = _harden_failing(tmp_path, "ufw")          # every ufw step fails
+    assert r.returncode != 0
+    assert "COULD NOT turn the firewall back on" in r.stderr
