@@ -1,0 +1,15 @@
+prowl_nwr_stderr_only_dark_live.png 1280x720 arbiter=('HELD', 'PROWL-NWR') state='NOT MONITORING — NWR — no audio reaching the decoder (5s)' hero='NOT MONITORING' chip='NWR — no audio reaching the decoder (5s)'
+revoke (PROWL, 0.2 s into NWR->FM) -> PROWL-NWR
+prowl_revoke_mid_switch_dark_live.png 1280x720 arbiter=('FREE', None) busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes' swapping=True openers=[]
+prowl_after_revoke_during_switch_dark_live.png 1280x720 arbiter=('FREE', None) busy='FM: radio off — press Enter to start' chip='SDR — switching modes' worker=None openers=[]
+revoke (BABEL, 0.2 s into AIS->SSTV) -> BABEL
+babel_after_revoke_during_switch_dark_live.png 1280x720 arbiter=('FREE', None) busy='' chip='SDR — switching modes' RUN=False worker=None openers=[]
+babel_after_panic_dark_live.png 1280x720 arbiter=('FREE', None) banner='TX disarmed · no engagement was open · 1 child process(es) stopped by their pages (verified gone) · radio released (was BABEL) · TX OFF' children=[] RUN=False
+prowl_nwr_stderr_only_sun_live.png 1280x720 arbiter=('HELD', 'PROWL-NWR') state='NOT MONITORING — NWR — no audio reaching the decoder (5s)' hero='NOT MONITORING' chip='NWR — no audio reaching the decoder (5s)'
+revoke (PROWL, 0.2 s into NWR->FM) -> PROWL-NWR
+prowl_revoke_mid_switch_sun_live.png 1280x720 arbiter=('FREE', None) busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes' swapping=True openers=[]
+prowl_after_revoke_during_switch_sun_live.png 1280x720 arbiter=('FREE', None) busy='FM: radio off — press Enter to start' chip='SDR — switching modes' worker=None openers=[]
+revoke (BABEL, 0.2 s into AIS->SSTV) -> BABEL
+babel_after_revoke_during_switch_sun_live.png 1280x720 arbiter=('FREE', None) busy='' chip='SDR — switching modes' RUN=False worker=None openers=[]
+babel_after_panic_sun_live.png 1280x720 arbiter=('FREE', None) banner='TX disarmed · no engagement was open · 1 child process(es) stopped by their pages (verified gone) · radio released (was BABEL) · TX OFF' children=[] RUN=False
+RENDER DONE

@@ -1,0 +1,116 @@
+=== gui_block
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  0.92 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.92 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  1.53 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.54 LEASE.release PROWL-SCAN start (3.5 s) children=[]
+This plugin does not support propagateSizeHints()
+  5.04 LEASE.release PROWL-SCAN done
+  5.05 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.05 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+This plugin does not support propagateSizeHints()
+  8.46 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['24315:Ss:rtl_fm', '24317:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+This plugin does not support propagateSizeHints()
+  9.47 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.47 LEASE.release PROWL-NWR start (3.5 s) children=[]
+This plugin does not support propagateSizeHints()
+ 12.97 LEASE.release PROWL-NWR done
+ 12.98 ARBITER ACQUIRING PROWL-FM  [thread Dummy-1]
+ 12.98 ARBITER HELD PROWL-FM  [thread radio-acquire]
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+ 16.47 GUI-THREAD PROWL NWR -> FM                    call 0.003 s; longest event-loop stall during the switch 0.038 s
+ 16.48 after NWR->FM arbiter=('HELD', 'PROWL-FM') openers=['24433:Ss:rtl_fm'] page_worker=FmWorker retiring=[] busy='' chip='FM 97.3 ♪'
+This plugin does not support propagateSizeHints()
+ 16.49 ARBITER RELEASE PROWL-FM  [thread Dummy-1]
+ 16.49 LEASE.release PROWL-FM start (3.5 s) children=[]
+This plugin does not support propagateSizeHints()
+ 19.99 LEASE.release PROWL-FM done
+ 20.00 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+ 20.00 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+This plugin does not support propagateSizeHints()
+ 24.49 GUI-THREAD PROWL FM -> SCAN                   call 0.004 s; longest event-loop stall during the switch 0.013 s
+ 24.51 after FM->SCAN arbiter=('HELD', 'PROWL-SCAN') openers=['24449:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='' chip='SDR — switching modes'
+ 24.63 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+This plugin does not support propagateSizeHints()
+ 24.64 LEASE.release PROWL-SCAN start (3.5 s) children=[]
+ 28.14 LEASE.release PROWL-SCAN done
+ 30.53 ARBITER ACQUIRING BABEL  [thread Dummy-10]
+ 30.53 ARBITER HELD BABEL  [thread radio-acquire]
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+ 33.56 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['24480:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15'
+ 34.57 ARBITER RELEASE BABEL  [thread Dummy-10]
+This plugin does not support propagateSizeHints()
+ 34.58 LEASE.release BABEL start (3.5 s) children=[]
+ 38.08 LEASE.release BABEL done
+ 38.09 ARBITER ACQUIRING BABEL-SSTV  [thread Dummy-10]
+ 38.09 ARBITER HELD BABEL-SSTV  [thread radio-acquire]
+ 41.56 GUI-THREAD BABEL AIS -> SSTV                  call 0.003 s; longest event-loop stall during the switch 0.014 s
+ 41.57 after AIS->SSTV arbiter=('HELD', 'BABEL-SSTV') openers=['24507:Ss:rtl_fm'] page_worker=SstvWorker retiring=[] busy='' chip='SSTV — capturing 3s (lvl 0)'
+ 41.58 ARBITER RELEASE BABEL-SSTV  [thread Dummy-10]
+ 41.58 LEASE.release BABEL-SSTV start (3.5 s) children=[]
+[lifecycle] BABEL: worker SstvWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 45.08 LEASE.release BABEL-SSTV done
+ 49.59 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== close
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  0.92 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.92 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  1.53 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.53 LEASE.release PROWL-SCAN start (3.5 s) children=[]
+This plugin does not support propagateSizeHints()
+  5.03 LEASE.release PROWL-SCAN done
+  5.04 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.04 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+This plugin does not support propagateSizeHints()
+  8.45 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['24558:Ss:rtl_fm', '24559:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+This plugin does not support propagateSizeHints()
+  8.77 mid-switch arbiter=('HELD', 'PROWL-NWR') openers=['24558:Ss:rtl_fm', '24559:Ss:multimon-ng'] page_worker=None retiring=['NwrWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+  9.46 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.46 LEASE.release PROWL-NWR start (3.5 s) children=[]
+[lifecycle] PROWL: worker NwrWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 11.77 hub.close() took 3.00 s; parked=[<palisade_qt.prowl.NwrWorker(0x35adea80) at 0x7efe3df98bc0>]
+ 12.96 LEASE.release PROWL-NWR done
+ 18.29 RESULT close: arbiter=('FREE', None) openers=[] children=[]
+--- rc=0
+=== never
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  0.94 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.94 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  1.47 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+This plugin does not support propagateSizeHints()
+  1.48 LEASE.release PROWL-SCAN start (3.5 s) children=[]
+  8.46 NWR live arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='NWR: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+  9.49 t+1.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 10.51 t+2.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 11.53 t+3.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 12.54 t+4.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 13.56 t+5.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 14.58 t+6.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 15.60 t+1.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='SCAN: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 16.62 t+2.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='SCAN: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 17.64 t+3.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='SCAN: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 18.65 t+4.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='SCAN: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 18.65 RESULT never: arbiter=('FREE', None) page='SCAN: waiting for the previous mode to give the radio back' strip-owner=None
+[lifecycle] PROWL: worker ScanWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 26.67 END arbiter=('FREE', None) children=[]
+--- rc=0

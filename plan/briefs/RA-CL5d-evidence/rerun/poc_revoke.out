@@ -1,0 +1,355 @@
+=== babel
+  0.27 ARBITER.changed -> 'BABEL'
+  0.27  0.27  ARBITER.changed -> 'BABEL'STATUS babel None | arbiter: 
+('HELD', 'BABEL')
+  0.28 STATUS babel AIS LIVE | arbiter: ('HELD', 'BABEL')
+  1.09 STATUS babel AIS 5 | arbiter: ('HELD', 'BABEL')
+  2.09 STATUS babel AIS 10 | arbiter: ('HELD', 'BABEL')
+  3.10 STATUS babel AIS 15 | arbiter: ('HELD', 'BABEL')
+  3.28 BEFORE REVOKE arbiter=('HELD', 'BABEL') children=['9122:rtl_ais', '9137:sleep']
+  3.28 STATUS babel AIS OFF — radio given back | arbiter: ('HELD', 'BABEL')
+  3.28 revoke() returned 'BABEL' after 0.001 s on the GUI thread
+  3.30 ARBITER.changed -> ''
+  3.31 LEASE.release BABEL children-at-release: []
+  3.31 STATUS babel AIS IDLE — press RUN | arbiter: ('FREE', None)
+  3.79 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.31 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.82 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  5.34 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  5.85 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.36 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.88 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.39 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.90 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.42 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.94 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.45 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.96 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.48 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.99 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.51 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.51 RESULT radio FREE while decoder alive: no
+ 11.51 ARBITER.changed -> 'OTHER'
+ 11.51 ARBITER.changed -> 'OTHER'
+ 11.52 next request('OTHER') -> True ; children=[]
+ 11.52 ARBITER.changed -> ''
+ 11.52 LEASE.release OTHER children-at-release: []
+ 12.03 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== sstv
+  0.24 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+  1.24 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+  2.24 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+  3.24 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+  3.25 BEFORE REVOKE arbiter=('FREE', None) children=[]
+  3.25 revoke() returned None after 0.000 s on the GUI thread
+  3.77 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.24 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+  4.28 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.80 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  5.24 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+  5.31 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  5.83 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.25 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+  6.34 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.85 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.25 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+  7.37 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.88 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.25 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+  8.40 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.91 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.25 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+  9.42 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.94 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.25 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+ 10.44 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.96 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.25 STATUS sstv SSTV IDLE — press RUN | arbiter: ('FREE', None)
+ 11.47 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.47 RESULT radio FREE while decoder alive: no
+ 11.47 ARBITER.changed -> 'OTHER'
+ 11.47 ARBITER.changed -> 'OTHER'
+ 11.47 next request('OTHER') -> True ; children=[]
+ 11.47 ARBITER.changed -> ''
+ 11.48 LEASE.release OTHER children-at-release: []
+ 11.99 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== scan
+  0.35 ARBITER.changed -> 'PROWL-SCAN'
+  0.35 ARBITER.changed -> 'PROWL-SCAN'
+  3.27 BEFORE REVOKE arbiter=('HELD', 'PROWL-SCAN') children=['9222:python3', '9223:cat']
+  3.27 revoke() returned 'PROWL-SCAN' after 0.000 s on the GUI thread
+  3.31 ARBITER.changed -> ''
+  3.31 LEASE.release PROWL-SCAN children-at-release: []
+  3.31 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  3.31 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  3.61 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  3.78 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  3.91 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  4.21 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  4.30 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.51 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  4.81 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.81 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  5.11 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  5.33 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  5.41 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  5.71 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  5.84 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.01 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  6.32 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  6.36 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.62 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  6.87 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.92 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  7.22 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  7.39 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.52 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  7.82 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  7.90 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.12 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  8.42 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.42 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  8.72 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  8.93 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.02 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  9.32 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  9.44 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.62 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  9.92 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+  9.96 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.22 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+ 10.47 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.52 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+ 10.82 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+ 10.99 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.12 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+ 11.42 STATUS scan SCAN OFF — radio given back | arbiter: ('FREE', None)
+ 11.50 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.50 RESULT radio FREE while decoder alive: no
+ 11.50 ARBITER.changed -> 'OTHER'
+ 11.50 ARBITER.changed -> 'OTHER'
+ 11.51 next request('OTHER') -> True ; children=[]
+ 11.51 ARBITER.changed -> ''
+ 11.52 LEASE.release OTHER children-at-release: []
+ 11.52 STATUS scan SCAN OFF — stopped | arbiter: ('FREE', None)
+ 12.03 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== fm
+  0.23 ARBITER.changed -> 'PROWL-FM'
+  0.23 ARBITER.changed -> 'PROWL-FM'
+  0.25 STATUS fm FM 97.3 ♪ | arbiter: ('HELD', 'PROWL-FM')
+  0.78 STATUS fm FM 97.3 ♪ | arbiter: ('HELD', 'PROWL-FM')
+  1.31 STATUS fm FM 97.3 ♪ | arbiter: ('HELD', 'PROWL-FM')
+  1.85 STATUS fm FM 97.3 ♪ | arbiter: ('HELD', 'PROWL-FM')
+  2.38 STATUS fm FM 97.3 ♪ | arbiter: ('HELD', 'PROWL-FM')
+  2.92 STATUS fm FM 97.3 ♪ | arbiter: ('HELD', 'PROWL-FM')
+  3.24 BEFORE REVOKE arbiter=('HELD', 'PROWL-FM') children=['9295:python3', '9296:cat', '9298:cat(Z)']
+  3.24 revoke() returned 'PROWL-FM' after 0.001 s on the GUI thread
+  3.28 ARBITER.changed -> ''
+  3.28 LEASE.release PROWL-FM children-at-release: []
+  3.28 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  3.76 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  3.78 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  4.27 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.28 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  4.78 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.78 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  5.28 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  5.30 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  5.78 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  5.81 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.29 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  6.32 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.79 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  6.84 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.29 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  7.36 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.79 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  7.87 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.29 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  8.39 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.79 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  8.89 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.29 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  9.41 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.79 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+  9.92 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.29 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+ 10.43 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.79 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+ 10.95 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.29 STATUS fm FM OFF — radio given back | arbiter: ('FREE', None)
+ 11.46 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.46 RESULT radio FREE while decoder alive: no
+ 11.46 ARBITER.changed -> 'OTHER'
+ 11.46 ARBITER.changed -> 'OTHER'
+ 11.47 next request('OTHER') -> True ; children=[]
+ 11.47 ARBITER.changed -> ''
+ 11.47 LEASE.release OTHER children-at-release: []
+ 11.47 STATUS fm FM OFF — stopped | arbiter: ('FREE', None)
+ 11.99 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== nwr
+  0.28 ARBITER.changed -> 'PROWL-NWR'
+  0.28 ARBITER.changed -> 'PROWL-NWR'
+  0.29 STATUS nwr NWR — waiting for audio | arbiter: ('HELD', 'PROWL-NWR')
+  0.69 STATUS nwr NWR — audio arriving, confirming | arbiter: ('HELD', 'PROWL-NWR')
+  1.09 STATUS nwr NWR — audio arriving, confirming | arbiter: ('HELD', 'PROWL-NWR')
+  1.49 STATUS nwr NWR — audio arriving, confirming | arbiter: ('HELD', 'PROWL-NWR')
+  1.89 STATUS nwr NWR — audio arriving, confirming | arbiter: ('HELD', 'PROWL-NWR')
+  2.29 STATUS nwr NWR — audio arriving, confirming | arbiter: ('HELD', 'PROWL-NWR')
+  2.69 STATUS nwr NWR WX2 162.400M | arbiter: ('HELD', 'PROWL-NWR')
+  3.09 STATUS nwr NWR WX2 162.400M | arbiter: ('HELD', 'PROWL-NWR')
+  3.30 BEFORE REVOKE arbiter=('HELD', 'PROWL-NWR') children=['9341:python3', '9342:cat']
+  3.30 revoke() returned 'PROWL-NWR' after 0.001 s on the GUI thread
+  3.30 ARBITER.changed -> ''
+  3.30 LEASE.release PROWL-NWR children-at-release: []
+  3.31 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  3.71 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  3.81 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.11 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  4.33 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.51 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  4.84 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.91 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  5.31 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  5.36 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  5.71 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  5.87 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.11 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  6.38 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.51 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  6.90 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.91 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  7.31 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  7.41 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.71 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  7.93 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.11 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  8.44 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.51 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  8.91 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  8.96 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.31 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  9.47 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.71 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+  9.98 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.11 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+ 10.50 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.51 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+ 10.91 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+ 11.01 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.31 STATUS nwr NWR OFF — radio given back | arbiter: ('FREE', None)
+ 11.52 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.52 RESULT radio FREE while decoder alive: no
+ 11.52 ARBITER.changed -> 'OTHER'
+ 11.52 ARBITER.changed -> 'OTHER'
+ 11.53 next request('OTHER') -> True ; children=[]
+ 11.53 ARBITER.changed -> ''
+ 11.54 LEASE.release OTHER children-at-release: []
+ 11.54 STATUS nwr NWR OFF — stopped | arbiter: ('FREE', None)
+ 12.05 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== prism
+  0.23 ARBITER.changed -> 'PRISM'
+  0.23 ARBITER.changed -> 'PRISM'
+  0.24 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  0.24 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  0.32 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  0.40 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  0.48 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  0.56 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  0.64 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  0.72 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  0.80 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  0.88 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  0.96 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.04 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.13 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.21 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.29 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.37 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.45 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.53 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.61 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.69 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.77 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.85 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  1.93 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.01 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.09 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.17 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.25 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.33 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.41 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.49 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.57 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.65 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.73 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.81 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.90 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  2.98 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  3.06 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  3.14 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  3.22 STATUS prism SDR PRISM | arbiter: ('HELD', 'PRISM')
+  3.24 BEFORE REVOKE arbiter=('HELD', 'PRISM') children=['9390:rtl_power', '9394:sleep']
+  3.24 revoke() returned 'PRISM' after 0.000 s on the GUI thread
+  3.25 ARBITER.changed -> ''
+  3.25 LEASE.release PRISM children-at-release: []
+  3.25 STATUS prism SDR OFF — radio given back | arbiter: ('FREE', None)
+  3.76 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.27 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  4.78 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  5.30 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  5.81 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.32 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  6.84 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.35 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.87 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.38 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.89 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.41 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.92 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.43 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.94 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.46 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.46 RESULT radio FREE while decoder alive: no
+ 11.46 ARBITER.changed -> 'OTHER'
+ 11.46 ARBITER.changed -> 'OTHER'
+ 11.46 next request('OTHER') -> True ; children=[]
+ 11.46 ARBITER.changed -> ''
+ 11.47 LEASE.release OTHER children-at-release: []
+ 11.98 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== atlas
+  3.28 BEFORE REVOKE arbiter=('HELD', 'ATLAS-AIS') children=['9434:rtl_ais', '9450:sleep']
+  3.28 revoke() returned 'ATLAS-AIS' after 0.000 s on the GUI thread
+  3.79 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['9434:rtl_ais', '9455:sleep']
+  4.31 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['9434:rtl_ais', '9459:sleep']
+  4.82 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['9434:rtl_ais', '9462:sleep']
+  5.33 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['9434:rtl_ais', '9466:sleep']
+  5.84 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['9434:rtl_ais', '9469:sleep']
+  6.36 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['9434:rtl_ais', '9473:sleep']
+  6.87 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['9434:rtl_ais', '9476:sleep']
+  7.38 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['9434:rtl_ais', '9480:sleep']
+  7.89 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['9434:rtl_ais', '9483:sleep']
+[radio] ATLAS-AIS did not release within the revoke timeout — forcing free
+  8.28 ARBITER.changed -> ''
+  8.29 LEASE.release ATLAS-AIS children-at-release: ['9434:rtl_ais', '9486:sleep']
+  8.41 SAMPLE arbiter=('FREE', None) revoking=False children=['9434:rtl_ais', '9488:sleep']
+  8.92 SAMPLE arbiter=('FREE', None) revoking=False children=['9434:rtl_ais', '9491:sleep']
+  9.44 SAMPLE arbiter=('FREE', None) revoking=False children=['9434:rtl_ais', '9495:sleep']
+  9.95 SAMPLE arbiter=('FREE', None) revoking=False children=['9434:rtl_ais', '9499:sleep']
+ 10.46 SAMPLE arbiter=('FREE', None) revoking=False children=['9434:rtl_ais', '9502:sleep']
+ 10.98 SAMPLE arbiter=('FREE', None) revoking=False children=['9434:rtl_ais', '9506:sleep']
+ 11.49 SAMPLE arbiter=('FREE', None) revoking=False children=['9434:rtl_ais', '9509:sleep']
+ 11.49 RESULT radio FREE while decoder alive: ['9434:rtl_ais', '9488:sleep']
+ 11.49 ARBITER.changed -> 'OTHER'
+ 11.49 ARBITER.changed -> 'OTHER'
+ 11.50 next request('OTHER') -> True ; children=['9434:rtl_ais', '9509:sleep']
+ 11.50 ARBITER.changed -> ''
+ 11.50 LEASE.release OTHER children-at-release: ['9434:rtl_ais', '9509:sleep']
+ 12.02 END arbiter=('FREE', None) children=[]
+--- rc=0

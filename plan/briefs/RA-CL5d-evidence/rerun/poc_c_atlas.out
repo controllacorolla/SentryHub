@@ -1,0 +1,153 @@
+=== hidden_revoke
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  1.94 ARBITER ACQUIRING ATLAS-AIS 
+  1.94 ARBITER HELD ATLAS-AIS 
+This plugin does not support propagateSizeHints()
+  4.70 FRONT, AIS on arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19191:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+This plugin does not support propagateSizeHints()
+  6.72 HIDDEN arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19191:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  6.73 cost: threads front=4 hidden=4; adsb=AdsbFeed rid=None; children=['19191:rtl_ais', '19252:sleep']
+  6.73 call returned in 0.000 s
+  6.73 ARBITER RELEASE ATLAS-AIS 
+  6.74 LEASE.release ATLAS-AIS children-at-release: []
+This plugin does not support propagateSizeHints()
+  7.24 t+0.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  7.76 t+1.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  8.28 t+1.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  8.80 t+2.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  9.32 t+2.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  9.84 t+3.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 10.37 t+3.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 10.89 t+4.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 11.40 t+4.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 11.93 t+5.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 12.45 t+5.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 12.97 t+6.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 13.50 t+6.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 14.02 t+7.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 14.53 t+7.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 15.05 t+8.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 15.06 RESULT hidden_revoke: 0 bad samples (FREE with rtl_ais alive, or not FREE)
+ 15.56 RADIOS history: [('RELEASE', 'AIS'), ('HELD', 'AIS'), ('ACQUIRING', 'AIS')]
+ 16.57 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== hidden_forced
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  2.05 ARBITER ACQUIRING ATLAS-AIS 
+  2.05 ARBITER HELD ATLAS-AIS 
+This plugin does not support propagateSizeHints()
+  4.80 FRONT, AIS on arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19395:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+This plugin does not support propagateSizeHints()
+  6.82 HIDDEN arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19395:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  6.83 cost: threads front=4 hidden=4; adsb=AdsbFeed rid=None; children=['19395:rtl_ais', '19441:sleep']
+  6.83 call returned in 0.000 s
+  6.83 ARBITER RELEASE ATLAS-AIS 
+  6.83 LEASE.release ATLAS-AIS children-at-release: []
+This plugin does not support propagateSizeHints()
+  7.34 t+0.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  7.86 t+1.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  8.38 t+1.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  8.90 t+2.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  9.42 t+2.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  9.94 t+3.0 arbiter=('FREE', None) rtl_ais=['19466:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 10.46 t+3.5 arbiter=('FREE', None) rtl_ais=['19466:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 10.98 t+4.0 arbiter=('FREE', None) rtl_ais=['19466:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 11.50 t+4.5 arbiter=('FREE', None) rtl_ais=['19466:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 12.02 t+5.0 arbiter=('FREE', None) rtl_ais=['19466:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 12.53 t+5.5 arbiter=('FREE', None) rtl_ais=['19466:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 13.04 t+6.0 arbiter=('FREE', None) rtl_ais=['19466:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 13.57 t+6.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 14.08 t+7.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 14.60 t+7.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 15.12 t+8.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 15.13 RESULT hidden_forced: 7 bad samples (FREE with rtl_ais alive, or not FREE)
+ 15.63 RADIOS history: [('RELEASE', 'AIS'), ('HELD', 'AIS'), ('ACQUIRING', 'AIS')]
+ 16.64 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== hidden_panic
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  2.00 ARBITER ACQUIRING ATLAS-AIS 
+  2.00 ARBITER HELD ATLAS-AIS 
+This plugin does not support propagateSizeHints()
+  4.75 FRONT, AIS on arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19559:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+This plugin does not support propagateSizeHints()
+  6.77 HIDDEN arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19559:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  6.78 cost: threads front=4 hidden=4; adsb=AdsbFeed rid=None; children=['19559:rtl_ais', '19602:sleep']
+  6.79 ARBITER RELEASE ATLAS-AIS PANIC
+  6.79 LEASE.release ATLAS-AIS children-at-release: []
+  6.80 PANIC banner: TX disarmed · no engagement was open · 1 child process(es) stopped by their pages (verified gone) · radio released (was AIS) · TX OFF
+  6.80 call returned in 0.020 s
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  7.31 t+0.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  7.82 t+1.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  8.34 t+1.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  8.86 t+2.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  9.38 t+2.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  9.90 t+3.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 10.42 t+3.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 10.94 t+4.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 11.46 t+4.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 11.98 t+5.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 12.50 t+5.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 13.02 t+6.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 13.54 t+6.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 14.06 t+7.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 14.58 t+7.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 15.09 t+8.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 15.10 RESULT hidden_panic: 0 bad samples (FREE with rtl_ais alive, or not FREE)
+ 15.62 RADIOS history: [('RELEASE · PANIC', 'AIS'), ('HELD', 'AIS'), ('ACQUIRING', 'AIS')]
+ 16.63 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== hidden_acquiring
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  1.99 ARBITER ACQUIRING ATLAS-AIS 
+  1.99 LEASE.acquire start ATLAS-AIS
+This plugin does not support propagateSizeHints()
+  2.05 ACQUIRING arbiter=('ACQUIRING', 'ATLAS-AIS') rtl_ais=['19688:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+This plugin does not support propagateSizeHints()
+  2.57 hidden t+0.5 arbiter=('ACQUIRING', 'ATLAS-AIS') rtl_ais=['19688:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  3.09 hidden t+1.0 arbiter=('ACQUIRING', 'ATLAS-AIS') rtl_ais=['19688:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  3.60 hidden t+1.5 arbiter=('ACQUIRING', 'ATLAS-AIS') rtl_ais=['19688:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  4.00 LEASE.acquire done ATLAS-AIS children: []
+  4.00 ARBITER HELD ATLAS-AIS 
+This plugin does not support propagateSizeHints()
+  4.12 hidden t+2.0 arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19688:Ss:rtl_ais', '19713:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  4.63 hidden t+2.5 arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19688:Ss:rtl_ais', '19713:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  5.15 hidden t+3.0 arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19688:Ss:rtl_ais', '19713:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  5.66 hidden t+3.5 arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19713:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  6.17 hidden t+4.0 arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19713:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  6.17 revoke while hidden -> ATLAS-AIS
+  6.18 ARBITER RELEASE ATLAS-AIS 
+  6.18 LEASE.release ATLAS-AIS children-at-release: []
+This plugin does not support propagateSizeHints()
+  6.68 after revoke t+0.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  7.19 after revoke t+1.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  7.70 after revoke t+1.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  8.22 after revoke t+2.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  8.73 after revoke t+2.5 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  9.24 after revoke t+3.0 arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+--- rc=0
+=== hidden_cost
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  1.99 ARBITER ACQUIRING ATLAS-AIS 
+  1.99 ARBITER HELD ATLAS-AIS 
+This plugin does not support propagateSizeHints()
+  4.74 FRONT, AIS on arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19769:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+This plugin does not support propagateSizeHints()
+  6.76 HIDDEN arbiter=('HELD', 'ATLAS-AIS') rtl_ais=['19769:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator', 'vessel'] wanted=['vessel'] srcs=['vessel']
+  6.77 cost: threads front=4 hidden=4; adsb=AdsbFeed rid=None; children=['19769:rtl_ais', '19801:sleep']
+ 11.78 RESULT hidden_cost: after 5 s hidden threads=3 children=['19769:rtl_ais', '19848:sleep'] adsb/rid unchanged=True
+ 11.79 ARBITER RELEASE ATLAS-AIS 
+ 11.79 LEASE.release ATLAS-AIS children-at-release: []
+--- rc=0

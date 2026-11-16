@@ -1,0 +1,5 @@
+=== 
+  1.46 RA-CL5b: rows emitted after the change: 0 (a retune re-listens; it emits no hit row)
+  1.46 hot channels before=[] ; after one squelch change on a silent band: []
+  1.47 LEASE.release PROWL-SCAN children-at-release: []
+--- rc=0

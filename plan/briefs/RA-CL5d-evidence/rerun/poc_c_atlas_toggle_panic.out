@@ -1,0 +1,77 @@
+=== toggle_panic
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  1.75 iter 0: AIS ticked (arbiter at PANIC=('FREE', None)); PANIC in the same event-loop turn
+  1.76 ARBITER ACQUIRING ATLAS-AIS 
+  1.76 ARBITER HELD ATLAS-AIS 
+  1.76 ARBITER RELEASE ATLAS-AIS PANIC
+  1.77 LEASE.release ATLAS-AIS children-at-release: []
+  1.78 PANIC banner: TX disarmed · no engagement was open · no child processes were running · radio released (was AIS) · TX OFF
+  4.87 iter 0 after 3 s arbiter=('FREE', None) rtl_ais=['19876:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+  6.52 iter 1: AIS ticked (arbiter at PANIC=('FREE', None)); PANIC in the same event-loop turn
+  6.53 ARBITER ACQUIRING ATLAS-AIS 
+  6.53 ARBITER HELD ATLAS-AIS 
+  6.56 ARBITER RELEASE ATLAS-AIS PANIC
+  6.57 LEASE.release ATLAS-AIS children-at-release: []
+  6.57 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was AIS) · TX OFF
+  9.65 iter 1 after 3 s arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 11.43 iter 2: AIS ticked (arbiter at PANIC=('FREE', None)); PANIC in the same event-loop turn
+ 11.44 ARBITER ACQUIRING ATLAS-AIS 
+ 11.44 ARBITER HELD ATLAS-AIS 
+ 11.47 ARBITER RELEASE ATLAS-AIS PANIC
+ 11.48 LEASE.release ATLAS-AIS children-at-release: []
+ 11.48 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was AIS) · TX OFF
+ 14.57 iter 2 after 3 s arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 16.50 iter 3: AIS ticked (arbiter at PANIC=('FREE', None)); PANIC in the same event-loop turn
+ 16.50 ARBITER ACQUIRING ATLAS-AIS 
+ 16.50 ARBITER HELD ATLAS-AIS 
+ 16.54 ARBITER RELEASE ATLAS-AIS PANIC
+ 16.55 LEASE.release ATLAS-AIS children-at-release: []
+ 16.55 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was AIS) · TX OFF
+ 19.62 iter 3 after 3 s arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 21.68 iter 4: AIS ticked (arbiter at PANIC=('FREE', None)); PANIC in the same event-loop turn
+ 21.69 ARBITER ACQUIRING ATLAS-AIS 
+ 21.69 ARBITER HELD ATLAS-AIS 
+ 21.72 ARBITER RELEASE ATLAS-AIS PANIC
+ 21.73 LEASE.release ATLAS-AIS children-at-release: []
+ 21.73 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was AIS) · TX OFF
+ 24.82 iter 4 after 3 s arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 27.02 iter 5: AIS ticked (arbiter at PANIC=('FREE', None)); PANIC in the same event-loop turn
+ 27.02 ARBITER ACQUIRING ATLAS-AIS 
+ 27.02 ARBITER HELD ATLAS-AIS 
+ 27.05 ARBITER RELEASE ATLAS-AIS PANIC
+ 27.06 LEASE.release ATLAS-AIS children-at-release: []
+ 27.06 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was AIS) · TX OFF
+ 30.15 iter 5 after 3 s arbiter=('FREE', None) rtl_ais=['20031:Ss:rtl_ais'] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 32.49 iter 6: AIS ticked (arbiter at PANIC=('FREE', None)); PANIC in the same event-loop turn
+ 32.49 ARBITER ACQUIRING ATLAS-AIS 
+ 32.49 ARBITER HELD ATLAS-AIS 
+ 32.52 ARBITER RELEASE ATLAS-AIS PANIC
+ 32.52 LEASE.release ATLAS-AIS children-at-release: []
+ 32.53 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was AIS) · TX OFF
+ 35.60 iter 6 after 3 s arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 38.07 iter 7: AIS ticked (arbiter at PANIC=('FREE', None)); PANIC in the same event-loop turn
+ 38.07 ARBITER ACQUIRING ATLAS-AIS 
+ 38.07 ARBITER HELD ATLAS-AIS 
+ 38.10 ARBITER RELEASE ATLAS-AIS PANIC
+ 38.11 LEASE.release ATLAS-AIS children-at-release: []
+ 38.11 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was AIS) · TX OFF
+ 41.21 iter 7 after 3 s arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 42.81 iter 8: AIS ticked (arbiter at PANIC=('FREE', None)); PANIC in the same event-loop turn
+ 42.82 ARBITER ACQUIRING ATLAS-AIS 
+ 42.82 ARBITER HELD ATLAS-AIS 
+ 42.85 ARBITER RELEASE ATLAS-AIS PANIC
+ 42.86 LEASE.release ATLAS-AIS children-at-release: []
+ 42.86 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was AIS) · TX OFF
+ 45.94 iter 8 after 3 s arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 47.68 iter 9: AIS ticked (arbiter at PANIC=('FREE', None)); PANIC in the same event-loop turn
+ 47.69 ARBITER ACQUIRING ATLAS-AIS 
+ 47.69 ARBITER HELD ATLAS-AIS 
+ 47.71 ARBITER RELEASE ATLAS-AIS PANIC
+ 47.72 LEASE.release ATLAS-AIS children-at-release: []
+ 47.73 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was AIS) · TX OFF
+This plugin does not support propagateSizeHints()
+ 50.80 iter 9 after 3 s arbiter=('FREE', None) rtl_ais=[] layers=['aircraft', 'balloon', 'df', 'operator'] wanted=[] srcs=[]
+ 52.30 RESULT toggle_panic: 2 of 10 iterations held the radio / ran rtl_ais after PANIC
+--- rc=0

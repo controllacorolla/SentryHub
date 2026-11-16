@@ -1,0 +1,9 @@
+FAILED tests/test_cl5_fix3.py::test_nk_a_revoke_during_a_prowl_switch_sticks
+FAILED tests/test_cl5_fix3.py::test_nk_a_revoke_during_a_babel_switch_sticks_and_unticks_run
+FAILED tests/test_cl5_fix3.py::test_nl_rtl_fm_that_only_writes_stderr_never_reads_live
+FAILED tests/test_cl5_fix3.py::test_nl_a_decoder_that_never_reads_never_reads_live
+FAILED tests/test_cl5_fix3.py::test_nl_flapping_decoder_never_reports_live - ...
+FAILED tests/test_cl5_fix3.py::test_nm_a_frame_decoded_after_stop_is_still_shown_once
+FAILED tests/test_cl5_fix3.py::test_nn_a_retired_workers_late_status_is_ignored
+FAILED tests/test_cl5_fix3.py::test_nq_nwr_emits_alerts_parsed_before_a_stop
+8 failed in 33.22s

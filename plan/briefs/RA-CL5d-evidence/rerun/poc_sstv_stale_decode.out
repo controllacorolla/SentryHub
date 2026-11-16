@@ -1,0 +1,8 @@
+=== 
+  0.29 right after _stop_rec: _decoded_upto=0 _scan_from=0
+  0.69 after the old decode finished: _decoded_upto=0 (0 s) _scan_from=0
+  0.69 new recorder at   12 s of audio -> step() starts a decode: True
+  0.69 new recorder at   60 s of audio -> step() starts a decode: True
+  0.69 new recorder at  600 s of audio -> step() starts a decode: True
+  0.69 RESULT next decode only after 12 s of new audio (should be 12 s)
+--- rc=0

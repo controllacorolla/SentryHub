@@ -1,0 +1,7 @@
+=== 
+  1.12 a child-ignores-SIGTERM: terminate() -> True in 0.00s ; survivors: none
+  2.92 b stage-ignores-SIGTERM: terminate() -> True in 1.00s ; survivors: none
+  4.23 c fork-then-exit: terminate() -> True in 0.00s ; survivors: none
+  5.04 d grandchild-setsid: terminate() -> True in 0.00s ; survivors: ['11841 sleep 304']
+  5.25 e missing stage-2 binary: FileNotFoundError: [Errno 2] No such file or directory: 'no-such-decoder-binary' ; survivors: none
+--- rc=0
