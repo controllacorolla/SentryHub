@@ -80,8 +80,14 @@ class Recorder:
     WINDOW_S = 240          # audit R5: keep at most this much audio (longest SSTV mode ~3 min)
     FLUSH_S = 5
 
-    def __init__(self, path, freq, gain, monitor, window_s=None, proc=None):
+    def __init__(self, path, freq, gain, monitor, window_s=None, proc=None, keep_last_window=True):
         self.path, self.level, self.err = path, 0.0, ""
+        # CL5-fix2 (RA-CL5b N-f): when the recording ends, leave ONE contiguous file holding the
+        # last window_s of audio (the R5 contract the Tk app decodes from), so a frame that spans
+        # a rotation is not split across .prev.wav and .wav. One rewrite per recording, not per
+        # flush. The Qt worker decodes from memory and deletes its files: it passes False.
+        self.keep_last_window = keep_last_window
+        self.rotations = 0
         self.proc = self.sink = None
         self.t0 = time.time()
         self.stop_flag = threading.Event()
@@ -145,6 +151,37 @@ class Recorder:
         finally:
             self.flush()
             self._close_file()
+            if self.keep_last_window and self.rotations:
+                self._write_last_window()
+
+    def _prev_path(self):
+        return self.path[:-4] + ".prev.wav" if self.path.endswith(".wav") else self.path + ".prev"
+
+    def _write_last_window(self):
+        """Replace the rotated pair with one file = the in-memory window (contiguous)."""
+        with self._mlock:
+            chunks = list(self._chunks)
+        tmp = self.path + ".tmp"
+        try:
+            w = wave.open(tmp, "wb")
+            try:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(RATE)
+                for c in chunks:
+                    w.writeframes(c)
+                    self.bytes_written += len(c)
+            finally:
+                w.close()
+            os.replace(tmp, self.path)
+            self._file_frames = sum(len(c) for c in chunks) // 2
+            self._written = self._file_frames / float(RATE)
+            try:
+                os.remove(self._prev_path())
+            except OSError:
+                pass
+        except Exception as e:
+            self.err = self.err or "could not write the last window: %s" % str(e)[:60]
 
     def _open_file(self):
         w = wave.open(self.path, "wb")
@@ -174,10 +211,10 @@ class Recorder:
             if self._file_frames >= max_frames:      # rotate: keep one previous window
                 self._close_file()
                 try:
-                    os.replace(self.path, self.path[:-4] + ".prev.wav"
-                               if self.path.endswith(".wav") else self.path + ".prev")
+                    os.replace(self.path, self._prev_path())
                 except OSError:
                     pass
+                self.rotations += 1
                 self._open_file()
             self._wf.writeframes(c)
             self._file_frames += len(c) // 2

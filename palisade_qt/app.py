@@ -104,6 +104,19 @@ def _hook_exit():
     atexit.register(_drain)
 
 
+def _disconnect(sig, slot):
+    """Cut one page slot from a worker signal; quiet if it was never connected."""
+    if sig is None:
+        return
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            sig.disconnect(slot)
+        except (TypeError, RuntimeError):
+            pass
+
+
 def stop_worker(worker, title="APP"):
     """Stop + join a kit Worker without ever aborting the process. True if it joined."""
     if worker is None:
@@ -125,6 +138,7 @@ class PalisadeApp(QtWidgets.QWidget):
     LEASE = None
     SUBTABS = ()
     request = QtCore.Signal(str, object)      # page -> shell: ("tune_fm", mhz), ("open", "PROWL"), …
+    _retired = QtCore.Signal(object)          # a retiring worker finished (queued to the GUI thread)
 
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         super().__init__(parent)
@@ -293,6 +307,9 @@ class PalisadeApp(QtWidgets.QWidget):
         if self._started:
             return
         self._started = True
+        self._start_new_worker()
+
+    def _start_new_worker(self):
         self._worker = self.make_worker()
         if self._worker is not None:
             self._worker.row.connect(self.on_row)
@@ -304,6 +321,73 @@ class PalisadeApp(QtWidgets.QWidget):
                     and hasattr(self._worker, "pause"):
                 self._worker.pause(True)
             self._worker.start()
+
+    # ---- replacing the worker without blocking the GUI thread (CL5-fix2, RA-CL5b N-c) ----
+    def swap_worker(self):
+        """Replace the running worker with a fresh make_worker() (a sub-mode / decoder switch)
+        WITHOUT waiting on the GUI thread. The old worker is told to stop (flags only), its
+        signals are cut from the page, and it stays referenced; the new one is started only once
+        the old thread has finished — so the two never overlap on the radio and the old one's
+        release can never free the new one's lease. Further switches while one is retiring just
+        update what will be started. A worker that never finishes is never dropped: the page
+        says it is still stopping and starts nothing."""
+        if not self._started or self._stopped:
+            return
+        self._swap_pending = True
+        old, self._worker = self._worker, None
+        if old is not None:
+            self._retire(old)
+            # the old worker's last SDR chip must not stay on screen as a claim on the radio
+            self.set_chip("sdr", "SDR — switching modes", state="neutral")
+        if not getattr(self, "_retiring", None):
+            self._finish_swap()
+
+    def cancel_swap(self):
+        """PANIC: a switch that was waiting for the old worker must not start a new one."""
+        self._swap_pending = False
+
+    def swapping(self):
+        return bool(getattr(self, "_retiring", None))
+
+    def _retire(self, w):
+        _retain(w)
+        for sig, slot in (("row", self.on_row), ("status", self.on_status),
+                          ("error", self.on_error), ("fault", self.on_fault)):
+            _disconnect(getattr(w, sig, None), slot)
+        retiring = getattr(self, "_retiring", None)
+        if retiring is None:
+            retiring = self._retiring = []
+        retiring.append(w)
+        if not getattr(self, "_retired_hooked", False):
+            self._retired_hooked = True
+            self._retired.connect(self._on_retired)
+        w.finished.connect(lambda w=w: self._retired.emit(w))   # worker thread -> GUI thread
+        try:
+            w.stop()                      # flags + a non-blocking kill; the worker reaps/releases
+        except Exception:
+            pass
+        w.quit()
+        if not w.isRunning():             # never started / already done
+            self._on_retired(w)
+
+    def _on_retired(self, w):
+        retiring = getattr(self, "_retiring", None) or []
+        if w in retiring:
+            retiring.remove(w)
+        if not retiring:
+            self._finish_swap()
+
+    def _finish_swap(self):
+        if self._stopped:
+            return
+        if getattr(self, "_swap_pending", False) and self._worker is None:
+            self._swap_pending = False
+            self._start_new_worker()
+        self.on_swapped()
+
+    def on_swapped(self):
+        """Hook: the old worker is gone; the new one is running, or self._worker is None if a
+        PANIC cancelled the switch (pages refresh their status line)."""
 
     def on_fault(self, msg):
         """A worker's persistent fault ("" when it clears): shown in the page status row."""
@@ -317,9 +401,14 @@ class PalisadeApp(QtWidgets.QWidget):
         if self._stopped:
             return
         self._stopped = True
+        self._swap_pending = False
         if self._worker is not None:
             stop_worker(self._worker, self.TITLE)
             self._worker = None
+        for w in list(getattr(self, "_retiring", None) or []):
+            stop_worker(w, self.TITLE)                    # joins, or parks — never drops
+        if getattr(self, "_retiring", None):
+            self._retiring.clear()
 
     # ---- Qt events ----
     def showEvent(self, ev):

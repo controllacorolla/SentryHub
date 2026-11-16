@@ -38,6 +38,10 @@ def _make_lease(name):
 class RadioArbiter(QtCore.QObject):
     changed = QtCore.Signal(str)        # owner name ("" when free) — also fires on ACQUIRING→HELD
     revoked = QtCore.Signal(str)        # the named holder must stop its pipeline and release()
+    # (event, owner, note) captured AT the transition (N11: changed() + a late state() read logged
+    # HELD, HELD for a fast acquire). event: ACQUIRING | HELD | RELEASE; note on a RELEASE says
+    # how ("" = the holder released, "FORCED FREE …", "PANIC").
+    transition = QtCore.Signal(str, str, str)
 
     def __init__(self):
         super().__init__()
@@ -63,6 +67,7 @@ class RadioArbiter(QtCore.QObject):
                 granted = self._owner == name
         if not start:
             return granted
+        self.transition.emit("ACQUIRING", name, "")
         self.changed.emit(name)
         threading.Thread(target=self._acquire, args=(name, gen), name="radio-acquire",
                          daemon=False).start()
@@ -83,12 +88,13 @@ class RadioArbiter(QtCore.QObject):
                 except Exception:
                     pass
             return
+        self.transition.emit("HELD", name, "")
         self.changed.emit(name)
 
     def release(self, name):
         self._release(name)
 
-    def _release(self, name, gen=None):
+    def _release(self, name, gen=None, note=""):
         """Free the radio if `name` holds it (and, when gen is given, only if ownership has not
         changed since — N12: a revoke timer must never free a re-grant)."""
         with self._lock:
@@ -99,12 +105,15 @@ class RadioArbiter(QtCore.QObject):
             t, self._revoke_timer = self._revoke_timer, None
         if t is not None:
             t.cancel()
+        # announce FREE as soon as it is FREE (CL5-fix2): the lease release below restarts readsb
+        # and can take seconds; the strip must not show the old holder for that long
+        self.transition.emit("RELEASE", name, note)
+        self.changed.emit("")
         if lease is not None:
             try:
                 lease.release()                   # readsb / the autopilot resume
             except Exception:
                 pass
-        self.changed.emit("")
         return True
 
     def revoke(self, name=None, timeout_s=None):
@@ -132,7 +141,7 @@ class RadioArbiter(QtCore.QObject):
         import sys
         print("[radio] %s did not release within the revoke timeout — forcing free" % holder,
               file=sys.stderr)
-        self._release(holder, gen)
+        self._release(holder, gen, note="FORCED FREE — holder did not acknowledge")
 
     def panic_free(self):
         """PANIC (CL5-fix 5): the operator wants the radio stopped now. The shell has already set
@@ -144,7 +153,7 @@ class RadioArbiter(QtCore.QObject):
         if holder is None:
             return None
         self.revoked.emit(holder)
-        self._release(holder)
+        self._release(holder, note="PANIC")
         return holder
 
     # ---- reads (never block) ----

@@ -115,6 +115,7 @@ class RadiosPanel(Overlay):
                           "Power on/off and device selection arrive with CL6.")
         self.outer.addWidget(self.limit)
         radio_arbiter.arbiter.changed.connect(self._on_arbiter_change)
+        radio_arbiter.arbiter.transition.connect(self._on_transition)
         # re-read the kernel while the panel is open: a dongle unplugged or an rfkill switch
         # flipped must show without closing and reopening (RA-CL1 N1). Stops when hidden.
         self._poll = QtCore.QTimer(self)
@@ -136,22 +137,24 @@ class RadiosPanel(Overlay):
         self._poll.stop()
         try:
             radio_arbiter.arbiter.changed.disconnect(self._on_arbiter_change)
+            radio_arbiter.arbiter.transition.disconnect(self._on_transition)
         except (TypeError, RuntimeError):
             pass
 
     # ---- moved from OverwatchApp, unchanged ----
     def _on_arbiter_change(self, owner):
+        self._refresh_holder()
+
+    def _on_transition(self, event, owner, note):
+        """History row per arbiter transition, with the state as it was AT the transition (N11),
+        and a forced free / PANIC marked as such (a forced free can leave a pipeline behind)."""
         now = time.strftime("%H:%M:%S")
-        if owner:
-            lbl = radio_arbiter.OWNER_LABELS.get(owner, owner)
-            st, _o = radio_arbiter.arbiter.state()            # A3: ACQUIRING then HELD
-            self._history.insert(0, {"t": now, "event": "HELD" if st == "HELD" else "ACQUIRING",
-                                     "owner": lbl})
-        else:
-            self._history.insert(0, {"t": now, "event": "RELEASE", "owner": "—"})
+        lbl = radio_arbiter.OWNER_LABELS.get(owner, owner) if owner else "—"
+        if event == "RELEASE" and note:
+            event = "RELEASE · %s" % note
+        self._history.insert(0, {"t": now, "event": event, "owner": lbl})
         self._history = self._history[:200]
         self.hist_feed.model.set_rows(self._history)
-        self._refresh_holder()
 
     def _refresh_holder(self):
         try:

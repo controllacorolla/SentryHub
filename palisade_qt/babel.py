@@ -55,6 +55,9 @@ def _open_pipe(cmd, shell=None, stderr=None):
 
 def _stderr_tail(proc, n=3):
     """The last n stderr lines of a Pipeline opened by _open_pipe (for the fault banner)."""
+    cached = getattr(proc, "err_tail", None)
+    if cached is not None:                    # _stop_proc closed the file; it kept the tail
+        return cached
     f = getattr(proc, "errfile", None)
     if f is None:
         return ""
@@ -367,6 +370,10 @@ def _stop_proc(proc):
         pass
     f = getattr(proc, "errfile", None)
     if f is not None:
+        try:
+            proc.err_tail = _stderr_tail(proc)  # N-b: keep WHY it died for the FAULT banner
+        except Exception:
+            pass
         try:
             f.close()
         except Exception:
@@ -741,7 +748,8 @@ class SstvWorker(Worker):
         if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
             return None
         import sstv
-        return sstv.Recorder(path, self.freq, self.gain, monitor=False)   # rolling window (R5)
+        return sstv.Recorder(path, self.freq, self.gain, monitor=False,  # rolling window (R5)
+                             keep_last_window=False)   # decoded from memory; files removed
 
     def _decode(self, x, fs):
         """Seam: decode audio already in memory (sstvdec.decode_samples — decode_wav's body)."""
@@ -812,31 +820,33 @@ class SstvWorker(Worker):
             threading.Thread(target=self._decode_job, args=(rec, sstv.RATE), daemon=True).start()
 
     def _decode_job(self, rec, fs):
+        """Decode thread. Every write of the decode clock happens under self._lock and only while
+        `rec` is still the live recorder (CL5-fix2, RA-CL5b N-e): a job that outlived its
+        recorder must not push a stale position into the next RUN (it made the next decode wait
+        ~40 min). _stop_rec swaps the recorder and resets the clock under the same lock."""
         import numpy as np
         try:
             raw, base = rec.samples_since(self._scan_from)
             upto = base + len(raw) // 2
             x = np.frombuffer(raw, dtype="<i2").astype(np.float32)
             try:
-                r = self._decode(x, fs)
-            except ValueError as e:              # no header yet / truncated: keep listening
-                self._decoded_upto = upto
-                if self._frame is None and "no SSTV header" in str(e):
-                    # nothing here: next time look only at audio after this (minus the overlap)
-                    self._scan_from = max(base, upto - int(self.OVERLAP_S * fs))
-                if not self._stop:
-                    self.status.emit({"sdr": {"text": "SSTV — listening (%s)" % str(e)[:26],
-                                              "ok": False}})
-                return
+                r, err = self._decode(x, fs), None
             except Exception as e:
+                r, err = None, e
+            with self._lock:
+                if rec is not self._rec or self._stop:
+                    return                           # torn down / new recorder: drop it
                 self._decoded_upto = upto
-                if not self._stop:
-                    self.error.emit("SSTV decode: %s" % str(e)[:120])
-                return
-            self._decoded_upto = upto
-            if self._stop:
-                return                           # torn down mid-decode: drop the abandoned frame
-            self._fold_frame(r, base, upto, fs)
+                if isinstance(err, ValueError):      # no header yet / truncated: keep listening
+                    if self._frame is None and "no SSTV header" in str(err):
+                        # nothing here: next time look only at audio after this (minus overlap)
+                        self._scan_from = max(base, upto - int(self.OVERLAP_S * fs))
+                    self.status.emit({"sdr": {"text": "SSTV — listening (%s)" % str(err)[:26],
+                                              "ok": False}})
+                elif err is not None:
+                    self.error.emit("SSTV decode: %s" % str(err)[:120])
+                else:
+                    self._fold_frame(r, base, upto, fs)
         finally:
             self._decoding = False
 
@@ -920,13 +930,13 @@ class SstvWorker(Worker):
         with self._lock:
             rec, self._rec = self._rec, None
             wav, self._wav = self._wav, None
+            self._scan_from = self._decoded_upto = 0  # a new recorder restarts the sample clock
+            self._frame = None
         if rec is not None:
             try:
                 rec.stop()
             except Exception:
                 pass
-        self._scan_from = self._decoded_upto = 0     # a new recorder restarts the sample clock
-        self._frame = None
         if wav:
             for f in (wav, wav[:-4] + ".prev.wav"):
                 try:
@@ -1057,18 +1067,9 @@ class BabelApp(PalisadeApp):
     def _rebuild_worker(self):
         if not self._started or self._stopped:
             return
-        if self._worker is not None:
-            from .app import stop_worker
-            stop_worker(self._worker, self.TITLE)   # release the old lease first; never abort (A2)
-            self._worker = None
-        self._worker = self.make_worker()
-        if self._worker is not None:
-            self._worker.row.connect(self.on_row)
-            self._worker.status.connect(self.on_status)
-            self._worker.error.connect(self.on_error)
-            if hasattr(self._worker, "fault"):
-                self._worker.fault.connect(self.on_fault)
-            self._worker.start()
+        # CL5-fix2 (N-c): no join on the GUI thread; the new decoder starts once the old one has
+        # reaped its pipeline and released (app.swap_worker).
+        self.swap_worker()
 
     def make_worker(self):
         if self.mode_combo.currentText() == "SSTV":
@@ -1086,7 +1087,7 @@ class BabelApp(PalisadeApp):
         w = self._worker
         if w is not None and hasattr(w, "hold_off") and not self.demo:
             w.hold_off("PANIC")
-        self._untick_run()
+        self._untick_run()          # a switch in flight starts its new worker with RUN off
         return []
 
     def _untick_run(self):

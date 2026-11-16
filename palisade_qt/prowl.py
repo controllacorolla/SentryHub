@@ -504,6 +504,86 @@ class NwrWorker(_RadioWorker):
         self._demo_src = None
         self._down = 0
         self._last_line = 0.0
+        self._exits = deque()          # recent decoder exits (flap detection, RA-CL5b N-d)
+        self._io_pid = None            # rtl_fm pid whose output counter we watch
+        self._io_bytes = None          # its last /proc/<pid>/io wchar
+        self._audio_ts = 0.0           # when rtl_fm's output last grew
+
+    # CL5-fix2 (RA-CL5b N-d): "LIVE" needs AUDIO, not just a process. rtl_fm writes ~44 kB/s of
+    # samples into the pipe; when it wedges, or multimon-ng stops reading (the pipe fills and
+    # rtl_fm blocks), its output byte counter stops. No growth for AUDIO_STALL_S -> not live;
+    # for AUDIO_RESPAWN_S -> kill and respawn (counts as an exit). An unreadable counter is
+    # treated as no audio: the page must never claim a weather watch it cannot verify.
+    AUDIO_STALL_S = 3.0
+    AUDIO_RESPAWN_S = 10.0
+    FLAP_WINDOW_S = 60.0           # this many seconds …
+    FLAP_EXITS = 3                 # … with this many exits = a flapping decoder (fault + backoff)
+
+    @staticmethod
+    def _wchar(pid):
+        try:
+            with open("/proc/%d/io" % pid) as f:
+                for ln in f:
+                    if ln.startswith("wchar:"):
+                        return int(ln.split()[1])
+        except (OSError, ValueError):
+            return None
+        return None
+
+    def _audio_flowing(self):
+        """True while rtl_fm's output grew within AUDIO_STALL_S (worker thread)."""
+        proc = self._proc
+        procs = getattr(proc, "procs", None) or []
+        if not procs:
+            return False
+        pid = procs[0].pid
+        n = self._wchar(pid)
+        now = time.time()
+        if pid != self._io_pid:                  # a new rtl_fm: start a fresh baseline
+            self._io_pid, self._io_bytes, self._audio_ts = pid, n, 0.0
+            self._spawn_ts = now
+            return False
+        if n is None:
+            return False
+        if self._io_bytes is not None and n > self._io_bytes:
+            self._audio_ts = now
+        self._io_bytes = n
+        return bool(self._audio_ts) and now - self._audio_ts <= self.AUDIO_STALL_S
+
+    FLAP_HOLD_S = (10, 30, 60)     # hold-down after the 1st / 2nd / later flap detections
+
+    def _note_exit(self, why):
+        """Record one decoder exit / forced respawn. A decoder that keeps dying is not a weather
+        watch: on FLAP_EXITS within FLAP_WINDOW_S raise ONE visible FAULT and hold the respawn
+        down (the page reads NOT MONITORING throughout)."""
+        now = time.time()
+        self._exits.append(now)
+        while self._exits and now - self._exits[0] > self.FLAP_WINDOW_S:
+            self._exits.popleft()
+        self._down = len(self._exits)
+        if self._down >= self.FLAP_EXITS:
+            self._flaps = getattr(self, "_flaps", 0) + 1
+            hold = self.FLAP_HOLD_S[min(self._flaps, len(self.FLAP_HOLD_S)) - 1]
+            self._flap_until = now + hold
+            self._exits.clear()
+            msg = "NWR decoder keeps failing (%s, ×%d in %ds) — retry in %ds" % (
+                why, self._down, int(self.FLAP_WINDOW_S), hold)
+            self._flap_msg = msg
+            self.error.emit(msg)
+            self.fault.emit("FAULT: " + msg)
+
+    def _flap_hold(self):
+        """True while a flapping decoder is held down (status says so)."""
+        until = getattr(self, "_flap_until", 0.0)
+        if not until:
+            return False
+        if time.time() < until:
+            self.status.emit({"src": "NWR", "busy": None, "down": True, "live": False,
+                              "sdr": {"text": "NWR FAULT — %s" % self._flap_msg[:60],
+                                      "state": "alert", "ok": False}})
+            return True
+        self._flap_until = 0.0
+        return False
 
     def set_channel(self, channel, label):
         self.channel, self.label = channel, label
@@ -522,6 +602,8 @@ class NwrWorker(_RadioWorker):
             return
         if not self._ensure_lease():          # gives the radio back (kill, wait, release) if off
             return
+        if self._proc is None and self._flap_hold():
+            return
         if self._retune:
             self._retune = False
             self._respawn()
@@ -530,22 +612,40 @@ class NwrWorker(_RadioWorker):
         if self._proc is not None and self._proc.poll() is not None:   # R3: dead ≠ healthy
             rc = self._proc.poll()
             self._kill()
-            self._down += 1
             self.status.emit({"src": "NWR", "busy": None, "down": True, "live": False,
-                              "sdr": {"text": "NWR DOWN — decoder exited (%s) ×%d" % (rc, self._down),
-                                      "state": "alert", "ok": False}})
-            if self._down >= 3:
-                raise RuntimeError("NWR pipeline keeps exiting (rc %s)" % rc)   # Worker backs off
+                              "sdr": {"text": "NWR DOWN — decoder exited (%s) ×%d" % (
+                                  rc, len(self._exits) + 1), "state": "alert", "ok": False}})
+            self._note_exit("exit %s" % rc)          # FAULT + hold-down when flapping
             return
         self._drain()
         age = (time.time() - self._last_line) if self._last_line else None
-        self._down = 0
-        live = self._proc is not None             # offscreen seam opens nothing: not live
-        self.status.emit({"src": "NWR", "busy": None, "down": False, "last_heard_s": age, "live": live,
+        if self._proc is None:                    # offscreen seam opens nothing: not live
+            self.status.emit({"src": "NWR", "busy": None, "down": False, "live": False,
+                              "sdr": {"text": "NWR — no capture (offline)", "ok": False}})
+            return
+        if not self._audio_flowing():
+            since = time.time() - (self._audio_ts or getattr(self, "_spawn_ts", time.time()))
+            if since >= self.AUDIO_RESPAWN_S:     # wedged: reap it and start again
+                self._kill()
+                self.status.emit({"src": "NWR", "busy": None, "down": True, "live": False,
+                                  "sdr": {"text": "NWR STALLED — no audio for %ds, restarting"
+                                          % int(since), "state": "alert", "ok": False}})
+                self._note_exit("no audio")
+                return
+            self.status.emit({"src": "NWR", "busy": None, "down": False, "live": False,
+                              "sdr": {"text": "NWR — no audio from rtl_fm (%ds)" % int(since)
+                                      if self._audio_ts else "NWR — waiting for audio",
+                                      "state": "warn", "ok": False}})
+            return
+        if getattr(self, "_flaps", 0) and not self._exits and \
+                time.time() - self._audio_ts < 1.0 and self._spawn_ts < time.time() - 30:
+            self._flaps = 0                       # stable for 30 s: clear the FAULT
+            self.fault.emit("")
+        self.status.emit({"src": "NWR", "busy": None, "down": False, "last_heard_s": age, "live": True,
                           "sdr": {"text": "NWR %s %s%s" % (
                               self.label, self.channel,
                               "" if age is None else " · heard %ds ago" % int(age)),
-                          "ok": live}})
+                          "ok": True}})
 
     def _spawn(self):
         import nwr
@@ -944,18 +1044,17 @@ class ProwlApp(PalisadeApp):
         self.stack.setCurrentWidget(self._pages[mode])
         self._sync_mode_buttons()
         self.busy.setText("")
-        if self._started and not self._stopped:
-            if self._worker is not None:
-                self._worker.stop()
-                self._worker.quit()
-                self._worker.wait(3000)      # release the old lease before acquiring the new
-                self._worker = None
-            self._worker = self.make_worker()
-            if self._worker is not None:
-                self._worker.row.connect(self.on_row)
-                self._worker.status.connect(self.on_status)
-                self._worker.error.connect(self.on_error)
-                self._worker.start()
+        # CL5-fix2 (N-c): never wait on the GUI thread. The old sub-mode stops on its own thread
+        # (kill -> wait -> release); the new one starts when it has finished.
+        self.swap_worker()
+        if self.swapping():
+            self.busy.setText("%s: waiting for the previous mode to give the radio back" % mode)
+        self._sync_nwr_state()
+
+    def on_swapped(self):
+        self.busy.setText("" if self._worker is not None
+                          else "%s: radio off — press Enter to start" % self._submode)
+        self._sync_nwr_state()
 
     def _sync_mode_buttons(self):
         self._sync_rail()
@@ -987,11 +1086,17 @@ class ProwlApp(PalisadeApp):
         w = self._worker
         if w is not None and hasattr(w, "hold_off") and not self.demo:
             w.hold_off("PANIC")
+        if not self.demo:
+            self.cancel_swap()           # a switch in flight must not start a decoder after PANIC
         return []
 
     def _resume_radio(self):
         """After a revoke / PANIC the sub-mode stays off until the operator asks again."""
         w = self._worker
+        if w is None and self._started and not self._stopped and self._active \
+                and not self.swapping():
+            self.swap_worker()           # PANIC cancelled a switch: start the shown sub-mode now
+            return True
         if w is not None and getattr(w, "held_off", False) and self._active:
             w.set_active(True)
             self.busy.setText("")

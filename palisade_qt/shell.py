@@ -277,6 +277,17 @@ class PalisadeHub(QtWidgets.QMainWindow):
             did.append("engagement %s ended" % was if was else "no engagement was open")
         except Exception as e:
             did.append("engagement end FAILED: %s" % e)
+        # RA-CL5b N-h: what was running BEFORE the pages stopped their own decoders, so the
+        # banner counts those stops too instead of "no child processes were running"
+        try:
+            pre_kids = list(self._list_children())
+        except Exception:
+            pre_kids = []
+        try:
+            from . import radio_arbiter as _ra
+            pre_owner = _ra.arbiter.owner()
+        except Exception:
+            pre_owner = None
         try:
             for name, page in list(self.pages.items()):     # UI-held permits (BENCH's ack)
                 if self.stack.indexOf(page) >= 0:
@@ -285,7 +296,15 @@ class PalisadeHub(QtWidgets.QMainWindow):
             did.append("permit revoke FAILED: %s" % e)
         try:
             roots = list(self._list_children())
-            did.append(procs.describe(self._stop_tree(roots)))
+            res = self._stop_tree(roots)
+            by_pages = [p for p in pre_kids if p not in roots and not procs.alive(p)]
+            if by_pages and not res.get("targets"):
+                did.append("%d child process(es) stopped by their pages (verified gone)"
+                           % len(by_pages))
+            else:
+                did.append(procs.describe(res))
+                if by_pages:
+                    did.append("%d more stopped by their pages" % len(by_pages))
         except Exception as e:
             did.append("child process stop FAILED: %s" % e)
         try:
@@ -295,6 +314,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
             from . import radio_arbiter
             was = radio_arbiter.arbiter.panic_free()
             st, owner = radio_arbiter.arbiter.state()
+            was = was or pre_owner                 # its page may have released it first
             if st == "FREE":
                 did.append("radio released (was %s)" % radio_arbiter.OWNER_LABELS.get(was, was)
                            if was else "radio was free")

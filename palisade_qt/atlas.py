@@ -393,6 +393,7 @@ class LeaseSource:
         self._thread = None
         self._revoke_req = False       # set on the GUI thread; acted on in poll() (worker thread)
         self.given_back = None         # why this layer gave the radio back (the page unticks it)
+        self.wake = None               # the owning worker's poke(): act on a revoke NOW (CL5-fix2)
 
     def start(self):
         self._on = True          # acquire is deferred to poll() so a busy layer keeps retrying
@@ -405,6 +406,8 @@ class LeaseSource:
         on that acknowledgement."""
         if name == self.NAME:
             self._revoke_req = True
+            if self.wake is not None:
+                self.wake()
 
     def hold_off(self, reason):
         """PANIC: same as a revoke, from the worker thread's next poll()."""
@@ -442,6 +445,10 @@ class LeaseSource:
             return []                                # ACQUIRING: readsb is still being paused
         if self._proc is None and self._thread is None:
             self._proc = self._open_pipe()
+            if self._proc is not None and not arb.held_by(self.NAME):
+                self._has_radio = False              # N-j: lost it while spawning — reap first
+                self._give_back("radio taken back")
+                return []
             if self._proc is not None:
                 self._thread = threading.Thread(target=self._read, daemon=True)
                 self._thread.start()
@@ -559,8 +566,14 @@ class AtlasLiveWorker(Worker):
     publishes ZERO. Device-only bits (real RTL capture, Wi-Fi-monitor ODID) validate on the
     uConsole."""
 
+    # CL5-fix2 (RA-CL5b N-a): a lease layer owns the dongle, so this worker must keep answering a
+    # revoke / forced free while ATLAS is hidden. It is never paused; while hidden it only runs
+    # the lease layers (and starts nothing else), which is what a paused worker used to cost.
+    PAUSE_WHEN_HIDDEN = False
+
     def __init__(self, parent=None):
         super().__init__(demo=False, interval_ms=1000, parent=parent)
+        self._hidden = False
         self._adsb = None
         self._adsb_tried = False
         self._rid = None
@@ -611,6 +624,7 @@ class AtlasLiveWorker(Worker):
             if want and src is None:
                 try:
                     src = cls()
+                    src.wake = self.poke
                     src.start()
                     self._lease_srcs[kind] = src
                 except Exception as e:
@@ -619,10 +633,18 @@ class AtlasLiveWorker(Worker):
                 src.stop()                   # releases the radio via the arbiter
                 del self._lease_srcs[kind]
 
+    def set_hidden(self, hidden):
+        """GUI thread: the page was hidden / fronted. Flag only (the lease layers keep running)."""
+        self._hidden = bool(hidden)
+        self.poke()
+
     def step(self):
+        self._reconcile_leases()
+        if self._hidden:
+            self._step_leases()                  # hidden: only the dongle owners, nothing new
+            return
         self._ensure_sources()
         self._reconcile_rid()
-        self._reconcile_leases()
         # ADS-B is the baseline (reads readsb's json). If a lease-layer holds the radio, readsb is
         # paused -> ADS-B is BUSY (the app shows it) and we publish no stale aircraft.
         if radio_arbiter.arbiter.owner() is None:
@@ -635,6 +657,9 @@ class AtlasLiveWorker(Worker):
             eventbus.bus.publish(ev)
         for ev in df_contacts():             # KrakenSDR array (separate device); no lease
             eventbus.bus.publish(ev)
+        self._step_leases()
+
+    def _step_leases(self):
         for kind, src in list(self._lease_srcs.items()):
             for ev in src.poll():            # acquires if free; nothing while the radio is busy
                 eventbus.bus.publish(ev)
@@ -764,7 +789,17 @@ class AtlasApp(PalisadeApp):
         self._render()
 
     def make_worker(self):
-        return AtlasDemoWorker() if self.demo else AtlasLiveWorker()
+        if self.demo:
+            return AtlasDemoWorker()
+        w = AtlasLiveWorker()
+        w._hidden = not self._active             # started while hidden: run as hidden
+        return w
+
+    def set_active(self, active):
+        super().set_active(active)
+        w = self._worker
+        if w is not None and hasattr(w, "set_hidden"):
+            w.set_hidden(not active)
 
     def on_error(self, msg):
         """CL5-fix 10: a source fault (the BLE Remote-ID scanner, an engine that is missing) is
@@ -839,7 +874,7 @@ class AtlasApp(PalisadeApp):
         owner = radio_arbiter.arbiter.owner()
         ownerlbl = radio_arbiter.owner_label() or owner or "?"
         msgs, busy_now = [], set()
-        for kind in sorted(getattr(self, "_acquiring", ()) & self._layers):
+        for kind in sorted(set(getattr(self, "_acquiring", ())) & self._layers):
             msgs.append("%s: ACQUIRING — pausing readsb" % KIND_LABEL.get(kind, kind))
         for kind in ("station", "vessel"):
             if kind in self._layers and owner and owner != self.LEASE_NAME[kind]:
