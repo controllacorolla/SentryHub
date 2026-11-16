@@ -1,0 +1,150 @@
+=== babel_ais
+  6.50 iter  0 acquire=0.37s panic@0.89s before=(('HELD', 'BABEL'), ['12402:rtl_ais', '12405:sleep']) banner=[no child processes were running · radio released (was BABEL)] -> clean
+ 10.29 iter  1 acquire=0.48s panic@1.13s before=(('HELD', 'BABEL'), ['12422:rtl_ais', '12426:sleep']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 14.06 iter  2 acquire=0.44s panic@1.11s before=(('HELD', 'BABEL'), ['12443:rtl_ais']) banner=[no child processes were running · radio released (was BABEL)] -> clean
+ 17.30 iter  3 acquire=0.02s panic@0.56s before=(('HELD', 'BABEL'), ['12464:rtl_ais', '12467:sleep']) banner=[no child processes were running · radio released (was BABEL)] -> clean
+ 20.74 iter  4 acquire=0.57s panic@0.78s before=(('HELD', 'BABEL'), ['12487:rtl_ais', '12488:sleep']) banner=[no child processes were running · radio released (was BABEL)] -> clean
+ 23.51 iter  5 acquire=0.54s panic@0.14s before=(('ACQUIRING', 'BABEL'), []) banner=[no child processes were running · radio was free] -> clean
+ 26.46 iter  6 acquire=0.28s panic@0.30s before=(('HELD', 'BABEL'), ['12519:rtl_ais', '12520:sleep']) banner=[no child processes were running · radio released (was BABEL)] -> clean
+ 29.81 iter  7 acquire=0.33s panic@0.69s before=(('HELD', 'BABEL'), ['12537:rtl_ais', '12539:sleep']) banner=[no child processes were running · radio released (was BABEL)] -> clean
+ 32.73 iter  8 acquire=0.01s panic@0.26s before=(('HELD', 'BABEL'), ['12556:rtl_ais', '12557:sleep']) banner=[no child processes were running · radio released (was BABEL)] -> clean
+ 36.47 iter  9 acquire=0.17s panic@1.10s before=(('HELD', 'BABEL'), ['12574:rtl_ais', '12579:sleep']) banner=[no child processes were running · radio released (was BABEL)] -> clean
+ 39.30 iter 10 acquire=0.46s panic@0.19s before=(('ACQUIRING', 'BABEL'), []) banner=[no child processes were running · radio was free] -> clean
+ 42.13 iter 11 acquire=0.48s panic@0.17s before=(('ACQUIRING', 'BABEL'), []) banner=[no child processes were running · radio was free] -> clean
+ 42.13 RESULT babel_ais: 0 of 12 iterations violated (arbiter not FREE or decoder alive after PANIC)
+=== babel_pocsag
+  6.48 iter  0 acquire=0.37s panic@0.89s before=(('HELD', 'BABEL'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 10.27 iter  1 acquire=0.48s panic@1.13s before=(('HELD', 'BABEL'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 14.01 iter  2 acquire=0.44s panic@1.11s before=(('HELD', 'BABEL'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 17.21 iter  3 acquire=0.02s panic@0.56s before=(('HELD', 'BABEL'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 20.64 iter  4 acquire=0.57s panic@0.78s before=(('HELD', 'BABEL'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 23.41 iter  5 acquire=0.54s panic@0.14s before=(('ACQUIRING', 'BABEL'), []) banner=[no child processes were running · radio was free] -> clean
+ 26.36 iter  6 acquire=0.28s panic@0.30s before=(('HELD', 'BABEL'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 29.71 iter  7 acquire=0.33s panic@0.69s before=(('HELD', 'BABEL'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 32.64 iter  8 acquire=0.01s panic@0.26s before=(('HELD', 'BABEL'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 36.40 iter  9 acquire=0.17s panic@1.10s before=(('HELD', 'BABEL'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 39.23 iter 10 acquire=0.46s panic@0.19s before=(('ACQUIRING', 'BABEL'), []) banner=[no child processes were running · radio was free] -> clean
+ 42.03 iter 11 acquire=0.48s panic@0.17s before=(('ACQUIRING', 'BABEL'), []) banner=[no child processes were running · radio was free] -> clean
+ 42.03 RESULT babel_pocsag: 0 of 12 iterations violated (arbiter not FREE or decoder alive after PANIC)
+=== sstv
+  6.51 iter  0 acquire=0.37s panic@0.89s before=(('HELD', 'BABEL-SSTV'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 10.28 iter  1 acquire=0.48s panic@1.13s before=(('HELD', 'BABEL-SSTV'), ['12886:python3']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 14.04 iter  2 acquire=0.44s panic@1.11s before=(('HELD', 'BABEL-SSTV'), ['12905:python3']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 17.24 iter  3 acquire=0.02s panic@0.56s before=(('HELD', 'BABEL-SSTV'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 20.66 iter  4 acquire=0.57s panic@0.78s before=(('HELD', 'BABEL-SSTV'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 23.42 iter  5 acquire=0.54s panic@0.14s before=(('ACQUIRING', 'BABEL-SSTV'), []) banner=[no child processes were running · radio was free] -> clean
+ 26.35 iter  6 acquire=0.28s panic@0.30s before=(('HELD', 'BABEL-SSTV'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 29.67 iter  7 acquire=0.33s panic@0.69s before=(('HELD', 'BABEL-SSTV'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 32.56 iter  8 acquire=0.01s panic@0.26s before=(('HELD', 'BABEL-SSTV'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 36.30 iter  9 acquire=0.17s panic@1.10s before=(('HELD', 'BABEL-SSTV'), ['13017:python3']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 39.13 iter 10 acquire=0.46s panic@0.19s before=(('ACQUIRING', 'BABEL-SSTV'), []) banner=[no child processes were running · radio was free] -> clean
+ 41.94 iter 11 acquire=0.48s panic@0.17s before=(('ACQUIRING', 'BABEL-SSTV'), []) banner=[no child processes were running · radio was free] -> clean
+ 41.94 RESULT sstv: 0 of 12 iterations violated (arbiter not FREE or decoder alive after PANIC)
+=== nwr
+  6.29 iter  0 acquire=0.37s panic@0.89s before=(('HELD', 'PROWL-NWR'), ['13081:python3', '13082:cat']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 10.05 iter  1 acquire=0.48s panic@1.13s before=(('HELD', 'PROWL-NWR'), ['13102:python3', '13103:cat']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 13.78 iter  2 acquire=0.44s panic@1.11s before=(('HELD', 'PROWL-NWR'), ['13120:python3', '13121:cat']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 16.96 iter  3 acquire=0.02s panic@0.56s before=(('HELD', 'PROWL-NWR'), ['13139:python3', '13140:cat']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 20.37 iter  4 acquire=0.57s panic@0.78s before=(('HELD', 'PROWL-NWR'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 23.14 iter  5 acquire=0.54s panic@0.14s before=(('ACQUIRING', 'PROWL-NWR'), []) banner=[no child processes were running · radio was free] -> clean
+ 26.07 iter  6 acquire=0.28s panic@0.30s before=(('HELD', 'PROWL-NWR'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 29.41 iter  7 acquire=0.33s panic@0.69s before=(('HELD', 'PROWL-NWR'), ['13201:python3', '13202:cat']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 32.30 iter  8 acquire=0.01s panic@0.26s before=(('HELD', 'PROWL-NWR'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 36.02 iter  9 acquire=0.17s panic@1.10s before=(('HELD', 'PROWL-NWR'), ['13234:python3', '13235:cat']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 38.83 iter 10 acquire=0.46s panic@0.19s before=(('ACQUIRING', 'PROWL-NWR'), []) banner=[no child processes were running · radio was free] -> clean
+ 41.64 iter 11 acquire=0.48s panic@0.17s before=(('ACQUIRING', 'PROWL-NWR'), []) banner=[no child processes were running · radio was free] -> clean
+ 41.64 RESULT nwr: 0 of 12 iterations violated (arbiter not FREE or decoder alive after PANIC)
+=== fm
+  6.28 iter  0 acquire=0.37s panic@0.89s before=(('HELD', 'PROWL-FM'), ['13314:python3', '13315:cat', '13317:cat(Z)']) banner=[3 of 3 child process(es) stopped (verified gone) · radio was free] -> clean
+ 10.05 iter  1 acquire=0.48s panic@1.13s before=(('HELD', 'PROWL-FM'), ['13343:python3', '13344:cat', '13346:cat(Z)']) banner=[3 of 3 child process(es) stopped (verified gone) · radio was free] -> clean
+ 13.83 iter  2 acquire=0.44s panic@1.11s before=(('HELD', 'PROWL-FM'), ['13370:python3', '13371:cat', '13373:cat(Z)']) banner=[3 of 3 child process(es) stopped (verified gone) · radio was free] -> clean
+ 17.06 iter  3 acquire=0.02s panic@0.56s before=(('HELD', 'PROWL-FM'), ['13395:python3', '13396:cat', '13398:cat(Z)']) banner=[3 of 3 child process(es) stopped (verified gone) · radio was free] -> clean
+ 20.48 iter  4 acquire=0.57s panic@0.78s before=(('HELD', 'PROWL-FM'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 23.26 iter  5 acquire=0.54s panic@0.14s before=(('ACQUIRING', 'PROWL-FM'), []) banner=[no child processes were running · radio was free] -> clean
+ 26.19 iter  6 acquire=0.28s panic@0.30s before=(('HELD', 'PROWL-FM'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 29.53 iter  7 acquire=0.33s panic@0.69s before=(('HELD', 'PROWL-FM'), ['13467:python3', '13468:cat', '13470:cat(Z)']) banner=[3 of 3 child process(es) stopped (verified gone) · radio was free] -> clean
+ 32.44 iter  8 acquire=0.01s panic@0.26s before=(('HELD', 'PROWL-FM'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 36.17 iter  9 acquire=0.17s panic@1.10s before=(('HELD', 'PROWL-FM'), ['13509:python3', '13510:cat', '13512:cat(Z)']) banner=[3 of 3 child process(es) stopped (verified gone) · radio was free] -> clean
+ 39.00 iter 10 acquire=0.46s panic@0.19s before=(('ACQUIRING', 'PROWL-FM'), []) banner=[no child processes were running · radio was free] -> clean
+ 41.80 iter 11 acquire=0.48s panic@0.17s before=(('ACQUIRING', 'PROWL-FM'), []) banner=[no child processes were running · radio was free] -> clean
+ 41.80 RESULT fm: 0 of 12 iterations violated (arbiter not FREE or decoder alive after PANIC)
+=== scan
+  6.27 iter  0 acquire=0.37s panic@0.89s before=(('HELD', 'PROWL-SCAN'), ['13573:python3', '13574:cat']) banner=[2 of 2 child process(es) stopped (verified gone) · radio was free] -> clean
+ 10.06 iter  1 acquire=0.48s panic@1.13s before=(('HELD', 'PROWL-SCAN'), ['13598:python3', '13599:cat']) banner=[2 of 2 child process(es) stopped (verified gone) · radio was free] -> clean
+ 13.83 iter  2 acquire=0.44s panic@1.11s before=(('HELD', 'PROWL-SCAN'), ['13620:python3', '13621:cat']) banner=[2 of 2 child process(es) stopped (verified gone) · radio released (was PROWL SC)] -> clean
+ 17.08 iter  3 acquire=0.02s panic@0.56s before=(('HELD', 'PROWL-SCAN'), ['13642:python3', '13643:cat']) banner=[2 of 2 child process(es) stopped (verified gone) · radio released (was PROWL SC)] -> clean
+ 20.55 iter  4 acquire=0.57s panic@0.78s before=(('HELD', 'PROWL-SCAN'), ['13664:python3', '13665:cat']) banner=[2 of 2 child process(es) stopped (verified gone) · radio released (was PROWL SC)] -> clean
+ 23.34 iter  5 acquire=0.54s panic@0.14s before=(('ACQUIRING', 'PROWL-SCAN'), []) banner=[no child processes were running · radio was free] -> clean
+ 26.27 iter  6 acquire=0.28s panic@0.30s before=(('HELD', 'PROWL-SCAN'), ['13700:python3']) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 29.62 iter  7 acquire=0.33s panic@0.69s before=(('HELD', 'PROWL-SCAN'), ['13719:python3', '13720:cat']) banner=[2 of 2 child process(es) stopped (verified gone) · radio released (was PROWL SC)] -> clean
+ 32.53 iter  8 acquire=0.01s panic@0.26s before=(('HELD', 'PROWL-SCAN'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 36.30 iter  9 acquire=0.17s panic@1.10s before=(('HELD', 'PROWL-SCAN'), ['13756:python3', '13757:cat']) banner=[2 of 2 child process(es) stopped (verified gone) · radio released (was PROWL SC)] -> clean
+ 39.12 iter 10 acquire=0.46s panic@0.19s before=(('ACQUIRING', 'PROWL-SCAN'), []) banner=[no child processes were running · radio was free] -> clean
+ 41.90 iter 11 acquire=0.48s panic@0.17s before=(('ACQUIRING', 'PROWL-SCAN'), []) banner=[no child processes were running · radio was free] -> clean
+ 41.90 RESULT scan: 0 of 12 iterations violated (arbiter not FREE or decoder alive after PANIC)
+=== prism
+  5.94 iter  0 acquire=0.37s panic@0.89s before=(('HELD', 'PRISM'), ['13822:rtl_power', '13826:sleep']) banner=[no child processes were running · radio was free] -> clean
+  9.72 iter  1 acquire=0.48s panic@1.13s before=(('HELD', 'PRISM'), ['13841:rtl_power', '13843:sleep']) banner=[no child processes were running · radio released (was PRISM)] -> clean
+ 13.47 iter  2 acquire=0.44s panic@1.11s before=(('HELD', 'PRISM'), ['13858:rtl_power', '13860:sleep']) banner=[no child processes were running · radio was free] -> clean
+ 16.65 iter  3 acquire=0.02s panic@0.56s before=(('HELD', 'PRISM'), ['13875:rtl_power', '13877:sleep']) banner=[no child processes were running · radio was free] -> clean
+ 20.06 iter  4 acquire=0.57s panic@0.78s before=(('HELD', 'PRISM'), ['13892:rtl_power', '13894:sleep']) banner=[no child processes were running · radio was free] -> clean
+ 22.84 iter  5 acquire=0.54s panic@0.14s before=(('ACQUIRING', 'PRISM'), []) banner=[no child processes were running · radio was free] -> clean
+ 25.79 iter  6 acquire=0.28s panic@0.30s before=(('HELD', 'PRISM'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 29.13 iter  7 acquire=0.33s panic@0.69s before=(('HELD', 'PRISM'), ['13942:rtl_power', '13944:sleep']) banner=[no child processes were running · radio released (was PRISM)] -> clean
+ 32.03 iter  8 acquire=0.01s panic@0.26s before=(('HELD', 'PRISM'), ['13959:rtl_power', '13961:sleep']) banner=[no child processes were running · radio was free] -> clean
+ 35.76 iter  9 acquire=0.17s panic@1.10s before=(('HELD', 'PRISM'), ['13976:rtl_power', '13978:sleep']) banner=[no child processes were running · radio was free] -> clean
+ 38.58 iter 10 acquire=0.46s panic@0.19s before=(('ACQUIRING', 'PRISM'), []) banner=[no child processes were running · radio was free] -> clean
+ 41.38 iter 11 acquire=0.48s panic@0.17s before=(('ACQUIRING', 'PRISM'), []) banner=[no child processes were running · radio was free] -> clean
+ 41.38 RESULT prism: 0 of 12 iterations violated (arbiter not FREE or decoder alive after PANIC)
+=== atlas_ais
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/atlas.py", line 832, in _render
+    self._update_busy()
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/atlas.py", line 842, in _update_busy
+    for kind in sorted(getattr(self, "_acquiring", ()) & self._layers):
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+TypeError: unsupported operand type(s) for &: 'tuple' and 'set'
+  5.91 iter  0 acquire=0.37s panic@0.89s before=(('HELD', 'ATLAS-AIS'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+  9.69 iter  1 acquire=0.48s panic@1.13s before=(('HELD', 'ATLAS-AIS'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 13.44 iter  2 acquire=0.44s panic@1.11s before=(('HELD', 'ATLAS-AIS'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 16.62 iter  3 acquire=0.02s panic@0.56s before=(('HELD', 'ATLAS-AIS'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 20.01 iter  4 acquire=0.57s panic@0.78s before=(('ACQUIRING', 'ATLAS-AIS'), []) banner=[no child processes were running · radio was free] -> clean
+ 22.78 iter  5 acquire=0.54s panic@0.14s before=(('FREE', None), []) banner=[no child processes were running · radio released (was AIS)] -> clean
+ 25.71 iter  6 acquire=0.28s panic@0.30s before=(('FREE', None), []) banner=[no child processes were running · radio released (was AIS)] -> clean
+ 29.02 iter  7 acquire=0.33s panic@0.69s before=(('ACQUIRING', 'ATLAS-AIS'), []) banner=[no child processes were running · radio was free] -> clean
+ 31.93 iter  8 acquire=0.01s panic@0.26s before=(('FREE', None), []) banner=[no child processes were running · radio released (was AIS)] -> clean
+ 35.66 iter  9 acquire=0.17s panic@1.10s before=(('HELD', 'ATLAS-AIS'), []) banner=[no child processes were running · radio was free] -> clean
+ 38.49 iter 10 acquire=0.46s panic@0.19s before=(('FREE', None), []) banner=[no child processes were running · radio released (was AIS)] -> clean
+ 41.28 iter 11 acquire=0.48s panic@0.17s before=(('FREE', None), []) banner=[no child processes were running · radio released (was AIS)] -> clean
+ 41.29 RESULT atlas_ais: 0 of 12 iterations violated (arbiter not FREE or decoder alive after PANIC)
+=== atlas_aprs
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/atlas.py", line 832, in _render
+    self._update_busy()
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/atlas.py", line 842, in _update_busy
+    for kind in sorted(getattr(self, "_acquiring", ()) & self._layers):
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+TypeError: unsupported operand type(s) for &: 'tuple' and 'set'
+  5.95 iter  0 acquire=0.37s panic@0.89s before=(('HELD', 'ATLAS-APRS'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+  9.71 iter  1 acquire=0.48s panic@1.13s before=(('HELD', 'ATLAS-APRS'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 13.46 iter  2 acquire=0.44s panic@1.11s before=(('HELD', 'ATLAS-APRS'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 16.64 iter  3 acquire=0.02s panic@0.56s before=(('HELD', 'ATLAS-APRS'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 20.07 iter  4 acquire=0.57s panic@0.78s before=(('ACQUIRING', 'ATLAS-APRS'), []) banner=[no child processes were running · radio was free] -> clean
+ 22.86 iter  5 acquire=0.54s panic@0.14s before=(('FREE', None), []) banner=[no child processes were running · radio released (was APRS)] -> clean
+ 25.81 iter  6 acquire=0.28s panic@0.30s before=(('FREE', None), []) banner=[no child processes were running · radio released (was APRS)] -> clean
+ 29.14 iter  7 acquire=0.33s panic@0.69s before=(('ACQUIRING', 'ATLAS-APRS'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 32.04 iter  8 acquire=0.01s panic@0.26s before=(('FREE', None), []) banner=[no child processes were running · radio released (was APRS)] -> clean
+ 35.77 iter  9 acquire=0.17s panic@1.10s before=(('HELD', 'ATLAS-APRS'), []) banner=[1 of 1 child process(es) stopped (verified gone) · radio was free] -> clean
+ 38.59 iter 10 acquire=0.46s panic@0.19s before=(('FREE', None), []) banner=[no child processes were running · radio released (was APRS)] -> clean
+ 41.40 iter 11 acquire=0.48s panic@0.17s before=(('FREE', None), []) banner=[no child processes were running · radio released (was APRS)] -> clean
+ 41.40 RESULT atlas_aprs: 0 of 12 iterations violated (arbiter not FREE or decoder alive after PANIC)
+=== atlas_ais_hidden
+  7.02 iter  0 acquire=0.37s panic@0.89s before=(('HELD', 'ATLAS-AIS'), []) banner=[no child processes were running · radio released (was AIS)] -> clean
+ 11.80 iter  1 acquire=0.48s panic@1.13s before=(('FREE', None), []) banner=[no child processes were running · radio was free] -> clean
+ 16.55 iter  2 acquire=0.44s panic@1.11s before=(('FREE', None), []) banner=[no child processes were running · radio was free] -> clean
+ 20.76 iter  3 acquire=0.02s panic@0.56s before=(('FREE', None), []) banner=[no child processes were running · radio was free] -> clean
+ 25.20 iter  4 acquire=0.57s panic@0.78s before=(('FREE', None), []) banner=[no child processes were running · radio was free] -> clean
+ 28.97 iter  5 acquire=0.54s panic@0.14s before=(('FREE', None), []) banner=[no child processes were running · radio was free] -> clean
+ 32.91 iter  6 acquire=0.28s panic@0.30s before=(('FREE', None), []) banner=[no child processes were running · radio was free] -> clean
+ 37.23 iter  7 acquire=0.33s panic@0.69s before=(('FREE', None), []) banner=[no child processes were running · radio was free] -> clean
+ 37.23 RESULT atlas_ais_hidden: 0 of 8 iterations violated (arbiter not FREE or decoder alive after PANIC)

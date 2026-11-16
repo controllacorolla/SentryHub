@@ -1,0 +1,30 @@
+=== release=3.5
+  1.50 LEASE.release PROWL-SCAN start (3.5 s)
+  5.00 LEASE.release PROWL-SCAN done
+
+rc=-6
+stderr: QThread: Destroyed while thread '' is still running
+=== release=2.2 trap
+  1.46 LEASE.release PROWL-SCAN start (2.2 s)
+  3.66 LEASE.release PROWL-SCAN done
+  8.67 NWR live, children=['15011:python3', '15012:multimon-ng', '15066:sleep']
+  9.68 LEASE.release PROWL-NWR start (2.2 s)
+ 11.68 switch_subtab blocked 3.00 s
+ 11.88 LEASE.release PROWL-NWR done
+
+rc=-6
+stderr: QThread: Destroyed while thread '' is still running
+=== release=1.0 trap
+  1.44 LEASE.release PROWL-SCAN start (1.0 s)
+  2.44 LEASE.release PROWL-SCAN done
+  7.45 NWR live, children=['15102:python3', '15103:multimon-ng', '15154:sleep']
+  8.46 LEASE.release PROWL-NWR start (1.0 s)
+  9.46 LEASE.release PROWL-NWR done
+  9.46 switch_subtab blocked 2.01 s
+  9.68 old NwrWorker object after switch: collected ; isRunning=None
+ 13.69 still alive at end
+ 13.71 LEASE.release PROWL-FM start (1.0 s)
+ 14.71 LEASE.release PROWL-FM done
+
+rc=0
+stderr: Exception ignored in atexit callback: <built-in function __moduleShutdown> | Traceback (most recent call last): |   File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/shell.py", line 339, in eventFilter |     if ev.type() == QtCore.QEvent.KeyPress: |        ^^^^^^^^^ |   File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/shell.py", line 339, in eventFilter |     if ev.type() == QtCore.QEvent.KeyPress: |        ^^^^^^^^^ |   File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/sc

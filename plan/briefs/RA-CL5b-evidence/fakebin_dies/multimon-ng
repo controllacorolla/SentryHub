@@ -1,0 +1,4 @@
+#!/bin/sh
+# multimon-ng that dies after 2 s
+sleep 2
+exit 3

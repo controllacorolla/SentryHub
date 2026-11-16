@@ -1,0 +1,8 @@
+  0.21 capture: 339 s (frame at 200-329 s); rotation/window at 240 s
+  4.52 RA-CL5 tip ed4694a (rolling window) -> files ['iss_pass.wav']
+  4.52     decode_wav(iss_pass.wav: DECODED PD120 496 lines
+  8.30     what the Tk app decodes on stop (r.path): DECODED PD120
+ 10.94 CL5-fix tip (append+rotate) -> files ['iss_pass.prev.wav', 'iss_pass.wav']
+ 10.94     decode_wav(iss_pass.prev.wav: DECODED PD120 148 lines
+ 10.94     decode_wav(iss_pass.wav: no SSTV header found - nothing was being sent, or the signal
+ 11.14     what the Tk app decodes on stop (r.path): FAILS - no SSTV header found - nothing was being sent, or the signal was too w

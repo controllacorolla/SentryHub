@@ -1,0 +1,3 @@
+#!/bin/sh
+# fake rtl_fm on an empty channel: hardware squelch sends nothing
+exec sleep 600

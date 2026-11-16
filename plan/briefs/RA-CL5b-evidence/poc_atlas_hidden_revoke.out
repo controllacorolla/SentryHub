@@ -1,0 +1,49 @@
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/atlas.py", line 832, in _render
+    self._update_busy()
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/atlas.py", line 842, in _update_busy
+    for kind in sorted(getattr(self, "_acquiring", ()) & self._layers):
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+TypeError: unsupported operand type(s) for &: 'tuple' and 'set'
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/atlas.py", line 752, in <lambda>
+    b.clicked.connect(lambda on, kk=k: self._toggle(kk, on))
+                                       ^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/atlas.py", line 764, in _toggle
+    self._render()
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/atlas.py", line 832, in _render
+    self._update_busy()
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/atlas.py", line 842, in _update_busy
+    for kind in sorted(getattr(self, "_acquiring", ()) & self._layers):
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+TypeError: unsupported operand type(s) for &: 'tuple' and 'set'
+  1.94 ARBITER.changed -> 'ATLAS-AIS'
+  1.94 ARBITER.changed -> 'ATLAS-AIS'
+  4.75 ATLAS front, AIS on: arbiter=('HELD', 'ATLAS-AIS') children=['11142:rtl_ais', '11157:sleep']
+  6.27 ATLAS hidden: worker paused=True arbiter=('HELD', 'ATLAS-AIS') children=['11142:rtl_ais', '11166:sleep']
+  6.27 revoke() returned in 0.000 s
+  6.78 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['11142:rtl_ais', '11170:sleep']
+  7.29 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['11142:rtl_ais', '11174:sleep']
+  7.80 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['11142:rtl_ais', '11178:sleep']
+  8.31 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['11142:rtl_ais', '11181:sleep']
+  8.82 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['11142:rtl_ais', '11185:sleep']
+  9.33 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['11142:rtl_ais', '11188:sleep']
+  9.84 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['11142:rtl_ais', '11192:sleep']
+ 10.35 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['11142:rtl_ais', '11195:sleep']
+ 10.87 SAMPLE arbiter=('HELD', 'ATLAS-AIS') revoking=True children=['11142:rtl_ais', '11199:sleep']
+[radio] ATLAS-AIS did not release within the revoke timeout — forcing free
+ 11.28 LEASE.release ATLAS-AIS children-at-release: ['11142:rtl_ais', '11202:sleep']
+ 11.28 ARBITER.changed -> ''
+ 11.38 SAMPLE arbiter=('FREE', None) revoking=False children=['11142:rtl_ais', '11202:sleep']
+ 11.89 SAMPLE arbiter=('FREE', None) revoking=False children=['11142:rtl_ais', '11207:sleep']
+ 12.40 SAMPLE arbiter=('FREE', None) revoking=False children=['11142:rtl_ais', '11210:sleep']
+ 12.90 SAMPLE arbiter=('FREE', None) revoking=False children=['11142:rtl_ais', '11214:sleep']
+ 13.41 SAMPLE arbiter=('FREE', None) revoking=False children=['11142:rtl_ais', '11217:sleep']
+ 13.41 RESULT radio FREE while rtl_ais alive (ATLAS hidden): ['11142:rtl_ais', '11202:sleep']
+ 13.41 ARBITER.changed -> 'PROWL-FM'
+ 13.42 ARBITER.changed -> 'PROWL-FM'
+ 13.42 next request('PROWL-FM') -> True ; children=['11142:rtl_ais', '11217:sleep']
+ 13.43 LEASE.release PROWL-FM children-at-release: ['11142:rtl_ais', '11217:sleep']
+ 13.43 ARBITER.changed -> ''
+ 15.45 ATLAS fronted again: arbiter=('FREE', None) children=[]
+ 16.46 END arbiter=('FREE', None) children=[]

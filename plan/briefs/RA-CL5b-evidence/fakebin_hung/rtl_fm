@@ -1,0 +1,3 @@
+#!/bin/sh
+# rtl_fm wedged on a USB stall: alive, no samples
+exec sleep 600

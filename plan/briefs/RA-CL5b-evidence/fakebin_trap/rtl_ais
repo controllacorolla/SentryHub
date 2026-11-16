@@ -1,0 +1,4 @@
+#!/bin/sh
+# decoder stage that ignores SIGTERM
+trap '' TERM
+while :; do echo '!AIVDM,1,1,,A,15M67FC000G?ufbE`FepT@3n00Sa,0*5C'; sleep 0.2; done

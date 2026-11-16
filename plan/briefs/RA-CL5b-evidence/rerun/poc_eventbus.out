@@ -1,0 +1,5 @@
+  0.01 publisher mutation after publish reaches the log: False
+  0.01 subscriber B saw: 'original' ; log now holds: 'original'
+  0.01 publish() return value aliases the log entry: False
+  0.03 stall: pending=1500 dropped=0 (bounded backlog)
+  1.03 after the GUI resumes: delivered=1500 of 1500 ; log holds=1000 ; last delivered='alert 1499'

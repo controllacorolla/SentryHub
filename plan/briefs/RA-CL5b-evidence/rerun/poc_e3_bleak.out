@@ -1,0 +1,2 @@
+  0.39 FAULT surfaced: Remote-ID BLE scan failed: [Errno 2] No such file or directory
+  2.35 bleak 3.1.0 ; RidSource.state=fault
