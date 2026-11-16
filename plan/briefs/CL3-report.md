@@ -87,3 +87,35 @@ Fail-first: `tests/test_cl3_fix.py` on the previous tip → **16 failed, 3 passe
 Suite here (Linux 3.13, xvfb, known exclusions as before): green except the two Linux-font strip
 tests (`test_every_page_and_subtab_fits_1280x720`, `test_strip_fits_1280_with_a_huge_scope`: 1284 px —
 pre-existing on `main`, see RA-MAIN-1). pyflakes clean.
+
+---
+
+## CL3-fix2 — close RA-CL3b B3 + N14 (planner thread, 2026-11-15)
+
+Root cause, verified in code: `executor.record()` routed every record through `chain.current()`,
+i.e. the engagement in force **at record time**. A bound child killed after the hub's END saw no
+engagement and wrote kill/exit to a fresh session chain (B3); a bench ticket issued before START
+wrote its exit into the new engagement's chain (N14). The prior reading (tie each ticket to the
+chain it was issued under) was correct but not sufficient alone: the hub also closed the chain
+before a child could report, and an issued-but-unused ticket stayed ISSUED forever.
+
+| ID | Status | Fix | Test (`tests/test_cl3_fix2.py`) |
+|---|---|---|---|
+| **B3** END leaves a bound child's row RUNNING | CLOSED | (1) `executor.issue` stores the id of the chain its `issue` record went to (`entry["chain"]`); `refuse_ticket`/`spawn`/`write`/`kill`/`exit` go to `chain.for_id(that id)`; no fallback to another chain if it cannot be opened. (2) `engagement.end()` → `_settle_tickets()`: after publishing *expired*, waits ≤ `END_DRAIN_S` (2 s) for every spawned engagement ticket's `exit`, then records `kill` (by=`end`, "exit not confirmed") for spawned tickets with no kill, and `refuse_ticket` ("void") for never-used ones — all **before** `engagement.close`. Only issuer=`engagement` tickets (txguard bench tickets are not ended by END, so END writes nothing false about them). (3) the engagement ticket's re-check also requires `current_chain_id()` == the id at issue: a ticket/process from alpha is void under bravo, even with the same scope, even if a child misses the END→START gap. (4) `states()` folds a `refuse_ticket` for a known ticket into that action's row (REFUSED), instead of a second row beside a stale ISSUED. | `test_b3_end_while_a_bound_childs_process_runs_records_kill_and_exit_before_close` (the RA PoC inverted: real bound child, child-written kill + exit −15 before close, row KILLED, no session chain), `test_b3_end_leaves_no_ticket_running_or_issued_even_without_confirmation`, `test_b3_end_while_a_hub_process_runs_still_closes_last`, `test_b3_a_ticket_from_alpha_is_void_under_bravo`, `test_b3_a_rollover_the_child_never_saw_still_kills_the_process`, `test_b3_end_does_not_claim_to_kill_a_txguard_ticket_it_does_not_end`, `test_executor_never_falls_back_to_another_chain_when_the_bound_one_is_gone` |
+| **N14** pre-START ticket exits into the engagement | CLOSED | same binding (1) | `test_n14_a_ticket_from_before_start_keeps_its_exit_in_the_session_chain` (RA PoC inverted) |
+| N12, N13, N15, R1, N11 | OPEN (not in this fix) | out of scope of this brief; tracked from RA-CL3b | — |
+
+Behaviour change to note: END now blocks up to 2 s **only** while a bound child's engagement
+process has not yet reported its exit (typical: one 250 ms sweep + SIGTERM). A txguard bench
+ticket issued during an engagement keeps running past END (unchanged gate semantics) and its exit
+lands after `engagement.close` in the chain it was issued under.
+
+Fail-first: `tests/test_cl3_fix2.py` on `ab209b7` → **7 failed, 1 passed** (the hub-process case was
+already OK); after → 8 passed (5 repeat runs, no flake). RA-CL3b PoCs: both `test_DEFECT_end_while_a_bound_child…`
+and `test_DEFECT_ticket_from_before_START…` now FAIL (= defect gone); every `OK_*`/`FIXED_*` still passes.
+
+Full suite (Linux, Python 3.12.3, PySide6, tkinter, xvfb offscreen): **1293 passed, 4 failed, 5 skipped**.
+The 4 are the known baseline (`test_audit_tiles::test_undecodable_tile_is_marked_failed`,
+`test_hwlab::test_doctor_hwbench_check`, `test_sstvdec::…iss_passes…`, flaky
+`test_cl1_screen::test_up_down_drive_the_list_and_the_detail_follows`). CL1/CL2/CL3 test files
+re-run after the final edit: 119 passed (+ the flaky up/down). pyflakes clean on touched files.

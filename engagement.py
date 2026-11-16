@@ -507,6 +507,72 @@ def start(name, authorization, scope, operator=None, hours=ENGAGEMENT_HOURS_DEFA
         name, len(entries), h)
 
 
+END_DRAIN_S = 2.0                   # how long END waits for bound children to record kill/exit
+
+
+def _open_tickets(ch):
+    """{ticket: info} for every ENGAGEMENT-issued ticket of `ch` (the ones END voids and kills; a
+    txguard bench ticket is not ended by END and keeps its own outcome) without a final outcome
+    yet, re-read from disk so a
+    bound child's records are seen. info["spawned"]: it has a spawn record (a process exists);
+    info["killed"]: a kill is recorded but its exit is not (yet). Outcome = exit (process), write
+    (device), or refuse_ticket (void). None if the chain does not verify."""
+    ok, _why = ch.verify()
+    if not ok:
+        return None
+    out = {}
+    for r in ch.records:
+        tid, ev = r.get("ticket"), r.get("event")
+        if not tid:
+            continue
+        if ev == "issue":
+            if r.get("issuer") != "engagement":
+                continue                # txguard / ungated tickets do not end with the engagement
+            out.setdefault(tid, {"label": r.get("label", ""), "target": str(r.get("target", "")),
+                                 "spawned": False, "killed": False})
+        elif tid not in out:
+            continue
+        elif ev == "spawn":
+            out[tid]["spawned"] = True
+        elif ev == "kill":
+            out[tid]["killed"] = True
+        elif ev in ("exit", "write", "refuse_ticket"):
+            out[tid]["done"] = True
+    return {t: i for t, i in out.items() if not i.get("done")}
+
+
+def _settle_tickets(ch):
+    """RA-CL3b B3: before engagement.close, every ticket of this engagement gets an outcome in
+    THIS chain, so no row stays RUNNING / ISSUED after END.
+
+    The engagement has just been marked expired and published (the caller's _notify): this
+    process's executor has already killed its own processes (kill + exit recorded), and every bound
+    child's executor sees the expired engagement on its next sweep, kills its process and records
+    kill + exit — in this chain, because a ticket is bound to the chain it was issued under. Wait up
+    to END_DRAIN_S for every spawned ticket's exit. Then, for any ticket still open:
+      spawned, no kill -> a `kill` record by END (the reason says the exit was not confirmed in
+                          time; the process's own kill/exit still land here later if it reports)
+      never spawned    -> a `refuse_ticket` record: the ticket is void (its re-check fails now)."""
+    deadline = time.monotonic() + END_DRAIN_S
+    open_ = _open_tickets(ch)
+    while open_ and any(i["spawned"] for i in open_.values()) and time.monotonic() < deadline:
+        time.sleep(0.05)
+        open_ = _open_tickets(ch)
+    for tid, i in (open_ or {}).items():
+        common = dict(ticket=tid, label=i["label"], target=i["target"], by="end")
+        try:
+            if i["spawned"]:
+                if not i["killed"]:
+                    ch.record("kill", reason="engagement ended — process exit not confirmed "
+                                             "within %gs (kill signalled by END)" % END_DRAIN_S,
+                              **common)
+            else:
+                ch.record("refuse_ticket", reason="engagement ended before the ticket was used "
+                                                  "— void", **common)
+        except Exception:
+            pass                        # END is the kill path; never block it on a record
+
+
 def end():
     if _shared() is not None:
         return None
@@ -514,10 +580,16 @@ def end():
     changed = _ENG["active"]
     ch = _active_chain() if changed else None
     if changed:
-        # the executor kills registered processes on _notify(); their kill/exit records must land
-        # in THIS chain, so the engagement stays routable (active, expired) until that is done
+        # the executor kills registered processes on _notify() (here, and in every bound child via
+        # the published state); their kill/exit records must land in THIS chain, so the engagement
+        # stays routable (active, expired) until every ticket has an outcome (RA-CL3b B3)
         _ENG["expires"] = _now()
         _notify()
+        if ch is not None:
+            try:
+                _settle_tickets(ch)
+            except Exception:
+                pass
     _ENG.update(active=False, name=None, authorization=None, scope=[], entries=[], operator=None,
                 started=None, expires=None, expiry_notified=False, chain=None)
     if ch is not None:
@@ -755,7 +827,15 @@ def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=Non
     import executor
     binding = _ACTIONS[-1]["binding"] if _ACTIONS else None
 
+    issued_under = current_chain_id()
+
     def recheck():
+        # RA-CL3b B3: the ticket belongs to the engagement it was issued under. After END + START
+        # (even within the ticket TTL, even if the new scope covers the target) it is void, and a
+        # process it started is killed — its evidence lives in the old engagement's chain.
+        if current_chain_id() != issued_under:
+            return False, ("engagement changed since this ticket was issued — authorize again "
+                           "under the current engagement")
         r = check(action, target, kind)
         if not r[0]:
             return r[0], r[1]

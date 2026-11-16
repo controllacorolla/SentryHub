@@ -20,7 +20,9 @@ Which chain receives a record (RA-CL3 B1/B2): `current()` asks the engagement en
 chain id of the engagement in force RIGHT NOW (the hub's own, or the hub's as published to a
 bound child) and opens/caches by that id — never a process-global that only the hub sets. With no
 engagement open, records go to a per-process session chain (a conducted bench run is still
-evidence).
+evidence). An executor ticket is bound to the chain it was ISSUED under: its refuse_ticket / spawn
+/ write / kill / exit go to that chain by id (`for_id`), never to `current()` at record time
+(RA-CL3b B3/N14), so END and START never misfile a running ticket's outcome.
 
 Limits, stated plainly: the HMAC key is a 0600 file of the same user. The chain is tamper-evident
 against anything that cannot read that file. A same-user attacker WITH the key can rewrite
@@ -300,14 +302,14 @@ class Chain:
                              "binding": r.get("binding", ""), "detail": "", "ticket": None}
                 order.append(key)
                 pending[(r.get("action", ""), str(r.get("target", "")))] = key
+            elif ev == "refuse_ticket" and r.get("ticket") in by_ticket:
+                # RA-CL3b B3: a known ticket refused at redeem, or voided at END, is that
+                # action's row — REFUSED, not a second row beside a stale ISSUED one
+                row = rows[by_ticket[r["ticket"]]]
+                row["state"], row["detail"] = "REFUSED", _short_reason(r.get("reason", ""))
             elif ev in ("refuse", "refuse_ticket"):
                 key = ("r", r["seq"])
-                why = str(r.get("reason", ""))
-                short = ("scope" if "not in the engagement scope" in why else
-                         "expired" if "expired" in why else
-                         "no eng" if "no active engagement" in why else
-                         "stale" if "stale" in why else
-                         "rf lock" if "silenced" in why or "SUITE_TX_LOCK" in why else why[:12])
+                short = _short_reason(r.get("reason", ""))
                 rows[key] = {"seq": r["seq"], "t": r["t"], "action": r.get("action") or r.get("label", ""),
                              "target": r.get("target", ""), "state": "REFUSED",
                              "binding": "", "detail": short, "ticket": r.get("ticket")}
@@ -356,6 +358,16 @@ class Chain:
         return argv
 
 
+def _short_reason(why):
+    why = str(why or "")
+    return ("scope" if "not in the engagement scope" in why else
+            "ended" if "engagement ended" in why else
+            "expired" if "expired" in why else
+            "no eng" if "no active engagement" in why else
+            "stale" if "stale" in why else
+            "rf lock" if "silenced" in why or "SUITE_TX_LOCK" in why else why[:12])
+
+
 # -------------------------------------------------------------------- process-wide routing
 def for_id(cid):
     """The Chain for an id: cached per process, (re)opened when first seen. Raises ChainError."""
@@ -390,6 +402,7 @@ def current(create_session=True):
         if _SESSION["chain"] is None and create_session:
             _SESSION["chain"] = Chain.create(name="session-%d" % os.getpid())
             _SESSION["chain"].record("session.open", pid=os.getpid())
+            _CACHE[_SESSION["chain"].id] = _SESSION["chain"]   # tickets bound to it use for_id
         return _SESSION["chain"]
 
 

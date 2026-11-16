@@ -19,7 +19,8 @@ a short timer (expiry, a hub's shared state in another process): the moment the 
 passing, the process group is killed.
 
 Evidence is CL3's job: record(event, ...) below is the single hook this module calls on issue,
-spawn, write and exit. It is a no-op stub until the CL3 evidence chain lands.
+spawn, write, kill and exit; every record after `issue` goes to the chain the ticket was issued
+under (RA-CL3b B3/N14).
 """
 import hashlib
 import json
@@ -36,15 +37,27 @@ SERIAL_LOG = os.path.join(os.path.expanduser("~"), ".local", "share", "uconsole-
                           "serial_tx.jsonl")
 
 
-def record(event, **fields):
+def record(event, chain_id=None, **fields):
     """The single evidence hook (CL3): issue / spawn / write / exit (with the real exit code) /
-    kill go to the open engagement's chain, or to the per-process session chain when no engagement
-    is open (a conducted bench run is still evidence). A failure to record an ISSUE refuses the
-    ticket (fail closed: no durable record, no capability); spawn/exit/write/kill records are
-    best-effort because by then the process exists and must still be tracked and killable."""
+    kill go to an evidence chain. Returns the id of the chain written to (None if dropped).
+
+    RA-CL3b B3/N14: a ticket is BOUND to the chain it was issued under. `issue` goes to the chain
+    in force now (the open engagement's, else this process's session chain) and the ticket's entry
+    keeps that chain's id; every later record for the ticket (refuse_ticket, spawn, write, kill,
+    exit) passes `chain_id` and goes to THAT chain by id, never to whatever engagement is in force
+    at record time. So a bound child killed after the hub ENDs still records its kill + exit in the
+    engagement chain (not a fresh session chain), and a bench ticket from before START never writes
+    its exit into the new engagement's chain.
+
+    A failure to record an ISSUE refuses the ticket (fail closed: no durable record, no
+    capability); the other records are best-effort because by then the process exists and must
+    still be tracked and killable. A bound chain that cannot be opened is never swapped for another
+    chain (that would misfile the record)."""
     import chain
     try:
-        return chain.record(event, **fields)
+        ch = chain.for_id(chain_id) if chain_id else chain.current()
+        ch.record(event, **fields)
+        return ch.id
     except Exception as e:
         if event == "issue":
             raise TicketRefused("evidence chain write failed (%s) — no ticket" % e)
@@ -170,13 +183,14 @@ def issue(argv=None, recheck=None, label="", binding="scoped", reason="", files=
     t = Ticket(kind, argv, payload, files, label, binding, reason, meta)
     # CL3 (G6): the durable record comes BEFORE the capability exists; a failed record raises
     # TicketRefused and nothing is minted.
-    record("issue", ticket=t.id, label=label, binding=binding, reason=reason,
-           argv=list(t.argv) if t.argv else None, issuer=caller, emitter=emitter,
-           target=str((meta or {}).get("target", "")))
+    # RA-CL3b B3/N14: the ticket is bound to the chain this record went to (see record()).
+    cid = record("issue", ticket=t.id, label=label, binding=binding, reason=reason,
+                 argv=list(t.argv) if t.argv else None, issuer=caller, emitter=emitter,
+                 target=str((meta or {}).get("target", "")))
     with _LOCK:
         _ISSUED[t.id] = {"ticket": t, "digest": _digest(kind, t.argv, t.payload, t.files),
                          "expires": _mono() + float(TICKET_TTL_S if ttl is None else ttl),
-                         "recheck": recheck, "used": False, "emitter": emitter}
+                         "recheck": recheck, "used": False, "emitter": emitter, "chain": cid}
     return t
 
 
@@ -205,7 +219,8 @@ def _redeem(ticket, argv=None, payload=None, kind="proc"):
     except Exception as e:                      # a gate that cannot answer is a no
         ok, why = False, "gate re-check failed: %s" % e
     if not ok:
-        record("refuse_ticket", ticket=ticket.id, label=ticket.label, reason=why,
+        record("refuse_ticket", chain_id=entry.get("chain"), ticket=ticket.id,
+               label=ticket.label, reason=why,
                target=str(ticket.meta.get("target", "")))          # RA-CL3 N10: visible in the trail
         raise TicketRefused("gate no longer passes: %s" % why)
     return entry
@@ -248,6 +263,7 @@ class Handle:
         self.stopped = None               # reason, when the executor (not the tool) ended it
         self.lines = []
         self._entry = entry
+        self.chain_id = (entry or {}).get("chain")    # RA-CL3b B3: the chain issued under
         self._on_line = on_line
         self._done = threading.Event()
         self._reader = threading.Thread(target=self._pump, daemon=True)
@@ -278,8 +294,8 @@ class Handle:
         with _LOCK:
             if self in _RUNNING:
                 _RUNNING.remove(self)
-        record("exit", ticket=self.ticket.id, label=self.ticket.label, exit_code=code,
-               stopped=self.stopped)
+        record("exit", chain_id=self.chain_id, ticket=self.ticket.id, label=self.ticket.label,
+               exit_code=code, stopped=self.stopped)
         self._done.set()
 
     def running(self):
@@ -292,8 +308,8 @@ class Handle:
     def stop(self, reason="stopped"):
         if self.stopped is None:
             self.stopped = reason
-            record("kill", ticket=self.ticket.id, label=self.ticket.label, reason=reason,
-                   pid=getattr(self.proc, "pid", None))
+            record("kill", chain_id=self.chain_id, ticket=self.ticket.id,
+                   label=self.ticket.label, reason=reason, pid=getattr(self.proc, "pid", None))
         _kill_group(self.proc)
         self._done.wait(3.0)
 
@@ -314,7 +330,8 @@ def start(ticket, argv=None, spawner=None, on_line=None):
         if not h._done.is_set():
             _RUNNING.append(h)
     _ensure_monitor()
-    record("spawn", ticket=ticket.id, label=ticket.label, argv=list(run_argv), pid=proc.pid)
+    record("spawn", chain_id=h.chain_id, ticket=ticket.id, label=ticket.label,
+           argv=list(run_argv), pid=proc.pid)
     _sweep()                     # the gate could have flipped between redeem and register
     return h
 
@@ -342,7 +359,7 @@ def write(ticket, port, port_name="", chunk=None):
     if ticket.binding == "demo" and getattr(type(port), "SYNTHETIC", False) is not True:
         # CL2-fix N9a: an ungated demo-device ticket is only ever written to the synthetic port
         raise TicketRefused("a demo-device ticket can only be written to the synthetic demo port")
-    _redeem(ticket, kind="write")
+    entry = _redeem(ticket, kind="write")
     data = ticket.payload
     pieces = [data] if not chunk else [data[i:i + chunk] for i in range(0, len(data), chunk)]
     n = 0
@@ -364,7 +381,7 @@ def write(ticket, port, port_name="", chunk=None):
             fh.write(json.dumps(rec) + "\n")
     except OSError:
         pass
-    record("write", **rec)
+    record("write", chain_id=entry.get("chain"), **rec)
     return n
 
 
