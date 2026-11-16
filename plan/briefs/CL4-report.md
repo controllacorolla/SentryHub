@@ -86,3 +86,22 @@ engagement}_{dark,sun}_live_{before,after}.png`, script `render_cl4.py` (before 
 Highlights: `sweep_*` (blank table → four detector rows + OFFLINE empty state), `sitrep_*`,
 `assistant_*`, `recon_wifi_*` (standby reason fills the table), `atlas_*` (ADS-B NO FEED, HOME NOT
 SET, empty list says why), `ops_*` (SDR chip from the kernel), `engagement_*`.
+
+## CL4-fix — RA-CL4 findings (`RA-CL4-report.md`: DO NOT MERGE on N26)
+
+| ID | Fix | Test |
+|---|---|---|
+| N26 High | With HOME unset (live), the OPS PPI and the ATLAS map are covered by an OFFLINE "HOME NOT SET" state (`kit.components.Cover`) and no contact is drawn on rings; the contact list still shows what is heard, without range. `MapPanel` never requests tiles until it has a real HOME (`_can_fetch`); setting HOME re-centres and fetches. | `test_n26_*` (2); renders `ops_*`, `atlas_*` |
+| N27 Med | A chain that fails verification shows STALE "TRAIL UNREADABLE", never "nothing authorized yet". | `test_n27_*` |
+| N28 Med | `engagement.chain_unreadable()` tells "engagement active, chain cannot be opened" from "no engagement"; the panel shows the reason. | `test_n28_*` (2) |
+| N29 Med | Only contact/decode publishers (not telemetry, not alerts such as pass predictions or RADIO BUSY) count as a running feed. | `test_n29_*` |
+| N30 Low | The Wi-Fi worker is paused before `start()` when RECON › WIFI is not on screen. | `test_n30_*` (10 trials, zero scans) |
+| N31 Low | An orphan gone before END signalled it records `unconfirmed` "exited on its own before END signalled it", not a kill. | `test_n31_*` |
+| N32 Low | END also refuses the session leader and every ancestor of the hub. | `test_n32_*` |
+| N34 Low | The evidence-chain caption wraps instead of clipping. | render `engagement_sun_*` |
+| E1 residual | No `now` in aircraft.json → the file's mtime (HTTP: unknown → stale); a `now` in the future is stale. | `test_e1_residual_*` |
+| N33 Low | **Not fixed** (follow-up): a torn last line still refuses the chain. It fails closed. | — |
+
+Full suite after CL4-fix (Python 3.12, same container): **1478 passed, 2 failed, 7 errors, 7
+skipped** — all baseline and identical on main (`test_audit_tiles` undecodable tile,
+`test_hwlab` doctor, 7 `test_shell` errors from missing tkinter). `test_cl4_*` 100/100.
