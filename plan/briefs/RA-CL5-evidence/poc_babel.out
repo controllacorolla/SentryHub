@@ -1,0 +1,15 @@
+=== r1
+  1.06 LEASE.acquire PROWL-SCAN
+  1.13 LEASE.release PROWL-SCAN children-at-release: []
+  4.11 R1 AIS RUN=False front: arbiter=('FREE', None) children=[] chip='AIS IDLE — press RUN' busy='AIS IDLE — press RUN'
+  6.64 R1 AIS RUN=False HIDDEN: arbiter=('FREE', None) children=[]
+  7.15 LEASE.acquire BABEL-SSTV
+  9.66 R1 SSTV RUN=False front: arbiter=('HELD', 'BABEL-SSTV') children=['6129:python3'] chip='SSTV — capturing 2s (lvl 14193)' busy=''
+ 12.18 R1 SSTV RUN=False HIDDEN: arbiter=('HELD', 'BABEL-SSTV') children=['6129:python3']
+ 12.73 LEASE.release BABEL-SSTV children-at-release: []
+=== r2
+  1.09 LEASE.acquire PROWL-SCAN
+  1.17 LEASE.release PROWL-SCAN children-at-release: []
+  1.93 LEASE.acquire BABEL
+ 11.93 R2 in 10 s: acquires=2 releases=1 arbiter=('HELD', 'BABEL') chip='AIS FAULT' busy='AIS decoder exited after 0.0s (×3): usb_claim_interface error -6 — retry in 8s'
+ 11.93 LEASE.release BABEL children-at-release: []

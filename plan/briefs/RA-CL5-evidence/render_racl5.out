@@ -1,0 +1,22 @@
+renders/prowl_dark_live.png 1280x720 arbiter=('HELD', 'PROWL-SCAN') strip_min=1116  
+renders/babel_dark_live.png 1280x720 arbiter=('FREE', None) strip_min=1078  | BABEL chip='AIS IDLE — press RUN' banner='AIS IDLE — press RUN'
+renders/atlas_dark_live.png 1280x720 arbiter=('FREE', None) strip_min=1078  
+renders/radios_dark_live.png 1280x720 arbiter=('FREE', None) strip_min=1078  
+renders/babel_stress_acquiring_dark_live.png 1280x720 arbiter=('ACQUIRING', 'BABEL') strip_min=1107  | BABEL chip='12 MSGS' banner=''
+renders/radios_stress_acquiring_dark_live.png 1280x720 arbiter=('ACQUIRING', 'BABEL') strip_min=1107  
+renders/radios_stress_revoke_pending_dark_live.png 1280x720 arbiter=('HELD', 'BABEL-SSTV') strip_min=1078  
+renders/radios_stress_forced_free_dark_live.png 1280x720 arbiter=('FREE', None) strip_min=1078 (SSTV rtl_fm alive: ['9026:python3']) 
+renders/babel_stress_sstv_after_forced_free_dark_live.png 1280x720 arbiter=('FREE', None) strip_min=1078  | BABEL chip='SSTV — capturing 10s (lvl 14131)' banner=''
+renders/babel_stress_fault_dark_live.png 1280x720 arbiter=('HELD', 'BABEL') strip_min=1087  | BABEL chip='AIS FAULT' banner='AIS decoder exited after 0.0s (×2): usb_claim_interface error -6 — retry in 4s'
+renders/prowl_stress_nwr_after_revoke_dark_live.png 1280x720 arbiter=('FREE', None) strip_min=1078 | PROWL chip={'text': 'NWR WX2 162.400M', 'state': 'ok', 'ok': True} 
+renders/prowl_sun_live.png 1280x720 arbiter=('HELD', 'PROWL-SCAN') strip_min=1123  
+renders/babel_sun_live.png 1280x720 arbiter=('FREE', None) strip_min=1085  | BABEL chip='AIS IDLE — press RUN' banner='AIS IDLE — press RUN'
+renders/atlas_sun_live.png 1280x720 arbiter=('FREE', None) strip_min=1085  
+renders/radios_sun_live.png 1280x720 arbiter=('FREE', None) strip_min=1085  
+renders/babel_stress_acquiring_sun_live.png 1280x720 arbiter=('ACQUIRING', 'BABEL') strip_min=1114  | BABEL chip='12 MSGS' banner=''
+renders/radios_stress_acquiring_sun_live.png 1280x720 arbiter=('ACQUIRING', 'BABEL') strip_min=1114  
+renders/radios_stress_revoke_pending_sun_live.png 1280x720 arbiter=('HELD', 'BABEL-SSTV') strip_min=1085  
+renders/radios_stress_forced_free_sun_live.png 1280x720 arbiter=('FREE', None) strip_min=1085 (SSTV rtl_fm alive: ['9194:python3']) 
+renders/babel_stress_sstv_after_forced_free_sun_live.png 1280x720 arbiter=('FREE', None) strip_min=1085  | BABEL chip='SSTV — capturing 10s (lvl 14131)' banner=''
+renders/babel_stress_fault_sun_live.png 1280x720 arbiter=('HELD', 'BABEL') strip_min=1094  | BABEL chip='AIS FAULT' banner='AIS decoder exited after 0.0s (×2): usb_claim_interface error -6 — retry in 4s'
+renders/prowl_stress_nwr_after_revoke_sun_live.png 1280x720 arbiter=('FREE', None) strip_min=1085 | PROWL chip={'text': 'NWR WX2 162.400M', 'state': 'ok', 'ok': True} 

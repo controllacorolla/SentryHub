@@ -1,0 +1,28 @@
+=== babel
+  1.18 LEASE.release PROWL-SCAN children-at-release: []
+  5.15 BEFORE PANIC arbiter=('HELD', 'BABEL') children=['5611:rtl_ais', '5626:sleep']
+  5.19 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · TX OFF
+  5.70 AFTER PANIC arbiter=('HELD', 'BABEL') children=[] chip={'text': 'AIS FAULT', 'state': 'alert', 'ok': False}
+  6.21 AFTER PANIC arbiter=('HELD', 'BABEL') children=[] chip={'text': 'AIS FAULT', 'state': 'alert', 'ok': False}
+  6.73 AFTER PANIC arbiter=('HELD', 'BABEL') children=[] chip={'text': 'AIS FAULT', 'state': 'alert', 'ok': False}
+  7.25 AFTER PANIC arbiter=('HELD', 'BABEL') children=['5637:rtl_ais', '5638:sleep'] chip={'text': '16 MSGS', 'state': 'neutral', 'ok': None}
+  7.76 AFTER PANIC arbiter=('HELD', 'BABEL') children=['5637:rtl_ais', '5641:sleep'] chip={'text': '18 MSGS', 'state': 'neutral', 'ok': None}
+  8.28 AFTER PANIC arbiter=('HELD', 'BABEL') children=['5637:rtl_ais', '5645:sleep'] chip={'text': '21 MSGS', 'state': 'neutral', 'ok': None}
+  8.79 AFTER PANIC arbiter=('HELD', 'BABEL') children=['5637:rtl_ais', '5648:sleep'] chip={'text': '23 MSGS', 'state': 'neutral', 'ok': None}
+  9.30 AFTER PANIC arbiter=('HELD', 'BABEL') children=['5637:rtl_ais', '5652:sleep'] chip={'text': '26 MSGS', 'state': 'neutral', 'ok': None}
+  9.31 LEASE.release BABEL children-at-release: []
+ 10.33 AFTER CLOSE arbiter=('FREE', None) children=[]
+=== nwr
+  1.65 LEASE.release PROWL-SCAN children-at-release: ['5671:python3', '5672:cat']
+  4.70 BEFORE PANIC arbiter=('HELD', 'PROWL-NWR') children=['5676:python3', '5677:cat']
+  4.75 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · TX OFF
+  5.27 AFTER PANIC arbiter=('HELD', 'PROWL-NWR') children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  5.78 AFTER PANIC arbiter=('HELD', 'PROWL-NWR') children=['5688:python3', '5689:cat'] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  6.30 AFTER PANIC arbiter=('HELD', 'PROWL-NWR') children=['5688:python3', '5689:cat'] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  6.80 AFTER PANIC arbiter=('HELD', 'PROWL-NWR') children=['5688:python3', '5689:cat'] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  7.32 AFTER PANIC arbiter=('HELD', 'PROWL-NWR') children=['5688:python3', '5689:cat'] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  7.83 AFTER PANIC arbiter=('HELD', 'PROWL-NWR') children=['5688:python3', '5689:cat'] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  8.34 AFTER PANIC arbiter=('HELD', 'PROWL-NWR') children=['5688:python3', '5689:cat'] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  8.86 AFTER PANIC arbiter=('HELD', 'PROWL-NWR') children=['5688:python3', '5689:cat'] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  8.87 LEASE.release PROWL-NWR children-at-release: []
+  9.88 AFTER CLOSE arbiter=('FREE', None) children=[]

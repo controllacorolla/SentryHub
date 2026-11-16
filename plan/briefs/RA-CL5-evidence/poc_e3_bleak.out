@@ -1,0 +1,2 @@
+  0.41 FAULT surfaced: Remote-ID BLE scan failed: passive scanning mode requires bluez or_patterns
+  2.39 bleak 3.1.0 ; RidSource.state=fault

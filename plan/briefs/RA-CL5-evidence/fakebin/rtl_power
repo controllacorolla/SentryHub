@@ -1,0 +1,3 @@
+#!/bin/sh
+# fake rtl_power: runs until killed, prints nothing
+while :; do sleep 1; done

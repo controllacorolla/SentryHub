@@ -1,0 +1,10 @@
+  2.11 LEASE.release PRISM children-at-release: []
+  3.77 LEASE.release PROWL-SCAN children-at-release: ['5864:python3', '5865:cat']
+  5.42 LEASE.release PROWL-NWR children-at-release: ['5869:python3', '5870:cat']
+  8.18 before quit: arbiter=('HELD', 'BABEL') children=['5875:rtl_ais', '5885:sleep']
+  8.20 LEASE.release BABEL children-at-release: []
+  8.20 hub.close() took 0.01s
+  8.30 after quit: arbiter=('FREE', None) children=[]
+rc=0
+stderr: -
+children of the dead hub still alive: ['5885']

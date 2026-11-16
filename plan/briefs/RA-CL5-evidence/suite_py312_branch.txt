@@ -1,0 +1,8 @@
+>       assert key in t.failed, "draw() would re-download it on every redraw"
+E        +  where {} = <tiles.TileLayer object at 0x7f4d8e720ef0>.failed
+FAILED tests/test_audit_tiles.py::test_undecodable_tile_is_marked_failed - As...
+FAILED tests/test_cl1_screen.py::test_up_down_drive_the_list_and_the_detail_follows
+FAILED tests/test_hwlab.py::test_doctor_hwbench_check - assert (None is True)
+FAILED tests/test_sstvdec.py::test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone
+4 failed, 1017 passed, 3 skipped, 6 warnings in 536.14s (0:08:56)
+EXIT 1
