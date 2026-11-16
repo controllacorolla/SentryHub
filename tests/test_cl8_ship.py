@@ -1307,3 +1307,138 @@ def test_ra8b_harden_says_so_when_the_firewall_cannot_be_turned_back_on(tmp_path
     r, ran = _harden_failing(tmp_path, "ufw")          # every ufw step fails
     assert r.returncode != 0
     assert "COULD NOT turn the firewall back on" in r.stderr
+
+
+# ================================================================== CL8-fix3 (RA-CL8c findings)
+def _fake(home, name, body):
+    p = home / "fakebin" / name
+    p.write_text("#!/bin/sh\n" + body + "\n")
+    p.chmod(0o755)
+
+
+def _fm_steps(w, seconds):
+    t = time.time()
+    while time.time() - t < seconds:
+        w.step()
+        _app().processEvents()
+        time.sleep(0.1)
+
+
+@pytest.mark.parametrize("dead", ["rtl_fm", "redsea"])
+def test_ra8c_prowl_fm_decoder_that_exits_at_once_is_a_fault_not_a_live_loop(monkeypatch, fakebin, dead):
+    """RA-CL8c NEW-G: FM respawned every 500 ms on a held radio while showing ♪ live."""
+    home, marker = fakebin
+    _fake(home, "aplay", "cat >/dev/null")
+    _fake(home, "redsea", "cat >/dev/null")
+    _fake(home, "rtl_fm", 'echo rtl_fm >> "%s"; sleep 30' % marker)
+    _fake(home, dead, 'echo %s >> "%s"; exit 1' % (dead, marker))
+    from palisade_qt import prowl, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    w = prowl.FmWorker(demo=False, rds=True)
+    faults, statuses = [], []
+    w.fault.connect(faults.append)
+    w.status.connect(statuses.append)
+    w.set_active(True)
+    try:
+        _fm_steps(w, 4.0)
+        assert any("exits at once" in f for f in faults), (faults, statuses[-3:])
+        assert ra.arbiter.owner() is None and lease.released
+        spawns = marker.read_text().count(dead)
+        _fm_steps(w, 1.5)
+        assert marker.read_text().count(dead) == spawns, "respawned after the fault"
+        assert spawns <= 4, spawns
+        assert not any("♪" in (st.get("sdr") or {}).get("text", "") for st in statuses), statuses
+        assert not any(st.get("live") for st in statuses)
+    finally:
+        w._stop = True
+        w._kill()
+
+
+def test_ra8c_prowl_fm_missing_audio_sink_releases_the_radio(monkeypatch, fakebin):
+    """RA-CL8c NEW-I: no aplay/pacat raised out of _spawn with the radio held."""
+    home, marker = fakebin
+    _fake(home, "rtl_fm", "sleep 30")
+    import fm
+    monkeypatch.setattr(fm, "Pipe", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError("aplay")))
+    from palisade_qt import prowl, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    w = prowl.FmWorker(demo=False, rds=False)
+    faults = []
+    w.fault.connect(faults.append)
+    w.set_active(True)
+    try:
+        _fm_steps(w, 1.0)
+        assert any("cannot start" in f for f in faults), faults
+        assert ra.arbiter.owner() is None and len(lease.made) == 1
+    finally:
+        w._stop = True
+        w._kill()
+
+
+def test_ra8c_prowl_scan_rtl_fm_exiting_at_once_is_a_fault_not_a_quiet_band(monkeypatch, fakebin):
+    """RA-CL8c NEW-H: every channel 'quiet' while rtl_fm died at once, radio held."""
+    home, marker = fakebin
+    _fake(home, "rtl_fm", 'echo rtl_fm >> "%s"; exit 1' % marker)
+    from palisade_qt import prowl, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    w = prowl.ScanWorker(demo=False)
+    faults = []
+    w.fault.connect(faults.append)
+    w.set_active(True)
+    w.start()
+    try:
+        assert _until(lambda: any("exits at once" in f for f in faults), 9000), faults
+        assert _until(lambda: ra.arbiter.owner() is None, 2000)
+        n = marker.read_text().count("rtl_fm")
+        time.sleep(1.5)
+        assert marker.read_text().count("rtl_fm") == n and n <= 4, n
+    finally:
+        w.stop()
+        assert w.wait(5000)
+
+
+def test_ra8c_restore_keeps_this_devices_network_mode_and_remote_token(tmp_path, monkeypatch):
+    import tarfile
+    import suite as S
+    home = tmp_path / "home"
+    (home / ".config" / "uconsole-suite").mkdir(parents=True)
+    (home / ".config" / "uconsole-suite" / "net.json").write_text('{"mode": "OFFLINE"}')
+    monkeypatch.setattr(S, "HOME", str(home))
+    f = tmp_path / "f"
+    f.write_text('{"mode": "ONLINE", "token": "attacker-known-token-123456"}')
+    arc = str(tmp_path / "b.tar.gz")
+    with tarfile.open(arc, "w:gz") as tf:
+        for n in (".config/uconsole-suite/net.json", ".config/uconsole-suite/headless.json",
+                  ".config/uconsole-suite/fm.json", ".local/share/uconsole-suite/logbook"):
+            tf.add(str(f), arcname=n)                  # logbook: a FILE where a folder goes
+        tf.add(str(f), arcname=".local/share/uconsole-suite/sky_records.json")
+    names = S.restore_configs(arc)                      # never raises half-way
+    assert json.load(open(home / ".config/uconsole-suite/net.json")) == {"mode": "OFFLINE"}
+    assert not (home / ".config/uconsole-suite/headless.json").exists()
+    assert ".config/uconsole-suite/fm.json" in names
+    assert ".local/share/uconsole-suite/sky_records.json" in names
+
+
+def test_ra8c_open_pipe_refuses_a_flat_argv():
+    from palisade_qt import babel
+    monkey_off = babel._seam_offscreen
+    try:
+        babel._seam_offscreen = lambda: False
+        with pytest.raises(TypeError):
+            babel._open_pipe(["rtl_433", "-F", "json"])
+    finally:
+        babel._seam_offscreen = monkey_off
+
+
+def test_ra8c_scan_checks_dwell_hold_and_max_active(fakebin):
+    from palisade_qt import prowl
+    import argsafe
+    w = prowl.ScanWorker(demo=False)
+    import scanner
+    for k in ("dwell", "hold", "max_active"):
+        with pytest.raises(argsafe.SettingsRefused):
+            w._check_scanner_settings(dict(scanner.DEFAULTS, **{k: "x"}))
+    w._check_scanner_settings(dict(scanner.DEFAULTS))

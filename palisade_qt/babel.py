@@ -50,6 +50,9 @@ def _open_pipe(cmd, shell=None, stderr=None):
         return None
     import tempfile
     from .kit.procs import Pipeline, split_shell_pipeline
+    if not isinstance(cmd, str) and any(isinstance(x, str) for x in cmd):
+        # RA-CL8c NEW-K: a flat argv here was read as one stage per string (NEW-A/NEW-B)
+        raise TypeError("_open_pipe wants a list of argv lists, got a flat argv: %r" % (cmd[:3],))
     stages = split_shell_pipeline(cmd) if isinstance(cmd, str) else [list(x) for x in cmd]
     err = tempfile.TemporaryFile(mode="w+", errors="replace")
     pipe = Pipeline(stages, stderr_last=err)

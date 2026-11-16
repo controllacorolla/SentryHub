@@ -131,3 +131,19 @@ Tests `test_ra8b_*` (10 new, 132 in `test_cl8_ship.py`).
 Still follow-ups: session log cap can drop an unseen fault after 1000 entries; nmcli option
 values; proxy env read at check time vs urllib's opener (same env in practice); the items listed
 under CL8-fix.
+
+## CL8-fix3 (after RA-CL8c: DO NOT MERGE on two pre-existing PROWL radio holds)
+
+Tests `test_ra8c_*` (7 new).
+
+| RA-CL8c finding | Fix | Test |
+|---|---|---|
+| **NEW-G** (High) PROWL FM respawned a dead decoder every 500 ms, radio held, "♪" live | exits within 3 s of a spawn are counted; 3 in a row = FM FAULT · decoder exits at once, radio given back, no retry until retune; "♪"/live only for a pipeline up ≥ 1 s | `test_ra8c_prowl_fm_decoder_that_exits_at_once_…` (rtl_fm, redsea) |
+| **NEW-H** (High) PROWL SCAN dropped rtl_fm's "exited at once", band shown quiet, radio held | 3 early exits in a row = SCAN FAULT, radio given back, scan stops; an early-exit channel is not marked quiet; rtl_fm missing = FAULT at once (was a 2 s retry loop) | `test_ra8c_prowl_scan_rtl_fm_exiting_at_once_…` |
+| NEW-I FM with no audio sink held the radio | OSError starting the pipe = FAULT, radio given back | `test_ra8c_prowl_fm_missing_audio_sink_…` |
+| NEW-J restore could set net.json (ONLINE) and plant headless.json | both are never restored; a bad member (file where a folder goes) is skipped, the rest restores | `test_ra8c_restore_keeps_this_devices_…` |
+| NEW-K flat argv into `_open_pipe` | TypeError | `test_ra8c_open_pipe_refuses_a_flat_argv` |
+| NEW-D residue | dwell/hold/max_active checked too | `test_ra8c_scan_checks_…` |
+
+NEW-L Lows (bare RTL serial refused — fails safe; vdl2 standby label; brief LIVE on BABEL retry;
+stderr temp file on failed spawn) are follow-ups.

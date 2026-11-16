@@ -181,6 +181,21 @@ class _RadioWorker(Worker):
                           "sdr": {"text": "%s FAULT — SETTINGS REFUSED" % self.LABEL,
                                   "state": "alert", "ok": False}})
 
+    EARLY_EXIT_S = 3.0          # a decoder that dies sooner than this did not really run
+    EARLY_EXITS_MAX = 3         # … this many times in a row: stop, say so, give the radio back
+
+    def _stall(self, why):
+        """RA-CL8c: the decoder cannot run (exits at once, missing binary). Give the radio back,
+        show a FAULT and do not retry until the operator retunes/restarts — never a respawn loop
+        on a held radio, never a LIVE claim."""
+        self._refused = str(why)[:120]
+        self._give_back("decoder fault")
+        self.fault.emit("FAULT: %s %s" % (self.LABEL, self._refused))
+        self.status.emit({"src": self.LABEL, "busy": None, "live": False, "off": True,
+                          "fault": self._refused,
+                          "sdr": {"text": "%s FAULT — %s" % (self.LABEL, self._refused),
+                                  "state": "alert", "ok": False}})
+
     # kept for callers of the old name; same ordering as _give_back
     def _release_radio(self):
         self._give_back(self._off_reason)
@@ -298,7 +313,7 @@ class ScanWorker(_RadioWorker):
         the values listen_channel uses; raise SettingsRefused so the page says why."""
         import argsafe
         argsafe.gain_arg(s.get("gain"))
-        for k in ("squelch", "nfm_squelch"):
+        for k in ("squelch", "nfm_squelch", "dwell", "hold", "max_active"):
             v = s.get(k)
             if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 1e6:
                 raise argsafe.SettingsRefused("bad %s in scanner settings: %r" % (k, v))
@@ -345,15 +360,26 @@ class ScanWorker(_RadioWorker):
                     continue
                 freq, label, mode = channels[idx]
                 scan["rms"] = 0.0
+                self._early_this = False
                 result = engine.listen_channel(freq, mode, s, scan,
                                                self._make_post(freq, label, hits),
                                                sink_fn=sink_fn, clock=time.time)
                 if self._stop or not scan["on"]:
                     break
-                if self._fatal:                     # rtl_fm fault (surfaced by post): back off
+                if self._fatal:                     # rtl_fm missing: it will not come back
                     self._fatal = False
-                    self.sleep(2000)
-                    continue
+                    self._stall(getattr(self, "_fatal_msg", "scanner fault"))
+                    break
+                # RA-CL8c NEW-H: rtl_fm quitting at once on every channel is a fault, not a
+                # quiet band: stop, say so, give the radio back
+                early = self._early_count = (getattr(self, "_early_count", 0) + 1
+                                             if self._early_this else 0)
+                if early >= self.EARLY_EXITS_MAX:
+                    self._early_count = 0
+                    self._stall("rtl_fm exits at once (×%d) — is the SDR free?" % early)
+                    break
+                if self._early_this:
+                    continue                        # not a listen: do not mark the channel quiet
                 if result == "retune":              # B2 / CL5-fix 11: a squelch change is NOT a
                     continue                        # hit — re-listen the same channel at the new level
                 if result is True:
@@ -379,8 +405,12 @@ class ScanWorker(_RadioWorker):
                     severity="live", freq_mhz=freq, label=label))
             elif kind == "fatal":                   # rtl_fm vanished mid-scan: surface, don't swallow
                 self._fatal = True
-                self.error.emit(msg[1] if isinstance(msg, tuple) and len(msg) > 1
-                                else "scanner fault")
+                self._fatal_msg = (msg[1] if isinstance(msg, tuple) and len(msg) > 1
+                                   else "scanner fault")
+                self.error.emit(self._fatal_msg)
+            elif kind == "status":                  # RA-CL8c NEW-H: rtl_fm exited at once
+                self._early_this = True
+                self._early_msg = msg[1] if isinstance(msg, tuple) and len(msg) > 1 else ""
         return post
 
     def _emit_state(self, channels, hits, scan, held=False):
@@ -460,12 +490,23 @@ class FmWorker(_RadioWorker):
         elif self._pipe is None:
             self._spawn()
         elif self._pipe.poll() is not None:         # pipeline died (device yanked / preempted)
+            # RA-CL8c NEW-G: count exits that come right after a spawn; a decoder that cannot
+            # run is a FAULT with the radio given back, not a respawn every 500 ms under "♪"
+            quick = time.time() - getattr(self, "_spawn_ts", 0) < self.EARLY_EXIT_S
+            self._early = getattr(self, "_early", 0) + 1 if quick else 0
+            if self._early >= self.EARLY_EXITS_MAX:
+                self._early = 0
+                self._stall("decoder exits at once (×%d) — is the SDR free?" % self.EARLY_EXITS_MAX)
+                return
             self._respawn()
         if self._refused:
             return
         with self._lock:
             rds = dict(self._rds)
-        audio = self._pipe is not None
+        pipe = self._pipe
+        # ♪ only for a pipeline that is running and has stayed up past the early-exit window start
+        audio = pipe is not None and pipe.poll() is None and \
+            time.time() - getattr(self, "_spawn_ts", 0) >= 1.0
         self.row.emit({"kind": "fm", "freq": self.freq, "mode": self.mode,
                        "rds": rds, "audio": audio})
         self.status.emit({"busy": None, "live": audio,
@@ -479,7 +520,12 @@ class FmWorker(_RadioWorker):
         except Exception as e:      # RA-CL8: any malformed setting refuses
             self._refuse_settings(e)
             return
-        pipe = _open_fm_pipe(rtl, mid, sink, self._on_rds)
+        try:
+            pipe = _open_fm_pipe(rtl, mid, sink, self._on_rds)
+        except OSError as e:          # RA-CL8c NEW-I: no rtl_fm/redsea/aplay: FAULT, radio back
+            self._stall("cannot start the decoder: %s" % e)
+            return
+        self._spawn_ts = time.time()
         orphan = None
         with self._lock:                 # guard against a concurrent stop / revoke / PANIC
             if self._stop or not self._active or not radio_arbiter.arbiter.held_by(self.NAME):

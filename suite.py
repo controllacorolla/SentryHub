@@ -894,14 +894,19 @@ def restore_configs(archive):
                 continue
             if not (m.isfile() or m.isdir()):
                 continue                              # no links, devices or fifos
+            if rel in (".config/uconsole-suite/net.json", ".config/uconsole-suite/headless.json"):
+                continue      # RA-CL8c NEW-J: network mode and Remote Mode token stay this device's
             # defensive: never let an archive write outside HOME
             target = os.path.normpath(os.path.join(HOME, m.name))
             if not target.startswith(os.path.normpath(HOME) + os.sep):
                 continue
             try:
-                tf.extract(m, HOME, filter="data")   # 3.12+: blocks traversal/absolute/device files
-            except TypeError:
-                tf.extract(m, HOME)                   # older Python: our manual check above still guards
+                try:
+                    tf.extract(m, HOME, filter="data")   # 3.12+: blocks traversal/absolute/devices
+                except TypeError:
+                    tf.extract(m, HOME)                   # older Python: the checks above still guard
+            except OSError:
+                continue          # e.g. a file where a folder should be: skip it, restore the rest
             names.append(m.name)
     return names
 
