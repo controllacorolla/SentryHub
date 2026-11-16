@@ -1,0 +1,719 @@
+=== revoke_at 0
+  0.96 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.96 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.57 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.57 LEASE.release PROWL-SCAN start (3.5 s)
+  5.07 LEASE.release PROWL-SCAN done
+  5.07 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.07 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.49 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['11803:Ss:rtl_fm', '11804:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  8.49 RADIOS revoke -> PROWL-NWR
+  9.50 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.50 LEASE.release PROWL-NWR start (3.5 s)
+ 13.00 LEASE.release PROWL-NWR done
+ 18.02 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 18.03 RESULT revoke_at 0.0: clean
+ 23.05 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== revoke_at 0.05
+  0.91 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.91 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.52 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.52 LEASE.release PROWL-SCAN start (3.5 s)
+  5.02 LEASE.release PROWL-SCAN done
+  5.02 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.02 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.44 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['12006:Ss:rtl_fm', '12007:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  8.50 RADIOS revoke -> PROWL-NWR
+  9.45 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.45 LEASE.release PROWL-NWR start (3.5 s)
+ 12.95 LEASE.release PROWL-NWR done
+ 18.02 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 18.03 RESULT revoke_at 0.05: clean
+ 23.04 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== revoke_at 0.2
+  0.92 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.92 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.53 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.53 LEASE.release PROWL-SCAN start (3.5 s)
+  5.03 LEASE.release PROWL-SCAN done
+  5.04 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.04 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.45 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['12158:Ss:rtl_fm', '12159:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  8.66 RADIOS revoke -> PROWL-NWR
+  9.46 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.46 LEASE.release PROWL-NWR start (3.5 s)
+ 12.96 LEASE.release PROWL-NWR done
+ 18.18 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 18.19 RESULT revoke_at 0.2: clean
+ 23.20 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== revoke_at 0.6
+  0.89 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.89 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.49 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.49 LEASE.release PROWL-SCAN start (3.5 s)
+  4.99 LEASE.release PROWL-SCAN done
+  5.00 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.01 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.41 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['12382:Ss:rtl_fm', '12383:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.02 RADIOS revoke -> PROWL-NWR
+  9.42 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.42 LEASE.release PROWL-NWR start (3.5 s)
+ 12.92 LEASE.release PROWL-NWR done
+ 18.53 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 18.54 RESULT revoke_at 0.6: clean
+ 23.56 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== revoke_at 1.0
+  0.99 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.99 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.60 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.60 LEASE.release PROWL-SCAN start (3.5 s)
+  5.10 LEASE.release PROWL-SCAN done
+  5.11 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.11 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.52 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['12659:Ss:rtl_fm', '12660:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.53 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.53 LEASE.release PROWL-NWR start (3.5 s)
+  9.53 RADIOS revoke -> None
+ 13.03 LEASE.release PROWL-NWR done
+ 13.04 ARBITER ACQUIRING PROWL-FM  [thread Dummy-1]
+ 13.04 ARBITER HELD PROWL-FM  [thread radio-acquire]
+ 19.05 FINAL arbiter=('HELD', 'PROWL-FM') openers=['12895:Ss:rtl_fm'] page_worker=FmWorker retiring=[] busy='' chip='FM 97.3 ♪'
+ 19.06 RESULT revoke_at 1.0: FAIL: radio HELD PROWL-FM / openers ['12895:Ss:rtl_fm'] after the revoke/PANIC; held by PROWL-FM
+ 19.06 ARBITER RELEASE PROWL-FM  [thread Dummy-1]
+ 19.06 LEASE.release PROWL-FM start (3.5 s)
+[lifecycle] PROWL: worker FmWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 22.56 LEASE.release PROWL-FM done
+ 27.07 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== revoke_at 2.0
+  0.93 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.93 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.54 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.54 LEASE.release PROWL-SCAN start (3.5 s)
+  5.04 LEASE.release PROWL-SCAN done
+  5.05 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.05 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.45 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['13052:Ss:rtl_fm', '13053:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.46 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.46 LEASE.release PROWL-NWR start (3.5 s)
+ 10.46 RADIOS revoke -> None
+ 12.96 LEASE.release PROWL-NWR done
+ 12.97 ARBITER ACQUIRING PROWL-FM  [thread Dummy-1]
+ 12.97 ARBITER HELD PROWL-FM  [thread radio-acquire]
+ 19.98 FINAL arbiter=('HELD', 'PROWL-FM') openers=['13362:Ss:rtl_fm'] page_worker=FmWorker retiring=[] busy='' chip='FM 97.3 ♪'
+ 19.99 RESULT revoke_at 2.0: FAIL: radio HELD PROWL-FM / openers ['13362:Ss:rtl_fm'] after the revoke/PANIC; held by PROWL-FM
+ 19.99 ARBITER RELEASE PROWL-FM  [thread Dummy-1]
+ 19.99 LEASE.release PROWL-FM start (3.5 s)
+[lifecycle] PROWL: worker FmWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 23.49 LEASE.release PROWL-FM done
+ 28.01 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== forced_at 0
+  0.91 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.91 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.52 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.52 LEASE.release PROWL-SCAN start (3.5 s)
+  5.02 LEASE.release PROWL-SCAN done
+  5.02 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.02 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.44 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['13488:Ss:rtl_fm', '13489:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  8.44 RADIOS revoke (timeout 0.3 s) -> PROWL-NWR
+[radio] PROWL-NWR did not release within the revoke timeout — forcing free
+  8.74 ARBITER RELEASE PROWL-NWR FORCED FREE — holder did not acknowledge [thread Thread-3]
+  8.74 LEASE.release PROWL-NWR start (3.5 s)
+ 12.24 LEASE.release PROWL-NWR done
+ 17.96 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 17.98 RESULT forced_at 0.0: clean
+ 22.99 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== forced_at 0.2
+  0.95 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.95 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.56 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.56 LEASE.release PROWL-SCAN start (3.5 s)
+  5.06 LEASE.release PROWL-SCAN done
+  5.07 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.07 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.48 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['13873:Ss:rtl_fm', '13874:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  8.69 RADIOS revoke (timeout 0.3 s) -> PROWL-NWR
+[radio] PROWL-NWR did not release within the revoke timeout — forcing free
+  8.99 ARBITER RELEASE PROWL-NWR FORCED FREE — holder did not acknowledge [thread Thread-3]
+  8.99 LEASE.release PROWL-NWR start (3.5 s)
+ 12.49 LEASE.release PROWL-NWR done
+ 18.21 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 18.23 RESULT forced_at 0.2: clean
+ 23.24 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== forced_at 1.0
+  0.98 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.98 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.58 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.58 LEASE.release PROWL-SCAN start (3.5 s)
+  5.08 LEASE.release PROWL-SCAN done
+  5.09 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.09 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.51 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['14137:Ss:rtl_fm', '14138:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.52 RADIOS revoke (timeout 0.3 s) -> PROWL-NWR
+  9.52 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.52 LEASE.release PROWL-NWR start (3.5 s)
+ 13.02 LEASE.release PROWL-NWR done
+ 19.04 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 19.05 RESULT forced_at 1.0: clean
+ 24.06 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== panic_at 0
+  0.95 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.96 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.56 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.56 LEASE.release PROWL-SCAN start (3.5 s)
+  5.06 LEASE.release PROWL-SCAN done
+  5.07 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.07 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.50 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['14420:Ss:rtl_fm', '14421:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.51 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.51 LEASE.release PROWL-NWR start (3.5 s)
+  9.52 PANIC banner: TX disarmed · no engagement was open · 4 of 4 child process(es) stopped (verified gone) · radio released (was PROWL WX) · TX OFF
+ 13.01 LEASE.release PROWL-NWR done
+ 19.04 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 19.05 RESULT panic_at 0.0: clean
+ 24.06 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== panic_at 0.05
+  0.94 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.95 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.55 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.55 LEASE.release PROWL-SCAN start (3.5 s)
+  5.05 LEASE.release PROWL-SCAN done
+  5.06 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.06 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.47 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['14711:Ss:rtl_fm', '14712:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.48 ARBITER RELEASE PROWL-NWR PANIC [thread MainThread]
+  9.48 LEASE.release PROWL-NWR start (3.5 s)
+ 12.98 LEASE.release PROWL-NWR done
+ 12.98 PANIC banner: TX disarmed · no engagement was open · 4 of 4 child process(es) stopped (verified gone) · radio released (was PROWL WX) · TX OFF
+ 22.50 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 22.52 RESULT panic_at 0.05: clean
+ 27.52 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== panic_at 0.2
+  0.90 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.91 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.51 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.51 LEASE.release PROWL-SCAN start (3.5 s)
+  5.01 LEASE.release PROWL-SCAN done
+  5.02 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.02 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.43 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['15028:Ss:rtl_fm', '15029:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.44 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.44 LEASE.release PROWL-NWR start (3.5 s)
+  9.48 PANIC banner: TX disarmed · no engagement was open · 4 of 4 child process(es) stopped (verified gone) · radio released (was PROWL WX) · TX OFF
+ 12.94 LEASE.release PROWL-NWR done
+ 19.00 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 19.01 RESULT panic_at 0.2: clean
+ 24.02 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== panic_at 0.6
+  0.98 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.98 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.59 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.59 LEASE.release PROWL-SCAN start (3.5 s)
+  5.09 LEASE.release PROWL-SCAN done
+  5.10 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.10 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.52 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['15292:Ss:rtl_fm', '15293:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.52 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.52 LEASE.release PROWL-NWR start (3.5 s)
+  9.54 PANIC banner: TX disarmed · no engagement was open · 4 of 4 child process(es) stopped (verified gone) · radio released (was PROWL WX) · TX OFF
+ 13.02 LEASE.release PROWL-NWR done
+ 19.06 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 19.08 RESULT panic_at 0.6: clean
+ 24.09 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== panic_at 1.0
+  0.97 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.97 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.58 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.58 LEASE.release PROWL-SCAN start (3.5 s)
+  5.08 LEASE.release PROWL-SCAN done
+  5.08 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.08 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.50 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['15558:Ss:rtl_fm', '15559:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.51 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.51 LEASE.release PROWL-NWR start (3.5 s)
+  9.52 PANIC banner: TX disarmed · no engagement was open · no child processes were running · radio released (was PROWL WX) · TX OFF
+ 13.01 LEASE.release PROWL-NWR done
+ 19.04 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 19.05 RESULT panic_at 1.0: clean
+ 24.06 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== panic_at 2.0
+  0.91 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.91 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.52 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.52 LEASE.release PROWL-SCAN start (3.5 s)
+  5.02 LEASE.release PROWL-SCAN done
+  5.02 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.02 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.44 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['15777:Ss:rtl_fm', '15778:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.45 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.45 LEASE.release PROWL-NWR start (3.5 s)
+ 10.46 PANIC banner: TX disarmed · no engagement was open · no child processes were running · radio was free · TX OFF
+ 12.95 LEASE.release PROWL-NWR done
+ 19.98 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 20.00 RESULT panic_at 2.0: clean
+ 25.01 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== panic_at 4.0
+  0.97 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.97 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.58 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.58 LEASE.release PROWL-SCAN start (3.5 s)
+  5.08 LEASE.release PROWL-SCAN done
+  5.09 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.09 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.51 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['16007:Ss:rtl_fm', '16008:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.51 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.51 LEASE.release PROWL-NWR start (3.5 s)
+ 12.52 PANIC banner: TX disarmed · no engagement was open · no child processes were running · radio was free · TX OFF
+ 13.01 LEASE.release PROWL-NWR done
+ 22.05 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='FM: radio off — press Enter to start' chip='SDR — switching modes'
+ 22.06 RESULT panic_at 4.0: clean
+ 27.07 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== revoke_free
+  0.91 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.91 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.52 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.52 LEASE.release PROWL-SCAN start (3.5 s)
+  5.02 LEASE.release PROWL-SCAN done
+  5.02 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.02 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.44 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['16255:Ss:rtl_fm', '16256:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.45 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.45 LEASE.release PROWL-NWR start (3.5 s)
+ 12.95 LEASE.release PROWL-NWR done
+ 12.96 ARBITER ACQUIRING PROWL-FM  [thread Dummy-1]
+ 12.96 ARBITER HELD PROWL-FM  [thread radio-acquire]
+ 17.96 FINAL arbiter=('HELD', 'PROWL-FM') openers=['16463:Ss:rtl_fm'] page_worker=FmWorker retiring=[] busy='' chip='FM 97.3 ♪'
+ 17.96 RESULT revoke_free 0.2: clean
+ 17.97 ARBITER RELEASE PROWL-FM  [thread Dummy-1]
+ 17.97 LEASE.release PROWL-FM start (3.5 s)
+[lifecycle] PROWL: worker FmWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 21.47 LEASE.release PROWL-FM done
+ 25.97 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== revoke_new
+  0.93 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.93 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.54 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.54 LEASE.release PROWL-SCAN start (3.5 s)
+  5.04 LEASE.release PROWL-SCAN done
+  5.04 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.04 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.45 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['16588:Ss:rtl_fm', '16589:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.46 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.46 LEASE.release PROWL-NWR start (3.5 s)
+ 12.96 LEASE.release PROWL-NWR done
+ 12.97 ARBITER ACQUIRING PROWL-FM  [thread Dummy-1]
+ 12.97 ARBITER HELD PROWL-FM  [thread radio-acquire]
+ 17.97 FINAL arbiter=('HELD', 'PROWL-FM') openers=['16814:Ss:rtl_fm'] page_worker=FmWorker retiring=[] busy='' chip='FM 97.3 ♪'
+ 17.98 RESULT revoke_new 0.2: FAIL: radio HELD PROWL-FM / openers ['16814:Ss:rtl_fm'] after the revoke/PANIC; held by PROWL-FM
+ 17.99 ARBITER RELEASE PROWL-FM  [thread Dummy-1]
+ 17.99 LEASE.release PROWL-FM start (3.5 s)
+[lifecycle] PROWL: worker FmWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 21.49 LEASE.release PROWL-FM done
+ 26.00 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== panic_new
+  0.91 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.91 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.52 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.52 LEASE.release PROWL-SCAN start (3.5 s)
+  5.02 LEASE.release PROWL-SCAN done
+  5.03 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.03 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.45 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['16937:Ss:rtl_fm', '16938:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.46 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.46 LEASE.release PROWL-NWR start (3.5 s)
+ 12.96 LEASE.release PROWL-NWR done
+ 12.96 ARBITER ACQUIRING PROWL-FM  [thread Dummy-1]
+ 12.96 ARBITER HELD PROWL-FM  [thread radio-acquire]
+ 17.97 FINAL arbiter=('HELD', 'PROWL-FM') openers=['17138:Ss:rtl_fm'] page_worker=FmWorker retiring=[] busy='' chip='FM 97.3 ♪'
+ 17.99 RESULT panic_new 0.2: FAIL: radio HELD PROWL-FM / openers ['17138:Ss:rtl_fm'] after the revoke/PANIC; held by PROWL-FM
+ 17.99 ARBITER RELEASE PROWL-FM  [thread Dummy-1]
+ 17.99 LEASE.release PROWL-FM start (3.5 s)
+[lifecycle] PROWL: worker FmWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 21.49 LEASE.release PROWL-FM done
+ 26.00 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== chain_revoke 0
+  0.92 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.92 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  7.93 SCAN live arbiter=('HELD', 'PROWL-SCAN') openers=['17218:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='' chip='SDR —'
+  7.98 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  7.98 LEASE.release PROWL-SCAN start (3.5 s)
+  7.99 RADIOS revoke -> None
+ 11.48 LEASE.release PROWL-SCAN done
+ 11.48 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+ 11.48 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+ 17.51 FINAL arbiter=('HELD', 'PROWL-SCAN') openers=['17336:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='' chip='SDR — switching modes'
+ 17.53 RESULT chain_revoke 0.0: FAIL: radio HELD PROWL-SCAN / openers ['17336:Ss:rtl_fm'] after the revoke/PANIC; held by PROWL-SCAN
+ 17.53 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+ 17.53 LEASE.release PROWL-SCAN start (3.5 s)
+[lifecycle] PROWL: worker ScanWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 21.03 LEASE.release PROWL-SCAN done
+ 25.54 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== chain_panic 0
+  0.92 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.92 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  7.95 SCAN live arbiter=('HELD', 'PROWL-SCAN') openers=['17476:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='' chip='SDR —'
+  7.97 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  7.97 LEASE.release PROWL-SCAN start (3.5 s)
+  8.02 PANIC banner: TX disarmed · no engagement was open · no child processes were running · radio was free · TX OFF
+ 11.47 LEASE.release PROWL-SCAN done
+ 17.54 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='SCAN: radio off — press Enter to start' chip='SDR — switching modes'
+ 17.55 RESULT chain_panic 0.0: clean
+ 22.57 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== chain_revoke 0.2
+  0.88 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.88 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  7.91 SCAN live arbiter=('HELD', 'PROWL-SCAN') openers=['17651:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='SCAN OFF — page hidden' chip='SCAN OFF — page hidden'
+  7.94 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  7.94 LEASE.release PROWL-SCAN start (3.5 s)
+  8.18 RADIOS revoke -> None
+ 11.44 LEASE.release PROWL-SCAN done
+ 11.45 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+ 11.45 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+ 17.69 FINAL arbiter=('HELD', 'PROWL-SCAN') openers=['17753:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='' chip='SDR — switching modes'
+ 17.70 RESULT chain_revoke 0.2: FAIL: radio HELD PROWL-SCAN / openers ['17753:Ss:rtl_fm'] after the revoke/PANIC; held by PROWL-SCAN
+ 17.90 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+ 17.90 LEASE.release PROWL-SCAN start (3.5 s)
+[lifecycle] PROWL: worker ScanWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 21.40 LEASE.release PROWL-SCAN done
+ 25.71 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== chain_panic 0.2
+  1.00 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  1.00 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  8.03 SCAN live arbiter=('HELD', 'PROWL-SCAN') openers=['17888:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='' chip='SDR —'
+  8.06 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  8.06 LEASE.release PROWL-SCAN start (3.5 s)
+  8.31 PANIC banner: TX disarmed · no engagement was open · no child processes were running · radio was free · TX OFF
+ 11.56 LEASE.release PROWL-SCAN done
+ 17.83 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='SCAN: radio off — press Enter to start' chip='SDR — switching modes'
+ 17.84 RESULT chain_panic 0.2: clean
+ 22.86 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== chain_revoke 1.0
+  0.92 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.92 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  7.94 SCAN live arbiter=('HELD', 'PROWL-SCAN') openers=['18047:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='' chip='SDR —'
+  7.97 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  7.97 LEASE.release PROWL-SCAN start (3.5 s)
+  9.01 RADIOS revoke -> None
+ 11.47 LEASE.release PROWL-SCAN done
+ 11.48 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+ 11.48 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+ 18.53 FINAL arbiter=('HELD', 'PROWL-SCAN') openers=['18144:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='' chip='SDR — switching modes'
+ 18.54 RESULT chain_revoke 1.0: FAIL: radio HELD PROWL-SCAN / openers ['18144:Ss:rtl_fm'] after the revoke/PANIC; held by PROWL-SCAN
+ 18.74 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+ 18.74 LEASE.release PROWL-SCAN start (3.5 s)
+[lifecycle] PROWL: worker ScanWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 22.24 LEASE.release PROWL-SCAN done
+ 26.55 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== chain_panic 1.0
+  0.94 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.94 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  7.96 SCAN live arbiter=('HELD', 'PROWL-SCAN') openers=['18272:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='SCAN OFF — page hidden' chip='SCAN OFF — page hidden'
+  7.99 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  7.99 LEASE.release PROWL-SCAN start (3.5 s)
+  9.04 PANIC banner: TX disarmed · no engagement was open · no child processes were running · radio was free · TX OFF
+ 11.49 LEASE.release PROWL-SCAN done
+ 18.56 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='SCAN: radio off — press Enter to start' chip='SDR — switching modes'
+ 18.58 RESULT chain_panic 1.0: clean
+ 23.58 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_chain_revoke 0
+  0.90 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.90 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.51 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.51 LEASE.release PROWL-SCAN start (3.5 s)
+  5.01 LEASE.release PROWL-SCAN done
+  6.94 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  6.94 ARBITER HELD BABEL  [thread radio-acquire]
+  9.96 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['18480:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 10.02 RADIOS revoke -> BABEL
+ 10.97 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 10.97 LEASE.release BABEL start (3.5 s)
+ 14.47 LEASE.release BABEL done
+ 19.54 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='' chip='SDR — switching modes' RUN=False
+ 19.55 RESULT babel_chain_revoke 0.0: clean
+ 24.56 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_chain_panic 0
+  0.91 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.91 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.52 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.52 LEASE.release PROWL-SCAN start (3.5 s)
+  5.02 LEASE.release PROWL-SCAN done
+  6.95 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  6.95 ARBITER HELD BABEL  [thread radio-acquire]
+  9.97 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['18635:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 10.99 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 10.99 LEASE.release BABEL start (3.5 s)
+ 11.00 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was BABEL) · TX OFF
+ 14.49 LEASE.release BABEL done
+ 20.53 FINAL arbiter=('FREE', None) openers=[] page_worker=DecoderWorker retiring=[] busy='POCSAG IDLE — press RUN' chip='POCSAG IDLE — press RUN' RUN=False
+ 20.54 RESULT babel_chain_panic 0.0: clean
+ 25.55 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_chain_revoke 0.2
+  0.92 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.92 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.52 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.52 LEASE.release PROWL-SCAN start (3.5 s)
+  5.02 LEASE.release PROWL-SCAN done
+  6.97 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  6.97 ARBITER HELD BABEL  [thread radio-acquire]
+  9.99 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['18828:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 10.25 RADIOS revoke -> BABEL
+ 11.01 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 11.01 LEASE.release BABEL start (3.5 s)
+ 14.51 LEASE.release BABEL done
+ 19.78 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='' chip='SDR — switching modes' RUN=False
+ 19.79 RESULT babel_chain_revoke 0.2: clean
+ 24.81 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_chain_panic 0.2
+  0.93 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.93 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.54 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.54 LEASE.release PROWL-SCAN start (3.5 s)
+  5.04 LEASE.release PROWL-SCAN done
+  6.97 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  6.98 ARBITER HELD BABEL  [thread radio-acquire]
+  9.99 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['18977:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 11.01 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 11.01 LEASE.release BABEL start (3.5 s)
+ 11.03 PANIC banner: TX disarmed · no engagement was open · 2 of 2 child process(es) stopped (verified gone) · radio released (was BABEL) · TX OFF
+ 14.51 LEASE.release BABEL done
+ 20.56 FINAL arbiter=('FREE', None) openers=[] page_worker=DecoderWorker retiring=[] busy='POCSAG IDLE — press RUN' chip='POCSAG IDLE — press RUN' RUN=False
+ 20.57 RESULT babel_chain_panic 0.2: clean
+ 25.58 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_chain_revoke 1.0
+  0.94 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.94 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.55 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.55 LEASE.release PROWL-SCAN start (3.5 s)
+  5.05 LEASE.release PROWL-SCAN done
+  7.00 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  7.00 ARBITER HELD BABEL  [thread radio-acquire]
+ 10.01 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['19152:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 11.03 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 11.03 LEASE.release BABEL start (3.5 s)
+ 11.08 RADIOS revoke -> None
+ 14.53 LEASE.release BABEL done
+ 14.53 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+ 14.53 ARBITER HELD BABEL  [thread radio-acquire]
+ 20.60 FINAL arbiter=('HELD', 'BABEL') openers=['19214:Ss:rtl_fm', '19215:Ss:multimon-ng'] page_worker=DecoderWorker retiring=[] busy='' chip='POCSAG LIVE' RUN=True
+ 20.61 RESULT babel_chain_revoke 1.0: FAIL: radio HELD BABEL / openers ['19214:Ss:rtl_fm', '19215:Ss:multimon-ng'] after the revoke/PANIC; held by BABEL
+ 21.63 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 21.63 LEASE.release BABEL start (3.5 s)
+[lifecycle] BABEL: worker DecoderWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 25.13 LEASE.release BABEL done
+ 28.63 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_chain_panic 1.0
+  0.98 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.98 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.59 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.59 LEASE.release PROWL-SCAN start (3.5 s)
+  5.09 LEASE.release PROWL-SCAN done
+  7.03 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  7.03 ARBITER HELD BABEL  [thread radio-acquire]
+ 10.04 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['19466:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 11.05 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 11.05 LEASE.release BABEL start (3.5 s)
+ 11.12 PANIC banner: TX disarmed · no engagement was open · no child processes were running · radio was free · TX OFF
+ 14.55 LEASE.release BABEL done
+ 20.63 FINAL arbiter=('FREE', None) openers=[] page_worker=DecoderWorker retiring=[] busy='POCSAG IDLE — press RUN' chip='POCSAG IDLE — press RUN' RUN=False
+ 20.65 RESULT babel_chain_panic 1.0: clean
+ 25.66 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_revoke_at 0
+  0.91 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.91 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.52 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.52 LEASE.release PROWL-SCAN start (3.5 s)
+  5.02 LEASE.release PROWL-SCAN done
+  6.94 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  6.95 ARBITER HELD BABEL  [thread radio-acquire]
+  9.97 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['19688:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+  9.97 RADIOS revoke -> BABEL
+ 11.01 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 11.01 LEASE.release BABEL start (3.5 s)
+ 14.51 LEASE.release BABEL done
+ 19.49 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='' chip='SDR — switching modes' RUN=False
+ 19.50 RESULT babel_revoke_at 0.0: clean
+ 24.51 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_revoke_at 0.2
+  0.97 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.97 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.58 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.58 LEASE.release PROWL-SCAN start (3.5 s)
+  5.08 LEASE.release PROWL-SCAN done
+  7.01 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  7.01 ARBITER HELD BABEL  [thread radio-acquire]
+ 10.03 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['19876:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 10.24 RADIOS revoke -> BABEL
+ 11.04 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 11.04 LEASE.release BABEL start (3.5 s)
+ 14.54 LEASE.release BABEL done
+ 19.76 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='' chip='SDR — switching modes' RUN=False
+ 19.77 RESULT babel_revoke_at 0.2: clean
+ 24.78 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_revoke_at 1.0
+  0.95 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.95 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.56 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.56 LEASE.release PROWL-SCAN start (3.5 s)
+  5.06 LEASE.release PROWL-SCAN done
+  6.99 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  6.99 ARBITER HELD BABEL  [thread radio-acquire]
+ 10.01 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['20031:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 11.02 RADIOS revoke -> BABEL
+ 11.02 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 11.02 LEASE.release BABEL start (3.5 s)
+ 14.52 LEASE.release BABEL done
+ 20.53 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='' chip='SDR — switching modes' RUN=False
+ 20.54 RESULT babel_revoke_at 1.0: clean
+ 25.56 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_revoke_at 2.0
+  0.92 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.92 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.53 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.53 LEASE.release PROWL-SCAN start (3.5 s)
+  5.03 LEASE.release PROWL-SCAN done
+  6.94 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  6.95 ARBITER HELD BABEL  [thread radio-acquire]
+  9.96 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['20175:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 10.97 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 10.97 LEASE.release BABEL start (3.5 s)
+ 11.97 RADIOS revoke -> None
+ 14.47 LEASE.release BABEL done
+ 14.48 ARBITER ACQUIRING BABEL-SSTV  [thread Dummy-2]
+ 14.48 ARBITER HELD BABEL-SSTV  [thread radio-acquire]
+ 21.49 FINAL arbiter=('HELD', 'BABEL-SSTV') openers=['20220:Ss:rtl_fm'] page_worker=SstvWorker retiring=[] busy='' chip='SSTV — capturing 6s (lvl 0)' RUN=True
+ 21.50 RESULT babel_revoke_at 2.0: N/A — revoke returned None (radio already FREE: the old mode had released; the new mode starting is not a lost revoke). Final ('HELD', 'BABEL-SSTV')
+ 21.50 ARBITER RELEASE BABEL-SSTV  [thread Dummy-2]
+ 21.50 LEASE.release BABEL-SSTV start (3.5 s)
+[lifecycle] BABEL: worker SstvWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 25.00 LEASE.release BABEL-SSTV done
+ 29.51 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_forced_at 0
+  0.96 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.96 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.57 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.57 LEASE.release PROWL-SCAN start (3.5 s)
+  5.07 LEASE.release PROWL-SCAN done
+  6.99 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  7.00 ARBITER HELD BABEL  [thread radio-acquire]
+ 10.01 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['20308:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 10.02 RADIOS revoke (timeout 0.3 s) -> BABEL
+[radio] BABEL did not release within the revoke timeout — forcing free
+ 10.32 ARBITER RELEASE BABEL FORCED FREE — holder did not acknowledge [thread Thread-3]
+ 10.32 LEASE.release BABEL start (3.5 s)
+ 13.82 LEASE.release BABEL done
+ 19.54 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='' chip='SDR — switching modes' RUN=False
+ 19.55 RESULT babel_forced_at 0.0: clean
+ 24.56 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_forced_at 0.2
+  0.88 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.88 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.48 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.48 LEASE.release PROWL-SCAN start (3.5 s)
+  4.98 LEASE.release PROWL-SCAN done
+  6.91 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  6.91 ARBITER HELD BABEL  [thread radio-acquire]
+  9.93 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['20377:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 10.15 RADIOS revoke (timeout 0.3 s) -> BABEL
+[radio] BABEL did not release within the revoke timeout — forcing free
+ 10.45 ARBITER RELEASE BABEL FORCED FREE — holder did not acknowledge [thread Thread-3]
+ 10.45 LEASE.release BABEL start (3.5 s)
+ 13.95 LEASE.release BABEL done
+ 19.66 FINAL arbiter=('FREE', None) openers=[] page_worker=None retiring=[] busy='' chip='SDR — switching modes' RUN=False
+ 19.68 RESULT babel_forced_at 0.2: clean
+ 24.68 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== babel_rerun
+  0.92 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.92 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.53 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.53 LEASE.release PROWL-SCAN start (3.5 s)
+  5.03 LEASE.release PROWL-SCAN done
+  6.95 ARBITER ACQUIRING BABEL  [thread Dummy-2]
+  6.95 ARBITER HELD BABEL  [thread radio-acquire]
+  9.97 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['20548:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15' RUN=True
+ 10.18 RADIOS revoke -> BABEL
+ 10.59 operator re-ticks RUN
+ 10.60 after re-RUN arbiter=('HELD', 'BABEL') openers=['20548:Ss:rtl_ais'] page_worker=None retiring=['DecoderWorker'] busy='' chip='SDR — switching modes' RUN=True
+ 10.98 ARBITER RELEASE BABEL  [thread Dummy-2]
+ 10.98 LEASE.release BABEL start (3.5 s)
+ 14.48 LEASE.release BABEL done
+ 14.48 ARBITER ACQUIRING BABEL-SSTV  [thread Dummy-2]
+ 14.49 ARBITER HELD BABEL-SSTV  [thread radio-acquire]
+ 20.13 FINAL arbiter=('HELD', 'BABEL-SSTV') openers=['20617:Ss:rtl_fm'] page_worker=SstvWorker retiring=[] busy='' chip='SSTV — capturing 5s (lvl 0)' RUN=True
+ 20.13 RESULT babel_rerun: clean (operator resumed: expect HELD BABEL-SSTV, RUN on, worker)
+ 20.13 ARBITER RELEASE BABEL-SSTV  [thread Dummy-2]
+ 20.13 LEASE.release BABEL-SSTV start (3.5 s)
+[lifecycle] BABEL: worker SstvWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 23.63 LEASE.release BABEL-SSTV done
+ 28.14 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== other_page
+  0.91 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.91 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.52 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.52 LEASE.release PROWL-SCAN start (3.5 s)
+  5.02 LEASE.release PROWL-SCAN done
+  5.03 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.03 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.44 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['20710:Ss:rtl_fm', '20711:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  8.68 operator: DECODE, BABEL AIS RUN while PROWL is still switching
+  9.45 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.45 LEASE.release PROWL-NWR start (3.5 s)
+  9.70 t arbiter=('FREE', None) openers=[] page_worker=DecoderWorker retiring=[] busy='RADIO BUSY — held by PROWL WX' chip='RADIO BUSY — PROWL WX' RUN=True
+ 10.64 ARBITER ACQUIRING BABEL  [thread Dummy-3]
+ 10.64 ARBITER HELD BABEL  [thread radio-acquire]
+ 10.71 t arbiter=('HELD', 'BABEL') openers=['20788:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='1 MSGS' RUN=True
+ 11.74 t arbiter=('HELD', 'BABEL') openers=['20788:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='6 MSGS' RUN=True
+ 12.76 t arbiter=('HELD', 'BABEL') openers=['20788:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='11 MSGS' RUN=True
+ 12.95 LEASE.release PROWL-NWR done
+ 13.78 t arbiter=('HELD', 'BABEL') openers=['20788:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='16 MSGS' RUN=True
+ 14.80 t arbiter=('HELD', 'BABEL') openers=['20788:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='21 MSGS' RUN=True
+ 15.82 t arbiter=('HELD', 'BABEL') openers=['20788:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='26 MSGS' RUN=True
+ 16.83 t arbiter=('HELD', 'BABEL') openers=['20788:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='31 MSGS' RUN=True
+ 17.85 t arbiter=('HELD', 'BABEL') openers=['20788:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='36 MSGS' RUN=True
+ 18.87 t arbiter=('HELD', 'BABEL') openers=['20788:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='41 MSGS' RUN=True
+ 19.89 t arbiter=('HELD', 'BABEL') openers=['20788:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='46 MSGS' RUN=True
+ 19.89 RESULT other_page: clean; prowl worker=FmWorker busy='FM OFF — page hidden'
+ 20.91 ARBITER RELEASE BABEL  [thread Dummy-3]
+ 20.91 LEASE.release BABEL start (3.5 s)
+[lifecycle] BABEL: worker DecoderWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 24.41 LEASE.release BABEL done
+ 27.91 END arbiter=('FREE', None) children=[]
+--- rc=0
+ALLDONE

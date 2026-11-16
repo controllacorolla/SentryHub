@@ -1,0 +1,104 @@
+........................................................................ [  6%]
+................................F.......s............................... [ 13%]
+........................................................................ [ 20%]
+........................................................................ [ 27%]
+........................................................................ [ 34%]
+........................................................................ [ 40%]
+........................................................................ [ 47%]
+....F................................................................... [ 54%]
+........................................................................ [ 61%]
+........................................................................ [ 68%]
+......s................................................................. [ 75%]
+........................................................................ [ 81%]
+........................................................................ [ 88%]
+........................................F........s...................... [ 95%]
+................................................                         [100%]
+=================================== FAILURES ===================================
+____________________ test_undecodable_tile_is_marked_failed ____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7efe5ea1e0>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-16/test_undecodable_tile_is_marke0')
+
+    def test_undecodable_tile_is_marked_failed(monkeypatch, tmp_path):
+        t = _layer(monkeypatch, tmp_path)
+        key = ("dark", 5, 1, 1)
+        import os
+        p = t.path(*key)
+        os.makedirs(os.path.dirname(p))
+        open(p, "wb").write(b"garbage" * 50)
+        assert t._image(key) is None
+>       assert key in t.failed, "draw() would re-download it on every redraw"
+E       AssertionError: draw() would re-download it on every redraw
+E       assert ('dark', 5, 1, 1) in {}
+E        +  where {} = <tiles.TileLayer object at 0x7f7efe5ea090>.failed
+
+tests/test_audit_tiles.py:56: AssertionError
+__________________________ test_doctor_hwbench_check ___________________________
+
+    def test_doctor_hwbench_check():
+        import doctor
+        ok, detail, fix = doctor.chk_hwbench(which=lambda n: "/usr/bin/" + n)
+>       assert ok is True and "serial" in detail and fix == ""
+E       assert (None is True)
+
+tests/test_hwlab.py:96: AssertionError
+_______ test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone ________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-16/test_iss_passes_use_their_own_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f7eef851f10>
+
+    def test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone(tmp_path, monkeypatch):
+        import importlib, time
+        sys.path.insert(0, os.path.dirname(__file__))
+        from iss_tle_fixture import iss_tle
+        import wxsat, sstv
+        weather_cache = os.path.join(wxsat.S.CACHE, "wx_passes.json")
+        before = os.path.getmtime(weather_cache) if os.path.exists(weather_cache) else None
+        tle = tmp_path / "sstv.tle"
+        tle.write_text(iss_tle())
+>       passes = wxsat.predict(sstv.SATS, {"lat": 39.62, "lon": -104.87}, 48, path=str(tle))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_sstvdec.py:183: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+s = {'satellites': [{'name': 'ISS', 'norad': 25544, 'freq': 145.8}], 'tle_urls': ['https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle']}
+home = {'lat': 39.62, 'lon': -104.87}, hours = 48
+path = '/tmp/pytest-of-root/pytest-16/test_iss_passes_use_their_own_0/sstv.tle'
+
+    def predict(s, home, hours=48, path=None):
+>       from skyfield.api import wgs84
+E       ModuleNotFoundError: No module named 'skyfield'
+
+wxsat.py:117: ModuleNotFoundError
+=============================== warnings summary ===============================
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[live-dark]
+  /tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x326d85b0) at 0x7f7efcf8d080>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[live-light]
+  /tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x308a84b0) at 0x7f7efd13ddc0>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[live-sun]
+  /tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x3193f1a0) at 0x7f7efcfa9ac0>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[demo-dark]
+  /tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x30c7fd80) at 0x7f7efcf8ddc0>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[demo-light]
+  /tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x301459a0) at 0x7f7ef4a62740>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[demo-sun]
+  /tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x2ff32830) at 0x7f7efcf9e780>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_audit_tiles.py::test_undecodable_tile_is_marked_failed - As...
+FAILED tests/test_hwlab.py::test_doctor_hwbench_check - assert (None is True)
+FAILED tests/test_sstvdec.py::test_iss_passes_use_their_own_tle_and_leave_weather_cache_alone
+3 failed, 1050 passed, 3 skipped, 6 warnings in 447.22s (0:07:27)

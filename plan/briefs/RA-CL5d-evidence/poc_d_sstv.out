@@ -1,0 +1,98 @@
+=== dup 3.0
+  1.06 RUN
+  1.06 LEASE.acquire start BABEL-SSTV (readsb would still hold the dongle)
+  1.07 LEASE.acquire done BABEL-SSTV children-at-HELD: []
+  2.07 REC.start rec1
+  4.08 DECODE start rec1 call 0 -> 200 lines in 0.0 s
+  4.08 DECODE done rec1 call 0
+  5.08 DECODE start rec1 call 1 -> 400 lines in 3.0 s
+  5.59 STOP pressed (refinement decode running)
+  5.59 REC.stop rec1
+  5.60 LEASE.release BABEL-SSTV children-at-release: []
+  8.08 DECODE done rec1 call 1
+ 13.11 decode events: 2 ['PD120 frame · 200 lines', 'PD120 frame · 400 lines']
+ 13.11 rows (t, frame id, lines): [(4.08, 1, 200), (8.08, 2, 400)]
+ 13.11 page count label: 2 frames
+ 13.11 frame ids used for rec1's ONE frame: [1, 2]
+ 13.11 RESULT dup FAIL: rec1's single frame produced 2 decode events (expect 1); rec1's single frame shown under 2 frame ids
+ 14.11 arbiter ('FREE', None)
+=== leak 3.0
+  1.04 RUN
+  1.04 LEASE.acquire start BABEL-SSTV (readsb would still hold the dongle)
+  1.04 LEASE.acquire done BABEL-SSTV children-at-HELD: []
+  2.05 REC.start rec1
+  4.05 DECODE start rec1 call 0 -> 200 lines in 0.0 s
+  4.05 DECODE done rec1 call 0
+  5.05 DECODE start rec1 call 1 -> 400 lines in 3.0 s
+  5.61 STOP pressed (refinement decode running)
+  5.61 REC.stop rec1
+  5.61 LEASE.release BABEL-SSTV children-at-release: []
+  5.92 RUN again
+  5.92 LEASE.acquire start BABEL-SSTV (readsb would still hold the dongle)
+  5.93 LEASE.acquire done BABEL-SSTV children-at-HELD: []
+  6.92 REC.start rec2
+  8.05 DECODE done rec1 call 1
+  8.92 DECODE start rec2 call 0 -> 150 lines in 0.0 s
+  8.92 DECODE done rec2 call 0
+  9.92 DECODE start rec2 call 1 -> 200 lines in 0.0 s
+  9.92 DECODE done rec2 call 1
+ 10.92 DECODE start rec2 call 2 -> 250 lines in 0.0 s
+ 10.92 DECODE done rec2 call 2
+ 11.92 DECODE start rec2 call 3 -> 300 lines in 0.0 s
+ 11.92 DECODE done rec2 call 3
+ 11.93 REC.stop rec2
+ 11.94 LEASE.release BABEL-SSTV children-at-release: []
+ 13.44 decode events: 3 ['PD120 frame · 200 lines', 'PD120 frame · 400 lines', 'PD120 frame · 150 lines']
+ 13.44 rows (t, frame id, lines): [(4.05, 1, 200), (8.06, 2, 400), (8.93, 3, 150), (9.93, 3, 200), (10.93, 3, 250), (11.93, 3, 300)]
+ 13.44 page count label: 3 frames
+ 13.44 frame ids used for rec1's ONE frame: [1, 2]
+ 13.44 RESULT leak FAIL: rec1's single frame produced 2 decode events (expect 1); rec1's single frame shown under 2 frame ids; page count after the new RUN reads '3 frames' (truth: 2 frames)
+ 14.44 arbiter ('FREE', None)
+=== leak 5.0
+  1.07 RUN
+  1.07 LEASE.acquire start BABEL-SSTV (readsb would still hold the dongle)
+  1.08 LEASE.acquire done BABEL-SSTV children-at-HELD: []
+  2.08 REC.start rec1
+  4.08 DECODE start rec1 call 0 -> 200 lines in 0.0 s
+  4.08 DECODE done rec1 call 0
+  5.08 DECODE start rec1 call 1 -> 400 lines in 5.0 s
+  5.59   5.59 REC.stop rec1
+STOP pressed (refinement decode running)
+  5.60 LEASE.release BABEL-SSTV children-at-release: []
+  5.90 RUN again
+  5.90 LEASE.acquire start BABEL-SSTV (readsb would still hold the dongle)
+  5.91 LEASE.acquire done BABEL-SSTV children-at-HELD: []
+  6.90 REC.start rec2
+ 10.08 DECODE done rec1 call 1
+ 10.91 DECODE start rec2 call 0 -> 150 lines in 0.0 s
+ 10.91 DECODE done rec2 call 0
+ 11.91 DECODE start rec2 call 1 -> 200 lines in 0.0 s
+ 11.91 DECODE done rec2 call 1
+ 12.91 DECODE start rec2 call 2 -> 250 lines in 0.0 s
+ 12.91 DECODE done rec2 call 2
+ 13.91 REC.stop rec2
+ 13.91 LEASE.release BABEL-SSTV children-at-release: []
+ 15.41 decode events: 3 ['PD120 frame · 200 lines', 'PD120 frame · 400 lines', 'PD120 frame · 150 lines']
+ 15.41 rows (t, frame id, lines): [(4.09, 1, 200), (10.09, 2, 400), (10.91, 3, 150), (11.91, 3, 200), (12.91, 3, 250)]
+ 15.41 page count label: 3 frames
+ 15.41 frame ids used for rec1's ONE frame: [1, 2]
+ 15.41 RESULT leak FAIL: rec1's single frame produced 2 decode events (expect 1); rec1's single frame shown under 2 frame ids; page count after the new RUN reads '3 frames' (truth: 2 frames)
+ 16.42 arbiter ('FREE', None)
+=== dup 0.5 (late result within 1 s of STOP: control)
+  1.06 RUN
+  1.06 LEASE.acquire start BABEL-SSTV (readsb would still hold the dongle)
+  1.06 LEASE.acquire done BABEL-SSTV children-at-HELD: []
+  2.07 REC.start rec1
+  4.08 DECODE start rec1 call 0 -> 200 lines in 0.0 s
+  4.08 DECODE done rec1 call 0
+  5.08 DECODE start rec1 call 1 -> 400 lines in 0.5 s
+  5.58 DECODE done rec1 call 1
+  5.61 STOP pressed (refinement decode running)
+  5.61 REC.stop rec1
+  5.61 LEASE.release BABEL-SSTV children-at-release: []
+ 10.61 decode events: 1 ['PD120 frame · 200 lines']
+ 10.61 rows (t, frame id, lines): [(4.08, 1, 200), (5.59, 1, 400)]
+ 10.61 page count label: 1 frame
+ 10.61 frame ids used for rec1's ONE frame: [1]
+ 10.61 RESULT dup clean
+ 11.61 arbiter ('FREE', None)

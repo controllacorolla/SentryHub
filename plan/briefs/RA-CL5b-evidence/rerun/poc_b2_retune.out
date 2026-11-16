@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user/6e68e76f-d2af-537d-be7e-5ed53fe1323e/scratchpad/wt-RA-CL5b/plan/briefs/RA-CL5-evidence/poc_b2_retune.py", line 30, in <module>
+    hot = [(r["freq"], r["last"]) for r in rows[-1]["rows"] if r["_hot"]]
+                                           ~~~~^^^^
+IndexError: list index out of range
+  1.53 LEASE.release PROWL-SCAN children-at-release: []

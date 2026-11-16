@@ -381,8 +381,22 @@ KIND_COL = {"moving": "#e8eaed", "weather": "#7fa7d9", "infra": "#5ec4d4",
             "fixed": "#7d858f", "balloon": "#c8b6ff"}
 
 
+def pipeline_argv(gain):
+    """rtl_fm -> multimon-ng as two argv lists (no shell) — the Qt pages run these in one
+    session so the whole pipeline is killed and waited as a group (audit A4)."""
+    rtl = ["rtl_fm", "-f", str(FREQ), "-M", "fm", "-s", "22050"]
+    if gain:
+        rtl += ["-g", str(int(gain))]
+    rtl += ["-E", "dc", "-"]
+    mm = ["multimon-ng", "-t", "raw", "-a", "AFSK1200", "-A", "/dev/stdin"]
+    if shutil.which("stdbuf"):
+        mm = ["stdbuf", "-oL"] + mm
+    return [rtl, mm]
+
+
 def pipeline(gain):
-    """rtl_fm -> multimon-ng. Fixed argv pieces only; gain is an int from settings."""
+    """rtl_fm -> multimon-ng. Fixed argv pieces only; gain is an int from settings.
+    LEGACY shell string for the Tk app; Qt uses pipeline_argv()."""
     g = " -g %d" % int(gain) if gain else ""
     mm = "multimon-ng -t raw -a AFSK1200 -A /dev/stdin"
     if shutil.which("stdbuf"):

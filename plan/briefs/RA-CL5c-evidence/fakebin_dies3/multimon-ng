@@ -1,0 +1,5 @@
+#!/bin/sh
+cat >/dev/null & p=$!
+sleep 3
+kill $p
+exit 3

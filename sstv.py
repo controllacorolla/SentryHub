@@ -9,6 +9,7 @@ with the built-in decoder - no qsstv, no audio routing.
 --demo shows the app without hardware (recording disabled; decoding still works).
 """
 import glob
+import collections
 import os
 import queue
 import shutil
@@ -68,17 +69,45 @@ def pass_line(p, now=None):
 
 
 class Recorder:
-    """rtl_fm -> WAV file, optionally also to the speaker. One per recording."""
+    """rtl_fm -> WAV file, optionally also to the speaker. One per recording.
 
-    def __init__(self, path, freq, gain, monitor):
+    CL5-fix 12 (N9): the WAV on disk is APPENDED to (wave patches only its 44-byte header), never
+    rewritten — the R5 rolling-window version rewrote the whole 11.5 MB window every 5 s (~8 GB/h
+    of flash writes). The file is capped by rotating: when it holds window_s of audio it becomes
+    <path>.prev.wav and a fresh file starts, so at most two windows sit on disk. Live decoding
+    reads the in-memory window (samples_since), so nothing re-reads the file either."""
+
+    WINDOW_S = 240          # audit R5: keep at most this much audio (longest SSTV mode ~3 min)
+    FLUSH_S = 5
+
+    def __init__(self, path, freq, gain, monitor, window_s=None, proc=None, keep_last_window=True):
         self.path, self.level, self.err = path, 0.0, ""
+        # CL5-fix2 (RA-CL5b N-f): when the recording ends, leave ONE contiguous file holding the
+        # last window_s of audio (the R5 contract the Tk app decodes from), so a frame that spans
+        # a rotation is not split across .prev.wav and .wav. One rewrite per recording, not per
+        # flush. The Qt worker decodes from memory and deletes its files: it passes False.
+        self.keep_last_window = keep_last_window
+        self.rotations = 0
         self.proc = self.sink = None
         self.t0 = time.time()
         self.stop_flag = threading.Event()
-        errf = S.errfile(os.path.join(S.CACHE, "sstv_rtl.err"))
-        self.proc = subprocess.Popen(rec_cmd(freq, gain), stdout=subprocess.PIPE, stderr=errf,
-                                     start_new_session=True)
-        errf.close()
+        self.window_s = self.WINDOW_S if window_s is None else window_s
+        self._chunks = collections.deque()           # rolling window of raw PCM chunks (memory)
+        self._bytes = 0                              # bytes in the in-memory window
+        self._total = 0                              # bytes captured since start (absolute)
+        self._mlock = threading.Lock()
+        self._pending = []                           # captured, not yet appended to the file
+        self._wf = None                              # the open wave writer (append-only)
+        self._file_frames = 0                        # frames in the current file
+        self.bytes_written = 0                       # every byte this recorder put on disk
+        self._written = 0.0                          # seconds of audio in the current file
+        if proc is None:
+            errf = S.errfile(os.path.join(S.CACHE, "sstv_rtl.err"))
+            self.proc = subprocess.Popen(rec_cmd(freq, gain), stdout=subprocess.PIPE, stderr=errf,
+                                         start_new_session=True)
+            errf.close()
+        else:
+            self.proc = proc                         # test seam: a fake producer
         if monitor:
             sc = shutil.which("pacat") and ["pacat", "--raw", "--format=s16le",
                                              "--rate=%d" % RATE, "--channels=1"]
@@ -89,11 +118,11 @@ class Recorder:
         self.thread.start()
 
     def _run(self):
+        """Read PCM, keep a rolling window in memory (for live decoding) and APPEND to the WAV
+        every FLUSH_S seconds."""
         import array
-        w = wave.open(self.path, "wb")
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(RATE)
+        max_bytes = int(self.window_s * RATE * 2)
+        last_flush = time.time()
         try:
             while not self.stop_flag.is_set():
                 chunk = self.proc.stdout.read(4800)
@@ -101,7 +130,13 @@ class Recorder:
                     self.err = "rtl_fm stopped - is the SDR free?"
                     break
                 chunk = chunk[: len(chunk) // 2 * 2]
-                w.writeframes(chunk)
+                with self._mlock:
+                    self._chunks.append(chunk)
+                    self._bytes += len(chunk)
+                    self._total += len(chunk)
+                    while self._bytes > max_bytes and len(self._chunks) > 1:
+                        self._bytes -= len(self._chunks.popleft())
+                    self._pending.append(chunk)
                 a = array.array("h")
                 a.frombytes(chunk)
                 self.level = (sum(x * x for x in a[::8]) / max(1, len(a[::8]))) ** 0.5
@@ -110,8 +145,105 @@ class Recorder:
                         self.sink.stdin.write(chunk)
                     except (BrokenPipeError, ValueError, OSError):
                         self.sink = None
+                if time.time() - last_flush >= self.FLUSH_S:
+                    self.flush()
+                    last_flush = time.time()
         finally:
-            w.close()
+            self.flush()
+            self._close_file()
+            if self.keep_last_window and self.rotations:
+                self._write_last_window()
+
+    def _prev_path(self):
+        return self.path[:-4] + ".prev.wav" if self.path.endswith(".wav") else self.path + ".prev"
+
+    def _write_last_window(self):
+        """Replace the rotated pair with one file = the in-memory window (contiguous)."""
+        with self._mlock:
+            chunks = list(self._chunks)
+        tmp = self.path + ".tmp"
+        try:
+            w = wave.open(tmp, "wb")
+            try:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(RATE)
+                for c in chunks:
+                    w.writeframes(c)
+                    self.bytes_written += len(c)
+            finally:
+                w.close()
+            os.replace(tmp, self.path)
+            self._file_frames = sum(len(c) for c in chunks) // 2
+            self._written = self._file_frames / float(RATE)
+            try:
+                os.remove(self._prev_path())
+            except OSError:
+                pass
+        except Exception as e:
+            self.err = self.err or "could not write the last window: %s" % str(e)[:60]
+
+    def _open_file(self):
+        w = wave.open(self.path, "wb")
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        self._wf, self._file_frames = w, 0
+
+    def _close_file(self):
+        w, self._wf = self._wf, None
+        if w is not None:
+            try:
+                w.close()
+            except Exception:
+                pass
+
+    def flush(self):
+        """Append the audio captured since the last flush to self.path (header patched, nothing
+        rewritten); rotate to <path>.prev.wav once the file holds window_s. Returns the seconds
+        of audio in the current file."""
+        with self._mlock:
+            pending, self._pending = self._pending, []
+        max_frames = int(self.window_s * RATE)
+        for c in pending:
+            if self._wf is None:
+                self._open_file()
+            if self._file_frames >= max_frames:      # rotate: keep one previous window
+                self._close_file()
+                try:
+                    os.replace(self.path, self._prev_path())
+                except OSError:
+                    pass
+                self.rotations += 1
+                self._open_file()
+            self._wf.writeframes(c)
+            self._file_frames += len(c) // 2
+            self.bytes_written += len(c)
+        if self._wf is not None:
+            try:
+                self._wf._file.flush()
+            except Exception:
+                pass
+        self._written = self._file_frames / float(RATE)
+        return self._written
+
+    def window_seconds(self):
+        return self._bytes / float(RATE * 2)
+
+    def total_samples(self):
+        """Samples captured since the recorder started (absolute sample clock)."""
+        return self._total // 2
+
+    def samples_since(self, abs_sample):
+        """(int16 bytes, first absolute sample) of the in-memory audio from abs_sample on (clamped
+        to what the rolling window still holds). Lets a live decoder look at new audio only."""
+        with self._mlock:
+            chunks = list(self._chunks)
+            end = self._total
+            start = end - self._bytes
+        want = max(int(abs_sample) * 2, start)
+        data = b"".join(chunks)[want - start:]
+        return data, want // 2
 
     def stop(self):
         self.stop_flag.set()

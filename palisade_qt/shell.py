@@ -280,6 +280,17 @@ class PalisadeHub(QtWidgets.QMainWindow):
             did.append("engagement %s ended" % was if was else "no engagement was open")
         except Exception as e:
             did.append("engagement end FAILED: %s" % e)
+        # RA-CL5b N-h: what was running BEFORE the pages stopped their own decoders, so the
+        # banner counts those stops too instead of "no child processes were running"
+        try:
+            pre_kids = list(self._list_children())
+        except Exception:
+            pre_kids = []
+        try:
+            from . import radio_arbiter as _ra
+            pre_owner = _ra.arbiter.owner()
+        except Exception:
+            pre_owner = None
         try:
             import executor
             n = executor.kill_all("PANIC")             # every registered gated process group
@@ -295,9 +306,32 @@ class PalisadeHub(QtWidgets.QMainWindow):
             did.append("permit revoke FAILED: %s" % e)
         try:
             roots = list(self._list_children())
-            did.append(procs.describe(self._stop_tree(roots)))
+            res = self._stop_tree(roots)
+            by_pages = [p for p in pre_kids if p not in roots and not procs.alive(p)]
+            if by_pages and not res.get("targets"):
+                did.append("%d child process(es) stopped by their pages (verified gone)"
+                           % len(by_pages))
+            else:
+                did.append(procs.describe(res))
+                if by_pages:
+                    did.append("%d more stopped by their pages" % len(by_pages))
         except Exception as e:
             did.append("child process stop FAILED: %s" % e)
+        try:
+            # CL5-fix 5 / N3: the pages were told to stay off the radio (on_panic, above) BEFORE
+            # the process tree was killed, so nothing respawns; now free the arbiter at once and
+            # report what the arbiter says afterwards, not what we asked for
+            from . import radio_arbiter
+            was = radio_arbiter.arbiter.panic_free()
+            st, owner = radio_arbiter.arbiter.state()
+            was = was or pre_owner                 # its page may have released it first
+            if st == "FREE":
+                did.append("radio released (was %s)" % radio_arbiter.OWNER_LABELS.get(was, was)
+                           if was else "radio was free")
+            else:
+                did.append("radio STILL %s by %s" % (st, radio_arbiter.OWNER_LABELS.get(owner, owner)))
+        except Exception as e:
+            did.append("radio release FAILED: %s" % e)
         try:
             self._gate_changed()                   # pages re-read their own gates (BENCH …)
             self.state.poll()

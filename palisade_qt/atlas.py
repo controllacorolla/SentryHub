@@ -14,6 +14,7 @@ import math
 import os
 import queue
 import random
+import sys
 import threading
 import time
 
@@ -171,13 +172,16 @@ class RidSource:
     BLE + Wi-Fi only (OpenDroneID) — NOT the SDR, so no lease is taken. The Wi-Fi-monitor path is
     device-only and left stubbed; BLE works on the dev Mac but sees zero without real beacons."""
 
-    def __init__(self):
+    def __init__(self, on_fault=None):
         import dronewatch
         self._dw = dronewatch
         self._drones = dronewatch.Drones()
         self._q = queue.Queue()
         self._on = False
         self._thread = None
+        self._fault = None             # E3: a scanner failure is surfaced, never swallowed
+        self._on_fault = on_fault
+        self.state = "off"             # off | scanning | fault | unavailable
 
     def start(self):
         if self._on:
@@ -188,14 +192,43 @@ class RidSource:
         # TODO(device-only): Wi-Fi monitor-mode OpenDroneID (NAN/beacon) — needs a monitor NIC;
         # validate on the uConsole. BLE covers the common case and runs here.
 
+    def _set_fault(self, msg, state="fault"):
+        self._fault = msg
+        self.state = state
+        if self._on_fault is not None:
+            try:
+                self._on_fault(msg)
+            except Exception:
+                pass
+
+    @staticmethod
+    def scanner_kwargs(platform=None):
+        """E3: PASSIVE scanning only — Remote-ID beacons are broadcast; we never send scan
+        requests. bleak: scanning_mode='passive'. On Linux (BlueZ, the uConsole) passive mode is
+        an advertisement monitor and REFUSES to start without or_patterns (CL5-fix 10 / N8:
+        "passive scanning mode requires bluez or_patterns"), so match the OpenDroneID service
+        data: AD type 0x16 (Service Data, 16-bit UUID) starting with 0xFFFA little-endian."""
+        kw = {"scanning_mode": "passive"}
+        if (platform or sys.platform).startswith("linux"):
+            try:
+                from bleak.assigned_numbers import AdvertisementDataType
+                ad_type = AdvertisementDataType.SERVICE_DATA_UUID16
+            except Exception:
+                ad_type = 0x16
+            uuid_le = (0xFFFA).to_bytes(2, "little")
+            kw["bluez"] = {"or_patterns": [(0, ad_type, uuid_le)]}
+        return kw
+
     def _scan_ble(self):
         if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            self.state = "unavailable"
             return                      # never open a real BLE scan under tests/offline
         try:
             import asyncio
             from bleak import BleakScanner
-        except Exception:
-            return                      # no bleak: zero drones (honest), BLE path simply absent
+        except Exception as e:
+            self._set_fault("Remote-ID: bleak not installed (%s)" % str(e)[:60], "unavailable")
+            return
 
         async def run():
             def cb(dev, adv):
@@ -203,17 +236,25 @@ class RidSource:
                 p = sd.get(self._dw.ODID_SERVICE_UUID)
                 if p:
                     self._q.put((dev.address, bytes(p), getattr(adv, "rssi", None)))
-            scanner = BleakScanner(detection_callback=cb)
+            kw = self.scanner_kwargs()
+            try:
+                scanner = BleakScanner(detection_callback=cb, **kw)
+            except TypeError:           # backend without passive support: say so, stay off
+                self._set_fault("Remote-ID: BLE backend has no passive scan mode — not scanning")
+                return
             await scanner.start()
+            self.state = "scanning"
             try:
                 while self._on:
                     await asyncio.sleep(0.5)
             finally:
                 await scanner.stop()
+                if self.state == "scanning":
+                    self.state = "off"
         try:
             asyncio.run(run())
-        except Exception:
-            pass
+        except Exception as e:
+            self._set_fault("Remote-ID BLE scan failed: %s" % str(e)[:100])
 
     def ingest_payload(self, addr, payload, rssi=None):
         """Decode one BLE ODID service-data payload and fold it into the aggregator (dronewatch's
@@ -242,28 +283,24 @@ class RidSource:
 # offscreen/offline/no-tools, so CI never opens a real radio. Legacy decode paths reused AS-IS.
 def _open_aprs_pipe(gain):
     import shutil
-    import subprocess
     if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
         return None
     if not shutil.which("rtl_fm") or not shutil.which("multimon-ng"):
         return None
     import aprs
-    return subprocess.Popen(aprs.pipeline(gain), shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1,
-                            start_new_session=True)     # PANIC stops the pipeline by group
+    from .kit.procs import Pipeline
+    return Pipeline(aprs.pipeline_argv(gain))          # one session: PANIC/arbiter kill the lot (A4)
 
 
 def _open_ais_pipe(gain):
     import shutil
-    import subprocess
     if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
         return None
     if not shutil.which("rtl_ais"):
         return None
     import ais
-    return subprocess.Popen(ais.pipeline(gain), shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1,
-                            start_new_session=True)     # PANIC stops the pipeline by group
+    from .kit.procs import Pipeline
+    return Pipeline(ais.pipeline_argv(gain))           # one session: PANIC/arbiter kill the lot (A4)
 
 
 def aprs_station_contacts(stations, now):
@@ -354,22 +391,74 @@ class LeaseSource:
         self._has_radio = False
         self._proc = None
         self._thread = None
+        self._revoke_req = False       # set on the GUI thread; acted on in poll() (worker thread)
+        self.given_back = None         # why this layer gave the radio back (the page unticks it)
+        self.wake = None               # the owning worker's poke(): act on a revoke NOW (CL5-fix2)
 
     def start(self):
         self._on = True          # acquire is deferred to poll() so a busy layer keeps retrying
+        radio_arbiter.arbiter.revoked.connect(self._on_revoked)
+
+    def _on_revoked(self, name):
+        """A1: the operator asked for the radio back. This runs on the GUI thread, so it only
+        flags it (CL5-fix 6: Pipeline.terminate + the lease release took 2 s here). The worker's
+        next poll() stops the pipeline, waits for it to exit, then releases — the arbiter frees
+        on that acknowledgement."""
+        if name == self.NAME:
+            self._revoke_req = True
+            if self.wake is not None:
+                self.wake()
+
+    def hold_off(self, reason):
+        """PANIC: same as a revoke, from the worker thread's next poll()."""
+        self._revoke_req = True
+        self.given_back = reason
+
+    def _give_back(self, why):
+        self._on = False
+        self._revoke_req = False
+        self._stop_pipe()                            # every stage reaped …
+        if self._has_radio:
+            radio_arbiter.arbiter.release(self.NAME)   # … THEN released
+            self._has_radio = False
+        self.given_back = self.given_back or why
 
     def poll(self):
+        """Worker thread. Acquire if free, start the capture only once HELD (CL5-fix 1), give the
+        radio back on a revoke/PANIC or if it was freed under us."""
+        if self._revoke_req:
+            self._give_back("radio given back")
+            return []
         if not self._on:
             return []
-        if not self._has_radio and radio_arbiter.arbiter.request(self.NAME):
+        arb = radio_arbiter.arbiter
+        if not self._has_radio:
+            if not arb.request(self.NAME):
+                return []        # radio busy: publish nothing (UI shows BUSY via busy_owner)
             self._has_radio = True
+        st, owner = arb.state()
+        if owner != self.NAME:                       # freed under us (forced free)
+            self._has_radio = False
+            self._give_back("radio taken back")
+            return []
+        if st != "HELD":
+            return []                                # ACQUIRING: readsb is still being paused
+        if self._proc is None and self._thread is None:
             self._proc = self._open_pipe()
+            if self._proc is not None and not arb.held_by(self.NAME):
+                self._has_radio = False              # N-j: lost it while spawning — reap first
+                self._give_back("radio taken back")
+                return []
             if self._proc is not None:
                 self._thread = threading.Thread(target=self._read, daemon=True)
                 self._thread.start()
-        if not self._has_radio:
-            return []            # radio busy: publish nothing (UI shows BUSY via busy_owner)
+            else:
+                self._thread = False                 # seam opened nothing: don't retry each poll
         return self._contacts()
+
+    def acquiring(self):
+        st, owner = radio_arbiter.arbiter.state()
+        return self._on and owner == self.NAME and st == "ACQUIRING"
 
     def busy_owner(self):
         """Holder's lease name if this source wants the radio but can't have it, else None."""
@@ -378,22 +467,32 @@ class LeaseSource:
         return None
 
     def _read(self):
+        proc = self._proc
+        if proc is None:
+            return
         try:
-            for line in self._proc.stdout:
+            for line in proc.stdout:
                 if not self._on:
                     break
                 self.feed_line(line)
         except Exception:
             pass
 
-    def stop(self):
-        self._on = False
-        if self._proc is not None:
+    def _stop_pipe(self):
+        proc, self._proc = self._proc, None
+        if proc is not None:
             try:
-                self._proc.terminate()
+                proc.terminate()                 # Pipeline: group SIGTERM → wait → SIGKILL → wait
             except Exception:
                 pass
-            self._proc = None
+
+    def stop(self):
+        self._on = False
+        try:
+            radio_arbiter.arbiter.revoked.disconnect(self._on_revoked)
+        except (TypeError, RuntimeError):
+            pass
+        self._stop_pipe()
         if self._has_radio:
             radio_arbiter.arbiter.release(self.NAME)   # readsb / the autopilot resume
             self._has_radio = False
@@ -467,8 +566,14 @@ class AtlasLiveWorker(Worker):
     publishes ZERO. Device-only bits (real RTL capture, Wi-Fi-monitor ODID) validate on the
     uConsole."""
 
+    # CL5-fix2 (RA-CL5b N-a): a lease layer owns the dongle, so this worker must keep answering a
+    # revoke / forced free while ATLAS is hidden. It is never paused; while hidden it only runs
+    # the lease layers (and starts nothing else), which is what a paused worker used to cost.
+    PAUSE_WHEN_HIDDEN = False
+
     def __init__(self, parent=None):
         super().__init__(demo=False, interval_ms=1000, parent=parent)
+        self._hidden = False
         self._adsb = None
         self._adsb_tried = False
         self._rid = None
@@ -486,14 +591,8 @@ class AtlasLiveWorker(Worker):
             except Exception as e:   # no engine / no deps: stay at zero, surface once
                 self.error.emit("ADS-B engine unavailable: %s" % str(e)[:120])
                 self._adsb = None
-        if not self._rid_tried:
-            self._rid_tried = True
-            try:
-                self._rid = RidSource()
-                self._rid.start()
-            except Exception as e:
-                self.error.emit("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
-                self._rid = None
+        # E3: the BLE scan is an explicit layer (DRONES) with an off switch; it is NOT started
+        # merely because ATLAS opened. See _reconcile_rid().
 
     LEASE_LAYERS = {"station": AprsSource, "vessel": AisSource}
 
@@ -505,6 +604,19 @@ class AtlasLiveWorker(Worker):
         else:
             self._wanted.discard(kind)
 
+    def _reconcile_rid(self):
+        want = "drone" in self._wanted
+        if want and self._rid is None:
+            try:
+                self._rid = RidSource(on_fault=lambda m: self.error.emit(m))
+                self._rid.start()
+            except Exception as e:
+                self.error.emit("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
+                self._rid = None
+        elif not want and self._rid is not None:
+            self._rid.stop()
+            self._rid = None
+
     def _reconcile_leases(self):
         for kind, cls in self.LEASE_LAYERS.items():
             want = kind in self._wanted
@@ -512,6 +624,7 @@ class AtlasLiveWorker(Worker):
             if want and src is None:
                 try:
                     src = cls()
+                    src.wake = self.poke
                     src.start()
                     self._lease_srcs[kind] = src
                 except Exception as e:
@@ -520,9 +633,18 @@ class AtlasLiveWorker(Worker):
                 src.stop()                   # releases the radio via the arbiter
                 del self._lease_srcs[kind]
 
+    def set_hidden(self, hidden):
+        """GUI thread: the page was hidden / fronted. Flag only (the lease layers keep running)."""
+        self._hidden = bool(hidden)
+        self.poke()
+
     def step(self):
-        self._ensure_sources()
         self._reconcile_leases()
+        if self._hidden:
+            self._step_leases()                  # hidden: only the dongle owners, nothing new
+            return
+        self._ensure_sources()
+        self._reconcile_rid()
         # ADS-B is the baseline (reads readsb's json). If a lease-layer holds the radio, readsb is
         # paused -> ADS-B is BUSY (the app shows it) and we publish no stale aircraft.
         if radio_arbiter.arbiter.owner() is None:
@@ -535,9 +657,25 @@ class AtlasLiveWorker(Worker):
             eventbus.bus.publish(ev)
         for ev in df_contacts():             # KrakenSDR array (separate device); no lease
             eventbus.bus.publish(ev)
-        for src in self._lease_srcs.values():
+        self._step_leases()
+
+    def _step_leases(self):
+        for kind, src in list(self._lease_srcs.items()):
             for ev in src.poll():            # acquires if free; nothing while the radio is busy
                 eventbus.bus.publish(ev)
+            if src.given_back:               # revoke / PANIC: the layer is off — tell the page
+                self.status.emit({"layer_off": kind, "why": src.given_back})
+                src.stop()
+                del self._lease_srcs[kind]
+                self._wanted.discard(kind)
+        acq = [k for k, src in self._lease_srcs.items() if src.acquiring()]
+        self.status.emit({"acquiring_layers": acq})
+
+    def hold_off(self, reason):
+        """PANIC (GUI thread): every lease layer gives the radio back on the next step."""
+        for src in list(self._lease_srcs.values()):
+            src.hold_off(reason)
+        self.poke()
 
     def _adsb_contacts(self):
         if self._adsb is None:
@@ -575,6 +713,7 @@ class AtlasApp(PalisadeApp):
         if not self.demo:
             self._layers.discard("station")          # APRS + AIS hold the one SDR: opt-in in live
             self._layers.discard("vessel")
+            self._layers.discard("drone")            # E3: the BLE scan is opt-in too
 
         body = QtWidgets.QWidget()
         split = QtWidgets.QHBoxLayout(body)
@@ -644,13 +783,54 @@ class AtlasApp(PalisadeApp):
 
     def _toggle(self, kind, on):
         self._layers.add(kind) if on else self._layers.discard(kind)
-        if kind in self.LEASE_NAME and not self.demo and self._worker is not None \
-                and hasattr(self._worker, "set_layer"):
-            self._worker.set_layer(kind, on)     # acquire/release the SDR via the arbiter
+        if (kind in self.LEASE_NAME or kind == "drone") and not self.demo \
+                and self._worker is not None and hasattr(self._worker, "set_layer"):
+            self._worker.set_layer(kind, on)     # SDR layers via the arbiter; DRONES = BLE scan
         self._render()
 
     def make_worker(self):
-        return AtlasDemoWorker() if self.demo else AtlasLiveWorker()
+        if self.demo:
+            return AtlasDemoWorker()
+        w = AtlasLiveWorker()
+        w._hidden = not self._active             # started while hidden: run as hidden
+        return w
+
+    def set_active(self, active):
+        super().set_active(active)
+        w = self._worker
+        if w is not None and hasattr(w, "set_hidden"):
+            w.set_hidden(not active)
+
+    def on_error(self, msg):
+        """CL5-fix 10: a source fault (the BLE Remote-ID scanner, an engine that is missing) is
+        shown on the page, not only printed to stderr."""
+        super().on_error(msg)
+        self.set_chip("fault", str(msg)[:70], state="alert")
+
+    def on_status(self, status):
+        super().on_status(status)
+        kind = status.get("layer_off")
+        if kind:                                 # a lease layer gave the radio back: untick it
+            self._layers.discard(kind)
+            b = self._layer_btns.get(kind)
+            if b is not None and b.isChecked():
+                b.blockSignals(True)
+                b.setChecked(False)
+                b.blockSignals(False)
+            self.set_chip("layer", "%s OFF — %s" % (KIND_LABEL.get(kind, kind),
+                                                    status.get("why", "radio given back")),
+                          state="warn")
+            self._render()
+        if "acquiring_layers" in status:
+            self._acquiring = set(status["acquiring_layers"])
+            self._update_busy()
+
+    def on_panic(self):
+        """PANIC (CL5-fix 5): every lease layer gives the radio back and is unticked; the BLE
+        Remote-ID scan (not the SDR) is left as it is."""
+        if not self.demo and self._worker is not None and hasattr(self._worker, "hold_off"):
+            self._worker.hold_off("PANIC")
+        return []
 
     def _color(self, kind, severity):
         return self._tok["alert"] if severity == "alert" else self._tok[KIND_TOKEN.get(kind, "text")]
@@ -694,6 +874,8 @@ class AtlasApp(PalisadeApp):
         owner = radio_arbiter.arbiter.owner()
         ownerlbl = radio_arbiter.owner_label() or owner or "?"
         msgs, busy_now = [], set()
+        for kind in sorted(set(getattr(self, "_acquiring", ())) & self._layers):
+            msgs.append("%s: ACQUIRING — pausing readsb" % KIND_LABEL.get(kind, kind))
         for kind in ("station", "vessel"):
             if kind in self._layers and owner and owner != self.LEASE_NAME[kind]:
                 msgs.append("%s: RADIO BUSY — held by %s" % (KIND_LABEL[kind], ownerlbl))

@@ -1,0 +1,22 @@
+=== r1
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  0.92 LEASE.acquire PROWL-SCAN
+  0.95 LEASE.release PROWL-SCAN children-at-release: []
+  3.96 R1 AIS RUN=False front: arbiter=('FREE', None) children=[] chip='AIS IDLE — press RUN' busy='AIS IDLE — press RUN'
+  6.48 R1 AIS RUN=False HIDDEN: arbiter=('FREE', None) children=[]
+  9.51 R1 SSTV RUN=False front: arbiter=('FREE', None) children=[] chip='SSTV IDLE — press RUN' busy='SSTV IDLE — press RUN'
+ 12.02 R1 SSTV RUN=False HIDDEN: arbiter=('FREE', None) children=[]
+--- rc=0
+=== r2
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  0.92 LEASE.acquire PROWL-SCAN
+  0.96 LEASE.release PROWL-SCAN children-at-release: []
+  1.76 LEASE.acquire BABEL
+This plugin does not support propagateSizeHints()
+ 11.76 R2 in 10 s: acquires=2 releases=1 arbiter=('HELD', 'BABEL') chip='AIS FAULT' busy='AIS decoder exited after 0.0s (×3): usb_claim_interface error -6 — retry in 8s'
+ 11.77 LEASE.release BABEL children-at-release: []
+--- rc=0

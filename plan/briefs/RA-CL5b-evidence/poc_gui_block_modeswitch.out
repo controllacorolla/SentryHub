@@ -1,0 +1,15 @@
+  1.51 LEASE.release PROWL-SCAN start (2 s: systemctl start readsb) children=[]
+  6.53 NWR live: arbiter=('HELD', 'PROWL-NWR') children=['14481:rtl_fm', '14482:cat', '14498:sleep']
+  6.55 LEASE.release PROWL-NWR start (2 s: systemctl start readsb) children=[]
+  8.55 GUI-THREAD PROWL sub-mode NWR -> FM (switch_subtab)       blocked 2.02 s
+ 12.57 LEASE.release PROWL-FM start (2 s: systemctl start readsb) children=[]
+ 14.57 GUI-THREAD PROWL sub-mode FM -> SCAN (switch_subtab)      blocked 2.01 s
+ 18.02 LEASE.release PROWL-SCAN start (2 s: systemctl start readsb) children=[]
+ 24.12 BABEL AIS live: arbiter=('HELD', 'BABEL') children=['14588:rtl_ais', '14603:sleep']
+ 25.14 LEASE.release BABEL start (2 s: systemctl start readsb) children=[]
+[lifecycle] BABEL: worker DecoderWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 27.13 GUI-THREAD BABEL decoder AIS -> SSTV (mode combo)         blocked 3.01 s
+ 31.13 LEASE.release BABEL-SSTV start (2 s: systemctl start readsb) children=[]
+ 36.65 BABEL AIS live again: arbiter=('HELD', 'BABEL') children=['14640:rtl_ais', '14658:sleep']
+ 37.66 LEASE.release BABEL start (2 s: systemctl start readsb) children=[]
+ 37.68 GUI-THREAD hub.panic()                                    blocked 1.03 s

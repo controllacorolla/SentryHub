@@ -1,0 +1,52 @@
+=== babel
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  1.00 LEASE.release PROWL-SCAN children-at-release: []
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  4.99 BEFORE PANIC arbiter=('HELD', 'BABEL') children=['10242:rtl_ais', '10257:sleep']
+  5.01 LEASE.release BABEL children-at-release: []
+  5.01 PANIC banner: TX disarmed · no engagement was open · 1 child process(es) stopped by their pages (verified gone) · radio released (was BABEL) · TX OFF
+This plugin does not support propagateSizeHints()
+  5.52 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  6.03 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  6.54 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  7.04 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  7.56 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  8.07 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  8.57 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  9.08 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+ 10.09 AFTER CLOSE arbiter=('FREE', None) children=[]
+--- rc=0
+=== nwr
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  1.46 LEASE.release PROWL-SCAN children-at-release: []
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  4.42 BEFORE PANIC arbiter=('HELD', 'PROWL-NWR') children=['10294:python3', '10295:cat']
+  4.43 LEASE.release PROWL-NWR children-at-release: []
+  4.44 PANIC banner: TX disarmed · no engagement was open · 1 of 1 child process(es) stopped (verified gone) · 2 more stopped by their pages · radio released (was PROWL WX) · TX OFF
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  4.94 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  5.46 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  5.96 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  6.47 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  6.98 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  7.50 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  8.01 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  8.52 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  9.53 AFTER CLOSE arbiter=('FREE', None) children=[]
+--- rc=0

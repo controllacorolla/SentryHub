@@ -74,7 +74,8 @@ BANKS = {
 BANK_ORDER = list(BANKS.keys())
 
 DEFAULTS = {
-    "bank": "NOAA Wx",     # a bank that always has a carrier, so first-run shows the scanner working
+    "bank": "GMRS/FRS",    # audit E2: an INTERMITTENT bank. NOAA Wx transmits continuously, so a
+                           # scanner started there parked on channel 1 forever and never scanned.
     "gain": 40,
     "squelch": 1500,       # AM: software-squelch RMS threshold - TUNE ON DEVICE with a known signal
     # NFM: rtl_fm's own power squelch (-l). An FM discriminator turns an EMPTY channel into
@@ -83,6 +84,8 @@ DEFAULTS = {
     "nfm_squelch": 50,
     "dwell": 0.4,          # seconds to sample an empty channel before moving on
     "hold": 2.5,           # seconds of quiet before resuming after a signal ends
+    "max_active": 20.0,    # audit E2: longest stay on ONE active channel before scanning on (a
+                           # continuous carrier such as weather radio must not park the scanner)
     "custom": [],          # extra channels: ["462.5500 MyRepeater nfm", ...]
 }
 
@@ -144,6 +147,7 @@ def listen_channel(freq, mode, s, scan, post, popen=subprocess.Popen, sink_fn=No
     fd = proc.stdout.fileno()
     sink, active, quiet, carry, got = None, False, None, b"", False
     t0 = clock()
+    active_since = t0
     # hardware squelch: an empty channel sends NOTHING, so the dwell is timed from tuner
     # settle; software gate: from the first audio (tuner-open time isn't channel time)
     deadline = t0 + TUNE_SETTLE + s["dwell"] if hw else None
@@ -179,9 +183,12 @@ def listen_channel(freq, mode, s, scan, post, popen=subprocess.Popen, sink_fn=No
                         deadline = now + s["dwell"]
                 rms = rms_of(chunk)
             scan["rms"] = rms
+            if active and s.get("max_active") and now - active_since > float(s["max_active"]):
+                break                           # E2: max dwell on an active channel: move on
             if chunk and gate_open(rms, mode, s):
                 if not active:
                     active = True
+                    active_since = now
                     sc = sink_fn()
                     if sc:
                         sink = popen(sc, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,

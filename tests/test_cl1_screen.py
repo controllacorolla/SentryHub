@@ -312,7 +312,7 @@ def test_pages_cannot_overwrite_the_status_slots():
         _pump(150)
 
 
-def test_slots_follow_engine_state():
+def test_slots_follow_engine_state(monkeypatch):
     """The slots are read from the engines: txguard arm, an open engagement, the radio arbiter."""
     import engagement
     import txguard
@@ -330,11 +330,16 @@ def test_slots_follow_engine_state():
         assert hub.topbar.slots["engagement"].text() == "10.0.0.5"     # the scope is the word
         assert hub.topbar.slots["engagement"].glyph.shape() == "diamond"
         assert "ACTIVE" in hub.topbar.slots["engagement"].toolTip()
-        ra.arbiter.changed.emit("ATLAS-APRS")
+        # CL5/A3: the slot reads the arbiter's real state (FREE / ACQUIRING / HELD), not a
+        # bare signal payload — so drive the arbiter itself (lease seam: no radio opened).
+        ra.arbiter.reset_for_tests()
+        monkeypatch.setattr(ra, "_make_lease", lambda n: None)
+        assert ra.arbiter.request("ATLAS-APRS")
+        assert ra.wait_held("ATLAS-APRS", 5.0)
         _pump(20)
         assert hub.topbar.slots["radio"].text() == "APRS"
         assert "HELD" in hub.topbar.slots["radio"].toolTip()
-        ra.arbiter.changed.emit("")
+        ra.arbiter.release("ATLAS-APRS")
         _pump(20)
         assert hub.topbar.slots["radio"].text() == "FREE"
     finally:
@@ -830,13 +835,24 @@ def test_radios_panel_opens_from_the_radio_slot_and_frees_the_holder(monkeypatch
         assert not hub.radios_panel.takeover_btn.isEnabled()
         assert not hub.radios_panel.device_pick.isEnabled(), "selection is not implemented: say so"
         ra.arbiter.request("ATLAS-APRS")
+        assert ra.wait_held("ATLAS-APRS", 5.0)
         _pump(40)
         assert "APRS" in hub.radios_panel.holder.hero.text()
-        assert hub.radios_panel.hist_feed.model.rowCount() == 1
+        events = [r["event"] for r in hub.radios_panel.hist_feed.model.rows]
+        assert events[:2] == ["HELD", "ACQUIRING"]            # A3: both transitions are logged
         assert hub.topbar.slots["radio"].text() == "APRS"
         assert "HELD" in hub.topbar.slots["radio"].toolTip()
+        # CL5/A1: FREE THE RADIO asks the holder to stop and release; it does not release on
+        # the holder's behalf. With no live holder to acknowledge, the arbiter forces it free
+        # after the revoke timeout.
+        monkeypatch.setattr(ra, "REVOKE_TIMEOUT_S", 0.3)
         hub.radios_panel.takeover_btn.click()
         _pump(40)
+        assert ra.arbiter.owner() == "ATLAS-APRS" and ra.arbiter.revoking()
+        card_text = " ".join(lb.text() for lb in
+                             hub.radios_panel.holder.findChildren(QtWidgets.QLabel))
+        assert "RELEASE REQUESTED" in card_text, card_text      # RA-CL5 N14: no longer vacuous
+        _pump(600)
         assert ra.arbiter.owner() is None and hub.topbar.slots["radio"].text() == "FREE"
         _key(hub, QtCore.Qt.Key_Escape)
         assert not hub.radios_panel.isVisible()

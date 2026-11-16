@@ -1,0 +1,8 @@
+=== 
+  1.74 BABEL set_active(False) [page hidden] blocked the GUI thread 0.00 s
+  2.77 LEASE.release BABEL children-at-release: []
+  4.28 BABEL set_running(False) [STOP] blocked the GUI thread 0.00 s
+  5.31 LEASE.release BABEL children-at-release: []
+  6.82 BABEL revoked [FREE THE RADIO] blocked the GUI thread 0.00 s
+  7.85 LEASE.release BABEL children-at-release: []
+--- rc=0

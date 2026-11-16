@@ -4,8 +4,13 @@ from several of them.
 The base bakes in the two lifecycles that caused the recurring bugs, so each app is correct by
 construction:
 
-  * Worker thread (R1/R3): started on first show, quit()/wait()-ed on close. No daemon threads.
-  * SDR lease: acquired on first show, released on close — the RtlLease.release fixes, once.
+  * Worker thread (R1/R3, A2): started on first show, stop()/wait()-ed on close. A worker that
+    will not join is PARKED (kept alive, logged, a visible fault raised) — never dropped, so the
+    process never aborts on "QThread destroyed while running"; at exit every parked thread gets
+    a last wait and then terminate() so Python's finalizer finds nothing running.
+  * Workers pause while their page is hidden (set_active) unless PAUSE_WHEN_HIDDEN is False.
+  * The SDR is owned through radio_arbiter only (A5): the old base-class daemon-thread lease
+    path is gone.
 
 and, since CL1, the page frame every page shares:
 
@@ -24,8 +29,6 @@ Subclass contract:
   make_worker()  return a Worker (or None). Its signals are wired to on_row/on_status/on_error.
   switch_subtab(name) / current_subtab()   for pages with SUBTABS.
 """
-import threading
-
 from PySide6 import QtCore, QtWidgets
 
 from . import theme
@@ -41,6 +44,9 @@ _STATE_CLASS = {"neutral": "pstat", "ok": "pstat_live", "live": "pstat_live", "w
 # (seen 1-in-3 under Python 3.13: Shiboken::BindingManager::runDeletionInMainThread). Pages
 # live until exit anyway; this just makes that explicit and deterministic.
 _RETAINED = []
+_PARKED = []            # workers that refused to join within the grace period (A2)
+_EXIT_HOOKED = {"done": False}
+JOIN_GRACE_MS = 3000
 
 
 def _retain(obj):
@@ -52,11 +58,139 @@ def retained():
     return list(_RETAINED)
 
 
+def parked():
+    return [w for w in _PARKED if w.isRunning()]
+
+
+def _park(worker, title):
+    """A2: the join failed. Keep the thread alive and referenced, say so loudly, move on."""
+    import sys
+    _PARKED.append(worker)
+    _retain(worker)
+    msg = "%s: worker %s did not stop within %d ms — parked (not killed, not dropped)" % (
+        title, type(worker).__name__, JOIN_GRACE_MS)
+    print("[lifecycle] " + msg, file=sys.stderr)
+    try:
+        from . import eventbus
+        eventbus.bus.publish(eventbus.alert("SYSTEM", msg, severity="warn", kind="lifecycle"))
+    except Exception:
+        pass
+    _hook_exit()
+
+
+def _hook_exit():
+    """Before Qt tears down, give parked threads one more chance, then terminate() them, so the
+    interpreter never finalizes with a running QThread (the SIGABRT seen on the Mac)."""
+    if _EXIT_HOOKED["done"]:
+        return
+    _EXIT_HOOKED["done"] = True
+    app = QtCore.QCoreApplication.instance()
+
+    def _drain():
+        for w in list(_PARKED):
+            try:
+                if not w.isRunning():
+                    continue
+                w.stop() if hasattr(w, "stop") else None
+                if w.wait(2000):
+                    continue
+                w.terminate()
+                w.wait(1000)
+            except Exception:
+                pass
+    if app is not None:
+        app.aboutToQuit.connect(_drain)
+    import atexit
+    atexit.register(_drain)
+
+
+class _Relay(QtCore.QObject):
+    """Forwards one worker's row/status/error/fault to its page while that worker is the page's
+    current one. Lives on the GUI thread (child of the page), so the worker's signals are queued
+    to it; cut() makes it drop everything after — including signals already in the queue."""
+
+    def __init__(self, page, worker):
+        super().__init__(page)
+        self._page, self._on = page, True
+        worker.row.connect(self._row)
+        worker.status.connect(self._status)
+        worker.error.connect(self._error)
+        if hasattr(worker, "fault"):
+            worker.fault.connect(self._fault)
+        self._worker = worker
+
+    def cut(self):
+        self._on = False
+        w = self._worker
+        for sig, slot in (("row", self._row), ("status", self._status),
+                          ("error", self._error), ("fault", self._fault)):
+            _disconnect(getattr(w, sig, None), slot)
+
+    @QtCore.Slot(object)
+    def _row(self, r):
+        if self._on:
+            self._page.on_row(r)
+
+    @QtCore.Slot(dict)
+    def _status(self, st):
+        if self._on:
+            self._page.on_status(st)
+
+    @QtCore.Slot(str)
+    def _error(self, m):
+        if self._on:
+            self._page.on_error(m)
+
+    @QtCore.Slot(str)
+    def _fault(self, m):
+        if self._on:
+            self._page.on_fault(m)
+
+
+def _emit_quiet(sig, arg):
+    """Emit unless the page that owns the signal is already deleted (N-n: a parked worker that
+    finishes after its page is gone)."""
+    try:
+        sig.emit(arg)
+    except RuntimeError:
+        pass
+
+
+def _disconnect(sig, slot):
+    """Cut one page slot from a worker signal; quiet if it was never connected."""
+    if sig is None:
+        return
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            sig.disconnect(slot)
+        except (TypeError, RuntimeError):
+            pass
+
+
+def stop_worker(worker, title="APP"):
+    """Stop + join a kit Worker without ever aborting the process. True if it joined."""
+    if worker is None:
+        return True
+    try:
+        worker.stop()
+    except Exception:
+        pass
+    worker.quit()
+    if worker.wait(JOIN_GRACE_MS):
+        _retain(worker)                  # joined; kept so no thread ever GC-deletes a QThread
+        return True
+    _park(worker, title)
+    return False
+
+
 class PalisadeApp(QtWidgets.QWidget):
     TITLE = "APP"
     LEASE = None
     SUBTABS = ()
     request = QtCore.Signal(str, object)      # page -> shell: ("tune_fm", mhz), ("open", "PROWL"), …
+    _retired = QtCore.Signal(object)          # a retiring worker finished (queued to the GUI thread)
 
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         super().__init__(parent)
@@ -66,7 +200,6 @@ class PalisadeApp(QtWidgets.QWidget):
         self._embedded = embedded          # True when a CompositeApp hosts this page as a sub-tab
         self._host = None
         self._worker = None
-        self._lease = None
         self._started = False
         self._stopped = False
         self._active = False
@@ -196,6 +329,9 @@ class PalisadeApp(QtWidgets.QWidget):
 
     def set_active(self, active):
         self._active = active
+        w = self._worker
+        if w is not None and getattr(w, "PAUSE_WHEN_HIDDEN", False) and hasattr(w, "pause"):
+            w.pause(not active)
 
     # ---- subclass hooks (defaults keep the base usable on its own) ----
     def build_body(self):
@@ -223,48 +359,138 @@ class PalisadeApp(QtWidgets.QWidget):
         if self._started:
             return
         self._started = True
-        self._acquire_lease()
+        self._start_new_worker()
+
+    def _start_new_worker(self):
         self._worker = self.make_worker()
         if self._worker is not None:
-            self._worker.row.connect(self.on_row)
-            self._worker.status.connect(self.on_status)
-            self._worker.error.connect(self.on_error)
+            # through a relay (RA-CL5c N-n): a signal a worker queued before it was retired is
+            # still delivered after the disconnect; the relay drops it once its worker retired
+            self._worker._relay = _Relay(self, self._worker)
+            if getattr(self._worker, "PAUSE_WHEN_HIDDEN", False) and not self._active \
+                    and hasattr(self._worker, "pause"):
+                self._worker.pause(True)
             self._worker.start()
+
+    # ---- replacing the worker without blocking the GUI thread (CL5-fix2, RA-CL5b N-c) ----
+    def swap_worker(self):
+        """Replace the running worker with a fresh make_worker() (a sub-mode / decoder switch)
+        WITHOUT waiting on the GUI thread. The old worker is told to stop (flags only), its
+        signals are cut from the page, and it stays referenced; the new one is started only once
+        the old thread has finished — so the two never overlap on the radio and the old one's
+        release can never free the new one's lease. Further switches while one is retiring just
+        update what will be started. A worker that never finishes is never dropped: the page
+        says it is still stopping and starts nothing."""
+        if not self._started or self._stopped:
+            return
+        self._swap_pending = True
+        old, self._worker = self._worker, None
+        if old is not None:
+            self._watch_revoke_during_swap()
+            self._retire(old)
+            # the old worker's last SDR chip must not stay on screen as a claim on the radio
+            self.set_chip("sdr", "SDR — switching modes", state="neutral")
+        if not getattr(self, "_retiring", None):
+            self._finish_swap()
+
+    def cancel_swap(self):
+        """PANIC: a switch that was waiting for the old worker must not start a new one."""
+        self._swap_pending = False
+
+    def _watch_revoke_during_swap(self):
+        if getattr(self, "_swap_revoke_hooked", False):
+            return
+        try:
+            from . import radio_arbiter
+            radio_arbiter.arbiter.revoked.connect(self._on_revoked_during_swap)
+            self._swap_revoke_hooked = True
+        except Exception:
+            pass
+
+    def _on_revoked_during_swap(self, name):
+        """RA-CL5c N-k: "FREE THE RADIO" (or another page asking) while a switch is pending is
+        acknowledged by the retiring worker; the new mode must not then take the radio straight
+        back. Same rule as the steady state: the page stays off until the operator resumes."""
+        if not self.swapping() or not getattr(self, "_swap_pending", False):
+            return
+        names = {getattr(w, "NAME", None) for w in (getattr(self, "_retiring", None) or [])}
+        if name in names:
+            self.cancel_swap()
+            self.on_swap_revoked(name)
+
+    def on_swap_revoked(self, name):
+        """Hook: a pending switch was cancelled by a revoke (BABEL unticks RUN)."""
+
+    def swapping(self):
+        return bool(getattr(self, "_retiring", None))
+
+    def _retire(self, w):
+        _retain(w)
+        relay = getattr(w, "_relay", None)
+        if relay is not None:
+            relay.cut()                   # anything it already queued is dropped on arrival
+        retiring = getattr(self, "_retiring", None)
+        if retiring is None:
+            retiring = self._retiring = []
+        retiring.append(w)
+        if not getattr(self, "_retired_hooked", False):
+            self._retired_hooked = True
+            self._retired.connect(self._on_retired)
+        w.finished.connect(lambda w=w: _emit_quiet(self._retired, w))   # worker -> GUI thread
+        try:
+            w.stop()                      # flags + a non-blocking kill; the worker reaps/releases
+        except Exception:
+            pass
+        w.quit()
+        if not w.isRunning():             # never started / already done
+            self._on_retired(w)
+
+    def _on_retired(self, w):
+        retiring = getattr(self, "_retiring", None) or []
+        if w in retiring:
+            retiring.remove(w)
+        if not retiring:
+            self._finish_swap()
+
+    def _finish_swap(self):
+        if self._stopped:
+            return
+        if getattr(self, "_swap_pending", False) and self._worker is None:
+            self._swap_pending = False
+            self._start_new_worker()
+        self.on_swapped()
+
+    def on_swapped(self):
+        """Hook: the old worker is gone; the new one is running, or self._worker is None if a
+        PANIC cancelled the switch (pages refresh their status line)."""
+
+    def on_fault(self, msg):
+        """A worker's persistent fault ("" when it clears): shown in the page status row."""
+        if msg:
+            self.set_chip("fault", msg[:60], state="alert")
+        else:
+            self._last_status.pop("fault", None)
+            self._render_status()
 
     def stop(self):
         if self._stopped:
             return
         self._stopped = True
-        if self._worker is not None:
-            self._worker.stop()
-            self._worker.quit()
-            self._worker.wait(3000)      # join the worker before we go — no leaked QThread
-            _retain(self._worker)        # joined; kept so no thread ever GC-deletes a QThread
-            self._worker = None
-        self._release_lease()
-
-    def _acquire_lease(self):
-        if not self.LEASE or self.demo:
-            return                       # demo / no-radio apps never touch the dongle
-
-        def work():
+        self._swap_pending = False
+        if getattr(self, "_swap_revoke_hooked", False):
             try:
-                import suite
-                lease = suite.RtlLease(self.LEASE)
-                lease.acquire()
-                self._lease = lease
-            except Exception as e:       # no suite / no radio in this env: degrade, don't crash
-                import sys
-                print("[%s] lease unavailable: %s" % (self.TITLE, e), file=sys.stderr)
-        threading.Thread(target=work, daemon=True).start()
-
-    def _release_lease(self):
-        if self._lease is not None:
-            try:
-                self._lease.release()
+                from . import radio_arbiter
+                _disconnect(radio_arbiter.arbiter.revoked, self._on_revoked_during_swap)
             except Exception:
                 pass
-            self._lease = None
+            self._swap_revoke_hooked = False
+        if self._worker is not None:
+            stop_worker(self._worker, self.TITLE)
+            self._worker = None
+        for w in list(getattr(self, "_retiring", None) or []):
+            stop_worker(w, self.TITLE)                    # joins, or parks — never drops
+        if getattr(self, "_retiring", None):
+            self._retiring.clear()
 
     # ---- Qt events ----
     def showEvent(self, ev):

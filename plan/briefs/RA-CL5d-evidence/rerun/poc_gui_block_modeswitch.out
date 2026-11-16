@@ -1,0 +1,48 @@
+=== 
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  1.53 LEASE.release PROWL-SCAN start (2 s: systemctl start readsb) children=[]
+This plugin does not support propagateSizeHints()
+  4.43 NWR live: arbiter=('HELD', 'PROWL-NWR') children=['12411:rtl_fm', '12412:cat', '12431:sleep']
+This plugin does not support propagateSizeHints()
+  4.44 GUI-THREAD PROWL sub-mode NWR -> FM (switch_subtab)       blocked 0.00 s
+  4.61 LEASE.release PROWL-NWR start (2 s: systemctl start readsb) children=[]
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  8.44 GUI-THREAD PROWL sub-mode FM -> SCAN (switch_subtab)      blocked 0.00 s
+  8.45 LEASE.release PROWL-FM start (2 s: systemctl start readsb) children=[]
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+ 11.68 LEASE.release PROWL-SCAN start (2 s: systemctl start readsb) children=[]
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+ 17.99 BABEL AIS live: arbiter=('HELD', 'BABEL') children=['12550:rtl_ais', '12579:sleep']
+ 18.00 GUI-THREAD BABEL decoder AIS -> SSTV (mode combo)         blocked 0.00 s
+ 19.01 LEASE.release BABEL start (2 s: systemctl start readsb) children=[]
+This plugin does not support propagateSizeHints()
+ 22.02 LEASE.release BABEL-SSTV start (2 s: systemctl start readsb) children=[]
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+ 25.52 BABEL AIS live again: arbiter=('HELD', 'BABEL') children=['12630:rtl_ais', '12638:sleep']
+ 26.55 LEASE.release BABEL start (2 s: systemctl start readsb) children=[]
+ 26.55 GUI-THREAD hub.panic()                                    blocked 1.03 s
+This plugin does not support propagateSizeHints()
+--- rc=0

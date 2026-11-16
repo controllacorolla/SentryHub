@@ -1,0 +1,79 @@
+=== gui_block
+  0.95 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.95 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.56 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.57 LEASE.release PROWL-SCAN start (3.5 s) children=[]
+  5.07 LEASE.release PROWL-SCAN done
+  5.08 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.08 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.48 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['31473:Ss:rtl_fm', '31474:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  9.49 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.50 LEASE.release PROWL-NWR start (3.5 s) children=[]
+ 13.00 LEASE.release PROWL-NWR done
+ 13.00 ARBITER ACQUIRING PROWL-FM  [thread Dummy-1]
+ 13.00 ARBITER HELD PROWL-FM  [thread radio-acquire]
+ 16.49 GUI-THREAD PROWL NWR -> FM                    call 0.003 s; longest event-loop stall during the switch 0.034 s
+ 16.50 after NWR->FM arbiter=('HELD', 'PROWL-FM') openers=['31627:Ss:rtl_fm'] page_worker=FmWorker retiring=[] busy='' chip='FM 97.3 ♪'
+ 16.51 ARBITER RELEASE PROWL-FM  [thread Dummy-1]
+ 16.51 LEASE.release PROWL-FM start (3.5 s) children=[]
+ 20.01 LEASE.release PROWL-FM done
+ 20.02 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+ 20.02 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+ 24.51 GUI-THREAD PROWL FM -> SCAN                   call 0.003 s; longest event-loop stall during the switch 0.014 s
+ 24.53 after FM->SCAN arbiter=('HELD', 'PROWL-SCAN') openers=['31669:Ss:rtl_fm'] page_worker=ScanWorker retiring=[] busy='' chip='SDR — switching modes'
+ 24.66 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+ 24.67 LEASE.release PROWL-SCAN start (3.5 s) children=[]
+ 28.17 LEASE.release PROWL-SCAN done
+ 30.56 ARBITER ACQUIRING BABEL  [thread Dummy-10]
+ 30.56 ARBITER HELD BABEL  [thread radio-acquire]
+ 33.58 BABEL AIS RUN arbiter=('HELD', 'BABEL') openers=['31740:Ss:rtl_ais'] page_worker=DecoderWorker retiring=[] busy='' chip='AIS 15'
+ 34.59 ARBITER RELEASE BABEL  [thread Dummy-10]
+ 34.59 LEASE.release BABEL start (3.5 s) children=[]
+ 38.09 LEASE.release BABEL done
+ 38.10 ARBITER ACQUIRING BABEL-SSTV  [thread Dummy-10]
+ 38.10 ARBITER HELD BABEL-SSTV  [thread radio-acquire]
+ 41.59 GUI-THREAD BABEL AIS -> SSTV                  call 0.003 s; longest event-loop stall during the switch 0.014 s
+ 41.60 after AIS->SSTV arbiter=('HELD', 'BABEL-SSTV') openers=['31821:Ss:rtl_fm'] page_worker=SstvWorker retiring=[] busy='' chip='SSTV — capturing 3s (lvl 0)'
+ 41.60 ARBITER RELEASE BABEL-SSTV  [thread Dummy-10]
+ 41.61 LEASE.release BABEL-SSTV start (3.5 s) children=[]
+[lifecycle] BABEL: worker SstvWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 45.11 LEASE.release BABEL-SSTV done
+ 49.62 END arbiter=('FREE', None) children=[]
+--- rc=0
+=== close
+  0.93 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.93 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.54 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.54 LEASE.release PROWL-SCAN start (3.5 s) children=[]
+  5.04 LEASE.release PROWL-SCAN done
+  5.05 ARBITER ACQUIRING PROWL-NWR  [thread Dummy-1]
+  5.05 ARBITER HELD PROWL-NWR  [thread radio-acquire]
+  8.45 NWR live arbiter=('HELD', 'PROWL-NWR') openers=['31965:Ss:rtl_fm', '31966:Ss:multimon-ng'] page_worker=NwrWorker retiring=[] busy='' chip='NWR WX2 162.400M'
+  8.78 mid-switch arbiter=('HELD', 'PROWL-NWR') openers=['31965:Ss:rtl_fm', '31966:Ss:multimon-ng'] page_worker=None retiring=['NwrWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+  9.48 ARBITER RELEASE PROWL-NWR  [thread Dummy-1]
+  9.48 LEASE.release PROWL-NWR start (3.5 s) children=[]
+[lifecycle] PROWL: worker NwrWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 11.78 hub.close() took 3.00 s; parked=[<palisade_qt.prowl.NwrWorker(0xebf53f0) at 0x7ffa95a86600>]
+ 12.98 LEASE.release PROWL-NWR done
+ 18.30 RESULT close: arbiter=('FREE', None) openers=[] children=[]
+--- rc=0
+=== never
+  0.91 ARBITER ACQUIRING PROWL-SCAN  [thread Dummy-1]
+  0.91 ARBITER HELD PROWL-SCAN  [thread radio-acquire]
+  1.46 ARBITER RELEASE PROWL-SCAN  [thread Dummy-1]
+  1.46 LEASE.release PROWL-SCAN start (3.5 s) children=[]
+  8.43 NWR live arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='NWR: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+  9.45 t+1.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 10.47 t+2.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 11.49 t+3.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 12.50 t+4.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 13.52 t+5.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 14.54 t+6.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 15.56 t+1.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='SCAN: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 16.58 t+2.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='SCAN: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 17.60 t+3.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='SCAN: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 18.61 t+4.0 arbiter=('FREE', None) openers=[] page_worker=None retiring=['ScanWorker'] busy='SCAN: waiting for the previous mode to give the radio back' chip='SDR — switching modes'
+ 18.61 RESULT never: arbiter=('FREE', None) page='SCAN: waiting for the previous mode to give the radio back' strip-owner=None
+[lifecycle] PROWL: worker ScanWorker did not stop within 3000 ms — parked (not killed, not dropped)
+ 26.63 END arbiter=('FREE', None) children=[]
+--- rc=0

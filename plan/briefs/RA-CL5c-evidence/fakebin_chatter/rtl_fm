@@ -1,0 +1,3 @@
+#!/bin/sh
+# stalled: no samples on stdout, but librtlsdr-style errors on stderr
+while :; do echo 'rtlsdr_demod_write_reg failed with -7' >&2; sleep 0.2; done

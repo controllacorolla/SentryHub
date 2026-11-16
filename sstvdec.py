@@ -226,6 +226,14 @@ def decode_wav(path, mode=None):
     """Decode one SSTV picture. Returns dict(mode, image (H,W,3 uint8), lines, slant_ppm)
     or raises ValueError with a reason a person can act on."""
     x, fs = read_wav(path)
+    return decode_samples(x, fs, mode)
+
+
+def decode_samples(x, fs, mode=None):
+    """decode_wav on audio already in memory (float samples at fs Hz). Same result, plus where
+    the picture sits in `x` (start: first sample after the VIS header, t0 / period: the fitted
+    line-pair timing, in samples) so a live capture can decode only new audio and tell one
+    frame from the next (CL5-fix 12)."""
     if fs < 8000:
         raise ValueError("sample rate %d Hz is too low for SSTV (need 8 kHz+)" % fs)
     f = inst_freq(x, fs)
@@ -250,7 +258,8 @@ def decode_wav(path, mode=None):
     if len(img) < 4:
         raise ValueError("%s picture started but the recording ended" % mode)
     return {"mode": mode, "image": img, "lines": len(img),
-            "slant_ppm": round((period / nominal - 1) * 1e6)}
+            "slant_ppm": round((period / nominal - 1) * 1e6),
+            "start": start, "t0": t0, "period": period}
 
 
 def save_image(img, path):

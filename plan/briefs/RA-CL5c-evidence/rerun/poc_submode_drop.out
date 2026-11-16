@@ -1,0 +1,43 @@
+=== 3.5
+  1.41 LEASE.release PROWL-SCAN start (3.5 s)
+  4.91 LEASE.release PROWL-SCAN done
+  6.40 NWR live, children=['4998:python3', '4999:cat']
+  6.41 switch_subtab blocked 0.00 s
+  6.43 LEASE.release PROWL-NWR start (3.5 s)
+  6.64 old NwrWorker object after switch: alive ; isRunning=True
+  9.93 LEASE.release PROWL-NWR done
+ 10.64 still alive at end
+ 10.68 LEASE.release PROWL-FM start (3.5 s)
+
+rc=0
+stderr: -
+--- rc=0
+=== 2.2 trap
+  1.47 LEASE.release PROWL-SCAN start (2.2 s)
+  3.67 LEASE.release PROWL-SCAN done
+  6.44 NWR live, children=['5078:python3', '5079:multimon-ng', '5121:sleep']
+  6.44 switch_subtab blocked 0.00 s
+  6.68 old NwrWorker object after switch: alive ; isRunning=True
+  7.47 LEASE.release PROWL-NWR start (2.2 s)
+  9.67 LEASE.release PROWL-NWR done
+ 10.68 still alive at end
+ 10.72 LEASE.release PROWL-FM start (2.2 s)
+
+rc=0
+stderr: Exception ignored in atexit callback: <built-in function __moduleShutdown> | Traceback (most recent call last): |   File "/home/user/wt-RA-CL5c/palisade_qt/shell.py", line 359, in eventFilter |     if ev.type() == QtCore.QEvent.KeyPress: |        ^^^^^^^^^ |   File "/home/user/wt-RA-CL5c/palisade_qt/shell.py", line 359, in eventFilter |     if ev.type() == QtCore.QEvent.KeyPress: |        ^^^^^^^^^ |   File "/home/user/wt-RA-CL5c/palisade_qt/shell.py", line 359, in eventFilter |     if ev.type() == QtCore.QEvent.KeyPress: |        ^^^^^^^^^ |   [Previous line repeated 237 more times] |   File 
+--- rc=0
+=== 1.0 trap
+  1.41 LEASE.release PROWL-SCAN start (1.0 s)
+  2.41 LEASE.release PROWL-SCAN done
+  6.40 NWR live, children=['5167:python3', '5168:multimon-ng', '5212:sleep']
+  6.40 switch_subtab blocked 0.00 s
+  6.64 old NwrWorker object after switch: alive ; isRunning=True
+  7.41 LEASE.release PROWL-NWR start (1.0 s)
+  8.41 LEASE.release PROWL-NWR done
+ 10.64 still alive at end
+ 10.66 LEASE.release PROWL-FM start (1.0 s)
+ 11.66 LEASE.release PROWL-FM done
+
+rc=0
+stderr: -
+--- rc=0

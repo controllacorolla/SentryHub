@@ -1,0 +1,14 @@
+plan/briefs/RA-CL5b-evidence/renders/babel_acquiring_dark_live.png 1280x720 arbiter=('ACQUIRING', 'BABEL') children=[] chip='AIS ACQUIRING radio'
+plan/briefs/RA-CL5b-evidence/renders/prowl_nwr_live_dark_live.png 1280x720 arbiter=('HELD', 'PROWL-NWR') state='LIVE · WX2 162.400'
+plan/briefs/RA-CL5b-evidence/renders/prowl_nwr_after_revoke_dark_live.png 1280x720 arbiter=('FREE', None) state='NOT MONITORING — NWR OFF — radio given back' children=[]
+plan/briefs/RA-CL5b-evidence/renders/babel_after_panic_dark_live.png 1280x720 arbiter=('FREE', None) banner='TX disarmed · no engagement was open · no child processes were running · radio released (was BABEL) · TX OFF' children=[]
+plan/briefs/RA-CL5b-evidence/renders/atlas_ais_live_dark_live.png 1280x720 arbiter=('HELD', 'ATLAS-AIS') children=['15453:rtl_ais', '15468:sleep']
+[radio] ATLAS-AIS did not release within the revoke timeout — forcing free
+plan/briefs/RA-CL5b-evidence/renders/radios_after_atlas_hidden_revoke_dark_live.png 1280x720 arbiter=('FREE', None) children=['15453:rtl_ais', '15515:sleep']
+plan/briefs/RA-CL5b-evidence/renders/babel_acquiring_sun_live.png 1280x720 arbiter=('ACQUIRING', 'BABEL') children=[] chip='AIS ACQUIRING radio'
+plan/briefs/RA-CL5b-evidence/renders/prowl_nwr_live_sun_live.png 1280x720 arbiter=('HELD', 'PROWL-NWR') state='LIVE · WX2 162.400'
+plan/briefs/RA-CL5b-evidence/renders/prowl_nwr_after_revoke_sun_live.png 1280x720 arbiter=('FREE', None) state='NOT MONITORING — NWR OFF — radio given back' children=[]
+plan/briefs/RA-CL5b-evidence/renders/babel_after_panic_sun_live.png 1280x720 arbiter=('FREE', None) banner='TX disarmed · no engagement was open · no child processes were running · radio released (was BABEL) · TX OFF' children=[]
+plan/briefs/RA-CL5b-evidence/renders/atlas_ais_live_sun_live.png 1280x720 arbiter=('HELD', 'ATLAS-AIS') children=['15573:rtl_ais', '15588:sleep']
+[radio] ATLAS-AIS did not release within the revoke timeout — forcing free
+plan/briefs/RA-CL5b-evidence/renders/radios_after_atlas_hidden_revoke_sun_live.png 1280x720 arbiter=('FREE', None) children=['15573:rtl_ais', '15634:sleep']

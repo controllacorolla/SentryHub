@@ -1,0 +1,9 @@
+=== 
+  0.20 capture: 339 s (frame at 200-329 s); rotation/window at 240 s
+  4.97 RA-CL5 tip ed4694a (rolling window) -> files ['iss_pass.wav']
+  4.97     decode_wav(iss_pass.wav: DECODED PD120 496 lines
+  9.11     what the Tk app decodes on stop (r.path): DECODED PD120
+ 12.99 CL5-fix tip (append+rotate) -> files ['iss_pass.wav']
+ 12.99     decode_wav(iss_pass.wav: DECODED PD120 496 lines
+ 16.61     what the Tk app decodes on stop (r.path): DECODED PD120
+--- rc=0

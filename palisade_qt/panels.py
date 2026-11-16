@@ -120,6 +120,7 @@ class RadiosPanel(Overlay):
                           "Power on/off and device selection arrive with CL6.")
         self.outer.addWidget(self.limit)
         radio_arbiter.arbiter.changed.connect(self._on_arbiter_change)
+        radio_arbiter.arbiter.transition.connect(self._on_transition)
         # re-read the kernel while the panel is open: a dongle unplugged or an rfkill switch
         # flipped must show without closing and reopening (RA-CL1 N1). Stops when hidden.
         self._poll = QtCore.QTimer(self)
@@ -141,20 +142,24 @@ class RadiosPanel(Overlay):
         self._poll.stop()
         try:
             radio_arbiter.arbiter.changed.disconnect(self._on_arbiter_change)
+            radio_arbiter.arbiter.transition.disconnect(self._on_transition)
         except (TypeError, RuntimeError):
             pass
 
     # ---- moved from OverwatchApp, unchanged ----
     def _on_arbiter_change(self, owner):
+        self._refresh_holder()
+
+    def _on_transition(self, event, owner, note):
+        """History row per arbiter transition, with the state as it was AT the transition (N11),
+        and a forced free / PANIC marked as such (a forced free can leave a pipeline behind)."""
         now = time.strftime("%H:%M:%S")
-        if owner:
-            lbl = radio_arbiter.OWNER_LABELS.get(owner, owner)
-            self._history.insert(0, {"t": now, "event": "ACQUIRE", "owner": lbl})
-        else:
-            self._history.insert(0, {"t": now, "event": "RELEASE", "owner": "—"})
+        lbl = radio_arbiter.OWNER_LABELS.get(owner, owner) if owner else "—"
+        if event == "RELEASE" and note:
+            event = "RELEASE · %s" % note
+        self._history.insert(0, {"t": now, "event": event, "owner": lbl})
         self._history = self._history[:200]
         self.hist_feed.model.set_rows(self._history)
-        self._refresh_holder()
 
     def _refresh_holder(self):
         try:
@@ -169,9 +174,16 @@ class RadiosPanel(Overlay):
             return
         self.holder.hero.setStyleSheet("")
         if owner:
+            st, _o = radio_arbiter.arbiter.state()
+            if radio_arbiter.arbiter.revoking():
+                state = "RELEASE REQUESTED — waiting for %s to stop its pipeline" % owner
+            elif st == "ACQUIRING":
+                state = "ACQUIRING — pausing readsb, opening the dongle"
+            else:
+                state = "BUSY — one owner at a time"
             self.holder.set_hero(radio_arbiter.owner_label() or owner, "holds the single SDR")
-            self.holder.set_rows([("LEASE", owner), ("STATE", "BUSY — one owner at a time")])
-            self.takeover_btn.setEnabled(True)
+            self.holder.set_rows([("LEASE", owner), ("STATE", state)])
+            self.takeover_btn.setEnabled(not radio_arbiter.arbiter.revoking())
         else:
             self.holder.set_hero("—", "radio free")
             self.holder.set_rows([("STATE", "FREE — any layer may acquire")])
@@ -179,9 +191,11 @@ class RadiosPanel(Overlay):
         self._refresh_table()
 
     def _free_radio(self):
+        """A1: ask the holder to stop and release (it acknowledges by releasing); the arbiter
+        forces the lease free only if the holder does not answer within the revoke timeout."""
         owner = radio_arbiter.arbiter.owner()
         if owner:
-            radio_arbiter.arbiter.release(owner)      # free the dongle; the next layer acquires it
+            radio_arbiter.arbiter.revoke(owner)
         self._refresh_holder()
 
     # ---- inventory ----

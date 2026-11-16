@@ -1,0 +1,33 @@
+........................................................................ [ 22%]
+........................................................................ [ 45%]
+........................................................................ [ 67%]
+........................................................................ [ 90%]
+............s.................                                           [100%]
+=============================== warnings summary ===============================
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[live-dark]
+  /home/user/wt-RA-CL5c/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x13dd0730) at 0x7f9d8ce71a80>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[live-light]
+  /home/user/wt-RA-CL5c/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x153cc910) at 0x7f9d8ceaa600>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[live-sun]
+  /home/user/wt-RA-CL5c/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x14c997b0) at 0x7f9d8cded680>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[demo-dark]
+  /home/user/wt-RA-CL5c/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x14c9d8c0) at 0x7f9d750f7c80>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[demo-light]
+  /home/user/wt-RA-CL5c/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x136ee820) at 0x7f9d8ce758c0>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+tests/test_cl1_fix3.py::test_strip_fits_1280_with_a_huge_scope[demo-sun]
+  /home/user/wt-RA-CL5c/palisade_qt/chrome.py:142: RuntimeWarning: libpyside: Failed to disconnect (<bound method ChromeState._on_radio of <palisade_qt.chrome.ChromeState(0x115cc050) at 0x7f9d8cd1d7c0>>) from signal "changed(QString)".
+    radio_arbiter.arbiter.changed.disconnect(self._on_radio)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+317 passed, 1 skipped, 6 warnings in 588.73s (0:09:48)
+EXIT 0

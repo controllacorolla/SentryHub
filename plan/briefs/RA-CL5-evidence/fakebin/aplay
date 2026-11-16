@@ -1,0 +1,3 @@
+#!/bin/sh
+# fake aplay: swallow audio
+exec cat >/dev/null

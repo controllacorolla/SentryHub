@@ -114,14 +114,24 @@ def test_panic_never_counts_a_signal_as_a_kill(monkeypatch):
 
 
 def test_decoder_pipelines_start_in_their_own_session():
-    """PANIC can only stop a whole pipeline by group if the decoder leads one."""
+    """PANIC can only stop a whole pipeline by group if every stage leads one.
+
+    Updated for CL5 (A4): decoders no longer call subprocess.Popen themselves; they go through
+    kit.procs.Pipeline, where every stage leads its own session/group."""
     import inspect
     from palisade_qt import atlas, prism, prowl, babel
+    from palisade_qt.kit.procs import Pipeline
     for fn in (atlas._open_aprs_pipe, atlas._open_ais_pipe):
-        assert "start_new_session=True" in inspect.getsource(fn), fn.__name__
-    for mod in (prism, prowl, babel):
-        src = inspect.getsource(mod)
-        assert src.count("subprocess.Popen(") == src.count("start_new_session=True"), mod.__name__
+        assert "Pipeline(" in inspect.getsource(fn), fn.__name__
+    for mod in (atlas, prism, prowl, babel):
+        assert "subprocess.Popen(" not in inspect.getsource(mod), mod.__name__
+    pipe = Pipeline([["sleep", "30"], ["cat"]])
+    try:
+        for p in pipe.procs:
+            assert os.getpgid(p.pid) == p.pid and os.getsid(p.pid) == p.pid
+        assert pipe.terminate(grace=1.0, kill_after=1.0)
+    finally:
+        pipe.terminate(grace=0.1, kill_after=0.5)
 
 
 def test_panic_never_signals_its_own_process_group():

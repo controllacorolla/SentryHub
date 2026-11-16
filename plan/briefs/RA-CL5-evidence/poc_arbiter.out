@@ -1,0 +1,5 @@
+  0.90 1 release during ACQUIRING: state=('FREE', None) stale-lease-released=[True]
+  1.55 2 revoke timer after re-grant to B: state=('HELD', 'B') (B must still hold)
+  6.83 3 stale revoke timer freed the SAME owner's new grant in 0/400 runs
+ 10.03 4 worst owner()+state() latency during a 3 s acquire: 0.000804 s
+ 13.34 5 ATLAS: arbiter.revoke() blocked the calling (GUI) thread for 2.00 s

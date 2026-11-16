@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+import sys,time
+o=sys.stdout.buffer
+while True:
+    sys.stderr.write('rtlsdr_demod_write_reg failed with -7\n'); sys.stderr.flush()
+    o.write(b'\x00\x00'); o.flush(); time.sleep(0.5)

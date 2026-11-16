@@ -202,6 +202,14 @@ class Demo:
         return [self.SENTENCES[self.i % len(self.SENTENCES)]]
 
 
+def pipeline_argv(gain=0):
+    """rtl_ais as one argv list (no shell) for the Qt pages (audit A4)."""
+    argv = ["rtl_ais", "-n"]
+    if gain:
+        argv += ["-g", str(int(gain))]
+    return [argv]
+
+
 def pipeline(gain=0):
     g = " -g %d" % int(gain) if gain else ""
     return "rtl_ais -n%s 2>/dev/null" % g        # prints AIVDM sentences to stdout

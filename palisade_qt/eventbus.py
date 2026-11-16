@@ -16,6 +16,7 @@ log (under a lock) and emits a Qt signal that Qt delivers on the GUI thread (que
 so subscribers touch widgets safely. Nothing here renders — consumers decide how to show it.
 """
 import math
+import copy
 import threading
 import time
 from collections import deque
@@ -76,18 +77,52 @@ def alert(source, text, severity="warn", **extra):
 
 
 class EventBus(QtCore.QObject):
+    """A6: publish() stores a COPY (publishers cannot mutate what subscribers see), the retained
+    log is bounded and resizable (set_retention), and the queued signal backlog is bounded: when
+    more than `maxlen` events are still waiting for a stalled GUI thread, further CONTACT and
+    DECODE events are kept in the log but not emitted, and `dropped()` says how many.
+    ALERT events are never dropped (CL5-fix 8 / N5): a Tornado Warning published during a GUI
+    stall under heavy contact traffic must still reach the AlertStore and the drawer. Alerts are
+    rare and small, so delivering every one cannot grow the backlog without bound in practice."""
     published = QtCore.Signal(dict)         # emitted (queued) to the GUI thread for every event
 
     def __init__(self, maxlen=1000, parent=None):
         super().__init__(parent)
         self._log = deque(maxlen=maxlen)
         self._lock = threading.Lock()
+        self._pending = 0
+        self._dropped = 0
+        self._maxlen = maxlen
+        self.published.connect(self._delivered, QtCore.Qt.QueuedConnection)
 
     def publish(self, event):
+        ev = copy.deepcopy(event)
         with self._lock:
-            self._log.append(event)
-        self.published.emit(event)
-        return event
+            self._log.append(ev)
+            if self._pending >= self._maxlen and ev.get("type") != "alert":
+                self._dropped += 1
+                return copy.deepcopy(ev)
+            self._pending += 1
+        self.published.emit(ev)
+        return copy.deepcopy(ev)                 # N13: the caller never aliases the log entry
+
+    def _delivered(self, _ev):
+        with self._lock:
+            if self._pending > 0:
+                self._pending -= 1
+
+    def set_retention(self, maxlen):
+        with self._lock:
+            self._maxlen = int(maxlen)
+            self._log = deque(self._log, maxlen=int(maxlen))
+
+    def pending(self):
+        with self._lock:
+            return self._pending
+
+    def dropped(self):
+        with self._lock:
+            return self._dropped
 
     def recent(self, n=50, etype=None, source=None):
         with self._lock:
@@ -101,6 +136,8 @@ class EventBus(QtCore.QObject):
     def clear(self):
         with self._lock:
             self._log.clear()
+            self._pending = 0
+            self._dropped = 0
 
 
 # module-level singleton — one bus for the process

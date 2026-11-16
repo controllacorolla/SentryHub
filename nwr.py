@@ -97,6 +97,15 @@ class Demo:
         return [self.LINES[self.i % len(self.LINES)]]
 
 
+def pipeline_argv(freq, gain=0):
+    """rtl_fm -> multimon-ng EAS as two argv lists (no shell) for the Qt pages (audit A4)."""
+    rtl = ["rtl_fm", "-f", str(freq), "-M", "fm", "-s", "22050"]
+    if gain:
+        rtl += ["-g", str(int(gain))]
+    rtl += ["-E", "dc", "-"]
+    return [rtl, ["multimon-ng", "-t", "raw", "-a", "EAS", "/dev/stdin"]]
+
+
 def pipeline(freq, gain=0):
     g = " -g %d" % int(gain) if gain else ""
     mm = "multimon-ng -t raw -a EAS /dev/stdin"

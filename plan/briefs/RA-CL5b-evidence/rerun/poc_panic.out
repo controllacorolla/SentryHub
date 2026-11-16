@@ -1,0 +1,28 @@
+=== babel
+  0.93 LEASE.release PROWL-SCAN children-at-release: []
+  4.94 BEFORE PANIC arbiter=('HELD', 'BABEL') children=['10025:rtl_ais', '10041:sleep']
+  4.95 LEASE.release BABEL children-at-release: []
+  4.96 PANIC banner: TX disarmed · no engagement was open · no child processes were running · radio released (was BABEL) · TX OFF
+  5.47 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  5.98 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  6.49 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  7.00 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  7.52 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  8.03 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  8.54 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+  9.05 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'AIS IDLE — press RUN', 'state': 'neutral', 'ok': None}
+ 10.07 AFTER CLOSE arbiter=('FREE', None) children=[]
+=== nwr
+  1.50 LEASE.release PROWL-SCAN children-at-release: []
+  4.51 BEFORE PANIC arbiter=('HELD', 'PROWL-NWR') children=['10950:python3', '10951:cat']
+  4.52 LEASE.release PROWL-NWR children-at-release: ['10954:pgrep(Z)']
+  4.52 PANIC banner: TX disarmed · no engagement was open · 1 of 1 child process(es) stopped (verified gone) · radio was free · TX OFF
+  5.03 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  5.54 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  6.05 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  6.56 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  7.08 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  7.59 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  8.10 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  8.61 AFTER PANIC arbiter=('FREE', None) children=[] chip={'text': 'SDR —', 'state': 'neutral', 'ok': None}
+  9.63 AFTER CLOSE arbiter=('FREE', None) children=[]

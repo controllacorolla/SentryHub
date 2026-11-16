@@ -1,0 +1,37 @@
+=== 
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+  2.00 ARBITER.changed -> 'ATLAS-AIS'
+  2.00 ARBITER.changed -> 'ATLAS-AIS'
+This plugin does not support propagateSizeHints()
+  4.73 ATLAS front, AIS on: arbiter=('HELD', 'ATLAS-AIS') children=['31412:rtl_ais', '31427:sleep']
+This plugin does not support propagateSizeHints()
+  6.24 ATLAS hidden: worker paused=False arbiter=('HELD', 'ATLAS-AIS') children=['31412:rtl_ais', '31436:sleep']
+  6.24 revoke() returned in 0.001 s
+  6.24 ARBITER.changed -> ''
+  6.25 LEASE.release ATLAS-AIS children-at-release: []
+This plugin does not support propagateSizeHints()
+  6.76 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.27 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  7.79 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.30 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  8.81 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.32 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+  9.83 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.34 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 10.85 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.37 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 11.88 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 12.39 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 12.91 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 13.42 SAMPLE arbiter=('FREE', None) revoking=False children=[]
+ 13.42 RESULT radio FREE while rtl_ais alive (ATLAS hidden): no
+ 13.42 ARBITER.changed -> 'PROWL-FM'
+ 13.43 ARBITER.changed -> 'PROWL-FM'
+ 13.43 next request('PROWL-FM') -> True ; children=[]
+ 13.43 ARBITER.changed -> ''
+ 13.44 LEASE.release PROWL-FM children-at-release: []
+ 15.45 ATLAS fronted again: arbiter=('FREE', None) children=[]
+ 16.47 END arbiter=('FREE', None) children=[]
+--- rc=0

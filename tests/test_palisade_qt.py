@@ -93,18 +93,25 @@ def test_hub_builds_and_hosts_ops():
     assert not (ops_worker and ops_worker.isRunning()), "hub close must stop its pages' workers"
 
 
-def test_lease_skipped_in_demo():
+def test_base_class_never_touches_the_dongle(monkeypatch):
+    """CL5/A5: the base-class daemon-thread lease path is gone; the SDR is owned only through
+    radio_arbiter. A LEASE attribute is inert in demo AND live."""
     _app()
+    import suite
     from palisade_qt.app import PalisadeApp
+    touched = []
+    monkeypatch.setattr(suite, "RtlLease", lambda name: touched.append(name) or None)
 
     class RadioApp(PalisadeApp):
         TITLE = "RADIO"
-        LEASE = "TestLease"      # would acquire the SDR if not demo
+        LEASE = "TestLease"
 
-    a = RadioApp(demo=True, mode="dark")
-    a.start()
-    assert a._lease is None, "demo must never touch the dongle"
-    a.stop()
+    for demo in (True, False):
+        a = RadioApp(demo=demo, mode="dark")
+        a.start()
+        _pump(50)
+        a.stop()
+    assert touched == [] and not hasattr(PalisadeApp, "_acquire_lease")
 
 
 @pytest.mark.parametrize("mode", ["dark", "light"])
@@ -631,9 +638,13 @@ def test_babel_live_mode_acquires_and_releases_via_arbiter(monkeypatch):
     from palisade_qt import babel, radio_arbiter as ra
     monkeypatch.setattr(ra, "_make_lease", lambda name: None)       # no real radio
     seen = []
+    ra.arbiter.reset_for_tests()
+    # CL5 (B1): BABEL only takes the radio while RUN is on and the page is active (wants_radio)
     monkeypatch.setitem(babel._LIVE_RUNNERS, "AIS",
-                        lambda worker: seen.append(ra.arbiter.owner()))
+                        lambda worker: (seen.append(ra.arbiter.owner()),
+                                        setattr(worker, "_stop", True)))
     w = babel.DecoderWorker(demo=False, mode="AIS")
+    w._running, w._active = True, True
     w._run_live("AIS")
     assert seen == ["BABEL"], "BABEL must own the radio while its decoder runs"
     assert ra.arbiter.owner() is None, "_run_live must release the SDR when the decoder returns"
@@ -696,6 +707,22 @@ def test_babel_live_no_binary_shows_standby_not_synth(monkeypatch):
 
 # ---- PROWL PR2: FM + NWR sub-modes, all leased through the shared arbiter ----
 
+def _hold(w):
+    """CL5-fix 1: a holder is granted at once but only HOLDS the radio (and may start its
+    decoder) once the arbiter's acquire finished — step until then."""
+    from palisade_qt import radio_arbiter as ra
+    w._ensure_lease()
+    assert ra.wait_held(w.NAME, 3.0)
+    return w._ensure_lease()
+
+
+def _finish(w):
+    """CL5-fix 6: stop() only sets flags on the GUI thread; the worker's run() reaps its
+    pipeline and THEN releases. A test that drives step() by hand finishes the same way."""
+    w.stop()
+    w.run()
+
+
 def test_prowl_off_base_lease_and_submode_labels():
     from palisade_qt.prowl import ProwlApp
     from palisade_qt import radio_arbiter as ra
@@ -708,9 +735,9 @@ def test_prowl_scan_leases_and_releases_via_arbiter(monkeypatch):
     from palisade_qt import prowl, radio_arbiter as ra
     monkeypatch.setattr(ra, "_make_lease", lambda name: None)
     w = prowl.ScanWorker(demo=False, bank="NOAA Wx")
-    assert w._ensure_lease() is True
+    assert _hold(w) is True
     assert ra.arbiter.owner() == "PROWL-SCAN"
-    w.stop()
+    _finish(w)
     assert ra.arbiter.owner() is None, "stop() must release the scanner's SDR lease"
 
 
@@ -719,15 +746,15 @@ def test_prowl_submodes_mutually_exclusive_on_the_radio(monkeypatch):
     from palisade_qt import prowl, radio_arbiter as ra
     monkeypatch.setattr(ra, "_make_lease", lambda name: None)
     scan, nwr_w = prowl.ScanWorker(demo=False), prowl.NwrWorker(demo=False)
-    assert scan._ensure_lease() is True and ra.arbiter.owner() == "PROWL-SCAN"
+    assert _hold(scan) is True and ra.arbiter.owner() == "PROWL-SCAN"
     seen = []
     nwr_w.status.connect(lambda s: seen.append(s))
     assert nwr_w._ensure_lease() is False                 # SCAN holds it
     assert any(s.get("busy") for s in seen), "denied sub-mode must report RADIO BUSY"
-    scan.stop()
+    _finish(scan)
     assert ra.arbiter.owner() is None
-    assert nwr_w._ensure_lease() is True and ra.arbiter.owner() == "PROWL-NWR"
-    nwr_w.stop()
+    assert _hold(nwr_w) is True and ra.arbiter.owner() == "PROWL-NWR"
+    _finish(nwr_w)
     assert ra.arbiter.owner() is None
 
 
@@ -738,11 +765,13 @@ def test_prowl_fm_step_leases_but_opens_no_radio_offscreen(monkeypatch):
     w = prowl.FmWorker(demo=False, freq=97.3)
     rows = []
     w.row.connect(lambda r: rows.append(r))
+    w.step()                                       # requests (ACQUIRING): nothing spawned yet
+    assert ra.wait_held("PROWL-FM", 3.0)
     w.step()
     assert ra.arbiter.owner() == "PROWL-FM"
     assert w._pipe is None, "offscreen seam must open no real radio"
     assert rows and rows[-1]["kind"] == "fm" and rows[-1]["audio"] is False
-    w.stop()
+    _finish(w)
     assert ra.arbiter.owner() is None
 
 
@@ -944,16 +973,25 @@ def test_babel_tpms_decodes_and_publishes_to_bus(monkeypatch):
             '"temperature_C":21.0,"battery_ok":1,"rssi":-42.0}')
 
     class FakeProc:
-        pid = 2147483646        # unused: poll()=0 makes _stop_proc early-return (no killpg)
+        pid = 2147483646
         stdout = [line, "not json, rtl_433 chatter\n"]
 
         def poll(self):
             return 0
+
+        def terminate(self):
+            return True
     monkeypatch.setattr(babel, "_open_pipe", lambda *a, **k: FakeProc())
+    from palisade_qt import radio_arbiter as ra
+    monkeypatch.setattr(ra, "_make_lease", lambda n: None)
     w = babel.DecoderWorker(demo=False, mode="TPMS")
+    w._running = True                    # CL5-fix 1/5: a runner keeps its decoder only while
+    ra.arbiter.request(babel.LEASE_NAME)  # RUN is on and the arbiter says HELD
+    assert ra.wait_held(babel.LEASE_NAME, 3.0)
     rows = []
     w.row.connect(lambda r: rows.append(r))
     babel._run_tpms(w)
+    ra.arbiter.release(babel.LEASE_NAME)
     assert len(rows) == 1 and rows[0]["proto"] == "TPMS" and rows[0]["id"] == "3a1c"
     assert "230 kPa" in rows[0]["summary"]
     assert decs and decs[0]["source"] == "BABEL-TPMS" and decs[0]["payload"]["id"] == "3a1c"
@@ -1015,29 +1053,53 @@ def test_babel_sstv_demo_emits_image():
     assert rows[0]["image"].shape[2] == 3
 
 
-def test_babel_sstv_live_leases_and_decodes(monkeypatch):
-    import numpy as np
+class _FakeRec:
+    """A Recorder stand-in: 25 s of (silent) audio in its in-memory window."""
+    level = 120.0
+    err = ""
+
+    def __init__(self, secs=25.0, err=""):
+        import sstv
+        self.err = err
+        self._n = int(secs * sstv.RATE)
+        self.stopped = 0
+
+    def seconds(self):
+        return self._n / 24000.0
+
+    def total_samples(self):
+        return self._n
+
+    def samples_since(self, abs_sample):
+        start = max(0, int(abs_sample))
+        return b"\x00\x00" * max(0, self._n - start), start
+
+    def stop(self):
+        self.stopped += 1
+
+
+def _sstv_live(monkeypatch):
     from palisade_qt import babel, radio_arbiter as ra
     monkeypatch.setattr(ra, "_make_lease", lambda n: None)
     monkeypatch.setattr(babel.shutil, "which", lambda b: "/usr/bin/" + b)   # rtl_fm "present"
     w = babel.SstvWorker(demo=False)
+    w.set_running(True)                          # R1 / CL5-fix 3: only on RUN
+    return babel, ra, w
 
-    class FakeRec:
-        level = 120.0
-        err = ""
 
-        def seconds(self):
-            return 25.0
-
-        def stop(self):
-            pass
-    w._make_recorder = lambda path: FakeRec()
-    w._decode = lambda path: {"image": np.zeros((8, 8, 3), np.uint8), "mode": "PD120",
-                              "lines": 496, "slant_ppm": 2}
+def test_babel_sstv_live_leases_and_decodes(monkeypatch):
+    import numpy as np
+    babel, ra, w = _sstv_live(monkeypatch)
+    w._make_recorder = lambda path: _FakeRec()
+    w._decode = lambda x, fs: {"image": np.zeros((8, 8, 3), np.uint8), "mode": "PD120",
+                               "lines": 496, "slant_ppm": 2, "start": 100, "t0": 100,
+                               "period": 12000.0}
     rows = []
     w.row.connect(lambda r: rows.append(r))
     app = _app()
-    w.step()                                     # leases + starts the (daemon) decode
+    w.step()                                     # requests the radio (ACQUIRING)
+    assert ra.wait_held("BABEL-SSTV", 3.0)
+    w.step()                                     # HELD: recorder + the (daemon) decode
     assert ra.arbiter.owner() == "BABEL-SSTV"
     import time as _t
     t0 = _t.time()
@@ -1046,44 +1108,32 @@ def test_babel_sstv_live_leases_and_decodes(monkeypatch):
         _t.sleep(0.02)
     img = [r for r in rows if r.get("kind") == "sstv"]
     assert img and img[0]["mode"] == "PD120" and img[0]["image"].shape == (8, 8, 3)
-    w.stop()
+    _finish(w)
     assert ra.arbiter.owner() is None, "closing SSTV releases the SDR"
 
 
 def test_babel_sstv_stop_joins_during_a_slow_decode(monkeypatch):
-    """The HIGH fix: decode_wav runs on a disposable daemon thread, so a slow decode never blocks
+    """The HIGH fix: the decode runs on a disposable daemon thread, so a slow decode never blocks
     the worker QThread — stop()/wait() joins promptly instead of orphaning the thread."""
     import time as _t
     import numpy as np
-    from palisade_qt import babel, radio_arbiter as ra
-    monkeypatch.setattr(ra, "_make_lease", lambda n: None)
-    monkeypatch.setattr(babel.shutil, "which", lambda b: "/usr/bin/" + b)
-    w = babel.SstvWorker(demo=False)
+    babel, ra, w = _sstv_live(monkeypatch)
+    w._make_recorder = lambda path: _FakeRec()
 
-    class FakeRec:
-        level = 120.0
-        err = ""
-
-        def seconds(self):
-            return 25.0
-
-        def stop(self):
-            pass
-    w._make_recorder = lambda path: FakeRec()
-
-    def slow_decode(path):
+    def slow_decode(x, fs):
         _t.sleep(5)                              # longer than wait(3000)
-        return {"image": np.zeros((4, 4, 3), np.uint8), "mode": "PD120", "lines": 4, "slant_ppm": 0}
+        return {"image": np.zeros((4, 4, 3), np.uint8), "mode": "PD120", "lines": 4,
+                "slant_ppm": 0, "start": 0, "t0": 0, "period": 12000.0}
     w._decode = slow_decode
     w.start()
     t0 = _t.time()
-    while not w._decoding and _t.time() - t0 < 3:
+    while not w._decoding and _t.time() - t0 < 4:
         _t.sleep(0.02)
     assert w._decoding, "a decode should be in flight"
     t1 = _t.time()
     w.stop()
     w.quit()
-    assert w.wait(3000), "worker must join within 3s even though decode_wav is still running"
+    assert w.wait(3000), "worker must join within 3s even though the decode is still running"
     assert _t.time() - t1 < 3.0
     assert ra.arbiter.owner() is None
 
@@ -1091,26 +1141,15 @@ def test_babel_sstv_stop_joins_during_a_slow_decode(monkeypatch):
 def test_babel_sstv_rtl_fm_death_reaps_and_retries(monkeypatch):
     """The MED fix: a dead rtl_fm (rec.err) reaps the Recorder so the next step can restart,
     instead of latching forever while holding the lease."""
-    from palisade_qt import babel, radio_arbiter as ra
-    monkeypatch.setattr(ra, "_make_lease", lambda n: None)
-    monkeypatch.setattr(babel.shutil, "which", lambda b: "/usr/bin/" + b)
-    w = babel.SstvWorker(demo=False)
-    stopped = []
-
-    class DeadRec:
-        level = 0.0
-        err = "rtl_fm stopped - is the SDR free?"
-
-        def seconds(self):
-            return 5.0
-
-        def stop(self):
-            stopped.append(1)
-    w._make_recorder = lambda path: DeadRec()
-    w.step()                                      # leases, makes the recorder, sees err -> reaps it
+    babel, ra, w = _sstv_live(monkeypatch)
+    dead = _FakeRec(secs=5.0, err="rtl_fm stopped - is the SDR free?")
+    w._make_recorder = lambda path: dead
+    w.step()
+    assert ra.wait_held("BABEL-SSTV", 3.0)
+    w.step()                                      # makes the recorder, sees err -> reaps it
     assert ra.arbiter.owner() == "BABEL-SSTV"     # lease kept so the next step can restart
-    assert w._rec is None and stopped, "dead recorder must be stopped/cleared, not latched forever"
-    w.stop()
+    assert w._rec is None and dead.stopped, "dead recorder must be stopped/cleared, not latched"
+    _finish(w)
     assert ra.arbiter.owner() is None
 
 
@@ -1143,9 +1182,12 @@ def test_babel_sstv_offscreen_opens_no_recorder(monkeypatch):
     monkeypatch.setattr(ra, "_make_lease", lambda n: None)
     monkeypatch.setattr(babel.shutil, "which", lambda b: "/usr/bin/" + b)
     w = babel.SstvWorker(demo=False)
+    w.set_running(True)                      # R1: the radio is taken only on RUN
+    w.step()
+    assert ra.wait_held("BABEL-SSTV", 3.0)
     w.step()                                 # real _make_recorder returns None under offscreen
     assert w._rec is None and ra.arbiter.owner() == "BABEL-SSTV"
-    w.stop()
+    _finish(w)
     assert ra.arbiter.owner() is None
 
 
@@ -1536,7 +1578,18 @@ def test_overwatch_radio_director_tracks_arbiter_and_frees(monkeypatch):
     _pump(100)
     assert p.hist_feed.model.rowCount() >= 1
     assert "APRS" in p.holder.hero.text()
+    # CL5 (A1): FREE RADIO asks the holder to release; the arbiter forces it only after the
+    # revoke timeout when nobody acknowledges (no ATLAS page is listening here)
+    monkeypatch.setattr(ra, "REVOKE_TIMEOUT_S", 0.05)
+    asked = []
+    ra.arbiter.revoked.connect(asked.append)
     p._free_radio()
+    assert asked == ["ATLAS-APRS"]
+    import time as _t
+    deadline = _t.time() + 2.0
+    while ra.arbiter.owner() is not None and _t.time() < deadline:
+        _pump(20)
+    ra.arbiter.revoked.disconnect(asked.append)
     assert ra.arbiter.owner() is None
     p.stop()
     ra.arbiter._owner = None

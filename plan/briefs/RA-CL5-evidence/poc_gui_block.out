@@ -1,0 +1,5 @@
+  2.81 BABEL set_active(False) [page hidden] blocked the GUI thread 1.00 s
+  5.32 BABEL set_running(False) [STOP] blocked the GUI thread 1.00 s
+  7.84 BABEL revoked [FREE THE RADIO] blocked the GUI thread 1.00 s
+ 10.03 4 worst owner()+state() latency during a 3 s acquire: 0.000804 s
+ 13.34 5 ATLAS: arbiter.revoke() blocked the calling (GUI) thread for 2.00 s

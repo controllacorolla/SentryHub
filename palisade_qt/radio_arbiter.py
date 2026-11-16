@@ -1,24 +1,31 @@
-"""The radio arbiter — one owner of the single SDR at a time.
+"""The radio arbiter — one owner of the single SDR at a time (CL5: A1, A3).
 
-The uConsole has one built-in RTL dongle. ATLAS's lease-using layers (APRS 144.39, AIS 162 MHz,
-later PRISM) must never both open it, and readsb/ADS-B is the baseline that resumes when no layer
-holds it. This small helper is the single source of truth for "who holds the radio"; a layer that
-wants it but can't get it renders an honest RADIO BUSY state instead of an empty map.
+The uConsole has one built-in RTL dongle. ATLAS's lease-using layers (APRS, AIS), PRISM and the
+PROWL decoders must never both open it, and readsb/ADS-B is the baseline that resumes when no
+layer holds it. This is the single source of truth for "who holds the radio".
 
-It is deliberately minimal — the seed of the OVERWATCH radio director. No time-sharing or
-rotation: exactly one owner until it releases.
+States (A3): FREE · ACQUIRING(name) · HELD(name). request() decides ownership at once under the
+lock and starts the slow acquire (RtlLease.acquire can take ~90 s: it pauses readsb) OUTSIDE the
+lock on a thread, so owner()/state() never block the GUI. While ACQUIRING the requester is the
+logical owner (nobody else is granted); HELD once the lease is really in hand.
 
-Policy: first requester wins and keeps it until it releases (no pre-emptive takeover here; the UI
-can offer the operator a manual takeover by releasing one layer before enabling another).
-`_make_lease` is a seam so tests never open a real radio.
+Revocation (A1): revoke(name) does NOT release on the holder's behalf. It emits `revoked(name)`;
+the holder stops its pipeline, waits for it to exit, then calls release(name). If the holder has
+not acknowledged within REVOKE_TIMEOUT_S the arbiter frees anyway (the pipeline is then the
+holder's leak to report), and only then does readsb restart. `_make_lease` is a seam so tests
+never open a real radio.
 """
 import threading
+import time
 
 from PySide6 import QtCore
 
+REVOKE_TIMEOUT_S = 5.0
+
 
 def _make_lease(name):
-    """Acquire the shared SDR lease (pauses readsb, frees the dongle). None if unavailable."""
+    """Acquire the shared SDR lease (pauses readsb, frees the dongle). None if unavailable.
+    SLOW — never call under the arbiter lock."""
     try:
         import suite
         lease = suite.RtlLease(name)
@@ -29,42 +36,154 @@ def _make_lease(name):
 
 
 class RadioArbiter(QtCore.QObject):
-    changed = QtCore.Signal(str)        # new owner name, or "" when the radio is free
+    changed = QtCore.Signal(str)        # owner name ("" when free) — also fires on ACQUIRING→HELD
+    revoked = QtCore.Signal(str)        # the named holder must stop its pipeline and release()
+    # (event, owner, note) captured AT the transition (N11: changed() + a late state() read logged
+    # HELD, HELD for a fast acquire). event: ACQUIRING | HELD | RELEASE; note on a RELEASE says
+    # how ("" = the holder released, "FORCED FREE …", "PANIC").
+    transition = QtCore.Signal(str, str, str)
 
     def __init__(self):
         super().__init__()
         self._owner = None
+        self._state = "FREE"            # FREE | ACQUIRING | HELD
         self._lease = None
         self._lock = threading.Lock()
+        self._gen = 0                   # bumps on every ownership change; stale acquires drop out
+        self._revoke_timer = None
 
+    # ---- ownership ----
     def request(self, name):
-        """Become the single radio owner. True if granted (now or already ours); False if busy."""
-        acquired = False
+        """Become the single radio owner. Returns True if granted (now or already ours), False if
+        another holder has it. Never blocks on the radio."""
         with self._lock:
             if self._owner is None:
-                self._lease = _make_lease(name)   # logical ownership even if no real radio here
-                self._owner = name
-                acquired = True
-            granted = self._owner == name
-        if acquired:
-            self.changed.emit(name)
-        return granted
+                self._owner, self._state = name, "ACQUIRING"
+                self._gen += 1
+                gen = self._gen
+                start = True
+            else:
+                start = False
+                granted = self._owner == name
+        if not start:
+            return granted
+        self.transition.emit("ACQUIRING", name, "")
+        self.changed.emit(name)
+        threading.Thread(target=self._acquire, args=(name, gen), name="radio-acquire",
+                         daemon=False).start()
+        return True
+
+    def _acquire(self, name, gen):
+        lease = _make_lease(name)            # slow; outside the lock
+        with self._lock:
+            if self._gen != gen or self._owner != name:
+                stale = True                 # released / revoked while acquiring
+            else:
+                stale = False
+                self._lease, self._state = lease, "HELD"
+        if stale:
+            if lease is not None:
+                try:
+                    lease.release()
+                except Exception:
+                    pass
+            return
+        self.transition.emit("HELD", name, "")
+        self.changed.emit(name)
 
     def release(self, name):
+        self._release(name)
+
+    def _release(self, name, gen=None, note=""):
+        """Free the radio if `name` holds it (and, when gen is given, only if ownership has not
+        changed since — N12: a revoke timer must never free a re-grant)."""
         with self._lock:
-            if self._owner != name:
-                return
-            lease, self._lease, self._owner = self._lease, None, None
+            if self._owner != name or (gen is not None and self._gen != gen):
+                return False
+            lease, self._lease, self._owner, self._state = self._lease, None, None, "FREE"
+            self._gen += 1
+            t, self._revoke_timer = self._revoke_timer, None
+        if t is not None:
+            t.cancel()
+        # announce FREE as soon as it is FREE (CL5-fix2): the lease release below restarts readsb
+        # and can take seconds; the strip must not show the old holder for that long
+        self.transition.emit("RELEASE", name, note)
+        self.changed.emit("")
         if lease is not None:
             try:
                 lease.release()                   # readsb / the autopilot resume
             except Exception:
                 pass
-        self.changed.emit("")
+        return True
 
+    def revoke(self, name=None, timeout_s=None):
+        """Ask the holder to give the radio back (A1). Returns the name asked, or None if free.
+        The holder's acknowledgement is its own release(); after timeout_s the arbiter frees."""
+        with self._lock:
+            holder = self._owner
+            if holder is None or (name is not None and name != holder):
+                return None
+            if self._revoke_timer is not None:
+                return holder                     # already asked; the clock is running
+            t = threading.Timer(REVOKE_TIMEOUT_S if timeout_s is None else timeout_s,
+                                self._revoke_expired, args=(holder, self._gen))
+            t.daemon = True
+            self._revoke_timer = t
+        self.revoked.emit(holder)
+        t.start()
+        return holder
+
+    def _revoke_expired(self, holder, gen):
+        with self._lock:
+            if self._gen != gen or self._owner != holder:
+                return                            # it acknowledged in time
+            self._revoke_timer = None
+        import sys
+        print("[radio] %s did not release within the revoke timeout — forcing free" % holder,
+              file=sys.stderr)
+        self._release(holder, gen, note="FORCED FREE — holder did not acknowledge")
+
+    def panic_free(self):
+        """PANIC (CL5-fix 5): the operator wants the radio stopped now. The shell has already set
+        every page's hold-off flag and killed the child process tree, so this tells the holder
+        (revoked(name): it drops its pipeline and stays off) and frees at once, without the
+        revoke grace period. Returns the name that held it, or None if it was free."""
+        with self._lock:
+            holder = self._owner
+        if holder is None:
+            return None
+        self.revoked.emit(holder)
+        self._release(holder, note="PANIC")
+        return holder
+
+    # ---- reads (never block) ----
     def owner(self):
         with self._lock:
             return self._owner
+
+    def state(self):
+        """('FREE', None) | ('ACQUIRING', name) | ('HELD', name)."""
+        with self._lock:
+            return self._state, self._owner
+
+    def held_by(self, name):
+        """True only when `name` really holds the dongle (HELD, not ACQUIRING). A holder starts
+        its decoder only on this (CL5-fix 1 / N1): during ACQUIRING readsb may still own the
+        dongle and RtlLease.acquire kills rtl_fm & co, so a decoder started early dies or races."""
+        with self._lock:
+            return self._owner == name and self._state == "HELD"
+
+    def revoking(self):
+        with self._lock:
+            return self._revoke_timer is not None
+
+    def reset_for_tests(self):
+        with self._lock:
+            self._owner, self._state, self._lease = None, "FREE", None
+            self._gen += 1
+            t, self._revoke_timer = self._revoke_timer, None
+        if t is not None:
+            t.cancel()
 
 
 # process-wide singleton — one radio, one arbiter
@@ -74,9 +193,20 @@ arbiter = RadioArbiter()
 # <= 8 characters each: these are the state word of the strip's fixed-width SDR slot
 OWNER_LABELS = {"ATLAS-APRS": "APRS", "ATLAS-AIS": "AIS", "BABEL": "BABEL",
                 "PROWL-SCAN": "PROWL SC", "PROWL-FM": "PROWL FM", "PROWL-NWR": "PROWL WX",
-                "BABEL-SSTV": "SSTV"}
+                "BABEL-SSTV": "SSTV", "PRISM": "PRISM"}
 
 
 def owner_label():
     o = arbiter.owner()
     return OWNER_LABELS.get(o, o) if o else None
+
+
+def wait_held(name, timeout_s=10.0):
+    """Test/CLI helper: block until the arbiter reports HELD for name (or FREE), or timeout."""
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        st, o = arbiter.state()
+        if o != name or st == "HELD":
+            return st == "HELD"
+        time.sleep(0.02)
+    return False
