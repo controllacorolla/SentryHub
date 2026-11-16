@@ -279,6 +279,8 @@ def test_a1_revoke_times_out_when_the_holder_never_answers(monkeypatch):
 
 
 def test_a1_lease_source_stops_its_pipeline_before_releasing():
+    """CL5-fix 1/6: the pipe opens only once HELD; the revoke handler (GUI thread) only flags,
+    and the worker's next poll() reaps the pipe and THEN releases."""
     from palisade_qt import atlas, radio_arbiter as ra
     stopped = []
 
@@ -286,7 +288,7 @@ def test_a1_lease_source_stops_its_pipeline_before_releasing():
         stdout = io.StringIO("")
 
         def terminate(self):
-            stopped.append(time.time())
+            stopped.append(ra.arbiter.owner())      # who held the radio while we were killing
 
         def poll(self):
             return None
@@ -305,10 +307,17 @@ def test_a1_lease_source_stops_its_pipeline_before_releasing():
     s = Src()
     s.start()
     s.poll()
-    assert ra.arbiter.owner() == "ATLAS-APRS"
+    assert ra.wait_held("ATLAS-APRS", 3.0)
+    s.poll()
+    assert ra.arbiter.owner() == "ATLAS-APRS" and s._proc is not None
+    t0 = time.time()
     ra.arbiter.revoke()
+    assert time.time() - t0 < 0.1, "the revoke handler must not block the GUI thread"
     _pump(50)
-    assert stopped and ra.arbiter.owner() is None
+    assert not stopped and ra.arbiter.owner() == "ATLAS-APRS"   # ack comes from the worker
+    s.poll()                                                   # the worker thread's next step
+    assert stopped == ["ATLAS-APRS"], "killed while still holding: kill BEFORE release"
+    assert ra.arbiter.owner() is None and s.given_back
     s.stop()
 
 
@@ -323,9 +332,10 @@ def test_a6_bus_copies_bounds_and_resizes():
     ev["payload"]["text"] = "MUTATED"
     _pump(20)
     assert got[0]["payload"]["text"] == "x" and bus.recent()[0]["payload"]["text"] == "x"
-    # backlog: no event processing -> queued deliveries pile up; past maxlen they are dropped
+    # backlog: no event processing -> queued deliveries pile up; past maxlen CONTACTS are
+    # dropped (kept in the log). Alerts never are (CL5-fix 8, see test_cl5_fix).
     for i in range(12):
-        bus.publish(eventbus.alert("T", str(i)))
+        bus.publish(eventbus.contact("T", str(i), 47.0, -122.0))
     assert bus.pending() <= 5 and bus.dropped() >= 7
     assert len(bus.recent(100)) == 5                         # log bounded
     _pump(30)
@@ -457,6 +467,13 @@ def test_r2_early_decoder_exit_is_a_fault_with_backoff_and_no_lease_churn(monkey
 
 
 # ============================================================================ R3 / R4 (NWR)
+def _held(w):
+    from palisade_qt import radio_arbiter as ra
+    assert ra.arbiter.request(w.NAME)
+    assert ra.wait_held(w.NAME, 3.0)
+    w._has_radio = True
+
+
 def test_r3_dead_nwr_pipeline_shows_down_not_healthy(monkeypatch):
     from palisade_qt import prowl
     monkeypatch.setattr(prowl.shutil, "which", lambda n: "/usr/bin/" + n)
@@ -474,7 +491,7 @@ def test_r3_dead_nwr_pipeline_shows_down_not_healthy(monkeypatch):
     status = []
     w.status.connect(status.append)
     w.set_active(True)
-    w._ensure_lease = lambda: True
+    _held(w)                      # CL5-fix 1: the decoder spawns only on a HELD radio
     w.step()                      # spawns
     w.step()                      # sees it dead
     texts = [s.get("sdr", {}).get("text", "") for s in status]
@@ -510,7 +527,7 @@ def test_r4_nwr_retune_waits_for_the_old_pipeline_to_exit(monkeypatch):
     monkeypatch.setattr(prowl, "_open_nwr_pipe", opener)
     w = prowl.NwrWorker(demo=False)
     w.set_active(True)
-    w._ensure_lease = lambda: True
+    _held(w)
     w.step()
     w.set_channel("162.550M", "WX1")
     w.step()
@@ -519,6 +536,8 @@ def test_r4_nwr_retune_waits_for_the_old_pipeline_to_exit(monkeypatch):
 
 # ============================================================================ R5 (SSTV)
 def test_r5_sstv_recorder_keeps_a_rolling_window_and_writes_under_cache(tmp_path, monkeypatch):
+    """R5 + CL5-fix 12: the file on disk is capped (rotated at window_s, one previous window
+    kept) and APPENDED to — every captured byte is written once, never the whole window again."""
     import sstv
     import wave
 
@@ -537,15 +556,19 @@ def test_r5_sstv_recorder_keeps_a_rolling_window_and_writes_under_cache(tmp_path
         def __init__(self):
             self.stdout = Stdout(sstv.RATE * 2 * 30)       # 30 s of audio
     monkeypatch.setattr(sstv.S, "stop_group", lambda p, grace=1.0: None, raising=False)
+    monkeypatch.setattr(sstv.Recorder, "FLUSH_S", 0)       # flush on every chunk: worst case
     path = str(tmp_path / "w.wav")
     rec = sstv.Recorder(path, 145.8, 40, monitor=False, window_s=4, proc=Proc())
     rec.thread.join(10)
     rec.flush()
     with wave.open(path) as w:
         secs = w.getnframes() / float(w.getframerate())
-    assert 3.5 <= secs <= 4.0, secs
+    assert 0 < secs <= 4.0, secs
+    with wave.open(path[:-4] + ".prev.wav") as w:
+        assert w.getnframes() / float(w.getframerate()) <= 4.0
     assert rec.window_seconds() <= 4.0
     assert os.path.getsize(path) < 2 * sstv.RATE * 5
+    assert rec.bytes_written == sstv.RATE * 2 * 30, "each byte written once (append, no rewrite)"
     # the Qt worker places the capture under the cache dir, not /tmp
     import inspect
     from palisade_qt import babel
@@ -628,7 +651,8 @@ def test_e2_skip_locks_out_the_current_channel():
 # ============================================================================ E3 (BLE)
 def test_e3_ble_scan_is_passive_opt_in_and_surfaces_failures(monkeypatch):
     from palisade_qt import atlas
-    assert atlas.RidSource.scanner_kwargs() == {"scanning_mode": "passive"}
+    assert atlas.RidSource.scanner_kwargs(platform="darwin") == {"scanning_mode": "passive"}
+    assert atlas.RidSource.scanner_kwargs(platform="linux")["scanning_mode"] == "passive"
     w = atlas.AtlasLiveWorker()
     w._ensure_sources()
     w._reconcile_rid()

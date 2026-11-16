@@ -148,7 +148,9 @@ def _run_ais(worker):
     proc = _open_pipe(cmd)
     if proc is None:
         return                       # offscreen/offline seam: never open a real radio in tests
-    worker._proc = proc
+    if not worker._adopt(proc):      # RUN off / hidden / revoked / PANIC while spawning
+        _stop_proc(proc)
+        return
     worker.status.emit({"sdr": {"text": "AIS LIVE", "ok": True}})
     try:
         for line in proc.stdout:
@@ -193,7 +195,9 @@ def _run_acars(worker):
         return
     if proc is None:
         return                       # offscreen/offline seam: never open a real radio in tests
-    worker._proc = proc
+    if not worker._adopt(proc):      # RUN off / hidden / revoked / PANIC while spawning
+        _stop_proc(proc)
+        return
     worker.status.emit({"sdr": {"text": "ACARS LIVE", "ok": True}})
     try:
         for line in proc.stdout:
@@ -226,7 +230,9 @@ def _run_pocsag(worker):
     proc = _open_pipe(cmd)
     if proc is None:
         return                       # offscreen/offline seam: never open a real radio in tests
-    worker._proc = proc
+    if not worker._adopt(proc):      # RUN off / hidden / revoked / PANIC while spawning
+        _stop_proc(proc)
+        return
     worker.status.emit({"sdr": {"text": "POCSAG LIVE", "ok": True}})
     try:
         for line in proc.stdout:
@@ -260,7 +266,9 @@ def _run_rds(worker):
     proc = _open_pipe(cmd)
     if proc is None:
         return                       # offscreen/offline seam: never open a real radio in tests
-    worker._proc = proc
+    if not worker._adopt(proc):      # RUN off / hidden / revoked / PANIC while spawning
+        _stop_proc(proc)
+        return
     worker.status.emit({"sdr": {"text": "RDS LIVE", "ok": True}})
     try:
         for line in proc.stdout:
@@ -301,7 +309,9 @@ def _run_tpms(worker):
     proc = _open_pipe(argv, shell=False)
     if proc is None:
         return                       # offscreen/offline seam: never open a real radio in tests
-    worker._proc = proc
+    if not worker._adopt(proc):      # RUN off / hidden / revoked / PANIC while spawning
+        _stop_proc(proc)
+        return
     worker.status.emit({"sdr": {"text": "TPMS LIVE", "ok": True}})
     veh = engine.Vehicles()
     n = 0
@@ -346,8 +356,10 @@ _LIVE_RUNNERS = {"AIS": _run_ais, "ACARS": _run_acars, "POCSAG": _run_pocsag, "R
 
 
 def _stop_proc(proc):
-    """Stop a decoder pipeline: group SIGTERM, wait, SIGKILL, wait — every member, no zombie (A4)."""
-    if not proc or proc.poll() is not None:
+    """Stop a decoder pipeline: group SIGTERM, wait, SIGKILL, wait — every member, no zombie (A4).
+    Always terminate(): a Pipeline whose first stage exited can still have live stages (poll()
+    reports the first exit), and terminate() is idempotent. Blocks: worker thread only."""
+    if not proc:
         return
     try:
         proc.terminate()
@@ -383,23 +395,53 @@ class DecoderWorker(Worker):
         self._faults = 0
         radio_arbiter.arbiter.revoked.connect(self._on_revoked)
 
+    # GUI-thread entry points: flags + a NON-blocking kill only (CL5-fix 6). The worker thread
+    # then reaps the pipeline (terminate waits for every stage) BEFORE it releases the radio.
     def set_running(self, on):
         self._running = bool(on)
         self._mode_changed = True      # re-evaluate at once (take the radio / give it back)
         if not on:
-            self._kill_proc()
+            self._kill_async()
+        self.poke()
 
     def set_active(self, on):
+        if bool(on) == self._active:
+            return                     # no change: don't restart the loop on a repeat call
         self._active = bool(on)
         self._mode_changed = True
         if not on:
-            self._kill_proc()
+            self._kill_async()
+        self.poke()
 
     def _on_revoked(self, name):
         if name == LEASE_NAME:
-            self._running = False
-            self._mode_changed = True
-            self._kill_proc()
+            self.hold_off("radio given back")
+
+    def hold_off(self, reason):
+        """A revoke or PANIC: stop the decoder and do not start it again until the operator
+        presses RUN. The page unticks RUN when it sees `run_off`."""
+        self._running = False
+        self._mode_changed = True
+        self._kill_async()
+        self.status.emit({"run_off": True, "busy": None, "live": False,
+                          "sdr": {"text": "%s OFF — %s" % (self.mode, reason), "state": "warn",
+                                  "ok": False}, "idle": True})
+        self.poke()
+
+    def _adopt(self, proc):
+        """A runner just spawned `proc`. Keep it only if we still want and HOLD the radio; a
+        GUI-thread kill that ran before this assignment saw no proc, so check here (the PANIC
+        race: no decoder may outlive the flag that said stop)."""
+        self._proc = proc
+        if self._stop or self._mode_changed or not self.wants_radio() \
+                or not radio_arbiter.arbiter.held_by(LEASE_NAME):
+            self._proc = None
+            return False
+        return True
+
+    def _kill_async(self):
+        from .kit.procs import terminate_async
+        terminate_async(self._proc)
 
     def wants_radio(self):
         return self._running and self._active and not self.demo
@@ -412,17 +454,30 @@ class DecoderWorker(Worker):
         return self._stop or self._mode_changed
 
     def _kill_proc(self):
-        if self._proc and self._proc.poll() is None:
-            _stop_proc(self._proc)
-        self._proc = None
+        """Worker thread only: blocks until every stage is gone."""
+        proc, self._proc = self._proc, None
+        if proc is not None:
+            _stop_proc(proc)
 
     def set_mode(self, mode):
         self.mode = mode
         self._mode_changed = True
         self._faults = 0
-        self._kill_proc()
+        self._kill_async()
+        self.poke()
 
     def run(self):
+        try:
+            self._loop()
+        finally:
+            self._kill_proc()
+            radio_arbiter.arbiter.release(LEASE_NAME)   # after the pipeline is reaped
+            try:
+                radio_arbiter.arbiter.revoked.disconnect(self._on_revoked)
+            except (RuntimeError, TypeError):
+                pass
+
+    def _loop(self):
         while not self._stop:
             mode = self.mode
             self._mode_changed = False
@@ -462,8 +517,19 @@ class DecoderWorker(Worker):
                 self.sleep(50)
                 waited += 50
             return
-        self.status.emit({"busy": None})     # we hold the radio — clear any BUSY banner
         try:
+            # CL5-fix 1 / N1: the decoder starts only once the arbiter says HELD. Until then the
+            # page says ACQUIRING (readsb is still being stopped and may hold the dongle).
+            arb = radio_arbiter.arbiter
+            while not arb.held_by(LEASE_NAME):
+                if self._stop or self._mode_changed or not self.wants_radio() \
+                        or arb.owner() != LEASE_NAME:
+                    return                   # finally: release (nothing was started)
+                self.status.emit({"busy": None, "live": False, "acquiring": True,
+                                  "sdr": {"text": "%s ACQUIRING radio" % mode, "state": "warn",
+                                          "ok": False}})
+                self._nap(100)
+            self.status.emit({"busy": None})     # we hold the radio — clear any BUSY banner
             # R2: run the decoder; an exit within EARLY_EXIT_S is a fault. Retry with backoff
             # while HOLDING the lease, so readsb is not paused/resumed on every attempt.
             while not self._stop and not self._mode_changed and self.wants_radio():
@@ -474,6 +540,12 @@ class DecoderWorker(Worker):
                 except Exception as e:
                     self.error.emit("%s: %s" % (mode, str(e)[:150]))
                 if self._stop or self._mode_changed or not self.wants_radio():
+                    break
+                if not radio_arbiter.arbiter.held_by(LEASE_NAME):    # freed under us
+                    self._running = False
+                    self.status.emit({"run_off": True, "busy": None, "live": False, "idle": True,
+                                      "sdr": {"text": "%s OFF — radio taken back" % mode,
+                                              "state": "warn", "ok": False}})
                     break
                 if self._proc is None:
                     # the capture seam opened nothing (offscreen / offline): hold the lease and say
@@ -499,8 +571,8 @@ class DecoderWorker(Worker):
                         self._faulted = False
                         self.fault.emit("")
         finally:
-            self._kill_proc()
-            radio_arbiter.arbiter.release(LEASE_NAME)
+            self._kill_proc()                    # reaped (every stage gone) …
+            radio_arbiter.arbiter.release(LEASE_NAME)   # … THEN released
 
     def _run_standby(self, mode):
         """Live mode with the decoder binary absent: show an honest STANDBY and publish nothing.
@@ -534,10 +606,10 @@ class DecoderWorker(Worker):
                 waited += 20
 
     def stop(self):
+        """GUI-safe: flags + a non-blocking kill. run()'s finally reaps, then releases."""
         super().stop()
         self._mode_changed = True
-        self._kill_proc()
-        radio_arbiter.arbiter.release(LEASE_NAME)   # belt-and-suspenders if wait() ever times out
+        self._kill_async()
 
 
 def _sstv_demo_image():
@@ -615,17 +687,54 @@ class SstvWorker(Worker):
     capture is sstv.Recorder, the decode is sstvdec.decode_wav; this only wires them to Qt. Live
     shows a frame ONLY on a real decode — ISS SSTV is rare, so STANDBY/listening is the norm."""
     NAME = SSTV_LEASE
+    PAUSE_WHEN_HIDDEN = False          # R1: it must keep stepping to give the radio back when hidden
 
     def __init__(self, demo=True, freq=SSTV_DEFAULT_FREQ, gain=40, parent=None):
         super().__init__(demo=demo, interval_ms=1000, parent=parent)
         self.freq, self.gain = freq, gain
+        self._running = False          # R1 / CL5-fix 3: the radio is taken only on RUN …
+        self._active = True            # … while the page is in front
+        self._why = "press RUN"
         self._has_radio = False
         self._rec = None
         self._wav = None
-        self._last_decode = 0.0
+        self._scan_from = 0            # CL5-fix 12: absolute sample the next decode starts at
+        self._decoded_upto = 0         # absolute sample the last decode reached
+        self._frame = None             # the frame being received {"id", "start", "lines"}
+        self._frames = 0
         self._demo_sent = False
         self._decoding = False
         self._lock = threading.Lock()     # serialises _rec / _has_radio across step() and stop()
+        radio_arbiter.arbiter.revoked.connect(self._on_revoked)
+
+    # ---- GUI-thread entry points: flags + poke only (CL5-fix 3 / 6) ----
+    def set_running(self, on):
+        self._running = bool(on)
+        if not on:
+            self._why = "press RUN"
+        self.poke()
+
+    def set_active(self, on):
+        if bool(on) == self._active:
+            return
+        self._active = bool(on)
+        if not on:
+            self._why = "page hidden"
+        self.poke()
+
+    def _on_revoked(self, name):
+        if name == self.NAME:
+            self.hold_off("radio given back")
+
+    def hold_off(self, reason):
+        """A revoke or PANIC: stop capturing and stay off until the operator presses RUN."""
+        self._running = False
+        self._why = reason
+        self.status.emit({"run_off": True})
+        self.poke()
+
+    def wants_radio(self):
+        return self._running and self._active and not self.demo
 
     # seams so tests/CI never open a real radio or require a WAV
     def _make_recorder(self, path):
@@ -634,9 +743,14 @@ class SstvWorker(Worker):
         import sstv
         return sstv.Recorder(path, self.freq, self.gain, monitor=False)   # rolling window (R5)
 
-    def _decode(self, path):
+    def _decode(self, x, fs):
+        """Seam: decode audio already in memory (sstvdec.decode_samples — decode_wav's body)."""
         import sstvdec
-        return sstvdec.decode_wav(path)
+        return sstvdec.decode_samples(x, fs)
+
+    DECODE_EVERY_S = 12        # decode once this much NEW audio has arrived
+    OVERLAP_S = 2.0            # re-read this much before the new audio: a VIS header is ~0.9 s
+    FRAME_LEAD_S = 1.0         # a frame's VIS leader sits just before its image start
 
     def step(self):
         if self._stop:
@@ -653,7 +767,10 @@ class SstvWorker(Worker):
             self._stop_rec()
             self._release()
             self.status.emit({"sdr": {"text": "SSTV STANDBY — no %s" % missing, "ok": False},
-                              "standby": True})
+                              "standby": True, "live": False})
+            return
+        if not self.wants_radio():
+            self._give_back(self._why)
             return
         if not self._ensure_lease():
             self._stop_rec()
@@ -669,8 +786,13 @@ class SstvWorker(Worker):
                 os.makedirs(suite.CACHE, exist_ok=True)          # R5: under the cache dir, not /tmp
                 self._wav = os.path.join(suite.CACHE, "palisade_sstv_%d.wav" % os.getpid())
                 rec = self._rec = self._make_recorder(self._wav)
+        if rec is not None and (not self.wants_radio()
+                                or not radio_arbiter.arbiter.held_by(self.NAME)):
+            self._stop_rec()                         # RUN off / revoke / PANIC while starting
+            return
         if rec is None:                              # offscreen seam: hold lease, no capture
-            self.status.emit({"sdr": {"text": "SSTV — capturing", "ok": True}, "busy": None})
+            self.status.emit({"sdr": {"text": "SSTV — no capture (offline)", "ok": False},
+                              "busy": None, "live": False})
             return
         if rec.err:                                  # rtl_fm died: reap + restart on the next step
             self._stop_rec()
@@ -678,52 +800,115 @@ class SstvWorker(Worker):
             return
         secs = rec.seconds()
         self.status.emit({"sdr": {"text": "SSTV — capturing %ds (lvl %.0f)" % (secs, rec.level),
-                                  "ok": True}, "busy": None})
-        now = time.time()
+                                  "ok": True}, "busy": None, "live": True})
         # run the CPU-bound decode on a DISPOSABLE daemon thread so step() stays responsive to
-        # _stop (the worker QThread must join within wait(); decode_wav can't be interrupted)
-        if secs > 20 and not self._decoding and (now - self._last_decode) > 12:
-            self._last_decode = now
+        # _stop (the worker QThread must join within wait(); a decode can't be interrupted).
+        # CL5-fix 12: only when DECODE_EVERY_S of NEW audio arrived, and only over the new audio
+        # (plus the frame being received, if one is) — never the whole window every 12 s.
+        import sstv
+        total = rec.total_samples()
+        if not self._decoding and total - self._decoded_upto >= self.DECODE_EVERY_S * sstv.RATE:
             self._decoding = True
-            threading.Thread(target=self._decode_job, args=(self._wav,), daemon=True).start()
+            threading.Thread(target=self._decode_job, args=(rec, sstv.RATE), daemon=True).start()
 
-    def _decode_job(self, path):
+    def _decode_job(self, rec, fs):
+        import numpy as np
         try:
-            r = self._decode(path)
-        except ValueError as e:                      # no header yet / truncated: keep listening
-            if not self._stop:
-                self.status.emit({"sdr": {"text": "SSTV — listening (%s)" % str(e)[:26],
-                                          "ok": False}})
-            return
-        except Exception as e:
-            if not self._stop:
-                self.error.emit("SSTV decode: %s" % str(e)[:120])
-            return
+            raw, base = rec.samples_since(self._scan_from)
+            upto = base + len(raw) // 2
+            x = np.frombuffer(raw, dtype="<i2").astype(np.float32)
+            try:
+                r = self._decode(x, fs)
+            except ValueError as e:              # no header yet / truncated: keep listening
+                self._decoded_upto = upto
+                if self._frame is None and "no SSTV header" in str(e):
+                    # nothing here: next time look only at audio after this (minus the overlap)
+                    self._scan_from = max(base, upto - int(self.OVERLAP_S * fs))
+                if not self._stop:
+                    self.status.emit({"sdr": {"text": "SSTV — listening (%s)" % str(e)[:26],
+                                              "ok": False}})
+                return
+            except Exception as e:
+                self._decoded_upto = upto
+                if not self._stop:
+                    self.error.emit("SSTV decode: %s" % str(e)[:120])
+                return
+            self._decoded_upto = upto
+            if self._stop:
+                return                           # torn down mid-decode: drop the abandoned frame
+            self._fold_frame(r, base, upto, fs)
         finally:
             self._decoding = False
-        if self._stop:
-            return                                   # torn down mid-decode: drop the abandoned frame
+
+    def _fold_frame(self, r, base, upto, fs):
+        """One decode result -> a NEW frame (row + one decode event), a refinement of the frame
+        being received (row only, never a duplicate event), or the end of that frame."""
+        start = r.get("start")
+        start_abs = base + int(start if start is not None else r.get("t0", 0))
+        lines = int(r.get("lines", 0))
+        period = float(r.get("period") or 0) or fs
+        end_abs = base + int(r.get("t0", start or 0) + (lines // 2) * period)
+        f = self._frame
+        same = f is not None and abs(start_abs - f["start"]) < int(0.5 * fs)
+        if same and lines <= f["lines"]:         # no growth with new audio: the frame is over
+            self._frame = None
+            self._scan_from = max(self._scan_from, end_abs)
+            return
+        if not same:
+            self._frames += 1
+            f = self._frame = {"id": self._frames, "start": start_abs, "lines": 0}
+            eventbus.bus.publish(eventbus.decode(
+                "BABEL-SSTV", "SSTV", r.get("mode", "?"),
+                "%s frame · %d lines" % (r.get("mode", "?"), lines), severity="info"))
+        f["lines"] = lines
         self.row.emit({"kind": "sstv", "image": r["image"], "mode": r.get("mode", "?"),
-                       "lines": r.get("lines", 0), "slant": r.get("slant_ppm", 0)})
-        eventbus.bus.publish(eventbus.decode(
-            "BABEL-SSTV", "SSTV", r.get("mode", "?"),
-            "%s frame · %d lines" % (r.get("mode", "?"), r.get("lines", 0)), severity="info"))
+                       "lines": lines, "slant": r.get("slant_ppm", 0), "frame": f["id"]})
+        try:
+            import sstvdec
+            full = sstvdec.PD_MODES[r.get("mode")][3]
+        except Exception:
+            full = None
+        if full is not None and lines >= full:   # complete: look for the next one after it
+            self._frame = None
+            self._scan_from = max(self._scan_from, end_abs)
+        else:                                    # still arriving: keep its header in view
+            self._scan_from = max(base, start_abs - int(self.FRAME_LEAD_S * fs))
 
     def _ensure_lease(self):
+        """True only while we HOLD the radio (HELD, not ACQUIRING — CL5-fix 1)."""
         if self._stop:
             return False
-        if self._has_radio:
-            return True
-        if radio_arbiter.arbiter.request(self.NAME):
-            if self._stop:                           # stop() won the race -> release immediately
-                radio_arbiter.arbiter.release(self.NAME)
+        arb = radio_arbiter.arbiter
+        if not self._has_radio:
+            if not arb.request(self.NAME):
+                self.status.emit({"busy": radio_arbiter.owner_label(), "live": False,
+                                  "sdr": {"text": "RADIO BUSY", "ok": False}})
                 return False
-            self._has_radio = True
-            self.status.emit({"busy": None})
-            return True
-        self.status.emit({"busy": radio_arbiter.owner_label(),
-                          "sdr": {"text": "RADIO BUSY", "ok": False}})
-        return False
+            with self._lock:
+                self._has_radio = True
+        st, owner = arb.state()
+        if owner != self.NAME:                       # freed under us (forced free / PANIC)
+            with self._lock:
+                self._has_radio = False
+            self._running = False
+            self._give_back("radio taken back")
+            self.status.emit({"run_off": True})
+            return False
+        if st != "HELD":
+            self.status.emit({"busy": None, "live": False, "acquiring": True,
+                              "sdr": {"text": "SSTV ACQUIRING radio", "state": "warn",
+                                      "ok": False}})
+            return False
+        return True
+
+    def _give_back(self, why):
+        """Stop the recorder (rtl_fm reaped) THEN release, and say so (CL5-fix 7)."""
+        self._stop_rec()
+        self._release()
+        idle = why == "press RUN"
+        self.status.emit({"busy": None, "live": False, "idle": True,
+                          "sdr": {"text": "SSTV IDLE — press RUN" if idle else "SSTV OFF — %s" % why,
+                                  "state": "neutral" if idle else "warn", "ok": False}})
 
     def _release(self):
         with self._lock:
@@ -740,16 +925,29 @@ class SstvWorker(Worker):
                 rec.stop()
             except Exception:
                 pass
+        self._scan_from = self._decoded_upto = 0     # a new recorder restarts the sample clock
+        self._frame = None
         if wav:
+            for f in (wav, wav[:-4] + ".prev.wav"):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+
+    def run(self):
+        try:
+            super().run()
+        finally:
+            self._stop_rec()                         # rtl_fm reaped on this thread …
+            self._release()                          # … then the radio is released
             try:
-                os.remove(wav)
-            except OSError:
+                radio_arbiter.arbiter.revoked.disconnect(self._on_revoked)
+            except (RuntimeError, TypeError):
                 pass
 
     def stop(self):
+        """GUI-safe: flags only (CL5-fix 6). run() stops the recorder and releases."""
         super().stop()          # sets _stop first, so _ensure_lease/_start can't re-acquire/respawn
-        self._stop_rec()
-        self._release()
 
 
 class BabelApp(PalisadeApp):
@@ -882,10 +1080,28 @@ class BabelApp(PalisadeApp):
             w.set_active(self._active)
         return w
 
+    def on_panic(self):
+        """PANIC (CL5-fix 5): RUN off and the decoder held off, so nothing respawns after the
+        shell kills the process tree. Non-blocking (the worker reaps and releases)."""
+        w = self._worker
+        if w is not None and hasattr(w, "hold_off") and not self.demo:
+            w.hold_off("PANIC")
+        self._untick_run()
+        return []
+
+    def _untick_run(self):
+        if self.run_btn.isChecked():
+            self.run_btn.blockSignals(True)
+            self.run_btn.setChecked(False)
+            self.run_btn.setText("RUN")
+            self.run_btn.blockSignals(False)
+
     def on_status(self, status):
+        if status.get("run_off"):                # the worker gave the radio back (revoke / PANIC)
+            self._untick_run()
         super().on_status(status)
         if status.get("practice") or status.get("standby") or status.get("idle") \
-                or status.get("fault"):                        # no backend / idle / fault: say so
+                or status.get("fault") or status.get("acquiring"):                        # no backend / idle / fault: say so
             self.busy.setText(status.get("fault") or status.get("sdr", {}).get("text", ""))
         elif "busy" in status:                   # the single-SDR banner, driven by the arbiter
             owner = status["busy"]
@@ -914,10 +1130,11 @@ class BabelApp(PalisadeApp):
         cap = "SSTV · %s%s · %d lines · slant %d ppm" % (
             tag, row.get("mode", "?"), row.get("lines", 0), row.get("slant", 0))
         self.image_panel.show_image(row["image"], cap)   # always refresh the latest frame
-        # re-decoding a growing WAV refines the SAME frame — only count a genuinely new one
-        if self._sstv_mode is None or row.get("mode") != self._sstv_mode:
+        # a refinement of the frame being received carries the same id — count new frames only
+        key = row.get("frame", row.get("mode"))
+        if self._sstv_mode is None or key != self._sstv_mode:
             self._count += 1
-        self._sstv_mode = row.get("mode")
+        self._sstv_mode = key
         self.count.setText("%d frame%s" % (self._count, "" if self._count == 1 else "s"))
         self.header.set_chip("sdr", "SSTV %d" % self._count, state="neutral")
 

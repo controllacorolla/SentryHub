@@ -91,17 +91,38 @@ class SweepWorker(Worker):
         self._latest = None
         self._lock = threading.Lock()
         self._band_dirty = False
+        self._held_off = False
+        self._why = "page hidden"
         radio_arbiter.arbiter.revoked.connect(self._on_revoked)
 
     PAUSE_WHEN_HIDDEN = False          # keeps stepping while hidden so it can release the dongle
 
     def set_active(self, on):
-        self._active = bool(on)
+        on = bool(on)
+        if on == self._active and not (on and self._held_off):
+            return
+        self._active = on
+        if on:
+            self._held_off = False
+        else:
+            self._why = "page hidden"
+        self.poke()
 
     def _on_revoked(self, name):
-        """A1: operator asked for the radio back — stop sweeping, wait, release on the next step."""
+        """A1: operator asked for the radio back — stop sweeping, wait, release on the next step.
+        Flags only (GUI thread); stays off until the page is fronted again or resumed."""
         if name == NAME:
-            self._active = False
+            self.hold_off("radio given back")
+
+    def hold_off(self, reason):
+        self._held_off = True
+        self._active = False
+        self._why = reason
+        self.poke()
+
+    @property
+    def held_off(self):
+        return self._held_off
 
     def set_band(self, lo, hi):
         with self._lock:
@@ -123,6 +144,10 @@ class SweepWorker(Worker):
         with self._lock:
             lo, hi, self._band_dirty = self.lo, self.hi, False
         self._proc = _open_rtl_power(lo, hi, self.gain)
+        if self._proc is not None and (self._stop or not self._active
+                                       or not radio_arbiter.arbiter.held_by(NAME)):
+            self._kill_rtl()                         # revoke / PANIC while spawning: never keep it
+            return
         if self._proc is not None:
             threading.Thread(target=self._read, args=(self._proc,), daemon=True).start()
 
@@ -139,6 +164,7 @@ class SweepWorker(Worker):
             pass
 
     def _kill_rtl(self):
+        self._asm = None
         proc, self._proc = self._proc, None
         if proc is not None:
             try:
@@ -146,11 +172,14 @@ class SweepWorker(Worker):
             except Exception:
                 pass
 
-    def _release(self):
-        self._kill_rtl()
+    def _release(self, why=None):
+        self._kill_rtl()                             # rtl_power reaped (terminate waits) …
         if self._has_radio:
-            radio_arbiter.arbiter.release(NAME)      # hand the dongle back (ATLAS/readsb resume)
+            radio_arbiter.arbiter.release(NAME)      # … then the dongle goes back (ATLAS/readsb)
             self._has_radio = False
+            if why:                                  # CL5-fix 7: never keep "SDR PRISM" after this
+                self.status.emit({"busy": None, "live": False, "off": True,
+                                  "sdr": {"text": "SDR OFF — %s" % why, "state": "warn"}})
 
     def step(self):
         if self.demo:
@@ -158,16 +187,31 @@ class SweepWorker(Worker):
             return
         if not self._active:                         # page left -> give the radio back
             if self._has_radio:
-                self._release()
+                self._release(self._why)
             return
+        arb = radio_arbiter.arbiter
         if not self._has_radio:
-            if radio_arbiter.arbiter.request(NAME):
+            if arb.request(NAME):
                 self._has_radio = True
-                self._start_rtl()
             else:
                 self.status.emit({"busy": radio_arbiter.owner_label(),
                                   "sdr": {"text": "SDR BUSY", "state": "warn"}})
                 return
+        st, owner = arb.state()
+        if owner != NAME:                            # freed under us (forced free / PANIC)
+            self._has_radio = False
+            self._kill_rtl()
+            self._held_off = True
+            self._active = False
+            self.status.emit({"busy": None, "live": False, "off": True,
+                              "sdr": {"text": "SDR OFF — radio taken back", "state": "warn"}})
+            return
+        if st != "HELD":                             # CL5-fix 1: no rtl_power until HELD
+            self.status.emit({"busy": None, "live": False, "acquiring": True,
+                              "sdr": {"text": "SDR ACQUIRING", "state": "warn"}})
+            return
+        if self._asm is None:                        # not sweeping yet (or given back): start
+            self._start_rtl()
         if self._band_dirty:                         # retune -> respawn rtl_power on the new band
             self._kill_rtl()
             self._start_rtl()
@@ -184,8 +228,14 @@ class SweepWorker(Worker):
             self.row.emit(row)
 
     def run(self):
-        super().run()
-        self._release()                              # RELEASE on close
+        try:
+            super().run()
+        finally:
+            self._release()                          # RELEASE on close (after rtl_power exits)
+            try:
+                radio_arbiter.arbiter.revoked.disconnect(self._on_revoked)
+            except (RuntimeError, TypeError):
+                pass
 
 
 class PrismApp(PalisadeApp):
@@ -212,6 +262,11 @@ class PrismApp(PalisadeApp):
         return False
 
     def primary_action(self):
+        w = self._worker
+        if w is not None and getattr(w, "held_off", False) and self._active:
+            w.set_active(True)                       # resume after a revoke / PANIC
+            self.busy.hide()
+            return True
         return self._send_peak()
 
     def tune(self, mhz):
@@ -282,6 +337,13 @@ class PrismApp(PalisadeApp):
             self._worker.gain = self.gain.value()
             self._worker.set_band(self._lo, self._hi)
 
+    def on_panic(self):
+        """PANIC (CL5-fix 5): stop sweeping and stay off; Enter or re-opening PRISM resumes."""
+        w = self._worker
+        if w is not None and hasattr(w, "hold_off") and not self.demo:
+            w.hold_off("PANIC")
+        return []
+
     def make_worker(self):
         w = SweepWorker(demo=self.demo, lo=self._lo, hi=self._hi, gain=self.gain.value())
         if not self.demo:
@@ -295,7 +357,13 @@ class PrismApp(PalisadeApp):
 
     def on_status(self, status):
         super().on_status(status)                    # chips (incl. SDR PRISM/BUSY/STANDBY)
-        if status.get("standby"):                    # live + no rtl_power: honest, no fake sweep
+        if status.get("off") or status.get("acquiring"):
+            text = (status.get("sdr") or {}).get("text", "")
+            if status.get("off") and getattr(self._worker, "held_off", False):
+                text += "  ·  press Enter to resume"
+            self.busy.setText(text)
+            self.busy.show()
+        elif status.get("standby"):                    # live + no rtl_power: honest, no fake sweep
             self.busy.setText("STANDBY — no rtl_power (no synthetic sweep)")
             self.busy.show()
         elif "busy" in status:

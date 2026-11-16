@@ -289,6 +289,20 @@ class PalisadeHub(QtWidgets.QMainWindow):
         except Exception as e:
             did.append("child process stop FAILED: %s" % e)
         try:
+            # CL5-fix 5 / N3: the pages were told to stay off the radio (on_panic, above) BEFORE
+            # the process tree was killed, so nothing respawns; now free the arbiter at once and
+            # report what the arbiter says afterwards, not what we asked for
+            from . import radio_arbiter
+            was = radio_arbiter.arbiter.panic_free()
+            st, owner = radio_arbiter.arbiter.state()
+            if st == "FREE":
+                did.append("radio released (was %s)" % radio_arbiter.OWNER_LABELS.get(was, was)
+                           if was else "radio was free")
+            else:
+                did.append("radio STILL %s by %s" % (st, radio_arbiter.OWNER_LABELS.get(owner, owner)))
+        except Exception as e:
+            did.append("radio release FAILED: %s" % e)
+        try:
             self._gate_changed()                   # pages re-read their own gates (BENCH …)
             self.state.poll()
         except Exception as e:

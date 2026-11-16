@@ -14,6 +14,7 @@ import math
 import os
 import queue
 import random
+import sys
 import threading
 import time
 
@@ -201,10 +202,22 @@ class RidSource:
                 pass
 
     @staticmethod
-    def scanner_kwargs():
+    def scanner_kwargs(platform=None):
         """E3: PASSIVE scanning only — Remote-ID beacons are broadcast; we never send scan
-        requests. bleak: scanning_mode='passive' (BlueZ needs or_patterns; an empty list = all)."""
-        return {"scanning_mode": "passive"}
+        requests. bleak: scanning_mode='passive'. On Linux (BlueZ, the uConsole) passive mode is
+        an advertisement monitor and REFUSES to start without or_patterns (CL5-fix 10 / N8:
+        "passive scanning mode requires bluez or_patterns"), so match the OpenDroneID service
+        data: AD type 0x16 (Service Data, 16-bit UUID) starting with 0xFFFA little-endian."""
+        kw = {"scanning_mode": "passive"}
+        if (platform or sys.platform).startswith("linux"):
+            try:
+                from bleak.assigned_numbers import AdvertisementDataType
+                ad_type = AdvertisementDataType.SERVICE_DATA_UUID16
+            except Exception:
+                ad_type = 0x16
+            uuid_le = (0xFFFA).to_bytes(2, "little")
+            kw["bluez"] = {"or_patterns": [(0, ad_type, uuid_le)]}
+        return kw
 
     def _scan_ble(self):
         if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
@@ -378,33 +391,67 @@ class LeaseSource:
         self._has_radio = False
         self._proc = None
         self._thread = None
+        self._revoke_req = False       # set on the GUI thread; acted on in poll() (worker thread)
+        self.given_back = None         # why this layer gave the radio back (the page unticks it)
 
     def start(self):
         self._on = True          # acquire is deferred to poll() so a busy layer keeps retrying
         radio_arbiter.arbiter.revoked.connect(self._on_revoked)
 
     def _on_revoked(self, name):
-        """A1: the operator asked for the radio back. Stop the pipeline, wait for it to exit,
-        then release — the arbiter frees on this acknowledgement."""
-        if name != self.NAME or not self._has_radio:
-            return
+        """A1: the operator asked for the radio back. This runs on the GUI thread, so it only
+        flags it (CL5-fix 6: Pipeline.terminate + the lease release took 2 s here). The worker's
+        next poll() stops the pipeline, waits for it to exit, then releases — the arbiter frees
+        on that acknowledgement."""
+        if name == self.NAME:
+            self._revoke_req = True
+
+    def hold_off(self, reason):
+        """PANIC: same as a revoke, from the worker thread's next poll()."""
+        self._revoke_req = True
+        self.given_back = reason
+
+    def _give_back(self, why):
         self._on = False
-        self._stop_pipe()
-        radio_arbiter.arbiter.release(self.NAME)
-        self._has_radio = False
+        self._revoke_req = False
+        self._stop_pipe()                            # every stage reaped …
+        if self._has_radio:
+            radio_arbiter.arbiter.release(self.NAME)   # … THEN released
+            self._has_radio = False
+        self.given_back = self.given_back or why
 
     def poll(self):
+        """Worker thread. Acquire if free, start the capture only once HELD (CL5-fix 1), give the
+        radio back on a revoke/PANIC or if it was freed under us."""
+        if self._revoke_req:
+            self._give_back("radio given back")
+            return []
         if not self._on:
             return []
-        if not self._has_radio and radio_arbiter.arbiter.request(self.NAME):
+        arb = radio_arbiter.arbiter
+        if not self._has_radio:
+            if not arb.request(self.NAME):
+                return []        # radio busy: publish nothing (UI shows BUSY via busy_owner)
             self._has_radio = True
+        st, owner = arb.state()
+        if owner != self.NAME:                       # freed under us (forced free)
+            self._has_radio = False
+            self._give_back("radio taken back")
+            return []
+        if st != "HELD":
+            return []                                # ACQUIRING: readsb is still being paused
+        if self._proc is None and self._thread is None:
             self._proc = self._open_pipe()
             if self._proc is not None:
                 self._thread = threading.Thread(target=self._read, daemon=True)
                 self._thread.start()
-        if not self._has_radio:
-            return []            # radio busy: publish nothing (UI shows BUSY via busy_owner)
+            else:
+                self._thread = False                 # seam opened nothing: don't retry each poll
         return self._contacts()
+
+    def acquiring(self):
+        st, owner = radio_arbiter.arbiter.state()
+        return self._on and owner == self.NAME and st == "ACQUIRING"
 
     def busy_owner(self):
         """Holder's lease name if this source wants the radio but can't have it, else None."""
@@ -413,8 +460,11 @@ class LeaseSource:
         return None
 
     def _read(self):
+        proc = self._proc
+        if proc is None:
+            return
         try:
-            for line in self._proc.stdout:
+            for line in proc.stdout:
                 if not self._on:
                     break
                 self.feed_line(line)
@@ -585,9 +635,22 @@ class AtlasLiveWorker(Worker):
             eventbus.bus.publish(ev)
         for ev in df_contacts():             # KrakenSDR array (separate device); no lease
             eventbus.bus.publish(ev)
-        for src in self._lease_srcs.values():
+        for kind, src in list(self._lease_srcs.items()):
             for ev in src.poll():            # acquires if free; nothing while the radio is busy
                 eventbus.bus.publish(ev)
+            if src.given_back:               # revoke / PANIC: the layer is off — tell the page
+                self.status.emit({"layer_off": kind, "why": src.given_back})
+                src.stop()
+                del self._lease_srcs[kind]
+                self._wanted.discard(kind)
+        acq = [k for k, src in self._lease_srcs.items() if src.acquiring()]
+        self.status.emit({"acquiring_layers": acq})
+
+    def hold_off(self, reason):
+        """PANIC (GUI thread): every lease layer gives the radio back on the next step."""
+        for src in list(self._lease_srcs.values()):
+            src.hold_off(reason)
+        self.poke()
 
     def _adsb_contacts(self):
         if self._adsb is None:
@@ -703,6 +766,37 @@ class AtlasApp(PalisadeApp):
     def make_worker(self):
         return AtlasDemoWorker() if self.demo else AtlasLiveWorker()
 
+    def on_error(self, msg):
+        """CL5-fix 10: a source fault (the BLE Remote-ID scanner, an engine that is missing) is
+        shown on the page, not only printed to stderr."""
+        super().on_error(msg)
+        self.set_chip("fault", str(msg)[:70], state="alert")
+
+    def on_status(self, status):
+        super().on_status(status)
+        kind = status.get("layer_off")
+        if kind:                                 # a lease layer gave the radio back: untick it
+            self._layers.discard(kind)
+            b = self._layer_btns.get(kind)
+            if b is not None and b.isChecked():
+                b.blockSignals(True)
+                b.setChecked(False)
+                b.blockSignals(False)
+            self.set_chip("layer", "%s OFF — %s" % (KIND_LABEL.get(kind, kind),
+                                                    status.get("why", "radio given back")),
+                          state="warn")
+            self._render()
+        if "acquiring_layers" in status:
+            self._acquiring = set(status["acquiring_layers"])
+            self._update_busy()
+
+    def on_panic(self):
+        """PANIC (CL5-fix 5): every lease layer gives the radio back and is unticked; the BLE
+        Remote-ID scan (not the SDR) is left as it is."""
+        if not self.demo and self._worker is not None and hasattr(self._worker, "hold_off"):
+            self._worker.hold_off("PANIC")
+        return []
+
     def _color(self, kind, severity):
         return self._tok["alert"] if severity == "alert" else self._tok[KIND_TOKEN.get(kind, "text")]
 
@@ -745,6 +839,8 @@ class AtlasApp(PalisadeApp):
         owner = radio_arbiter.arbiter.owner()
         ownerlbl = radio_arbiter.owner_label() or owner or "?"
         msgs, busy_now = [], set()
+        for kind in sorted(getattr(self, "_acquiring", ()) & self._layers):
+            msgs.append("%s: ACQUIRING — pausing readsb" % KIND_LABEL.get(kind, kind))
         for kind in ("station", "vessel"):
             if kind in self._layers and owner and owner != self.LEASE_NAME[kind]:
                 msgs.append("%s: RADIO BUSY — held by %s" % (KIND_LABEL[kind], ownerlbl))

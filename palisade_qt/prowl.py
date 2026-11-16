@@ -77,8 +77,16 @@ def _open_nwr_pipe(stages):
 
 class _RadioWorker(Worker):
     """Mixin for a PROWL sub-mode that leases the single SDR via the arbiter and honours the
-    page's front/back state (release the dongle when backgrounded — the ATLAS/PRISM pattern)."""
+    page's front/back state (release the dongle when backgrounded — the ATLAS/PRISM pattern).
+
+    CL5-fix rules, enforced here for every sub-mode:
+      1. the decoder starts only once the arbiter says HELD for us (never during ACQUIRING);
+      2. give-back is always kill -> wait for exit -> release, on the WORKER thread;
+      6. GUI-thread entry points (set_active, a revoke, PANIC, stop) only set flags and poke;
+      7. every give-back emits an OFF status, so no page keeps a live claim on a radio it gave up.
+    """
     NAME = None
+    LABEL = "SDR"
 
     PAUSE_WHEN_HIDDEN = False          # a radio holder must keep stepping to release when hidden
 
@@ -87,46 +95,110 @@ class _RadioWorker(Worker):
         self._active = True
         self._has_radio = False
         self._revoked = False
+        self._off_reason = "page hidden"
         radio_arbiter.arbiter.revoked.connect(self._on_revoked)
 
     def set_active(self, on):
-        self._active = bool(on)
+        on = bool(on)
+        if on == self._active and not (on and self._revoked):
+            return                     # no change: never wake (and re-emit) on a repeat call
+        self._active = on
         if on:
             self._revoked = False
+        else:
+            self._off_reason = "page hidden"
+            self._interrupt()
+        if not self.demo:              # demo holds no radio: nothing to wake for
+            self.poke()
 
     def _on_revoked(self, name):
-        """A1: the operator wants the radio back. The next step() stops the pipeline, waits for
-        it, and releases (the acknowledgement); we stay backgrounded until the page is fronted."""
+        """A1: the operator wants the radio back. Flags only (this runs on the GUI thread): the
+        next step() stops the pipeline, waits for it, and releases (the acknowledgement); we stay
+        off until the page is fronted again or the operator resumes."""
         if name == self.NAME:
-            self._revoked = True
-            self._active = False
+            self.hold_off("radio given back")
+
+    def hold_off(self, reason):
+        """Stay off the radio until resumed (a revoke, PANIC). GUI-safe: flags + poke."""
+        self._revoked = True
+        self._active = False
+        self._off_reason = reason
+        self._interrupt()
+        self.poke()
+
+    @property
+    def held_off(self):
+        return self._revoked
+
+    def _interrupt(self):
+        """Break whatever blocking listen is in progress (SCAN overrides). Flags only."""
+
+    def _kill(self):
+        """Stop this sub-mode's pipeline and WAIT for it to exit. Worker thread only."""
 
     def _ensure_lease(self):
-        """True if we hold the single SDR. Acquire if active+free; release if backgrounded; emit
-        RADIO BUSY (publish nothing) if another layer holds it."""
+        """True only while we HOLD the single SDR (arbiter state HELD for our name). Requests it
+        if active+free; gives it back (kill, wait, release) if backgrounded; emits RADIO BUSY
+        (publish nothing) if another layer holds it, ACQUIRING while readsb is being paused."""
         if not self._active:
-            self._release_radio()
+            self._give_back(self._off_reason)
             return False
-        if self._has_radio:
-            return True
-        if radio_arbiter.arbiter.request(self.NAME):
+        arb = radio_arbiter.arbiter
+        if not self._has_radio:
+            if not arb.request(self.NAME):
+                self.status.emit({"src": self.LABEL, "busy": radio_arbiter.owner_label(), "live": False,
+                                  "sdr": {"text": "RADIO BUSY", "ok": False}})
+                return False
             self._has_radio = True
-            self.status.emit({"busy": None})
-            return True
-        self.status.emit({"busy": radio_arbiter.owner_label(),
-                          "sdr": {"text": "RADIO BUSY", "ok": False}})
-        return False
+        st, owner = arb.state()
+        if owner != self.NAME:                       # freed under us (forced free / PANIC)
+            self._has_radio = False
+            self._give_back("radio taken back")
+            return False
+        if st != "HELD":
+            self.status.emit({"src": self.LABEL, "busy": None, "live": False, "acquiring": True,
+                              "sdr": {"text": "%s ACQUIRING radio" % self.LABEL,
+                                      "state": "warn", "ok": False}})
+            return False
+        return True
 
-    def _release_radio(self):
+    def _give_back(self, why):
+        """Kill, wait, THEN release (N4), and say so (CL5-fix 7)."""
+        self._kill()
         if self._has_radio:
             radio_arbiter.arbiter.release(self.NAME)   # readsb / the autopilot resume
             self._has_radio = False
+        self.status.emit({"src": self.LABEL, "busy": None, "live": False, "off": True,
+                          "sdr": {"text": "%s OFF — %s" % (self.LABEL, why),
+                                  "state": "warn", "ok": False}})
+
+    # kept for callers of the old name; same ordering as _give_back
+    def _release_radio(self):
+        self._give_back(self._off_reason)
+
+    def _finish(self):
+        """End of run(): give the radio back from the worker thread, stop listening for revokes."""
+        try:
+            self._give_back("stopped")
+        finally:
+            try:
+                radio_arbiter.arbiter.revoked.disconnect(self._on_revoked)
+            except (RuntimeError, TypeError):
+                pass
+
+    def stop(self):
+        """GUI-safe: flags only. run() ends and _finish() kills, waits and releases there."""
+        self._active = False
+        self._off_reason = "stopped"
+        self._interrupt()
+        super().stop()
 
 
 # ============================ SCAN ============================
 
 class ScanWorker(_RadioWorker):
     NAME = "PROWL-SCAN"
+    LABEL = "SCAN"
 
     def __init__(self, demo=True, bank="NOAA Wx", squelch=-70, parent=None):
         super().__init__(demo=demo, interval_ms=350, parent=parent)
@@ -167,17 +239,20 @@ class ScanWorker(_RadioWorker):
             self._scan["retune"] = True
 
     def run(self):
-        if self.demo:
-            self._run_demo()
-        elif _offscreen() or not shutil.which("rtl_fm"):
-            self._run_standby()        # live + no rtl_fm (or offscreen): honest standby, no spawn
-        else:
-            self._run_live()
+        try:
+            if self.demo:
+                self._run_demo()
+            elif _offscreen() or not shutil.which("rtl_fm"):
+                self._run_standby()    # live + no rtl_fm (or offscreen): honest standby, no spawn
+            else:
+                self._run_live()
+        finally:
+            self._finish()             # listen_channel has returned (its rtl_fm reaped): release
 
-    def set_active(self, on):
-        super().set_active(on)
-        if self._scan is not None:
-            self._scan["pause"] = not on   # break the in-progress listen_channel when backgrounded
+    def _interrupt(self):
+        scan = self._scan
+        if scan is not None:
+            scan["pause"] = True       # breaks the in-progress listen_channel within one select
 
     def _run_standby(self):
         """Live mode without rtl_fm: list the bank's channels all-quiet and publish NO fake hits."""
@@ -202,7 +277,7 @@ class ScanWorker(_RadioWorker):
                 sig = random.randint(-55, -35) if hot else random.randint(-115, -95)
                 if hot and sig > self.squelch:
                     active = (freq, label, sig)
-                rows.append({"freq": freq, "label": label, "sig": "%d" % sig,
+                rows.append({"_id": freq, "freq": freq, "label": label, "sig": "%d" % sig,
                              "last": time.strftime("%H:%M:%S") if hot else "", "_hot": hot})
             self.row.emit({"rows": rows, "active": active})
             if not active:
@@ -251,7 +326,9 @@ class ScanWorker(_RadioWorker):
                     self._fatal = False
                     self.sleep(2000)
                     continue
-                if result:
+                if result == "retune":              # B2 / CL5-fix 11: a squelch change is NOT a
+                    continue                        # hit — re-listen the same channel at the new level
+                if result is True:
                     hits[freq] = time.time()           # B3: epoch, never HH:MM:SS re-parsed
                 self._emit_state(channels, hits, scan)
                 nxt = (idx + 1) % len(channels)
@@ -261,7 +338,6 @@ class ScanWorker(_RadioWorker):
                     tries += 1
                 scan["idx"] = nxt
         finally:
-            self._release_radio()
             self._scan = None
 
     def _make_post(self, freq, label, hits):
@@ -291,21 +367,23 @@ class ScanWorker(_RadioWorker):
             last = time.strftime("%H:%M:%S", time.localtime(t_hit)) if t_hit else ""
             if hot and not held:
                 active = (str(freq), label, sig)
-            rows.append({"freq": "%.4f" % freq, "label": label + (" ⊘" if freq in self._skip else ""),
+            rows.append({"_id": freq,          # the cursor follows the channel across refreshes
+                         "freq": "%.4f" % freq, "label": label + (" ⊘" if freq in self._skip else ""),
                          "sig": "%d" % sig, "last": last, "_hot": hot, "_skip": freq in self._skip})
         self.row.emit({"rows": rows, "active": active})
 
     def stop(self):
-        super().stop()
-        if self._scan is not None:
-            self._scan["on"] = False     # break the blocking listen_channel within one select cycle
-        self._release_radio()
+        scan = self._scan
+        if scan is not None:
+            scan["on"] = False           # break the blocking listen_channel within one select cycle
+        super().stop()                   # flags only; run()'s _finish releases after rtl_fm exits
 
 
 # ============================ FM ============================
 
 class FmWorker(_RadioWorker):
     NAME = "PROWL-FM"
+    LABEL = "FM"
 
     def __init__(self, demo=True, freq=97.3, mode="wbfm", gain=40, squelch=0, rds=True, parent=None):
         super().__init__(demo=demo, interval_ms=500, parent=parent)
@@ -331,13 +409,11 @@ class FmWorker(_RadioWorker):
             self._demo_step()
             return
         if not shutil.which("rtl_fm"):
-            self._release_radio()
-            self._kill()
+            self._give_back("no rtl_fm")
             self.status.emit({"sdr": {"text": "FM STANDBY — no rtl_fm", "ok": False},
-                              "standby": True})
+                              "standby": True, "live": False})
             return
-        if not self._ensure_lease():
-            self._kill()
+        if not self._ensure_lease():          # gives the radio back (kill, wait, release) if off
             return
         if self._retune:
             self._retune = False
@@ -351,7 +427,7 @@ class FmWorker(_RadioWorker):
         audio = self._pipe is not None
         self.row.emit({"kind": "fm", "freq": self.freq, "mode": self.mode,
                        "rds": rds, "audio": audio})
-        self.status.emit({"busy": None,
+        self.status.emit({"busy": None, "live": audio,
                           "sdr": {"text": ("FM %.1f ♪" % self.freq) if audio
                                           else ("FM %.1f" % self.freq), "ok": True}})
 
@@ -360,9 +436,9 @@ class FmWorker(_RadioWorker):
         rtl, mid, sink = fm.pipeline(self.freq, self.mode, self.gain, self.squelch, self.rds)
         pipe = _open_fm_pipe(rtl, mid, sink, self._on_rds)
         orphan = None
-        with self._lock:                 # guard against a concurrent stop()/_kill on the GUI thread
-            if self._stop:
-                orphan = pipe            # stop() won the race -> never hold a radio past stop()
+        with self._lock:                 # guard against a concurrent stop / revoke / PANIC
+            if self._stop or not self._active or not radio_arbiter.arbiter.held_by(self.NAME):
+                orphan = pipe            # never run a decoder on a radio we no longer hold
             else:
                 self._pipe = pipe
         if orphan is not None:
@@ -404,16 +480,18 @@ class FmWorker(_RadioWorker):
             except Exception:
                 pass
 
-    def stop(self):
-        super().stop()       # sets _stop first, so an in-flight _spawn sees it and drops the pipe
-        self._kill()
-        self._release_radio()
+    def run(self):
+        try:
+            super().run()
+        finally:
+            self._finish()   # kill, wait, release — on this thread, never the GUI's
 
 
 # ============================ NWR ============================
 
 class NwrWorker(_RadioWorker):
     NAME = "PROWL-NWR"
+    LABEL = "NWR"
 
     def __init__(self, demo=True, channel="162.400M", label="WX2", gain=0, parent=None):
         super().__init__(demo=demo, interval_ms=400, parent=parent)
@@ -438,13 +516,11 @@ class NwrWorker(_RadioWorker):
             self._demo_step()
             return
         if not (shutil.which("rtl_fm") and shutil.which("multimon-ng")):
-            self._release_radio()
-            self._kill()
-            self.status.emit({"sdr": {"text": "NWR STANDBY — no rtl_fm", "ok": False},
-                              "standby": True})
+            self._give_back("no rtl_fm")
+            self.status.emit({"src": "NWR", "sdr": {"text": "NWR STANDBY — no rtl_fm", "ok": False},
+                              "standby": True, "live": False})
             return
-        if not self._ensure_lease():
-            self._kill()
+        if not self._ensure_lease():          # gives the radio back (kill, wait, release) if off
             return
         if self._retune:
             self._retune = False
@@ -455,7 +531,7 @@ class NwrWorker(_RadioWorker):
             rc = self._proc.poll()
             self._kill()
             self._down += 1
-            self.status.emit({"busy": None, "down": True,
+            self.status.emit({"src": "NWR", "busy": None, "down": True, "live": False,
                               "sdr": {"text": "NWR DOWN — decoder exited (%s) ×%d" % (rc, self._down),
                                       "state": "alert", "ok": False}})
             if self._down >= 3:
@@ -464,19 +540,20 @@ class NwrWorker(_RadioWorker):
         self._drain()
         age = (time.time() - self._last_line) if self._last_line else None
         self._down = 0
-        self.status.emit({"busy": None, "down": False, "last_heard_s": age,
+        live = self._proc is not None             # offscreen seam opens nothing: not live
+        self.status.emit({"src": "NWR", "busy": None, "down": False, "last_heard_s": age, "live": live,
                           "sdr": {"text": "NWR %s %s%s" % (
                               self.label, self.channel,
                               "" if age is None else " · heard %ds ago" % int(age)),
-                          "ok": True}})
+                          "ok": live}})
 
     def _spawn(self):
         import nwr
         proc = _open_nwr_pipe(nwr.pipeline_argv(self.channel, self.gain))
         orphan = None
-        with self._lock:                 # guard against a concurrent stop()/_kill on the GUI thread
-            if self._stop:
-                orphan = proc            # stop() won the race -> never hold a radio past stop()
+        with self._lock:                 # guard against a concurrent stop / revoke / PANIC
+            if self._stop or not self._active or not radio_arbiter.arbiter.held_by(self.NAME):
+                orphan = proc            # never run a decoder on a radio we no longer hold
             else:
                 self._proc = proc
         if orphan is not None:
@@ -537,7 +614,7 @@ class NwrWorker(_RadioWorker):
             a = nwr.parse_same(line)
             if a:
                 self._emit_alert(a, demo=True)
-        self.status.emit({"sdr": {"text": "NWR DEMO", "state": "neutral"}})
+        self.status.emit({"src": "NWR", "sdr": {"text": "NWR DEMO", "state": "neutral"}})
 
     @staticmethod
     def _terminate(proc):
@@ -555,10 +632,11 @@ class NwrWorker(_RadioWorker):
             proc, self._proc = self._proc, None
         self._terminate(proc)
 
-    def stop(self):
-        super().stop()       # sets _stop first, so an in-flight _spawn sees it and drops the proc
-        self._kill()
-        self._release_radio()
+    def run(self):
+        try:
+            super().run()
+        finally:
+            self._finish()   # kill, wait, release — on this thread, never the GUI's
 
 
 def _load_scanner_settings(engine):
@@ -634,6 +712,8 @@ class ProwlApp(PalisadeApp):
         return False
 
     def primary_action(self):
+        if self._resume_radio():
+            return True
         if self._submode == "SCAN":
             self._toggle_hold()
             return True
@@ -828,10 +908,19 @@ class ProwlApp(PalisadeApp):
         self.nwr_combo.currentIndexChanged.connect(self._nwr_retune)
         bar.add_field("channel", self.nwr_combo, "NWR channel")
         bar.add_stretch()
-        bar.lay.addWidget(micro("Monitoring"))
-        self.nwr_state = QtWidgets.QLabel("—")
+        bar.lay.addWidget(micro("Receiver"))
+        # CL5-fix 7 / N2: this says LIVE only while the arbiter says PROWL-NWR HOLDS the radio
+        # AND the worker reported a running decoder in the last few seconds; anything else is
+        # NOT MONITORING, in the alert colour. A dead weather receiver must never look healthy.
+        self.nwr_state = QtWidgets.QLabel("DEMO — synthetic alerts" if self.demo
+                                          else "NOT MONITORING — starting")
         self.nwr_state.setProperty("class", "value")
         bar.lay.addWidget(self.nwr_state)
+        self._live_ts = 0.0
+        self._live_why = "starting"
+        self._nwr_timer = QtCore.QTimer(page)
+        self._nwr_timer.timeout.connect(self._sync_nwr_state)
+        self._nwr_timer.start(1000)
         lay.addWidget(bar)
 
         split = QtWidgets.QHBoxLayout()
@@ -841,7 +930,7 @@ class ProwlApp(PalisadeApp):
         self.nwr_feed.selected.connect(self._nwr_show)
         split.addWidget(self.nwr_feed, 3)
         self.nwr_detail = DetailCard("SAME ALERT")
-        self.nwr_detail.set_hero("—", "no alerts")
+        self.nwr_detail.set_hero("—", "no alerts" if self.demo else "NOT MONITORING")
         split.addWidget(self.nwr_detail, 2)
         lay.addLayout(split, 1)
         return page
@@ -889,6 +978,25 @@ class ProwlApp(PalisadeApp):
         super().set_active(active)
         if self._worker is not None and hasattr(self._worker, "set_active"):
             self._worker.set_active(active)   # release the dongle while PROWL is backgrounded
+        self._sync_nwr_state()
+
+    def on_panic(self):
+        """PANIC (CL5-fix 5): the sub-mode drops the radio and stays off — it must not respawn
+        its decoder after the shell kills it. Flags only; the shell then frees the arbiter and
+        reports what the arbiter says. Enter (or re-opening the page) resumes."""
+        w = self._worker
+        if w is not None and hasattr(w, "hold_off") and not self.demo:
+            w.hold_off("PANIC")
+        return []
+
+    def _resume_radio(self):
+        """After a revoke / PANIC the sub-mode stays off until the operator asks again."""
+        w = self._worker
+        if w is not None and getattr(w, "held_off", False) and self._active:
+            w.set_active(True)
+            self.busy.setText("")
+            return True
+        return False
 
     # ---- SCAN handlers ----
     def _set_bank(self, bank):
@@ -1053,9 +1161,54 @@ class ProwlApp(PalisadeApp):
         else:
             self._on_scan_row(msg)
 
+    NWR_STALE_S = 3.0          # no healthy NWR status for this long -> NOT MONITORING
+
+    def nwr_monitoring(self):
+        """True only if the NWR receiver is really running on a radio the arbiter says we hold."""
+        if self.demo or self._submode != "NWR" or not isinstance(self._worker, NwrWorker):
+            return False
+        return bool(self._live_ts) and (time.time() - self._live_ts) < self.NWR_STALE_S \
+            and radio_arbiter.arbiter.held_by(NwrWorker.NAME)
+
+    def _sync_nwr_state(self):
+        if not hasattr(self, "nwr_state"):
+            return
+        if self.demo:
+            text, color, live = "DEMO — synthetic alerts", None, True
+        elif self.nwr_monitoring():
+            text, color, live = "LIVE · %s" % (self._worker.label + " " +
+                                               self._worker.channel.rstrip("M")), \
+                self._tok["live"], True
+        else:
+            why = self._live_why if self._submode == "NWR" else "NWR not selected"
+            if self._live_ts and (time.time() - self._live_ts) >= self.NWR_STALE_S:
+                why = "receiver silent (no status for %ds)" % int(time.time() - self._live_ts)
+            text, color, live = "NOT MONITORING — %s" % why, \
+                self._tok.get("alert", self._tok["warn"]), False
+        if self.nwr_state.text() != text:
+            self.nwr_state.setText(text)
+            self.nwr_state.setStyleSheet("" if color is None else "color:%s;" % color)
+        if self.nwr_feed.model.rowCount() == 0:
+            self.nwr_detail.set_hero("—", "no alerts" if live else "NOT MONITORING")
+
     def on_status(self, status):
         super().on_status(status)
-        if status.get("standby"):
+        if "live" in status and status.get("src") == "NWR":
+            if status["live"]:
+                self._live_ts = time.time()
+            else:
+                self._live_ts = 0.0
+                self._live_why = (status.get("sdr") or {}).get("text") or "receiver off"
+                if status.get("busy"):
+                    self._live_why = "RADIO BUSY — held by %s" % status["busy"]
+            self._sync_nwr_state()
+        if status.get("off") or status.get("acquiring"):
+            text = (status.get("sdr") or {}).get("text", "")
+            w = self._worker
+            if status.get("off") and getattr(w, "held_off", False):
+                text += "  ·  press Enter to resume"
+            self.busy.setText(text)
+        elif status.get("standby"):
             self.busy.setText(status.get("sdr", {}).get("text", "STANDBY"))
             if self._submode == "SCAN":
                 self.active.setText("standby — no device")

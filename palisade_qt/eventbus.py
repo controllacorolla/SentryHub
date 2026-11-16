@@ -79,8 +79,11 @@ def alert(source, text, severity="warn", **extra):
 class EventBus(QtCore.QObject):
     """A6: publish() stores a COPY (publishers cannot mutate what subscribers see), the retained
     log is bounded and resizable (set_retention), and the queued signal backlog is bounded: when
-    more than `maxlen` events are still waiting for a stalled GUI thread, further events are kept
-    in the log but not emitted, and `dropped()` says how many. The log is the catch-up path."""
+    more than `maxlen` events are still waiting for a stalled GUI thread, further CONTACT and
+    DECODE events are kept in the log but not emitted, and `dropped()` says how many.
+    ALERT events are never dropped (CL5-fix 8 / N5): a Tornado Warning published during a GUI
+    stall under heavy contact traffic must still reach the AlertStore and the drawer. Alerts are
+    rare and small, so delivering every one cannot grow the backlog without bound in practice."""
     published = QtCore.Signal(dict)         # emitted (queued) to the GUI thread for every event
 
     def __init__(self, maxlen=1000, parent=None):
@@ -96,12 +99,12 @@ class EventBus(QtCore.QObject):
         ev = copy.deepcopy(event)
         with self._lock:
             self._log.append(ev)
-            if self._pending >= self._maxlen:
+            if self._pending >= self._maxlen and ev.get("type") != "alert":
                 self._dropped += 1
-                return ev
+                return copy.deepcopy(ev)
             self._pending += 1
         self.published.emit(ev)
-        return ev
+        return copy.deepcopy(ev)                 # N13: the caller never aliases the log entry
 
     def _delivered(self, _ev):
         with self._lock:

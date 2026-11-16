@@ -86,9 +86,14 @@ class RadioArbiter(QtCore.QObject):
         self.changed.emit(name)
 
     def release(self, name):
+        self._release(name)
+
+    def _release(self, name, gen=None):
+        """Free the radio if `name` holds it (and, when gen is given, only if ownership has not
+        changed since — N12: a revoke timer must never free a re-grant)."""
         with self._lock:
-            if self._owner != name:
-                return
+            if self._owner != name or (gen is not None and self._gen != gen):
+                return False
             lease, self._lease, self._owner, self._state = self._lease, None, None, "FREE"
             self._gen += 1
             t, self._revoke_timer = self._revoke_timer, None
@@ -100,6 +105,7 @@ class RadioArbiter(QtCore.QObject):
             except Exception:
                 pass
         self.changed.emit("")
+        return True
 
     def revoke(self, name=None, timeout_s=None):
         """Ask the holder to give the radio back (A1). Returns the name asked, or None if free.
@@ -126,7 +132,20 @@ class RadioArbiter(QtCore.QObject):
         import sys
         print("[radio] %s did not release within the revoke timeout — forcing free" % holder,
               file=sys.stderr)
-        self.release(holder)
+        self._release(holder, gen)
+
+    def panic_free(self):
+        """PANIC (CL5-fix 5): the operator wants the radio stopped now. The shell has already set
+        every page's hold-off flag and killed the child process tree, so this tells the holder
+        (revoked(name): it drops its pipeline and stays off) and frees at once, without the
+        revoke grace period. Returns the name that held it, or None if it was free."""
+        with self._lock:
+            holder = self._owner
+        if holder is None:
+            return None
+        self.revoked.emit(holder)
+        self._release(holder)
+        return holder
 
     # ---- reads (never block) ----
     def owner(self):
@@ -137,6 +156,13 @@ class RadioArbiter(QtCore.QObject):
         """('FREE', None) | ('ACQUIRING', name) | ('HELD', name)."""
         with self._lock:
             return self._state, self._owner
+
+    def held_by(self, name):
+        """True only when `name` really holds the dongle (HELD, not ACQUIRING). A holder starts
+        its decoder only on this (CL5-fix 1 / N1): during ACQUIRING readsb may still own the
+        dongle and RtlLease.acquire kills rtl_fm & co, so a decoder started early dies or races."""
+        with self._lock:
+            return self._owner == name and self._state == "HELD"
 
     def revoking(self):
         with self._lock:

@@ -65,6 +65,7 @@ class Worker(QtCore.QThread):
         self.interval_ms = int(interval_ms)
         self._stop = False
         self._paused = False
+        self._poked = False
         self._cv = threading.Condition()
         self._failures = 0
         self._faulted = False
@@ -76,6 +77,14 @@ class Worker(QtCore.QThread):
             self._stop = True
             self._cv.notify_all()
         self.requestInterruption()
+
+    def poke(self):
+        """Wake the worker from its current sleep()/interval now (a flag it must act on changed:
+        RUN, page hidden, a revoke). Thread-safe and non-blocking — the GUI thread only ever sets
+        flags and pokes; the worker thread does the slow kill/wait/release itself (CL5-fix 6)."""
+        with self._cv:
+            self._poked = True
+            self._cv.notify_all()
 
     def pause(self, on=True):
         with self._cv:
@@ -95,11 +104,12 @@ class Worker(QtCore.QThread):
 
     # ---- blocking helpers for subclasses (all return early on stop) ----
     def sleep(self, ms):
-        """Wait up to ms milliseconds, or until stop(). Returns True if stopping."""
+        """Wait up to ms milliseconds, or until stop() / poke(). Returns True if stopping."""
         deadline = QtCore.QDeadlineTimer(int(ms))
         with self._cv:
-            while not self._stop and not deadline.hasExpired():
+            while not self._stop and not self._poked and not deadline.hasExpired():
                 self._cv.wait(max(0.001, deadline.remainingTime() / 1000.0))
+            self._poked = False
         return self._stop
 
     def wait_for(self, predicate, timeout_ms, poll_ms=50):
