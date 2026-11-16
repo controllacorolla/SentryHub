@@ -1,4 +1,4 @@
-# PLANNER HANDOFF — read this first in a new chat/Project (written 2026-11-15 16:20 MT)
+# PLANNER HANDOFF — read this first in a new chat/Project (written 2026-11-15 16:20 MT; updated 2026-11-16 CL5 audit)
 
 You are the **planner** for PALISADE (repo `controllacorolla/SentryHub`). The owner, Dalton, is
 not a software engineer. Communicate in short, decisive messages with one action at a time, and
@@ -29,9 +29,13 @@ ham callsign, head signing automation, session-chain prune policy, the v0.1 laun
 | CL1 screen | merged (PR #19) | RA-CL1d MERGE |
 | CL2 gates | merged (PR #20) | RA-CL2e MERGE. **RA-MAIN-1** (post-merge check) was queued on the Mac runner; if no `RA-MAIN-1-report.md` exists on `audit/ra-main-1`, run it as a subagent |
 | CL3 evidence chain | `fix/cl3-evidence` @ 13c04a4 | CL3-fix pushed; **RA-CL3b** was queued on the Mac runner. If `plan/briefs/RA-CL3b-report.md` is not on the branch, run it as a subagent. MERGE → open PR → merge → tell owner |
-| CL5 radio/threads | `fix/cl5-radio` @ 478ecf8 | **All code done** (A1–A6, R1–R5, E2, E3, B1–B3, worker exit drain, per-stage process groups). `tests/test_cl5_radio.py` 29/29. Full suite 995 pass / 9 fail: 3 are old tests to update for CL5 semantics — `test_cl1_fix::test_decoder_pipelines_start_in_their_own_session` (each stage now leads its own group), `test_palisade_qt::test_babel_live_mode_acquires_and_releases_via_arbiter` (BABEL takes the radio only after RUN + active), `test_palisade_qt::test_overwatch_radio_director_tracks_arbiter_and_frees` (arbiter ACQUIRING/HELD states); the other 6 pre-exist on main (tiles, 4× `test_cl1_fix3` strip 1284 px on Linux, flaky `test_up_down…`). Then: write `CL5-report.md` (before/after renders of PROWL/BABEL/ATLAS/RADIOS panel), write `RA-CL5.md`, spawn the audit |
+| CL5 radio/threads | `fix/cl5-radio` @ ed4694a | 2026-11-16: 3 stale tests fixed + RA-MAIN-1 F1 (strip ≤1270, `N tgts` for 100–999) and F2 (false finding; font-load test) folded in; CL5-report.md + renders pushed. **RA-CL5 = DO NOT MERGE**: A1 R1 R3 open, A3 regressed (decoders start/LIVE while ACQUIRING), PANIC leaves arbiter HELD + pages respawn, GUI-thread blocks on free/stop, NWR false all-clear after FREE (Critical), bus drops alerts (High). Next: **CL5-fix** = the 12-item list in `RA-CL5-report.md`, then spawn `RA-CL5b`. Note: branch is based on c00f57b (pre-CL2), merges clean with main |
 | CL4 honest state | not started | H1–H19 E1 E4 D4(empty) L5 — branch off main once CL3 merges |
 | CL6, CL7, CL8 | not started | `plan/audit/AUDIT_INDEX.md` |
+
+## Owner decisions 2026-11-16
+- Keep the PERMITTED TX word for v0.1. CL3's 2 s END wait accepted (deliberate). CL3 B3 fix is in a separate thread.
+- Sonnet is not enabled for this org (switch refused); mechanical work runs on Opus.
 
 ## Known environment facts
 - Linux (FreeType) renders the top strip **1284 px** wide in the worst case (Mac: 1279). The repo
