@@ -105,7 +105,7 @@ before a child could report, and an issued-but-unused ticket stayed ISSUED forev
 | **N14** pre-START ticket exits into the engagement | CLOSED | same binding (1) | `test_n14_a_ticket_from_before_start_keeps_its_exit_in_the_session_chain` (RA PoC inverted) |
 | N12, N13, N15, R1, N11 | OPEN (not in this fix) | out of scope of this brief; tracked from RA-CL3b | — |
 
-Behaviour change to note: END now blocks up to 2 s **only** while a bound child's engagement
+**Deliberate behaviour change (owner accepted, 2026-11-16):** END now blocks up to 2 s **only** while a bound child's engagement
 process has not yet reported its exit (typical: one 250 ms sweep + SIGTERM). A txguard bench
 ticket issued during an engagement keeps running past END (unchanged gate semantics) and its exit
 lands after `engagement.close` in the chain it was issued under.
