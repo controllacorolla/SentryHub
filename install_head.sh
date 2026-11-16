@@ -1,6 +1,6 @@
 #!/bin/bash
-# Sentry installer (uConsole): Hub, Sky (ADS-B + airband + transcripts), FM Radio,
-# Weather Sats, SSTV, Balloons, APRS, Mesh, Field Status, Assistant.
+# PALISADE installer (uConsole): the PALISADE Qt hub (default), the legacy Tk hub and apps,
+# Sky (ADS-B + airband + transcripts), FM Radio, Weather Sats, SSTV, APRS, Mesh, Field Status.
 # Usage:  bash install-uconsole-suite.sh
 set -e
 # everything runs inside main(), called on the last line: a cut-off copy of this file
@@ -67,8 +67,20 @@ for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-uti
 done
 # (the H4M / HackRF is deliberately not installed or configured: this suite does not use it)
 
-echo "[2/8] Python packages (Whisper, Skyfield, Meshtastic) - this can take a few minutes"
+echo "[2/8] Python packages (PALISADE UI, Whisper, Skyfield, Meshtastic) - this can take a few minutes"
 PIP="python3 -m pip install --user --break-system-packages --upgrade --quiet"
+# S1: the Qt UI. Debian packages first (no compiler, matched to the system Qt); pip if apt
+# has none. PALISADE does not start without PySide6 + pyqtgraph + numpy.
+for pkg in python3-numpy python3-pyqtgraph python3-pyside6.qtcore python3-pyside6.qtgui python3-pyside6.qtwidgets python3-pyside6.qtsvg; do
+  rc=0; safe_apt "$pkg" >/dev/null 2>&1 || rc=$?
+  case $rc in 0) echo "      ok  $pkg";; *) echo "      --  $pkg (not from apt; trying pip)";; esac
+done
+python3 -c 'import PySide6.QtWidgets' 2>/dev/null || $PIP PySide6 || \
+  echo "      WARNING: PySide6 failed - PALISADE (the Qt hub) will not start; the legacy hub still works"
+python3 -c 'import pyqtgraph' 2>/dev/null || $PIP pyqtgraph || \
+  echo "      WARNING: pyqtgraph failed - PALISADE will not start"
+python3 -c 'import numpy' 2>/dev/null || $PIP numpy || echo "      WARNING: numpy failed"
+python3 -c 'import flask' 2>/dev/null || $PIP flask || echo "      note: flask not installed - Remote Mode needs it"
 $PIP faster-whisper || echo "      WARNING: faster-whisper failed - transcripts/assistant voice won't work"
 $PIP skyfield || echo "      WARNING: skyfield failed - weather-sat predictions won't work"
 $PIP meshtastic || echo "      WARNING: meshtastic failed - Mesh app won't connect"

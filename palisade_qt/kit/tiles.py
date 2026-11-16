@@ -9,10 +9,11 @@ import math
 import threading
 from pathlib import Path
 import os
-from urllib.request import urlopen, Request
+from urllib.request import Request
 
 import numpy as np
 from PySide6 import QtCore, QtGui
+from .seams import offscreen as _seam_offscreen
 
 TILE_URLS = {
     "dark": "https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png",
@@ -56,6 +57,15 @@ def _pick_zoom(span_nm):
     return 8
 
 
+def _netpolicy():
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    import netpolicy
+    return netpolicy
+
+
 def _fetch_one(url_tpl, z, tx, ty, cache_dir):
     path = cache_dir / ("%d_%d.png" % (tx, ty))
     if path.exists():
@@ -63,7 +73,7 @@ def _fetch_one(url_tpl, z, tx, ty, cache_dir):
     url = url_tpl.format(z=z, x=tx, y=ty)
     try:
         req = Request(url, headers={"User-Agent": "PALISADE/1.0"})
-        data = urlopen(req, timeout=8).read()
+        data = _netpolicy().urlopen(req, timeout=8, purpose="map tiles").read()
         path.write_bytes(data)
         return data
     except Exception:
@@ -98,7 +108,7 @@ class TileLayer(QtCore.QObject):
     def fetch(self, style):
         # Never hit the network under the offscreen test platform or when asked to stay offline;
         # the map falls back to the scope (no tiles) style. Keeps the suite hermetic.
-        if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        if _seam_offscreen():
             return
         with self._lock:
             if self._busy:

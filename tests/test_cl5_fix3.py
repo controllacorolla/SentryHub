@@ -28,7 +28,7 @@ live = _H.live               # fake radio binaries on PATH, decoder seams open
 # the retiring mode still HOLDS the radio when the operator presses FREE THE RADIO
 _TRAP_RTL = """#!/bin/sh
 trap '' TERM
-while :; do echo '!AIVDM,1,1,,A,15M67FC000G?ufbE`FepT@3n00Sa,0*5C'; sleep 0.2; done
+while :; do echo '!AIVDM,1,1,,A,15M67FC000G?ufbE`FepT@3n00Sa,0*5F'; sleep 0.2; done
 # FAKE_rtl_fm
 """
 _TRAP_MM = """#!/bin/sh

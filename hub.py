@@ -3,6 +3,8 @@
 
 import re
 import json
+
+import netpolicy  # noqa: E402  (L3: every outbound request)
 import os
 import shutil
 import subprocess
@@ -86,6 +88,13 @@ TILES = [
 ]
 
 
+
+# CL8 (owner decision 3, CL2-fix): the Tk gated tools could never be unlocked here (the Tk hub
+# has no UNLOCK and cannot open an engagement), so they are retired from the Tk hub. Their
+# engines stay: PALISADE (the Qt hub) runs the assessments behind engagement + txguard.
+RETIRED_TK = frozenset({"cw", "rtty", "digi", "replay", "pm3", "wifix", "blex", "zb", "zw", "hid"})
+TILES = [t for t in TILES if t[0] not in RETIRED_TK]
+
 class Shell:
     """The workstation: one window, every app a workspace inside it.
 
@@ -104,6 +113,7 @@ class Shell:
         "scout": ("scout", "main"), "ow": ("overwatch", "main"),
         "hw": ("hwlab", "main"), "dev": ("devterm", "main"), "fc": ("fieldcomp", "main"),
     }
+    MODS = {k: v for k, v in MODS.items() if k not in RETIRED_TK}
     PASS = ("--demo",)            # shell flags every workspace inherits
 
     def __init__(self, root, F, barhost, host):
@@ -271,18 +281,8 @@ def read_jsonl(path, n, max_bytes=400_000):
 
 
 def main():
-    # Auto-load any drop-in plugins (Phase 3e) before the UI is built, so they appear like any
-    # other module. Guarded: a bad plugin can never stop the hub from starting.
-    try:
-        import plugins as _plugins
-        _found = _plugins.discover(os.path.join(HERE, "plugins"))
-        if _found:
-            added, _ = _plugins.register_into(Shell.MODS, _found)
-            if added:
-                print("plugins loaded: " + ", ".join(added), file=sys.stderr)
-    except Exception as _e:        # never let plugin loading break startup
-        print("plugin load skipped: %r" % _e, file=sys.stderr)
-
+    # C5 (CL8): plugins.py (auto-loading python from the app dir) is deleted — dead, and a
+    # code-execution path for anything that could write there.
     S.single_instance("Sentry")
     root, F = S.make_root("Sentry")
     import tkinter as tk
@@ -1261,8 +1261,7 @@ def main():
             slow["tpv"] = S.gps_fix(timeout=1.0)
             llm_ = None
             try:
-                import urllib.request
-                urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1).read()
+                netpolicy.urlopen("http://127.0.0.1:11434/api/tags", timeout=1).read()
                 llm_ = "local Ollama"
             except Exception:
                 pass

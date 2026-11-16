@@ -53,10 +53,7 @@ FM_STEPS = (("200 kHz", 0.2), ("100 kHz", 0.1), ("25 kHz", 0.025), ("12.5 kHz", 
 FM_STEP_DEFAULT = 0
 
 
-def _offscreen():
-    """True under tests/CI/offline — the radio seams return None so no real device is opened."""
-    return bool(os.environ.get("PALISADE_OFFLINE") or
-                os.environ.get("QT_QPA_PLATFORM") == "offscreen")
+from .kit.seams import offscreen as _offscreen  # noqa: E402  (C5: one copy)
 
 
 def _open_fm_pipe(rtl, mid, sink, on_rds):

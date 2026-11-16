@@ -573,6 +573,96 @@ def reset_alert_store():
         _store = None
 
 
+class SessionLogPanel(Overlay):
+    """SESSION LOG (C4) + NETWORK MODE (L3). Every fault, error and outbound request this session,
+    newest first, and the one switch that decides whether anything may leave the device.
+    Opening it marks the faults as seen (clears the strip's fault indicator)."""
+    TITLE = "SESSION LOG · NETWORK"
+    SIZE = (1000, 560)
+    LEVEL_WORD = {"fault": "FAULT", "error": "ERROR", "warn": "WARN", "net": "NET", "info": "INFO"}
+
+    def __init__(self, mode="dark", parent=None, log=None):
+        super().__init__(mode, parent)
+        from . import sessionlog
+        self.log = log or sessionlog.log()
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(micro("NETWORK"))
+        self.net_buttons = {}
+        grp = QtWidgets.QButtonGroup(self)
+        grp.setExclusive(True)
+        for m in ("OFFLINE", "LAN", "ONLINE"):
+            b = QtWidgets.QPushButton(m)
+            b.setCheckable(True)
+            b.clicked.connect(lambda _=False, m=m: self.set_net(m))
+            grp.addButton(b)
+            self.net_buttons[m] = b
+            row.addWidget(b)
+        self.net_note = note("")
+        self.net_note.setWordWrap(True)
+        row.addWidget(self.net_note, 1)
+        self.outer.addLayout(row)
+        self.count = note("")
+        self.outer.addWidget(self.count)
+        self.table = FeedTable([("t", "TIME (Z)"), ("level", "LEVEL"), ("source", "SOURCE"),
+                                ("text", "MESSAGE")])
+        self.outer.addWidget(self.table, 1)
+        self.log.changed.connect(self._changed)
+
+    NET_NOTE = {"OFFLINE": "Nothing leaves the device (loopback only: readsb, local model).",
+                "LAN": "This device and private addresses only. No internet.",
+                "ONLINE": "Map tiles, METAR/TFR, Celestrak, adsbdb and webhooks may reach the "
+                          "internet. Every request is logged below."}
+
+    def _netpolicy(self):
+        import sys
+        import os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        import netpolicy
+        return netpolicy
+
+    def set_net(self, m):
+        try:
+            self._netpolicy().set_mode(m)
+        except Exception as e:
+            from . import sessionlog
+            sessionlog.record("error", "NET", "could not set network mode %s: %s" % (m, e))
+        self.refresh()
+
+    def _changed(self):
+        if self.isVisible():
+            if self.log.faults_unseen():
+                self.log.mark_seen()             # on screen now: seen
+            self.refresh()
+
+    def refresh(self):
+        m = self._netpolicy().mode()
+        for name, b in self.net_buttons.items():
+            b.setChecked(name == m)
+        self.net_note.setText(self.NET_NOTE.get(m, ""))
+        col = {"fault": self._tok["alert"], "error": self._tok["alert"], "warn": self._tok["warn"]}
+        rows = []
+        items = self.log.snapshot()
+        for it in items:
+            txt = it["text"] + ("  (×%d)" % it["count"] if it["count"] > 1 else "")
+            rows.append({"_id": it["id"], "t": zulu(it["ts"]),
+                         "level": self.LEVEL_WORD.get(it["level"], it["level"].upper()),
+                         "source": it["source"], "text": txt,
+                         "_colors": {"level": col.get(it["level"], self._tok["muted"])}})
+        self.table.set_empty("watching", "NOTHING LOGGED",
+                             "No faults, errors or network requests this session.")
+        self.table.model.set_rows(rows)
+        nf = sum(1 for it in items if it["level"] in ("fault", "error"))
+        self.count.setText("%d entr%s this session · %d fault/error · full log: "
+                           "~/.cache/uconsole-suite/session.log" % (
+                               len(items), "y" if len(items) == 1 else "ies", nf))
+
+    def open(self):
+        super().open()
+        self.log.mark_seen()
+
+
 class AlertsDrawer(Overlay):
     TITLE = "ALERTS"
     SIZE = (1000, 560)

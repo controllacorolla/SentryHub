@@ -1,7 +1,8 @@
 B64EOF
-if [ "$BAD" = 0 ] && [ -f "$STAGE/hub.py" ] && python3 - "$STAGE" <<'PYCHK'
+if [ "$BAD" = 0 ] && [ -f "$STAGE/hub.py" ] && [ -f "$STAGE/palisade_qt/shell.py" ] && python3 - "$STAGE" <<'PYCHK'
 import glob, py_compile, sys
-for f in glob.glob(sys.argv[1] + "/*.py"):
+for f in glob.glob(sys.argv[1] + "/*.py") + glob.glob(sys.argv[1] + "/palisade_qt/**/*.py",
+                                                       recursive=True):
     py_compile.compile(f, doraise=True)
 PYCHK
 then
@@ -24,13 +25,21 @@ cp "$APP"/fonts/* "$HOME/.local/share/fonts/uconsole-suite/"
 fc-cache -f "$HOME/.local/share/fonts" >/dev/null 2>&1 || true
 echo "      Fonts installed: Atkinson Hyperlegible + IBM Plex (SIL Open Font License)"
 
-echo "[4/8] Commands: hub, sky"
-mkdir -p "$HOME/.local/bin"
-for pair in "hub:hub.py" "sky:sky_app.py"; do
-  name=${pair%%:*}; file=${pair#*:}
-  printf '#!/bin/bash\nexec python3 "%s/%s" "$@"\n' "$APP" "$file" > "$HOME/.local/bin/$name"
-  chmod +x "$HOME/.local/bin/$name"
-  sudo ln -sf "$HOME/.local/bin/$name" "/usr/local/bin/$name"
+echo "[4/8] Commands: palisade (the Qt hub, default), hub (legacy Tk hub + --doctor/--sitrep), sky"
+# L6: the launchers in /usr/local/bin are ROOT-OWNED files, not symlinks into the user-writable
+# ~/.local/bin (anyone who could write there could change what root runs as `hub`).
+for pair in "palisade:-m palisade_qt" "hub:$APP/hub.py" "sky:$APP/sky_app.py"; do
+  name=${pair%%:*}; target=${pair#*:}
+  TMPL=$(mktemp)
+  printf '#!/bin/bash\ncd "%s" || exit 1\nexec python3 %s "$@"\n' "$APP" "$target" > "$TMPL"
+  # an older installer left a symlink here, or a user-owned copy in ~/.local/bin that would
+  # shadow the root-owned one on PATH: replace the first, remove the second if it is ours
+  sudo rm -f "/usr/local/bin/$name"
+  sudo install -m 0755 -o root -g root "$TMPL" "/usr/local/bin/$name"
+  rm -f "$TMPL"
+  if [ -f "$HOME/.local/bin/$name" ] && grep -q "uconsole-suite/app" "$HOME/.local/bin/$name"; then
+    rm -f "$HOME/.local/bin/$name"
+  fi
 done
 
 echo "[5/8] Menu entries"
@@ -47,7 +56,19 @@ Terminal=false
 Categories=AudioVideo;HamRadio;
 EOF2
 }
-mk hub "Sentry" "uConsole receive-only signals + field terminal" hub.py network-wireless
+# S1: PALISADE (the Qt hub) is the default entry; the Tk hub stays for the not-yet-migrated apps
+cat > "$D/uc-palisade.desktop" <<EOF2
+[Desktop Entry]
+Type=Application
+Name=PALISADE
+Comment=SIGINT + field assessment suite (passive and gated active tools)
+Exec=/usr/local/bin/palisade
+Path=$APP
+Icon=network-wireless
+Terminal=false
+Categories=AudioVideo;HamRadio;
+EOF2
+mk hub "Sentry (legacy Tk hub)" "Legacy Tk apps while they move to PALISADE" hub.py network-wireless
 mk sky "Sky" "Live ADS-B map + airband voice" sky_app.py applications-science
 mk fm "FM Radio" "FM + NOAA Weather Radio" fm.py audio-radio
 mk wx "Weather Sats" "Meteor LRPT passes + capture" wxsat.py weather-few-clouds
@@ -123,7 +144,8 @@ echo
 if pgrep -f "$APP/hub.py" >/dev/null 2>&1 || pgrep -f "bin/hub" >/dev/null 2>&1; then
   echo "The Hub is open: close it (Ctrl+Q) and start it again to use the new version."
 fi
-echo "Open Sentry from the menu, or run:  hub"
+echo "Open PALISADE from the menu, or run:  palisade      (demo data: palisade --demo)"
+echo "Legacy Tk hub:  hub"
 echo "Check every connection (radios, services, servers):  hub --doctor"
 echo "Security review of your own device:  hub --security"
 echo "Spoken situation report:  hub --sitrep"
@@ -140,8 +162,9 @@ echo " - GPS: if meshtasticd owns /dev/ttyAMA0, Field Status shows 'no gpsd'. Ei
 echo "   on ttyAMA0 and point meshtasticd at gpsd, or leave it - Mesh still shows your position."
 echo " - Signals: rtl_433 (sensors) is installed. ACARS needs acarsdec, which isn't in Debian -"
 echo "   build it from github.com/TLeconte/acarsdec, then it appears in the Signals app."
-echo " - Scout (Network/RF site survey): scans only your own subnet and is receive-only. The Wi-Fi"
-echo "   tab needs nmcli (NetworkManager); without it that tab shows how to install it."
+echo " - Network: PALISADE starts OFFLINE (nothing leaves the device). Map tiles, METAR/TFR and"
+echo "   Celestrak need NET set to LAN or ONLINE: click NET in the top strip."
+echo " - Active tools (RECON assess, FORGE) need an open ENGAGEMENT and your operator profile."
 echo " - The H4M is not used. Leave it unplugged."
 DONE=1
 }

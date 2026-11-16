@@ -323,7 +323,17 @@ def test_rid_source_decodes_drone_and_operator():
     kinds = {e["payload"]["kind"] for e in evs}
     assert "drone" in kinds and "operator" in kinds, "RID must plot the drone AND its operator"
     drone = next(e for e in evs if e["payload"]["kind"] == "drone")
-    assert drone["source"] == "RID" and drone["severity"] == "alert"
+    # CL8 P3: one advert is an unauthenticated claim -> amber UNCONFIRMED, never the red alert
+    assert drone["source"] == "RID" and drone["severity"] == "warn"
+    assert drone["payload"]["trust"] == "unconfirmed"
+    for c in rs._drones.by_addr.values():
+        c["first"] -= 3.0                     # heard for 3 s …
+    for _ in range(3):                        # … and several adverts: confirmed, red
+        for addr, payload, rssi in demo.adverts():
+            rs.ingest_payload(addr, payload, rssi)
+    evs = rs.contacts()
+    drone = next(e for e in evs if e["payload"]["kind"] == "drone")
+    assert drone["severity"] == "alert" and drone["payload"]["trust"] == "confirmed"
     op = next(e for e in evs if e["payload"]["kind"] == "operator")
     assert op["source"] == "RID"
     assert isinstance(op["payload"]["lat"], float) and isinstance(op["payload"]["lon"], float)

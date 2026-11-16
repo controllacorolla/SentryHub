@@ -15,6 +15,8 @@ import sys
 import time
 import urllib.request
 
+import netpolicy  # noqa: E402  (L3: every outbound request)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite as S  # noqa: E402
 
@@ -25,7 +27,7 @@ UA = {"User-Agent": "uconsole-suite doctor"}
 def _head(url, timeout=5):
     req = urllib.request.Request(url, headers=UA, method="GET")
     t0 = time.time()
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with netpolicy.urlopen(req, timeout=timeout) as r:
         r.read(2048)
         return int((time.time() - t0) * 1000), r.status
 
@@ -93,7 +95,7 @@ def chk_aircraft_json():
     for src in core.DEFAULT_SETTINGS["adsb_sources"]:
         try:
             if src.startswith("http"):
-                data = json.loads(urllib.request.urlopen(src + "/aircraft.json", timeout=2).read())
+                data = json.loads(netpolicy.urlopen(src + "/aircraft.json", timeout=2).read())
             else:
                 with open(os.path.join(src, "aircraft.json")) as f:
                     data = json.load(f)
@@ -248,7 +250,7 @@ def _server(name, url, fix=""):
 
 def chk_ollama():
     try:
-        d = json.loads(urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1.5).read())
+        d = json.loads(netpolicy.urlopen("http://127.0.0.1:11434/api/tags", timeout=1.5).read())
         models = [m.get("name") for m in d.get("models", [])]
         return True, "local Ollama: " + (", ".join(models[:4]) or "no models pulled"), ""
     except Exception:
@@ -667,29 +669,63 @@ def chk_ssh_config():
     return True, "SSH: root login off, key auth" + note, ""
 
 
-def chk_default_password():
-    """Warn if the login password looks like a known default (hash compare, no plaintext stored)."""
-    try:
-        import warnings
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        import crypt
-        import spwd
-        user = os.environ.get("USER") or "dragon"
+def _shadow_hash(user, path="/etc/shadow"):
+    """The password hash for `user` from the shadow file (S4: the spwd module is gone in Python
+    3.13). Raises PermissionError when not readable (needs root), KeyError when absent."""
+    with open(path) as f:
+        for line in f:
+            parts = line.rstrip("\n").split(":")
+            if len(parts) > 1 and parts[0] == user:
+                return parts[1]
+    raise KeyError(user)
+
+
+def _libcrypt():
+    """crypt(3) from the system libcrypt via ctypes (S4: the crypt module is gone in 3.13).
+    libxcrypt on Debian handles yescrypt ($y$), sha512 ($6$) … Returns a function or None."""
+    import ctypes
+    import ctypes.util
+    for name in (ctypes.util.find_library("crypt"), "libcrypt.so.1", "libcrypt.so.2"):
+        if not name:
+            continue
         try:
-            h = spwd.getspnam(user).sp_pwdp
-        except (KeyError, PermissionError):
-            return None, "can't read the shadow file (needs root) - skipped", ""
-        if not h or h in ("*", "!"):
-            return None, "no password set for %s (key-only?)" % user, ""
-        for guess in ("dragon", "raspberry", "uconsole", "clockworkpi", "password", "admin", "123456"):
-            try:
-                if crypt.crypt(guess, h) == h:
-                    return False, "login password for %s is a common default" % user,                         "run passwd and set a unique password"
-            except Exception:
-                pass
-        return True, "login password is not a common default", ""
-    except Exception:
-        return None, "password check unavailable", ""
+            lib = ctypes.CDLL(name)
+        except OSError:
+            continue
+        fn = lib.crypt
+        fn.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+        fn.restype = ctypes.c_char_p
+
+        def _crypt(word, salt, _fn=fn):
+            out = _fn(word.encode(), salt.encode())
+            return out.decode() if out else None
+        return _crypt
+    return None
+
+
+def chk_default_password(shadow="/etc/shadow", crypt_fn=None):
+    """Warn if the login password looks like a known default (hash compare, no plaintext stored).
+    Runs on Python 3.13 (Debian 13): no crypt/spwd modules (S4)."""
+    user = os.environ.get("USER") or "dragon"
+    try:
+        h = _shadow_hash(user, shadow)
+    except PermissionError:
+        return None, "can't read the shadow file (needs root) - skipped", ""
+    except (KeyError, OSError):
+        return None, "no shadow entry for %s - skipped" % user, ""
+    if not h or h[0] in "*!":
+        return None, "no password set for %s (key-only?)" % user, ""
+    crypt_fn = crypt_fn or _libcrypt()
+    if crypt_fn is None:
+        return None, "password check unavailable (no libcrypt)", ""
+    for guess in ("dragon", "raspberry", "uconsole", "clockworkpi", "password", "admin", "123456"):
+        try:
+            if crypt_fn(guess, h) == h:
+                return False, "login password for %s is a common default" % user, \
+                    "run passwd and set a unique password"
+        except Exception:
+            pass
+    return True, "login password is not a common default", ""
 
 
 def chk_config_perms():

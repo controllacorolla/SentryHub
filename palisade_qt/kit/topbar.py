@@ -3,8 +3,9 @@
 Left: one key per page, callsign with its function label beside it (D7). Right: four fixed status
 slots — MODE, RADIO, TX, ENGAGEMENT — each a word + a colour + a shape, drawn by the shell from engine
 state (see chrome.py). A page can never write them: there is no set_chip here any more (D4/H7). Then
-an alerts counter, the reserved OPSEC shield slot, mute + volume wired to the real audio sink, and
-the Zulu clock.
+an alerts counter, the NET mode slot (L3), mute + volume wired to the real audio sink, and the Zulu
+clock. The MODE slot doubles as the fault indicator (C4): a caution triangle while the session log
+holds faults the operator has not seen.
 
 Standalone page windows get the same strip without the nav keys.
 """
@@ -216,31 +217,9 @@ class NavKey(QtWidgets.QPushButton):
         self._place()
 
 
-def _shield_pixmap(color):
-    pm = QtGui.QPixmap(18, 18)
-    pm.fill(QtCore.Qt.transparent)
-    p = QtGui.QPainter(pm)
-    p.setRenderHint(QtGui.QPainter.Antialiasing)
-    path = QtGui.QPainterPath()
-    path.moveTo(9, 1.5)
-    path.lineTo(15.5, 4.5)
-    path.lineTo(15.5, 9)
-    path.cubicTo(15.5, 13.5, 12, 16, 9, 16.8)
-    path.cubicTo(6, 16, 2.5, 13.5, 2.5, 9)
-    path.lineTo(2.5, 4.5)
-    path.closeSubpath()
-    pen = QtGui.QPen(QtGui.QColor(color))
-    pen.setWidthF(1.6)
-    pen.setStyle(QtCore.Qt.DashLine)
-    p.setPen(pen)
-    p.drawPath(path)
-    p.end()
-    return pm
-
-
 class TopBar(QtWidgets.QFrame):
     nav_requested = QtCore.Signal(str)
-    slot_clicked = QtCore.Signal(str)        # "mode" | "radio" | "tx" | "engagement" | "alerts"
+    slot_clicked = QtCore.Signal(str)        # "mode" | "radio" | "tx" | "engagement" | "alerts" | "net"
 
     def __init__(self, mode="dark", nav=(), audio=None, parent=None):
         super().__init__(parent)
@@ -270,13 +249,12 @@ class TopBar(QtWidgets.QFrame):
         self.alerts.clicked.connect(lambda: self.slot_clicked.emit("alerts"))
         lay.addWidget(self.alerts)
 
-        # reserved OPSEC shield slot — a placeholder until the OPSEC control lands (PR #16)
-        self.opsec_slot = QtWidgets.QLabel()
-        self.opsec_slot.setObjectName("opsec_slot")
-        self.opsec_slot.setPixmap(_shield_pixmap(self._tok["disabled"]))
-        self.opsec_slot.setToolTip("OPSEC — reserved (not installed in this build)")
-        self.opsec_slot.setFixedWidth(20)
-        lay.addWidget(self.opsec_slot)
+        # NET (L3): the global network mode, OFFLINE / LAN / ONLINE, set from the session-log
+        # panel. Takes the 20 px the reserved OPSEC placeholder held, plus SWEEP's key (hidden in
+        # v0.1), so the worst-case strip still fits 1280 px.
+        self.net = StatusSlot("NET")
+        self.net.clicked.connect(lambda: self.slot_clicked.emit("net"))
+        lay.addWidget(self.net)
 
         # audio: mute + volume, wired to the real sink; disabled (and saying why) when there is none.
         # Mixer calls run off the GUI thread and every set is read back: the controls show only
@@ -313,8 +291,10 @@ class TopBar(QtWidgets.QFrame):
         self._timer.start(1000)
         self._tick()
 
+        self._faults = 0
         self.set_state("LIVE", ("FREE", ""), "OFF", ("NONE", "", ""))
         self.set_alerts(0)
+        self.set_net("OFFLINE")
 
     # ---- audio ----
     def _init_audio(self):
@@ -407,8 +387,16 @@ class TopBar(QtWidgets.QFrame):
             key.set_on(name == callsign)
 
     def set_state(self, mode, radio, tx, engagement):
+        self._last_state = (mode, radio, tx, engagement)
         t = self._tok
-        if mode == "DEMO":
+        self._mode_word = mode
+        if self._faults:
+            # C4: the fault indicator. The word stays LIVE/DEMO; the glyph turns to a caution
+            # triangle in the alert colour until the operator opens the session log.
+            self.slots["mode"].set(mode if mode == "DEMO" else "LIVE", "tri", t["alert"])
+            self.slots["mode"].setToolTip("%s — %d unseen fault%s: open the session log" % (
+                mode, self._faults, "" if self._faults == 1 else "s"))
+        elif mode == "DEMO":
             self.slots["mode"].set("DEMO", "hatch", t["warn"])
         else:
             self.slots["mode"].set("LIVE", "dot", t["text"])
@@ -451,6 +439,27 @@ class TopBar(QtWidgets.QFrame):
                                                 "not be read")
         else:
             self.slots["engagement"].set("NONE", "ring", t["muted"])
+
+    def set_faults(self, n):
+        """C4: unseen faults/errors in the session log (0 clears the indicator)."""
+        self._faults = int(n or 0)
+        st = getattr(self, "_last_state", None)
+        if st is not None:
+            self.set_state(*st)
+
+    def set_net(self, mode):
+        """L3: the network mode. OFFLINE is the safe state; LAN amber; ONLINE in the alert colour
+        because the device is then talking to the internet."""
+        t = self._tok
+        if mode == "ONLINE":
+            self.net.set("ON", "dot", t["alert"])
+            self.net.setToolTip("NET: ONLINE — outbound requests to the internet are allowed")
+        elif mode == "LAN":
+            self.net.set("LAN", "half", t["warn"])
+            self.net.setToolTip("NET: LAN — only this device and private addresses")
+        else:
+            self.net.set("OFF", "ring", t["muted"])
+            self.net.setToolTip("NET: OFFLINE — nothing leaves the device")
 
     def set_alerts(self, unacked):
         t = self._tok

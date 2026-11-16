@@ -84,10 +84,32 @@ def decode_bits(bits):
     return out
 
 
+def nmea_ok(line):
+    """P3: the NMEA checksum: XOR of every character between '!' (or '$') and '*' must equal the
+    two hex digits after '*'. A sentence without one, or with a wrong one, is refused — a
+    corrupted or forged line must not become a vessel on the map."""
+    line = line.strip()
+    start = max(line.find("!"), line.find("$")) if ("!" in line or "$" in line) else -1
+    if start < 0 or "*" not in line[start:]:
+        return False
+    body, _, tail = line[start + 1:].partition("*")
+    want = tail[:2]
+    if len(want) != 2:
+        return False
+    try:
+        want = int(want, 16)
+    except ValueError:
+        return False
+    x = 0
+    for ch in body:
+        x ^= ord(ch)
+    return x == want
+
+
 def decode_sentence(line):
     """Decode a single-fragment !AIVDM/!AIVDO sentence. Returns a message dict, or None (for a
     multi-fragment sentence, assemble the payloads first with AivdmAssembler)."""
-    if "AIVD" not in line:
+    if "AIVD" not in line or not nmea_ok(line):
         return None
     body = line.split("!", 1)[-1].split("*", 1)[0]
     f = body.split(",")
@@ -109,7 +131,8 @@ class AivdmAssembler:
         self.parts = {}
 
     def feed(self, line):
-        if "AIVD" not in line:
+        if "AIVD" not in line or not nmea_ok(line):
+            self.rejected = getattr(self, "rejected", 0) + ("AIVD" in line)
             return None
         body = line.split("!", 1)[-1].split("*", 1)[0]
         f = body.split(",")
@@ -190,8 +213,8 @@ class Demo:
     """Synthetic AIVDM: a couple of vessels moving, plus a static (type 5) name sentence."""
     SENTENCES = [
         "!AIVDM,1,1,,B,177KQJ5000G?tO`K>RA1wUbN0TKH,0*5C",      # real type-1, MMSI 477553000
-        "!AIVDM,1,1,,A,15MwkT1P1lG?S:0Hm2Q6W0000@;5,0*0A",
-        "!AIVDM,1,1,,B,B6CdCm0t3`tba35f@V9faHi7kP06,0*58",
+        "!AIVDM,1,1,,A,15MwkT1P1lG?S:0Hm2Q6W0000@;5,0*53",      # demo (checksum fixed: P3)
+        "!AIVDM,1,1,,B,B6CdCm0t3`tba35f@V9faHi7kP06,0*5B",
     ]
 
     def __init__(self):

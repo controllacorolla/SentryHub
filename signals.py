@@ -11,6 +11,8 @@ Both use the built-in RTL-SDR via the shared lease, so starting one pauses the p
 if ADS-B is on the built-in SDR (it isn't by default - it's on the H4M).
 """
 import json
+
+import netpolicy  # noqa: E402  (L3: every outbound request)
 import os
 import re
 import subprocess
@@ -444,8 +446,7 @@ def main():
             for src in S.core.DEFAULT_SETTINGS["adsb_sources"]:
                 try:
                     if src.startswith("http"):
-                        import urllib.request
-                        data = json.loads(urllib.request.urlopen(src + "/aircraft.json", timeout=1).read())
+                        data = json.loads(netpolicy.urlopen(src + "/aircraft.json", timeout=1).read())
                     else:
                         with open(os.path.join(src, "aircraft.json")) as f:
                             data = json.load(f)

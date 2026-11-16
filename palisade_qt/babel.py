@@ -20,6 +20,7 @@ from . import theme, radio_arbiter, eventbus
 from .timebase import zulu
 from .kit import ControlBar, FeedTable, DetailCard
 from .worker import Worker
+from .kit.seams import offscreen as _seam_offscreen
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
@@ -45,7 +46,7 @@ def _open_pipe(cmd, shell=None, stderr=None):
     `cmd` may be a legacy `a | b` shell STRING (split into argv stages — never run through a
     shell) or a list of argv lists. Every stage shares one session so PANIC / the arbiter kill
     the whole pipeline (audit A4). stderr goes to a temp file so an early exit can show WHY (R2)."""
-    if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+    if _seam_offscreen():
         return None
     import tempfile
     from .kit.procs import Pipeline, split_shell_pipeline
@@ -313,16 +314,36 @@ def _run_rds(worker):
         _stop_proc(proc)
 
 
+TPMS_HOP_S = 30        # B6: rtl_433's default hop with two -f is 600 s — one band for 10 minutes
+
+
+def tpms_argv(s):
+    """rtl_433 argv for TPMS from settings. L4: every frequency and the gain pass argsafe; B6: with
+    more than one frequency, hop every hop_s seconds (5..600) instead of rtl_433's 600 s default."""
+    freqs = [argsafe.freq_arg(f) for f in (s.get("freqs") or ["315M", "433.92M"])]
+    gain = argsafe.gain_arg(s.get("gain") or 0)
+    argv = ["rtl_433", "-F", "json", "-M", "level"]
+    for f in freqs:
+        argv += ["-f", f]
+    if len(freqs) > 1:
+        try:
+            hop = int(s.get("hop_s", TPMS_HOP_S))
+        except (TypeError, ValueError):
+            raise argsafe.SettingsRefused("bad TPMS hop_s in settings: %r" % (s.get("hop_s"),))
+        if not 5 <= hop <= 600:
+            raise argsafe.SettingsRefused("TPMS hop_s out of range: %r" % hop)
+        argv += ["-H", str(hop)]
+    if gain:
+        argv += ["-g", str(gain)]
+    return argv
+
+
 def _run_tpms(worker):
     """TPMS tire-pressure sensors via rtl_433 JSON (315/433.92 MHz). tpms.parse_tpms reused AS-IS;
     rtl_433 is the capture binary and SDR owner (tpms.py has no pipeline of its own)."""
     import tpms as engine
-    s = _load_settings("tpms", {"freqs": ["315M", "433.92M"], "gain": 0})
-    argv = ["rtl_433", "-F", "json", "-M", "level"]
-    for f in s.get("freqs", ["315M", "433.92M"]):
-        argv += ["-f", f]
-    if int(s.get("gain") or 0):
-        argv += ["-g", str(int(s["gain"]))]
+    s = _load_settings("tpms", {"freqs": ["315M", "433.92M"], "gain": 0, "hop_s": TPMS_HOP_S})
+    argv = tpms_argv(s)
     proc = _open_pipe(argv, shell=False)
     if proc is None:
         return                       # offscreen/offline seam: never open a real radio in tests
@@ -778,7 +799,7 @@ class SstvWorker(Worker):
 
     # seams so tests/CI never open a real radio or require a WAV
     def _make_recorder(self, path):
-        if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        if _seam_offscreen():
             return None
         import sstv
         return sstv.Recorder(path, self.freq, self.gain, monitor=False,  # rolling window (R5)

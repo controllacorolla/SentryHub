@@ -33,6 +33,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import netpolicy  # noqa: E402  (L3: every outbound request)
+
 APP = "sky-app"
 HOME = os.path.expanduser("~")
 CFG_DIR = os.path.join(HOME, ".config", APP)
@@ -658,7 +660,7 @@ class AdsbFeed:
 
     def _get(self, base, name):
         if base.startswith("http"):
-            with urllib.request.urlopen(base.rstrip("/") + "/" + name, timeout=2) as r:
+            with netpolicy.urlopen(base.rstrip("/") + "/" + name, timeout=2) as r:
                 return json.loads(r.read().decode())
         with open(os.path.join(base, name)) as f:
             return json.load(f)
@@ -943,7 +945,7 @@ class RouteFeed:
             req = urllib.request.Request(self.URL % urllib.parse.quote(cs),
                                          headers={"User-Agent": "uconsole-suite/1.0"})
             try:
-                with urllib.request.urlopen(req, timeout=8) as r:
+                with netpolicy.urlopen(req, timeout=8) as r:
                     data = json.loads(r.read().decode())
             except urllib.error.HTTPError as e:
                 if e.code == 404:                       # adsbdb: unknown callsign
@@ -1042,7 +1044,7 @@ class MetarFeed:
         else:
             req = urllib.request.Request(self.URL % ",".join(self.idents),
                                          headers={"User-Agent": "uconsole-suite/1.0"})
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with netpolicy.urlopen(req, timeout=10) as r:
                 obs = json.loads(r.read().decode())
         out = {}
         for o in obs if isinstance(obs, list) else []:
@@ -4556,7 +4558,7 @@ def cli_status():
     for src in s["adsb_sources"]:
         try:
             if src.startswith("http"):
-                urllib.request.urlopen(src + "/aircraft.json", timeout=2).read()
+                netpolicy.urlopen(src + "/aircraft.json", timeout=2).read()
             else:
                 open(os.path.join(src, "aircraft.json")).read()
             found = src

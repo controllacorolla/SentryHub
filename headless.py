@@ -18,6 +18,8 @@ import sys
 import time
 import urllib.request
 
+import netpolicy  # noqa: E402  (L3: every outbound request)
+
 TOKEN_MIN = 16
 
 
@@ -173,7 +175,7 @@ def post_webhook(url, alert, poster=None, timeout=5):
         return bool(poster(url, data))
     try:
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with netpolicy.urlopen(req, timeout=timeout) as r:
             return 200 <= r.status < 300
     except Exception:
         return False

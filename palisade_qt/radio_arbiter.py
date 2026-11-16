@@ -24,6 +24,15 @@ REVOKE_TIMEOUT_S = 5.0
 FAIL_RETRY_S = 20.0          # H4: after a failed acquire, the same holder is not re-granted for this
 
 
+def _note(what):
+    """C4: a swallowed lease error goes to the session log (and the strip's fault indicator)."""
+    try:
+        from . import sessionlog
+        sessionlog.note_exception("RADIO", what)
+    except Exception:
+        pass
+
+
 class LeaseFailed(Exception):
     """The real lease could not be taken (readsb would not stop, sudo refused …). The radio is NOT
     granted (audit H4): the arbiter returns to FREE and says why."""
@@ -47,7 +56,7 @@ def _make_lease(name):
         try:
             lease.release()               # put back whatever it paused before failing
         except Exception:
-            pass
+            _note("lease release after a failed acquire (%s)" % name)
         raise LeaseFailed(str(e)[:160] or type(e).__name__)
     return lease
 
@@ -130,7 +139,7 @@ class RadioArbiter(QtCore.QObject):
                 try:
                     lease.release()
                 except Exception:
-                    pass
+                    _note("lease release (%s)" % name)
             return
         self.transition.emit("HELD", name, "")
         self.changed.emit(name)
@@ -157,7 +166,7 @@ class RadioArbiter(QtCore.QObject):
             try:
                 lease.release()                   # readsb / the autopilot resume
             except Exception:
-                pass
+                _note("lease release — readsb may not have resumed")
         return True
 
     def revoke(self, name=None, timeout_s=None):

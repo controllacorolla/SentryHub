@@ -90,7 +90,7 @@ exec cat > /dev/null
 exec cat > /dev/null
 """,
     "rtl_ais": """#!/bin/sh
-while :; do echo '!AIVDM,1,1,,A,15M67FC000G?ufbE`FepT@3n00Sa,0*5C'; sleep 0.2; done
+while :; do echo '!AIVDM,1,1,,A,15M67FC000G?ufbE`FepT@3n00Sa,0*5F'; sleep 0.2; done
 """,
 }
 

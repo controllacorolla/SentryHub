@@ -12,7 +12,6 @@ PRISM shows RADIO BUSY. No decode/radio behaviour is changed here. offscreen/off
 real radio.
 """
 import math
-import os
 import shutil
 import threading
 import time
@@ -24,6 +23,7 @@ from .app import PalisadeApp
 from . import theme, radio_arbiter
 from .kit import ControlBar, ScopePanel, micro
 from .worker import Worker
+from .kit.seams import offscreen as _seam_offscreen
 
 BINS = 512
 NAME = "PRISM"
@@ -65,14 +65,14 @@ class _SweepAssembler:
 
 
 def _offline():
-    return bool(os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen")
+    return bool(_seam_offscreen())
 
 
 def _open_rtl_power(lo_mhz, hi_mhz, gain):
     """Stream rtl_power over the band to stdout (argv list, no shell). None under tests/offline or
     without rtl_power, so CI never opens a real radio. Reuses waterfall's argv builder. stderr is a
     pipe, so an rtl_power that dies can say why (H2)."""
-    if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+    if _seam_offscreen():
         return None
     if not shutil.which("rtl_power"):
         return None

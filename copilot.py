@@ -14,6 +14,8 @@ import os
 import sys
 import urllib.request
 
+import netpolicy  # noqa: E402  (L3: every outbound request)
+
 OLLAMA_URL = "http://localhost:11434/api/generate"
 DEFAULT_MODEL = "qwen-obl"
 
@@ -73,7 +75,7 @@ def ask_llm(prompt, model=DEFAULT_MODEL, caller=None, timeout=60):
         data = json.dumps({"model": model, "prompt": prompt, "stream": False}).encode()
         req = urllib.request.Request(OLLAMA_URL, data=data,
                                      headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with netpolicy.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read()).get("response", "").strip()
     except Exception as e:
         return "(local model unavailable: %s — is ollama running with %s?)" % (
