@@ -92,3 +92,51 @@ briefly fronts PROWL SCAN), N11 (RADIOS history), N13 legacy Tk `shell=True`, N1
 
 ## For the owner
 After PANIC (or a revoke), PROWL and PRISM stay off the radio until you press **Enter** on that page or re-open it; BABEL needs RUN again. NWR shows NOT MONITORING in red meanwhile.
+
+---
+
+# CL5-fix2 — the RA-CL5b findings (`fix/cl5-radio`, after `c4f5612`)
+
+Written by the planner (Opus 5.5). Self-report; **RA-CL5c** decides. Regression tests are in
+`tests/test_cl5_fix2.py` (15 tests, real processes and real threads; only `_make_lease` patched).
+14 of 15 fail on `510359e` (the RA-CL5b tip, code unchanged in `c4f5612`), each on the behaviour
+named, not on a missing name; `test_nd_flowing_audio_reads_live` is the control and passes there.
+
+| ID | Finding | Status | Where | Test (`test_cl5_fix2.py`) |
+|---|---|---|---|---|
+| N-a | Hidden ATLAS never acked a revoke; forced free with rtl_ais on the dongle | CLOSED | `AtlasLiveWorker.PAUSE_WHEN_HIDDEN=False`; hidden it runs only the lease layers (`_step_leases`), nothing else; `LeaseSource.wake` pokes the worker on a revoke; `AtlasApp.set_active` → `set_hidden` | `test_na_hidden_atlas_answers_a_revoke_and_reaps_before_release` (real `AtlasApp`, fake rtl_ais, no FORCED FREE, nothing at release), `test_na_hidden_atlas_starts_its_decoder_once_held` |
+| N-c | Sub-mode / decoder switch waited 3 s on the GUI thread, then dropped a running QThread (SIGABRT) | CLOSED | `PalisadeApp.swap_worker`: the old worker is told to stop (flags), its signals cut, kept referenced; the new one starts on the old one's `finished` (queued to the GUI thread). No overlap on the radio and no same-name release race. PANIC cancels a pending switch (`cancel_swap`); Enter starts the shown mode. The page chip says "SDR — switching modes" meanwhile. Used by `ProwlApp._switch_submode` and `BabelApp._rebuild_worker` | `test_nc_prowl_submode_switch_never_waits_on_the_gui_thread` (3.5 s release, GUI < 0.2 s, release with no decoder, no stale chip), `test_nc_panic_during_a_pending_switch_starts_nothing`, `test_nc_babel_decoder_switch_never_waits_on_the_gui_thread` (SIGTERM-ignoring stage + 2.2 s release) |
+| N-b | FAULT lost the decoder's stderr (R2 regression) | CLOSED | `babel._stop_proc` keeps the tail (`proc.err_tail`) before closing the file; `_stderr_tail` returns it | `test_nb_decoder_fault_shows_its_stderr_through_the_real_runner` (real `_run_ais`) |
+| N-e | A late SSTV decode wrote a stale clock into the next RUN | CLOSED | `SstvWorker._decode_job` writes the clock under `self._lock` only if `rec is self._rec`; `_stop_rec` swaps the recorder and resets the clock under the same lock | `test_ne_a_decode_that_outlives_its_recorder_cannot_stall_the_next_run` |
+| N-f | Tk `sstv.py` lost frames that spanned a rotation | CLOSED | `Recorder(keep_last_window=True)` (default, the Tk app): at the end of a recording, if it rotated, the file becomes the last `window_s`, contiguous, and `.prev.wav` is removed — one rewrite per recording, not per flush. The Qt worker passes `False` (decodes from memory, deletes its files) | `test_nf_tk_recorder_leaves_one_contiguous_last_window` (sample-exact), `test_nf_qt_worker_does_not_pay_for_the_tk_rewrite`; `test_r5` restored to `3.5 <= secs <= 4.0` |
+| N-d | NWR LIVE meant "process alive"; a wedged rtl_fm read LIVE · NO ALERTS; a flapping decoder never escalated (owner: fix now) | CLOSED | `NwrWorker`: LIVE needs rtl_fm's output counter (`/proc/<pid>/io` wchar) to have grown in the last 3 s — covers a wedged rtl_fm and a stuck multimon-ng (full pipe stops rtl_fm). An unreadable counter is "no audio". 10 s without audio → kill + respawn. 3 exits in 60 s → one FAULT and a hold-down (10/30/60 s), NOT MONITORING throughout | `test_nd_a_wedged_rtl_fm_never_reads_live` (sampled every 0.1 s: never LIVE, restarted), `test_nd_a_flapping_decoder_escalates_and_never_reads_live`, `test_nd_flowing_audio_reads_live` (control) |
+| N-g | ATLAS `_update_busy` TypeError before the first status | CLOSED | `set(...) & self._layers` | `test_ng_atlas_busy_line_before_the_first_status` |
+| N-h | PANIC banner understated what the pages stopped | CLOSED | `shell.panic` snapshots children and the radio owner before `on_panic`; the banner counts "stopped by their pages (verified gone)" and "radio released (was X)" | `test_nh_panic_banner_counts_what_the_pages_stopped` |
+| N-i | Report count / renders not committed | CLOSED | the 31-of-32 line was over-stated: `test_fix6_stop_hide…` passes on `ed4694a` too, so 30 of 32 (RA-CL5b's count). PNGs are now committed (`git add -f`; `*.png` is ignored repo-wide) | — |
+| N-j | ATLAS `poll()` had no `held_by` re-check after spawning | CLOSED | `LeaseSource.poll` reaps and gives back if it lost the radio while spawning | covered by `test_na_*` paths |
+| N11 | RADIOS history logged HELD, HELD; no forced-free marker | CLOSED | `RadioArbiter.transition(event, owner, note)` emitted AT each transition; `RELEASE · FORCED FREE — holder did not acknowledge` / `RELEASE · PANIC` | `test_n11_radios_history_logs_each_transition_and_marks_a_forced_free` |
+| N14 | Vacuous RADIOS assertion | CLOSED | `test_cl1_screen` now reads the card's labels | the test itself |
+| N13 | Legacy Tk `shell=True` (`aprs.py`, `ais.py`, `nwr.py`) | OPEN (follow-up) | legacy Tk apps not wired to the Qt hub; changing them is outside CL5 | — |
+
+Also found while rendering (not in RA-CL5b): during a switch the old sub-mode's green SDR chip
+("NWR WX2 162.400M") stayed on the page, and the top strip kept the old holder for the whole slow
+lease release. Both fixed: `swap_worker` replaces the chip; `RadioArbiter._release` announces
+FREE (`transition` + `changed`) as soon as the state is FREE, before the slow `lease.release()`
+(readsb restart). Asserted in `test_nc_prowl_submode_switch_…`.
+
+## Tests changed, and why (diff vs `c4f5612`)
+- `test_cl5_fix::test_fix12_…`: sets `w._rec = rec` — a decode now applies only to the live recorder (N-e). Same assertions.
+- `test_cl5_radio::test_r5_…`: the RA-CL5 contract `3.5 <= secs <= 4.0` is back (N-f); adds rotation happened, no `.prev.wav` left, and `bytes_written` = every byte once + one last-window rewrite.
+- `test_cl1_screen` RADIOS test: the vacuous `… if hasattr(…) else True` is now a real check (N14).
+
+## Suite (Linux, Python 3.12.3, PySide6 6.12.0, tkinter present, offscreen + xvfb)
+`1065 passed, 3 failed, 3 skipped` — the same 3 baseline failures only. Targeted
+(`test_cl5_fix`, `test_cl5_radio`, `test_cl1_*`, `test_palisade_qt`): 302 passed, 1 skipped;
+`test_cl5_fix2`: 15 passed. pyflakes on touched files: clean (bar the pre-existing `sstvdec.py` `math`).
+
+## Renders (1280×720, live, dark + sun) — `plan/briefs/CL5-fix-renders/`
+New: `radios_after_atlas_hidden_revoke_*` (ATLAS hidden with AIS on, FREE THE RADIO: history
+ACQUIRING → HELD → RELEASE, no forced free, no rtl_ais), `prowl_switch_waiting_*` (NWR → FM with a
+3.5 s release: GUI blocked 0.004 s, "FM: waiting for the previous mode to give the radio back",
+chip "SDR — switching modes", strip FREE), `prowl_switch_done_*` (PROWL-FM HELD). The CL5-fix
+PNGs are re-rendered and now committed.

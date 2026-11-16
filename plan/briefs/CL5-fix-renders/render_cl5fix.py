@@ -88,3 +88,49 @@ for mode in ("dark", "sun"):
     shot(hub, "babel_after_panic", mode, "banner=%r children=%s" % (" · ".join(did), H.children()))
     hub.close(); H.pump(0.5)
     ra.arbiter.reset_for_tests()
+
+# ---- CL5-fix2 (RA-CL5b) ------------------------------------------------------------------
+REL = {"s": 0.0}
+
+
+class SlowRelease(H.FakeLease):
+    def release(self):
+        super().release()
+        time.sleep(REL["s"])
+
+
+ra._make_lease = lambda name: SlowRelease(name)
+
+for mode in ("dark", "sun"):
+    # N-a: AIS on, operator leaves ATLAS, then frees the radio from RADIOS: hidden ATLAS reaps
+    # rtl_ais and releases (no forced free); RADIOS history shows RELEASE, not a FORCED FREE
+    ra.arbiter.reset_for_tests()
+    hub = fresh(mode)
+    hub.open_callsign("ATLAS"); H.pump(0.5)
+    a = hub.page_app("ATLAS")
+    a._layer_btns["vessel"].click(); H.pump(2.5)
+    hub.open_callsign("OPS"); H.pump(0.5)
+    hub.open_panel("radios"); H.pump(0.3)
+    hub.radios_panel.takeover_btn.click(); H.pump(2.0)
+    shot(hub, "radios_after_atlas_hidden_revoke", mode, "children=%s hist=%s" % (
+        H.children(), [r["event"] for r in hub.radios_panel.hist_feed.model.rows][:3]))
+    hub.radios_panel.hide()
+    hub.close(); H.pump(0.5)
+
+    # N-c: NWR -> FM while the old lease takes 3.5 s to release: the GUI stays live, NWR says
+    # NOT MONITORING, the page says it is waiting for the radio
+    ra.arbiter.reset_for_tests()
+    hub = fresh(mode)
+    hub.open_callsign("PROWL"); H.pump(0.5)
+    p = hub.page_app("PROWL"); p.switch_subtab("NWR"); H.pump(2.5)
+    REL["s"] = 3.5
+    t0 = time.time()
+    p.switch_subtab("FM")
+    took = time.time() - t0
+    H.pump(0.8)
+    shot(hub, "prowl_switch_waiting", mode, "gui_block=%.3fs busy=%r" % (took, p.busy.text()))
+    H.pump(5.0)
+    shot(hub, "prowl_switch_done", mode, "arbiter=%s busy=%r" % (ra.arbiter.state(), p.busy.text()))
+    REL["s"] = 0.0
+    hub.close(); H.pump(0.5)
+    ra.arbiter.reset_for_tests()
