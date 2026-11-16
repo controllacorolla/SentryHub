@@ -1,4 +1,4 @@
-# PLANNER HANDOFF — read this first in a new chat/Project (written 2026-11-15 16:20 MT; updated 2026-11-16 CL5 audit)
+# PLANNER HANDOFF — read this first in a new chat/Project (written 2026-11-15 16:20 MT; updated 2026-11-16 CL5 merged)
 
 You are the **planner** for PALISADE (repo `controllacorolla/SentryHub`). The owner, Dalton, is
 not a software engineer. Communicate in short, decisive messages with one action at a time, and
@@ -29,7 +29,7 @@ ham callsign, head signing automation, session-chain prune policy, the v0.1 laun
 | CL1 screen | merged (PR #19) | RA-CL1d MERGE |
 | CL2 gates | merged (PR #20) | RA-CL2e MERGE. **RA-MAIN-1** (post-merge check) was queued on the Mac runner; if no `RA-MAIN-1-report.md` exists on `audit/ra-main-1`, run it as a subagent |
 | CL3 evidence chain | **merged (PR #21, 5c5607b)** | RA-CL3d MERGE (via RA-CL3b → CL3-fix2 B3/N14 → RA-CL3c → CL3-fix3 N16–N19). Owner decisions: 2 s END drain accepted; N16 = kill orphan only on pid+start-time match ("orphan at END"), else UNCONFIRMED. Follow-ups for CL4: **N20 Med** (verified_gone/`_kill_group` check only the group leader — probe killpg(pg,0), SIGKILL rest, UNCONFIRMED if any survive), N21–N25 Low (see RA-CL3d-report), plus N11 N12 N13 N15 R1 |
-| CL5 radio/threads | `fix/cl5-radio` @ ed4694a | 2026-11-16: 3 stale tests fixed + RA-MAIN-1 F1 (strip ≤1270, `N tgts` for 100–999) and F2 (false finding; font-load test) folded in; CL5-report.md + renders pushed. **RA-CL5 = DO NOT MERGE**: A1 R1 R3 open, A3 regressed (decoders start/LIVE while ACQUIRING), PANIC leaves arbiter HELD + pages respawn, GUI-thread blocks on free/stop, NWR false all-clear after FREE (Critical), bus drops alerts (High). Next: **CL5-fix** = the 12-item list in `RA-CL5-report.md`, then spawn `RA-CL5b`. Note: branch is based on c00f57b (pre-CL2), merges clean with main |
+| CL5 radio/threads | **merged (PR #22, 04a76ab)** | RA-CL5d MERGE (via RA-CL5 → CL5-fix → RA-CL5b → CL5-fix2 → RA-CL5c → CL5-fix3). Owner decision: NWR LIVE requires the decoder to be continuously reading audio (multimon-ng rchar heartbeat). Follow-ups: **N-m Med** (late SSTV refinement after a ≥1 s decode counted as a 2nd frame: `_stop_rec` each second resets `_stale_frame`), **N-r Med** (NWR no minimum audio rate), N-s/N-t Low (switching chip lingers after a cancelled switch; PROWL resumes only on Enter after a revoke-cancelled switch), pre-existing N-o (granted while readsb restarts — needs RELEASING state), N-p, N13 (legacy Tk shell=True) — see RA-CL5d-report |
 | CL4 honest state | not started | H1–H19 E1 E4 D4(empty) L5 + CL3 follow-ups N20 (Med) N21–N25 N11 N12 N13 N15 — branch off main (CL3 is in) |
 | CL6, CL7, CL8 | not started | `plan/audit/AUDIT_INDEX.md` |
 
@@ -57,4 +57,4 @@ ham callsign, head signing automation, session-chain prune policy, the v0.1 laun
 1. `git fetch origin`; check for `RA-CL3b-report.md` on `fix/cl3-evidence` and `RA-MAIN-1-report.md`
    on `audit/ra-main-1`. Missing → spawn each as a cold subagent. Present → act on the verdict.
 2. CL5: fix the 3 tests above, report, `RA-CL5` subagent. 3. CL4 off main once CL3 merges, then CL8.
-4. When CL5 merges, ask the owner to confirm the v0.1 launch line. Tell him in one line after each merge.
+4. CL5 merged 2026-11-16: ask the owner to confirm the v0.1 launch line. Tell him in one line after each merge.
