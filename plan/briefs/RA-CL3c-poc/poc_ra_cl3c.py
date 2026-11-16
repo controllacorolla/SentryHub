@@ -1,6 +1,8 @@
 """RA-CL3c PoCs — attacks on CL3-fix2 (END -> _settle_tickets, ticket->chain binding, states fold)
-at fix/cl3-evidence 4995c5c.
-OK_* = the fix holds. DEFECT_* = the defect reproduces (the test PASSES when it does).
+at fix/cl3-evidence 4995c5c. Updated in place by RA-CL3d against CL3-fix3 (e5a0e54):
+the N16/N17/N18/N19 DEFECT_* tests now assert the FIXED behaviour; the rollover test changes by
+owner decision (END kills an orphan whose pid + start time match).
+OK_* = the fix holds. FIXED_* = the RA-CL3c defect no longer reproduces.
 Run: SUITE=<worktree> pytest -q poc_ra_cl3c.py"""
 import json
 import os
@@ -146,11 +148,12 @@ def test_OK_end_with_four_children_one_ignoring_sigterm(tmp_path):
     assert not any(_alive(pid) for _, pid in kids)
 
 
-def test_OK_end_one_child_three_sigterm_ignoring_processes_overruns_the_drain(tmp_path):
+def test_FIXED_end_one_child_three_sigterm_ignoring_processes_overruns_the_drain(tmp_path):
     """One child, 3 processes that ignore SIGTERM: the child's sweep stops them one after the other
-    (~1 s TERM grace each), so the third kill is not recorded inside END_DRAIN_S. END records a
-    `kill by=end` for it before close (row KILLED at close, nothing RUNNING); the child's own kill
-    + exit land AFTER close, in the engagement chain. Bounded, honest, but post-close records."""
+    (~1 s TERM grace each), so the third kill is not recorded inside END_DRAIN_S.
+    RA-CL3d (N19): END now treats the unreported one as an orphan (pid + start match), kills it
+    itself (TERM, 1 s, KILL) and records `kill` "orphan at END" only if the child has not already
+    recorded one. Never two kills for one ticket. END now takes ~DRAIN + 1 s per such process."""
     info = _start()
     pub, env = _bound_env(tmp_path)
     try:
@@ -177,22 +180,27 @@ def test_OK_end_one_child_three_sigterm_ignoring_processes_overruns_the_drain(tm
     finally:
         pub.close()
     print("END %.2fs" % dt, out, err[-500:])
-    assert dt < E.END_DRAIN_S + 1.0 and "SESS None" in out
+    assert dt < E.END_DRAIN_S + 2.5 and "SESS None" in out
     recs = _recs(info["path"])
     names = [r["event"] for r in recs]
     close = names.index("engagement.close")
     by_end = [r for r in recs if r.get("by") == "end"]
     after = [r["event"] for r in recs[close + 1:]]
-    print("by_end", [(r["event"], r["target"]) for r in by_end], "after close", after)
+    print("by_end", [(r["event"], r["target"], r.get("reason")) for r in by_end], "after close", after)
     assert not [r for r in _states_at_close(info) if r["state"] in ("RUNNING", "ISSUED")]
-    assert by_end and after                       # papered over at close, real outcome after
+    for r in by_end:                              # END's kill is only ever a verified one
+        assert r["event"] == "kill" and r["reason"] == "orphan at END" and r["verified_gone"]
+    for tid in {r["ticket"] for r in recs if r.get("ticket")}:
+        evs = [r["event"] for r in recs if r.get("ticket") == tid]
+        assert evs.count("kill") <= 1, evs        # N19: never two kills for one ticket
+    assert "kill" not in after                    # no kill lands after close
     assert not any(_alive(x) for x in pids)
     rows = chain.Chain.open(info["id"]).states()
     assert all(r["state"] == "KILLED" for r in rows), rows
 
 
 # ============================================================== 2b: child SIGKILLed after spawn
-def test_DEFECT_sigkilled_child_end_records_kill_but_the_process_keeps_running(tmp_path):
+def test_FIXED_sigkilled_child_end_kills_the_orphan_and_records_it_truthfully(tmp_path):
     """A bound child is SIGKILLed after spawn. END correctly writes a `kill` (by=end) before close
     and nothing for the child that reported — but END never signals anything: the gated process
     (its own session/process group) is orphaned and KEEPS RUNNING after END, while the trail says
@@ -225,9 +233,10 @@ def test_DEFECT_sigkilled_child_end_records_kill_but_the_process_keeps_running(t
         assert dt < E.END_DRAIN_S + 1.0
         rows = {r["target"]: r["state"] for r in _states_at_close(info)}
         assert rows == {"10.0.0.31": "KILLED", "10.0.0.32": "KILLED"}
-        assert "kill signalled by END" in by_end[0]["reason"]
-        time.sleep(0.5)
-        assert _alive(orphan)          # DEFECT: the 'KILLED' process is still running after END
+        # RA-CL3d: N16 fixed — END killed the orphan (pid + start time matched) and says so
+        assert by_end[0]["reason"] == "orphan at END" and by_end[0]["verified_gone"] is True
+        assert by_end[0]["pid"] == orphan and by_end[0]["pstart"]
+        assert not _alive(orphan)
     finally:
         try:
             os.killpg(orphan, signal.SIGKILL)
@@ -236,7 +245,7 @@ def test_DEFECT_sigkilled_child_end_records_kill_but_the_process_keeps_running(t
 
 
 # ============================================================== 2c: redeem racing END's void
-def test_DEFECT_redeem_racing_end_void_is_recorded_as_never_used(monkeypatch):
+def test_FIXED_redeem_racing_end_void_no_longer_claims_never_used(monkeypatch):
     """A process ticket whose re-check passed just before END, and whose spawner is still starting
     the process when END reads the chain: END sees 'issued, never spawned' and records
     refuse_ticket 'engagement ended before the ticket was used — void' + close. The process then
@@ -265,7 +274,10 @@ def test_DEFECT_redeem_racing_end_void_is_recorded_as_never_used(monkeypatch):
     print(seq)
     assert seq[:3] == [("issue", ""), ("refuse_ticket", "end"), ("engagement.close", "")]
     assert ("spawn", "") in seq[3:] and ("exit", "") in seq[3:]
-    assert "before the ticket was used" in recs[1]["reason"]
+    # RA-CL3d: N18 — the void now states only what END observed; the spawn/kill/exit that follow
+    # it are visible and the row ends KILLED (still records after close: the use had passed its gate)
+    assert "before the ticket was used" not in recs[1]["reason"]
+    assert "no use of this ticket recorded by then" in recs[1]["reason"]
     rows = chain.Chain.open(info["id"]).states()
     assert [r["state"] for r in rows] == ["KILLED"]
 
@@ -280,7 +292,7 @@ class _SlowPort:
         return len(b)
 
 
-def test_DEFECT_void_after_write_hides_an_executed_device_write(monkeypatch):
+def test_FIXED_void_after_write_no_longer_hides_an_executed_device_write(monkeypatch):
     """states() fold (step 4): a refuse_ticket for a known ticket overwrites the row whatever came
     before. _settle_tickets reads the chain, then writes its void records — not atomically. If a
     device-write ticket's `write` record lands between END's read and END's void, the final row is
@@ -313,9 +325,9 @@ def test_DEFECT_void_after_write_hides_an_executed_device_write(monkeypatch):
     recs = [r for r in _recs(info["path"]) if r.get("ticket") == t.id]
     seq = [(r["event"], r.get("by", "")) for r in recs]
     print(seq)
-    assert seq == [("issue", ""), ("write", ""), ("refuse_ticket", "end")]
+    assert seq == [("issue", ""), ("write", "")]          # RA-CL3d: N17 — no void after a write
     rows = chain.Chain.open(info["id"]).states()
-    assert [(r["state"], r["detail"]) for r in rows] == [("REFUSED", "ended")]   # hides EXECUTED
+    assert [r["state"] for r in rows] == ["EXECUTED"]
 
 
 def _redeem_write_ignoring_gate(t, port):
@@ -416,8 +428,10 @@ def test_OK_end_time_on_a_large_chain_with_many_void_tickets(monkeypatch):
 
 # ============================================================== 3: binding attacks
 def test_OK_stopped_child_misses_rollover_kill_exit_go_to_alpha_not_bravo(tmp_path):
-    """A bound child is SIGSTOPped across END alpha + START bravo (same scope). END records a kill
-    (by=end) in alpha before close. When the child resumes, its re-check (bound to alpha) fails
+    """A bound child is SIGSTOPped across END alpha + START bravo (same scope). RA-CL3d (owner
+    decision N16): END kills the stopped child's process (pid + start match) and records `kill`
+    "orphan at END" (verified_gone) in alpha before close; after close alpha gets only the child's
+    `exit` (no second kill). Originally: When the child resumes, its re-check (bound to alpha) fails
     under bravo: the process is killed, kill + exit land in ALPHA (after its close), bravo sees
     nothing, no session chain."""
     alpha = _start("alpha")
@@ -441,9 +455,15 @@ def test_OK_stopped_child_misses_rollover_kill_exit_go_to_alpha_not_bravo(tmp_pa
     names = [r["event"] for r in a]
     close = names.index("engagement.close")
     print("alpha", [(r["event"], r.get("by", "")) for r in a])
-    assert any(r.get("by") == "end" and r["event"] == "kill" and r["seq"] < close for r in a)
-    assert [r["event"] for r in a[close + 1:]] == ["kill", "exit"]
-    assert "engagement changed" in a[close + 1]["reason"] or "no active" in a[close + 1]["reason"]
+    ek = [r for r in a if r.get("by") == "end"]
+    assert [(r["event"], r["reason"], r["verified_gone"], r["pid"]) for r in ek] == [
+        ("kill", "orphan at END", True, proc)] and ek[0]["seq"] < close
+    tail = a[close + 1:]
+    # RA-CL3d: the child's exit follows; in ~half the runs its sweep also records a kill of the
+    # already-dead process after that exit (RA-CL3d N21) — not a second kill BY END
+    assert [r["event"] for r in tail] in (["exit"], ["exit", "kill"]), tail
+    print("post-close", tail)
+    assert tail[0]["exit_code"] in (-15, -9)          # killed by a signal: true
     assert not any(r.get("ticket") for r in _recs(bravo["path"]))
     assert "SESS None" in out and not _alive(proc)
 
