@@ -19,7 +19,7 @@ cold re-audit `RA-CL5` decides. Base: `main` @ ef64fcd (CL1 + CL2).
 | R4 | NWR retune waits for the old pipeline to exit | `prowl.py` | `test_r4_nwr_retune_waits_for_the_old_pipeline_to_exit` |
 | R5 | SSTV recorder keeps a rolling window, writes under the cache dir | `sstv.py` | `test_r5_sstv_recorder_keeps_a_rolling_window_and_writes_under_cache` |
 | E2 | Default scan bank is intermittent (GMRS/FRS), active dwell capped, SKIP locks out | `scanner.py`, `prowl.py` | `test_e2_default_bank_is_intermittent_and_active_dwell_is_capped`, `test_e2_skip_locks_out_the_current_channel` |
-| E3 | BLE scan passive, opt-in, failures surfaced | `prism.py` | `test_e3_ble_scan_is_passive_opt_in_and_surfaces_failures` |
+| E3 | BLE (Remote ID) scan passive, opt-in via the DRONES layer, failures surfaced | `atlas.py` `RidSource`, `AtlasLiveWorker` | `test_e3_ble_scan_is_passive_opt_in_and_surfaces_failures` |
 | B1 | FM tuner keeps narrow channels | `prowl.py` | `test_b1_fm_tuner_keeps_narrow_channels` |
 | B2 | Live squelch shows the engine's setting | `prowl.py` | `test_b2_live_squelch_is_the_engine_setting` |
 | B3 | Hit times are epochs (midnight no longer sticks) | `prowl.py` | `test_b3_hit_times_are_epochs_so_midnight_does_not_stick` |
