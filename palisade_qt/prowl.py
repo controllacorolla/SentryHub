@@ -505,50 +505,60 @@ class NwrWorker(_RadioWorker):
         self._down = 0
         self._last_line = 0.0
         self._exits = deque()          # recent decoder exits (flap detection, RA-CL5b N-d)
-        self._io_pid = None            # rtl_fm pid whose output counter we watch
+        self._io_pid = None            # decoder (multimon-ng) pid whose read counter we watch
         self._io_bytes = None          # its last /proc/<pid>/io wchar
-        self._audio_ts = 0.0           # when rtl_fm's output last grew
+        self._audio_ts = 0.0           # when the decoder last read new audio
 
-    # CL5-fix2 (RA-CL5b N-d): "LIVE" needs AUDIO, not just a process. rtl_fm writes ~44 kB/s of
-    # samples into the pipe; when it wedges, or multimon-ng stops reading (the pipe fills and
-    # rtl_fm blocks), its output byte counter stops. No growth for AUDIO_STALL_S -> not live;
+    # CL5-fix2/3 (RA-CL5b N-d, RA-CL5c N-l): "LIVE" needs AUDIO, not just a process. rtl_fm
+    # sends ~44 kB/s of samples; multimon-ng's READ counter (/proc/<pid>/io rchar) grows only
+    # while samples reach it — not on rtl_fm stderr chatter, not when the decoder is stuck. No growth for AUDIO_STALL_S -> not live;
     # for AUDIO_RESPAWN_S -> kill and respawn (counts as an exit). An unreadable counter is
     # treated as no audio: the page must never claim a weather watch it cannot verify.
     AUDIO_STALL_S = 3.0
+    AUDIO_SETTLE_S = 2.0           # a new decoder must have read audio this long before LIVE
+    AUDIO_GAP_S = 1.0              # … with no gap longer than this (rtl_fm sends ~44 kB/s)
     AUDIO_RESPAWN_S = 10.0
     FLAP_WINDOW_S = 60.0           # this many seconds …
     FLAP_EXITS = 3                 # … with this many exits = a flapping decoder (fault + backoff)
 
     @staticmethod
-    def _wchar(pid):
+    def _rchar(pid):
         try:
             with open("/proc/%d/io" % pid) as f:
                 for ln in f:
-                    if ln.startswith("wchar:"):
+                    if ln.startswith("rchar:"):
                         return int(ln.split()[1])
         except (OSError, ValueError):
             return None
         return None
 
     def _audio_flowing(self):
-        """True while rtl_fm's output grew within AUDIO_STALL_S (worker thread)."""
+        """True while the DECODER (multimon-ng, the last stage) read new audio within
+        AUDIO_STALL_S (worker thread). RA-CL5c N-l: rtl_fm's own write counter also grew on
+        stderr chatter and on bytes that only filled the pipe; what matters is audio consumed."""
         proc = self._proc
         procs = getattr(proc, "procs", None) or []
         if not procs:
             return False
-        pid = procs[0].pid
-        n = self._wchar(pid)
+        pid = procs[-1].pid
+        n = self._rchar(pid)
         now = time.time()
-        if pid != self._io_pid:                  # a new rtl_fm: start a fresh baseline
+        if pid != self._io_pid:                  # a new decoder: start a fresh baseline
             self._io_pid, self._io_bytes, self._audio_ts = pid, n, 0.0
+            self._flow_since = 0.0
             self._spawn_ts = now
             return False
         if n is None:
             return False
         if self._io_bytes is not None and n > self._io_bytes:
+            if not getattr(self, "_flow_since", 0.0) or now - self._audio_ts > self.AUDIO_GAP_S:
+                self._flow_since = now           # (re)start of a continuous run of reads
             self._audio_ts = now
         self._io_bytes = n
-        return bool(self._audio_ts) and now - self._audio_ts <= self.AUDIO_STALL_S
+        # LIVE = reading NOW (no gap > AUDIO_GAP_S) and continuously for AUDIO_SETTLE_S: a one-off
+        # burst (the decoder's own start-up reads, a pipe-buffer flush) is not a receiver
+        return bool(self._audio_ts) and now - self._audio_ts <= self.AUDIO_GAP_S \
+            and bool(self._flow_since) and now - self._flow_since >= self.AUDIO_SETTLE_S
 
     FLAP_HOLD_S = (10, 30, 60)     # hold-down after the 1st / 2nd / later flap detections
 
@@ -633,7 +643,10 @@ class NwrWorker(_RadioWorker):
                 self._note_exit("no audio")
                 return
             self.status.emit({"src": "NWR", "busy": None, "down": False, "live": False,
-                              "sdr": {"text": "NWR — no audio from rtl_fm (%ds)" % int(since)
+                              "sdr": {"text": ("NWR — audio arriving, confirming"
+                                               if since <= self.AUDIO_GAP_S else
+                                               "NWR — no audio reaching the decoder (%ds)"
+                                               % int(since))
                                       if self._audio_ts else "NWR — waiting for audio",
                                       "state": "warn", "ok": False}})
             return
@@ -731,6 +744,7 @@ class NwrWorker(_RadioWorker):
         with self._lock:
             proc, self._proc = self._proc, None
         self._terminate(proc)
+        self._drain()        # RA-CL5c N-q: SAME headers parsed before the stop still get emitted
 
     def run(self):
         try:

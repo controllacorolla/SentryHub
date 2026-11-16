@@ -104,6 +104,58 @@ def _hook_exit():
     atexit.register(_drain)
 
 
+class _Relay(QtCore.QObject):
+    """Forwards one worker's row/status/error/fault to its page while that worker is the page's
+    current one. Lives on the GUI thread (child of the page), so the worker's signals are queued
+    to it; cut() makes it drop everything after — including signals already in the queue."""
+
+    def __init__(self, page, worker):
+        super().__init__(page)
+        self._page, self._on = page, True
+        worker.row.connect(self._row)
+        worker.status.connect(self._status)
+        worker.error.connect(self._error)
+        if hasattr(worker, "fault"):
+            worker.fault.connect(self._fault)
+        self._worker = worker
+
+    def cut(self):
+        self._on = False
+        w = self._worker
+        for sig, slot in (("row", self._row), ("status", self._status),
+                          ("error", self._error), ("fault", self._fault)):
+            _disconnect(getattr(w, sig, None), slot)
+
+    @QtCore.Slot(object)
+    def _row(self, r):
+        if self._on:
+            self._page.on_row(r)
+
+    @QtCore.Slot(dict)
+    def _status(self, st):
+        if self._on:
+            self._page.on_status(st)
+
+    @QtCore.Slot(str)
+    def _error(self, m):
+        if self._on:
+            self._page.on_error(m)
+
+    @QtCore.Slot(str)
+    def _fault(self, m):
+        if self._on:
+            self._page.on_fault(m)
+
+
+def _emit_quiet(sig, arg):
+    """Emit unless the page that owns the signal is already deleted (N-n: a parked worker that
+    finishes after its page is gone)."""
+    try:
+        sig.emit(arg)
+    except RuntimeError:
+        pass
+
+
 def _disconnect(sig, slot):
     """Cut one page slot from a worker signal; quiet if it was never connected."""
     if sig is None:
@@ -312,11 +364,9 @@ class PalisadeApp(QtWidgets.QWidget):
     def _start_new_worker(self):
         self._worker = self.make_worker()
         if self._worker is not None:
-            self._worker.row.connect(self.on_row)
-            self._worker.status.connect(self.on_status)
-            self._worker.error.connect(self.on_error)
-            if hasattr(self._worker, "fault"):
-                self._worker.fault.connect(self.on_fault)
+            # through a relay (RA-CL5c N-n): a signal a worker queued before it was retired is
+            # still delivered after the disconnect; the relay drops it once its worker retired
+            self._worker._relay = _Relay(self, self._worker)
             if getattr(self._worker, "PAUSE_WHEN_HIDDEN", False) and not self._active \
                     and hasattr(self._worker, "pause"):
                 self._worker.pause(True)
@@ -336,6 +386,7 @@ class PalisadeApp(QtWidgets.QWidget):
         self._swap_pending = True
         old, self._worker = self._worker, None
         if old is not None:
+            self._watch_revoke_during_swap()
             self._retire(old)
             # the old worker's last SDR chip must not stay on screen as a claim on the radio
             self.set_chip("sdr", "SDR — switching modes", state="neutral")
@@ -346,14 +397,38 @@ class PalisadeApp(QtWidgets.QWidget):
         """PANIC: a switch that was waiting for the old worker must not start a new one."""
         self._swap_pending = False
 
+    def _watch_revoke_during_swap(self):
+        if getattr(self, "_swap_revoke_hooked", False):
+            return
+        try:
+            from . import radio_arbiter
+            radio_arbiter.arbiter.revoked.connect(self._on_revoked_during_swap)
+            self._swap_revoke_hooked = True
+        except Exception:
+            pass
+
+    def _on_revoked_during_swap(self, name):
+        """RA-CL5c N-k: "FREE THE RADIO" (or another page asking) while a switch is pending is
+        acknowledged by the retiring worker; the new mode must not then take the radio straight
+        back. Same rule as the steady state: the page stays off until the operator resumes."""
+        if not self.swapping() or not getattr(self, "_swap_pending", False):
+            return
+        names = {getattr(w, "NAME", None) for w in (getattr(self, "_retiring", None) or [])}
+        if name in names:
+            self.cancel_swap()
+            self.on_swap_revoked(name)
+
+    def on_swap_revoked(self, name):
+        """Hook: a pending switch was cancelled by a revoke (BABEL unticks RUN)."""
+
     def swapping(self):
         return bool(getattr(self, "_retiring", None))
 
     def _retire(self, w):
         _retain(w)
-        for sig, slot in (("row", self.on_row), ("status", self.on_status),
-                          ("error", self.on_error), ("fault", self.on_fault)):
-            _disconnect(getattr(w, sig, None), slot)
+        relay = getattr(w, "_relay", None)
+        if relay is not None:
+            relay.cut()                   # anything it already queued is dropped on arrival
         retiring = getattr(self, "_retiring", None)
         if retiring is None:
             retiring = self._retiring = []
@@ -361,7 +436,7 @@ class PalisadeApp(QtWidgets.QWidget):
         if not getattr(self, "_retired_hooked", False):
             self._retired_hooked = True
             self._retired.connect(self._on_retired)
-        w.finished.connect(lambda w=w: self._retired.emit(w))   # worker thread -> GUI thread
+        w.finished.connect(lambda w=w: _emit_quiet(self._retired, w))   # worker -> GUI thread
         try:
             w.stop()                      # flags + a non-blocking kill; the worker reaps/releases
         except Exception:
@@ -402,6 +477,13 @@ class PalisadeApp(QtWidgets.QWidget):
             return
         self._stopped = True
         self._swap_pending = False
+        if getattr(self, "_swap_revoke_hooked", False):
+            try:
+                from . import radio_arbiter
+                _disconnect(radio_arbiter.arbiter.revoked, self._on_revoked_during_swap)
+            except Exception:
+                pass
+            self._swap_revoke_hooked = False
         if self._worker is not None:
             stop_worker(self._worker, self.TITLE)
             self._worker = None

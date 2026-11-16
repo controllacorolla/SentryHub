@@ -389,6 +389,7 @@ class DecoderWorker(Worker):
     AND the page is in front (R1: release when hidden, never start a decoder until RUN). An early
     decoder exit is a FAULT with its stderr shown, retried with backoff while KEEPING the lease
     (R2: no release/re-acquire churn, so readsb is not restarted ten times)."""
+    NAME = LEASE_NAME                # the lease this worker takes (app.swap_worker reads it)
     PAUSE_WHEN_HIDDEN = False          # it must keep stepping to release the dongle when hidden
 
     def __init__(self, demo=True, mode="AIS", parent=None):
@@ -834,8 +835,15 @@ class SstvWorker(Worker):
             except Exception as e:
                 r, err = None, e
             with self._lock:
-                if rec is not self._rec or self._stop:
-                    return                           # torn down / new recorder: drop it
+                if self._stop:
+                    return                           # worker torn down: drop it
+                if rec is not self._rec:
+                    # RA-CL5c N-m: the recorder was stopped (STOP / hide / revoke) while this
+                    # ran. Its clock must not leak into the next RUN, but a frame decoded from
+                    # audio captured BEFORE the stop is real and is still shown.
+                    if r is not None:
+                        self._fold_stale(r, base, fs, rec)
+                    return
                 self._decoded_upto = upto
                 if isinstance(err, ValueError):      # no header yet / truncated: keep listening
                     if self._frame is None and "no SSTV header" in str(err):
@@ -849,6 +857,29 @@ class SstvWorker(Worker):
                     self._fold_frame(r, base, upto, fs)
         finally:
             self._decoding = False
+
+    def _fold_stale(self, r, base, fs, rec):
+        """A decode result for a recorder that is no longer live: show the frame (one decode
+        event per frame — a refinement of the frame that recorder was receiving is a row only),
+        never touch the decode clock. Called under self._lock."""
+        start = r.get("start")
+        start_abs = base + int(start if start is not None else r.get("t0", 0))
+        lines = int(r.get("lines", 0))
+        last = self._stale_frame if getattr(self, "_stale_frame", None) else None
+        if last is not None and last.get("rec") is rec and \
+                abs(start_abs - last["start"]) < int(0.5 * fs):
+            if lines <= last["lines"]:
+                return
+            fid = last["id"]
+        else:
+            self._frames += 1
+            fid = self._frames
+            eventbus.bus.publish(eventbus.decode(
+                "BABEL-SSTV", "SSTV", r.get("mode", "?"),
+                "%s frame · %d lines" % (r.get("mode", "?"), lines), severity="info"))
+        self._stale_frame = {"rec": rec, "start": start_abs, "lines": lines, "id": fid}
+        self.row.emit({"kind": "sstv", "image": r["image"], "mode": r.get("mode", "?"),
+                       "lines": lines, "slant": r.get("slant_ppm", 0), "frame": fid})
 
     def _fold_frame(self, r, base, upto, fs):
         """One decode result -> a NEW frame (row + one decode event), a refinement of the frame
@@ -931,7 +962,9 @@ class SstvWorker(Worker):
             rec, self._rec = self._rec, None
             wav, self._wav = self._wav, None
             self._scan_from = self._decoded_upto = 0  # a new recorder restarts the sample clock
-            self._frame = None
+            f, self._frame = self._frame, None
+            # the frame that recorder was receiving: a late decode of it is a refinement (N-m)
+            self._stale_frame = dict(f, rec=rec) if f is not None and rec is not None else None
         if rec is not None:
             try:
                 rec.stop()
@@ -1038,6 +1071,8 @@ class BabelApp(PalisadeApp):
         w = self._worker
         if w is not None and hasattr(w, "set_running"):
             w.set_running(on)
+        elif w is None and on and not self.demo:
+            self.swap_worker()      # a revoke/PANIC cancelled a switch: RUN starts the shown mode
 
     def set_active(self, active):
         super().set_active(active)
@@ -1089,6 +1124,9 @@ class BabelApp(PalisadeApp):
             w.hold_off("PANIC")
         self._untick_run()          # a switch in flight starts its new worker with RUN off
         return []
+
+    def on_swap_revoked(self, name):
+        self._untick_run()          # N-k: the radio was taken back mid-switch: RUN off
 
     def _untick_run(self):
         if self.run_btn.isChecked():
