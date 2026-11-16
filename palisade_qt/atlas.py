@@ -151,11 +151,11 @@ RID_CONFIRM_SPAN_S = 2.0         # (anyone with a phone can send it) never raise
 
 
 # what each positional source can be trusted for (shown on the detail card — P3)
-SOURCE_TRUST = {
-    "RID": "UNAUTHENTICATED — Remote ID broadcast, anyone can send one",
-    "ADS-B": "UNAUTHENTICATED — ADS-B is not signed; position as broadcast",
-    "AIS": "UNAUTHENTICATED — AIS is not signed; NMEA checksum verified",
-    "APRS": "UNAUTHENTICATED — APRS position as transmitted",
+SOURCE_TRUST = {            # short: one line on the detail card (the full reason is the tooltip)
+    "RID": "UNAUTHENTICATED RID",
+    "ADS-B": "UNAUTHENTICATED ADS-B",
+    "AIS": "UNAUTHENTICATED AIS",
+    "APRS": "UNAUTHENTICATED APRS",
 }
 
 
@@ -1014,9 +1014,9 @@ class AtlasApp(PalisadeApp):
             ("RANGE", "%.0f nm" % c["rng"] if c.get("rng") is not None else "— (HOME NOT SET)"),
             ("BEARING", "%03d°" % c["brg"] if c.get("brg") is not None else "—")] + (
             [("SOURCE", SOURCE_TRUST[c["source"]])] if c.get("source") in SOURCE_TRUST else []) + (
-            [("STATUS", "UNCONFIRMED — %s advert%s; red after %d over %ds" % (
-                c.get("adverts") or 0, "" if c.get("adverts") == 1 else "s",
-                RID_CONFIRM_ADVERTS, RID_CONFIRM_SPAN_S))] if c.get("trust") == "unconfirmed"
+            [("STATUS", "UNCONFIRMED · %s advert%s" % (
+                c.get("adverts") or 0, "" if c.get("adverts") == 1 else "s"))]
+            if c.get("trust") == "unconfirmed"
             else []))
 
     def _show_lost(self):
