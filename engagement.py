@@ -546,57 +546,156 @@ def _ticket_events(records, tid):
     return [r.get("event") for r in records if r.get("ticket") == tid]
 
 
-def _same_process(pid, pstart):
-    """True only if `pid` is alive AND its start time equals the one logged at launch (the
-    gatestate.proc_start identity check — a recycled pid never matches; unknown is no)."""
+def _identity(pid, pstart):
+    """Is `pid` still the process logged at launch (gatestate.proc_start identity check — a
+    recycled pid never matches; unknown is no)? One of:
+      "match"    — alive, and its start time equals the one logged at spawn
+      "zombie"   — it IS that process, but it has exited and only its reap is pending (N22/N25)
+      "gone"     — no such process any more
+      "mismatch" — another process holds the pid now, or identity cannot be proven
+    RA-CL3d N23: never the hub itself, its parent, or the leader of the hub's own process group,
+    whatever a (keyed, forged) record says."""
     if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1 or not pstart:
-        return False
-    if pid == os.getpid():
-        return False
+        return "mismatch"
+    if pid in (os.getpid(), os.getppid(), os.getpgrp()):
+        return "mismatch"
     import gatestate
-    if gatestate.proc_start(pid) != pstart:
-        return False
-    return not _zombie(pid)                 # exited, only the reap is pending: it is gone
+    start = gatestate.proc_start(pid)
+    if start is None:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return "gone"
+        except OSError:
+            pass
+        return "mismatch"
+    if start != pstart:
+        return "mismatch"
+    z = gatestate.is_zombie(pid)
+    if z:
+        return "zombie"
+    if z is None:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return "gone"                   # exited and reaped between the two reads
+        except OSError:
+            pass
+    return "match"
 
 
-def _zombie(pid):
+def _same_process(pid, pstart):
+    """True only if `pid` is alive AND is the process logged at launch (see _identity)."""
+    return _identity(pid, pstart) == "match"
+
+
+def _orphan_group(pid):
+    """The process group END may signal for this orphan: its own group when it leads one (gated
+    processes are spawned with start_new_session), never the hub's own group. None -> pid only."""
     try:
-        if sys.platform.startswith("linux"):
-            with open("/proc/%d/stat" % pid) as fh:
-                raw = fh.read()
-            return raw[raw.rindex(")") + 2:].split()[0] == "Z"
-        # elsewhere (macOS) no spawn from a gate module (CL2 one-gate rule): an orphan's zombie is
-        # reaped by launchd within moments; if not, END says "still alive" (UNCONFIRMED), never
-        # a false KILLED
+        pg = os.getpgid(pid)
+    except OSError:
+        return None
+    return pg if pg == pid and pg != os.getpgrp() else None
+
+
+def _orphan_gone(pid, pstart, pg):
+    """Verified gone (RA-CL3d N20): the launched process is no longer running AND, when it led its
+    own group, no live process is left in that group (a pgid with live members cannot be reused as
+    a new pid, so the probe is safe)."""
+    if _identity(pid, pstart) == "match":
         return False
-    except (OSError, ValueError, IndexError):
-        return True                         # the process is gone
-    except Exception:
-        return False
+    if pg is None:
+        return True
+    import gatestate
+    return not gatestate.group_alive(pg)
+
+
+def _kill_orphans(orphans, grace=1.0, kill_wait=1.0):
+    """END's kill of every matching orphan AT ONCE (RA-CL3d N24): SIGTERM each one's group, wait
+    once for all of them, SIGKILL whatever is left (the leader while it still proves to be the
+    launched process, or the group when the leader exited but a member did not — N20), wait once.
+    `orphans` = {key: (pid, pstart)}. Returns {key: (verified_gone, why)}; why is "" when gone,
+    "leader" when the launched process is still alive, "group" when it exited but a process in its
+    group survived. A signal is only ever sent while the pid still proves to be the launched
+    process, or to a group that still has live members."""
+    import signal
+    import gatestate
+    state = {}
+    for key, (pid, pstart) in orphans.items():
+        if _identity(pid, pstart) != "match":
+            state[key] = [pid, pstart, None, False]          # nothing to signal: gone already
+            continue
+        pg = _orphan_group(pid)
+        try:
+            if pg is not None:
+                os.killpg(pg, signal.SIGTERM)
+            else:
+                os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            pass
+        state[key] = [pid, pstart, pg, True]
+
+    def wait(t):
+        end_t = time.monotonic() + t
+        while time.monotonic() < end_t:
+            if all(_orphan_gone(pid, ps, pg) for pid, ps, pg, sig in state.values() if sig):
+                return
+            time.sleep(0.05)
+
+    if any(v[3] for v in state.values()):
+        wait(grace)
+        killed = False
+        for key, (pid, pstart, pg, sig) in state.items():
+            if not sig or _orphan_gone(pid, pstart, pg):
+                continue
+            try:
+                if _identity(pid, pstart) == "match":
+                    if pg is not None:
+                        os.killpg(pg, signal.SIGKILL)
+                    else:
+                        os.kill(pid, signal.SIGKILL)
+                    killed = True
+                elif pg is not None and gatestate.group_alive(pg):
+                    os.killpg(pg, signal.SIGKILL)          # leader gone, a member is not (N20)
+                    killed = True
+            except OSError:
+                pass
+        if killed:
+            wait(kill_wait)
+    out = {}
+    for key, (pid, pstart, pg, sig) in state.items():
+        if _identity(pid, pstart) == "match":
+            out[key] = (False, "leader")
+        elif pg is not None and gatestate.group_alive(pg, grace_s=0.2):
+            out[key] = (False, "group")
+        else:
+            out[key] = (True, "")
+    return out
 
 
 def _kill_orphan(pid, pstart, grace=1.0):
-    """SIGTERM then SIGKILL the orphan's process group (gated processes lead their own group), only
-    while the pid still proves to be the launched process. Returns True when verified gone."""
-    import signal
-    for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, 1.0)):
-        if not _same_process(pid, pstart):
-            return True
-        try:
-            if os.getpgid(pid) == pid and pid != os.getpgrp():
-                os.killpg(pid, sig)
-            else:
-                os.kill(pid, sig)
-        except ProcessLookupError:
-            return True
-        except OSError:
-            return False
-        t_end = time.monotonic() + wait
-        while time.monotonic() < t_end:
-            if not _same_process(pid, pstart):
-                return True
-            time.sleep(0.05)
-    return not _same_process(pid, pstart)
+    """One orphan (kept for callers of the old API). True when verified gone."""
+    return _kill_orphans({0: (pid, pstart)}, grace=grace)[0][0]
+
+
+_UNSEEN_REASON = {
+    "mismatch": ("engagement ended — exit not confirmed; pid %s does not match the process logged "
+                 "at launch, END sent no signal"),
+    "zombie": ("engagement ended — pid %s is the process logged at launch but it had already "
+               "exited (zombie, not yet reaped by its parent); exit code not observed, END sent "
+               "no signal"),
+    "gone": ("engagement ended — pid %s is no longer running and its exit was never reported; "
+             "END sent no signal"),
+}
+_ORPHAN_FAIL = {
+    "error": "orphan at END: the kill could not be completed (error) — state not confirmed",
+    "leader": "orphan at END: signalled, still alive",
+    "group": ("orphan at END: the launched process exited, but a process in its group survived "
+              "SIGKILL"),
+}
 
 
 def _settle_tickets(ch):
@@ -612,9 +711,11 @@ def _settle_tickets(ch):
     appended under the chain's EXCLUSIVE lock and only if, at that instant, it is still true (N17):
       spawned, no kill/exit  -> an orphan (its child died without reporting). Owner decision N16:
                                 if its pid AND the start time logged at spawn still match, END
-                                kills its process group and, once verified gone, records `kill`
-                                "orphan at END". Otherwise (no match, unknown, or it survived)
-                                `unconfirmed` — never KILLED. A later exit from it overrides.
+                                kills its process group and, once verified gone (leader AND every
+                                group member — RA-CL3d N20), records `kill` "orphan at END". All
+                                matching orphans are signalled together (N24). Otherwise (no match,
+                                exited-unreaped, gone, or it survived) `unconfirmed` with the reason
+                                that is true (N22) — never KILLED. A later exit from it overrides.
       no spawn/write/outcome -> `refuse_ticket`: END saw no use of the ticket; from now on its
                                 re-check fails. If a use that had already passed its gate lands
                                 after this (N18), its spawn/kill/exit follow and the row shows them."""
@@ -626,6 +727,7 @@ def _settle_tickets(ch):
 
     def unreported(t):
         return lambda recs: not ({"kill", "exit"} & set(_ticket_events(recs, t)))
+    to_kill = {}
     for tid, i in (open_ or {}).items():
         common = dict(ticket=tid, label=i["label"], target=i["target"], by="end")
         try:
@@ -634,19 +736,12 @@ def _settle_tickets(ch):
                 fresh = _open_tickets(ch) or {}
                 if tid not in fresh or fresh[tid].get("killed"):
                     continue                    # the process reported (or its child killed it)
-                if _same_process(pid, pstart):
-                    if _kill_orphan(pid, pstart):
-                        ch.record("kill", _only_if=unreported(tid), reason="orphan at END",
-                                  pid=pid, pstart=pstart, verified_gone=True, **common)
-                    else:
-                        ch.record("unconfirmed", _only_if=unreported(tid),
-                                  reason="orphan at END: signalled, still alive", pid=pid,
-                                  **common)
+                ident = _identity(pid, pstart)
+                if ident == "match":
+                    to_kill[tid] = (pid, pstart, common)
                 else:
                     ch.record("unconfirmed", _only_if=unreported(tid),
-                              reason="engagement ended — exit not confirmed; pid %s does not match "
-                                     "the process logged at launch, END sent no signal" % pid,
-                              pid=pid, **common)
+                              reason=_UNSEEN_REASON[ident] % pid, pid=pid, **common)
             else:
                 ch.record("refuse_ticket", _only_if=lambda recs, t=tid: not (
                     {"spawn", "write", "exit", "kill", "refuse_ticket"}
@@ -655,6 +750,23 @@ def _settle_tickets(ch):
                            "longer pass its gate", **common)
         except Exception:
             pass                        # END is the kill path; never block it on a record
+    if not to_kill:
+        return
+    try:
+        res = _kill_orphans({t: (p, ps) for t, (p, ps, _c) in to_kill.items()})
+    except Exception:
+        res = {}                        # the kill itself failed: say so, never KILLED
+    for tid, (pid, pstart, common) in to_kill.items():
+        gone, why = res.get(tid, (False, "error"))
+        try:
+            if gone:
+                ch.record("kill", _only_if=unreported(tid), reason="orphan at END",
+                          pid=pid, pstart=pstart, verified_gone=True, **common)
+            else:
+                ch.record("unconfirmed", _only_if=unreported(tid), reason=_ORPHAN_FAIL[why],
+                          pid=pid, **common)
+        except Exception:
+            pass
 
 
 def end():
@@ -753,12 +865,19 @@ def authorize_action(action, target, evidence_chain=None, kind=None, binding=Non
     to the in-session trail and, if given, to the evidence chain. `binding` overrides the recorded
     binding when the caller knows the command is less bound than the target (e.g. "label-only"
     for written content the scope cannot bind — CL2-fix2 R5)."""
+    ok, why, _seq = _authorize(action, target, kind, binding)
+    return ok, why
+
+
+def _authorize(action, target, kind=None, binding=None):
+    """authorize_action() returning also the seq of its `authorize` record (RA-CL3 N15: the ticket
+    issued from it carries that seq, so the trail folds the ticket into exactly this row)."""
     ok, why, chk_binding = check(action, target, kind)
     e = _eng()
     if not ok:
         _record_soft("refuse", action=action, target=str(target), reason=why,
                      engagement=e.get("name"))
-        return False, why
+        return False, why, None
     binding = binding or chk_binding
     rec = {"t": _now(), "action": action, "target": str(target), "engagement": e["name"],
            "operator": e["operator"], "binding": binding}
@@ -767,15 +886,18 @@ def authorize_action(action, target, evidence_chain=None, kind=None, binding=Non
     ch = _active_chain()
     if ch is None:
         return False, ("no evidence chain is open for this engagement — refusing (no durable "
-                       "record, no authorization)")
+                       "record, no authorization)"), None
     try:
-        ch.record("authorize", action=action, target=str(target), binding=binding,
-                  engagement=e["name"], operator=e["operator"], authorization=e["authorization"])
+        arec = ch.record("authorize", action=action, target=str(target), binding=binding,
+                         engagement=e["name"], operator=e["operator"],
+                         authorization=e["authorization"])
     except Exception as ex:
         return False, "evidence chain write failed (%s) — refusing (no durable record, no " \
-                      "authorization)" % ex
+                      "authorization)" % ex, None
+    seq = arec.get("seq") if isinstance(arec, dict) else None
+    rec["seq"] = seq
     _ACTIONS.append(rec)
-    return True, why
+    return True, why, seq
 
 
 def current_chain_id():
@@ -797,7 +919,7 @@ def _active_chain():
     import chain as _chain
     try:
         return _chain.for_id(cid)
-    except _chain.ChainError:
+    except Exception:            # RA-CL3b N12: any failure to open the chain fails closed
         return None
 
 
@@ -905,7 +1027,7 @@ def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=Non
         xok, xwhy, _b = check(action, xt, xk)
         if not xok:
             return False, xwhy, None
-    ok, why = authorize_action(action, target, evidence_chain, kind, binding=binding)
+    ok, why, auth_seq = _authorize(action, target, kind, binding=binding)
     if not ok:
         return False, why, None
     import executor
@@ -930,6 +1052,7 @@ def issue(action, target, argv=None, payload=None, kind=None, evidence_chain=Non
         return r[0], r[1]
     m = dict(meta or {})
     m.setdefault("target", str(target))
+    m["auth_seq"] = auth_seq
     try:
         t = executor.issue(argv=argv, payload=payload, recheck=recheck, label=label or action,
                            binding=binding, reason=why, files=files, meta=m)

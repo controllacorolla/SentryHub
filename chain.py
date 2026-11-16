@@ -8,7 +8,8 @@ One chain per engagement, on disk, shared by every process of the session:
     DATA/engagements/<id>.head    "<n> <h> <mac>": record count, last hash, HMAC(key, id|n|h)
 
 Every record is hashed as a WHOLE: `h = HMAC-SHA256(key, id || prev || canonical_json(record - h))`.
-Rewriting any field breaks the chain; dropping records fails against the keyed head (RA-CL3 N1);
+Rewriting any field breaks the chain; dropping records from the END of the file without the key fails
+against the keyed head (RA-CL3 N1) — but see the limits below for a whole-snapshot rollback;
 a chain's files cannot be swapped under another id (N2); without the key a record cannot be
 re-forged. Opening an existing chain loads it under a shared lock, verifies it and CONTINUES it (no
 second genesis). Every append is `flock`ed, fsynced and raises on failure — and an append that
@@ -28,6 +29,16 @@ Limits, stated plainly: the HMAC key is a 0600 file of the same user. The chain 
 against anything that cannot read that file. A same-user attacker WITH the key can rewrite
 everything; only an off-device anchor (a signed head shipped elsewhere; `sign_head_argv()`) stops
 that, and it is not automated here (owner decision).
+RA-CL3 R1: the head's MAC proves (id, n, h), not freshness. Restoring an OLDER copy of both the
+.jsonl and the .head (a snapshot rollback) verifies WITHOUT the key. While a process has the chain
+open it refuses a chain that shrank below the length it has already seen (`_HIGH_WATER`); a rollback
+done while nothing has it open, or before a reboot, is caught only by an off-device anchor.
+
+Crash recovery (RA-CL3c N13): an append writes the line (fsync) and then replaces the head. A crash
+between the two leaves exactly one line more than the head counts. If that line chains to the head
+and passes its HMAC, the next exclusive open rolls the head forward and appends a `recovered` record
+saying so; anything else is still refused. Once the head has been replaced the line is never rolled
+back (a failed directory fsync is not a failed append).
 """
 import fcntl
 import hashlib
@@ -48,6 +59,8 @@ _TIME_SOURCE = {"fn": None}
 _CACHE = {}                 # chain id -> Chain (this process's handle; re-synced under lock on use)
 _SESSION = {"chain": None}
 _PROTECTED = ("seq", "prev", "h", "event")
+_HIGH_WATER = {}            # (dir, id) -> most records this process has seen verified (R1)
+_DIGITS = re.compile(r"^[0-9]{1,18}$")
 
 
 def engagements_dir():
@@ -83,6 +96,11 @@ def new_id(name=""):
 
 class ChainError(Exception):
     """The chain could not be opened, verified or appended to. Callers fail closed."""
+
+
+class _HeadBehind(ChainError):
+    """The file holds exactly one more record than the head counts, and that record chains to the
+    head (a crash between line fsync and head replace — N13b). Recoverable under LOCK_EX."""
 
 
 class Chain:
@@ -157,12 +175,18 @@ class Chain:
                 rec = json.loads(line)
             except ValueError:
                 raise ChainError("chain %s: record %d is not JSON" % (self.id, n))
+            if not isinstance(rec, dict):                         # RA-CL3b N12
+                raise ChainError("chain %s: record %d is not a JSON object" % (self.id, n))
             if rec.get("seq") != len(recs):
                 raise ChainError("chain %s: record %d has seq %r (expected %d) — rewritten or reordered"
                                  % (self.id, n, rec.get("seq"), len(recs)))
             if rec.get("prev") != prev:
                 raise ChainError("chain %s: record %d does not chain to its predecessor" % (self.id, n))
-            if not hmac.compare_digest(self._h(prev, rec), str(rec.get("h", ""))):
+            try:
+                good = hmac.compare_digest(self._h(prev, rec), str(rec.get("h", "")))
+            except (TypeError, ValueError) as e:                   # N12: never a raw exception
+                raise ChainError("chain %s: record %d cannot be hashed (%s)" % (self.id, n, e))
+            if not good:
                 raise ChainError("chain %s: record %d fails its HMAC — altered" % (self.id, n))
             prev = rec["h"]
             recs.append(rec)
@@ -170,15 +194,24 @@ class Chain:
 
     def _check_head(self, recs, prev):
         try:
-            with open(self.head_path) as fh:
-                parts = fh.read().split()
+            with open(self.head_path, "rb") as fh:
+                parts = fh.read().decode("ascii").split()
         except OSError:
             raise ChainError("chain %s: head file missing — cannot prove the chain is complete" % self.id)
-        if len(parts) != 3 or not parts[0].isdigit():
+        except UnicodeDecodeError:
+            raise ChainError("chain %s: head file malformed" % self.id)       # RA-CL3b N12
+        if len(parts) != 3 or not _DIGITS.match(parts[0]):
             raise ChainError("chain %s: head file malformed" % self.id)
         n, h, mac = int(parts[0]), parts[1], parts[2]
-        if not hmac.compare_digest(self._head_mac(n, h), mac):
+        try:
+            good = hmac.compare_digest(self._head_mac(n, h), mac)
+        except (TypeError, ValueError):
+            good = False
+        if not good:
             raise ChainError("chain %s: head fails its HMAC — rewritten without the key" % self.id)
+        if n == len(recs) - 1 and h == (recs[-2]["h"] if len(recs) > 1 else GENESIS):
+            raise _HeadBehind("chain %s: one record beyond the head (an append interrupted "
+                              "before its head was written)" % self.id)
         if n != len(recs) or h != prev:
             raise ChainError("chain %s: head says %d records ending %s, file has %d ending %s — "
                              "records were dropped or the file was replaced"
@@ -186,16 +219,32 @@ class Chain:
 
     def _load_and_verify(self, fd=None):
         """Load + verify under a SHARED lock (RA-CL3 N4) unless the caller already holds the
-        exclusive lock on `fd`. Returns the byte length read."""
-        own = fd is None
-        if own:
+        exclusive lock on `fd`. Returns the byte length read. A head exactly one record behind a
+        record that chains to it (N13b) is rolled forward — under the exclusive lock only."""
+        if fd is None:
             try:
-                _check_private(self.path)
-                _check_private(self.head_path)
-                fd = os.open(self.path, os.O_RDONLY)
-            except OSError as e:
-                raise ChainError("chain %s: unreadable (%s)" % (self.id, e))
-            fcntl.flock(fd, fcntl.LOCK_SH)
+                return self._load_and_verify_locked(fcntl.LOCK_SH)
+            except _HeadBehind:
+                return self._load_and_verify_locked(fcntl.LOCK_EX)
+        return self._read_verify(fd, exclusive=True)
+
+    def _load_and_verify_locked(self, mode):
+        try:
+            _check_private(self.path)
+            _check_private(self.head_path)
+            fd = os.open(self.path, os.O_RDWR if mode == fcntl.LOCK_EX else os.O_RDONLY)
+        except OSError as e:
+            raise ChainError("chain %s: unreadable (%s)" % (self.id, e))
+        try:
+            fcntl.flock(fd, mode)
+            return self._read_verify(fd, exclusive=mode == fcntl.LOCK_EX)
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
+
+    def _read_verify(self, fd, exclusive):
         try:
             os.lseek(fd, 0, os.SEEK_SET)
             chunks = []
@@ -206,16 +255,35 @@ class Chain:
                 chunks.append(b)
             raw = b"".join(chunks)
             recs, prev = self._parse(raw)
-            self._check_head(recs, prev)
+            recovered = False
+            try:
+                self._check_head(recs, prev)
+            except _HeadBehind:
+                if not exclusive:
+                    raise
+                # N13b: the append's line is durable and chains to the head; only the head write
+                # was lost. Roll the head forward to it, then say so in the chain.
+                _write_private(self.head_path, self._head_line(len(recs), prev))
+                recovered = True
         except OSError as e:
             raise ChainError("chain %s: unreadable (%s)" % (self.id, e))
-        finally:
-            if own:
-                try:
-                    fcntl.flock(fd, fcntl.LOCK_UN)
-                finally:
-                    os.close(fd)
+        except ChainError:
+            raise
+        except Exception as e:                       # RA-CL3b N12: a malformed file is a ChainError
+            raise ChainError("chain %s: malformed (%s: %s)" % (self.id, type(e).__name__, e))
+        hw_key = (os.path.realpath(self.dir), self.id)
+        seen = _HIGH_WATER.get(hw_key, 0)
+        if len(recs) < seen:                         # R1: a rollback while this process has it open
+            raise ChainError("chain %s: has %d records, but this session already saw %d — the "
+                             "files were rolled back" % (self.id, len(recs), seen))
         self.records = recs
+        _HIGH_WATER[hw_key] = len(recs)
+        if recovered:
+            self._append_locked(fd, len(raw), "recovered",
+                                {"reason": "head rolled forward over record %d: an append was "
+                                           "interrupted after its line was written" % (len(recs) - 1),
+                                 "recovered_seq": len(recs) - 1})
+            return os.lseek(fd, 0, os.SEEK_END)
         return len(raw)
 
     def verify(self):
@@ -250,39 +318,7 @@ class Chain:
                 prev_len = self._load_and_verify(fd=lock_fd)     # re-sync: others may have appended
                 if _only_if is not None and not _only_if(list(self.records)):
                     return None
-                prev = self.head
-                rec = {"seq": len(self.records), "t": time.time(),
-                       "mono_ns": time.monotonic_ns() - self._mono0, "wpid": os.getpid(),
-                       "event": str(event), "prev": prev}
-                g = _TIME_SOURCE["fn"]
-                if g is not None:
-                    try:
-                        gt = g()
-                        if gt is not None:
-                            rec["gps_t"] = float(gt)
-                    except Exception:
-                        pass
-                for k, v in fields.items():
-                    if k not in _PROTECTED:                  # N5: a caller's pid/t win
-                        rec[k] = v
-                rec["h"] = self._h(prev, rec)
-                line = canonical(rec) + b"\n"
-                try:
-                    os.lseek(lock_fd, 0, os.SEEK_END)
-                    n = os.write(lock_fd, line)
-                    if n != len(line):
-                        raise OSError("short write")
-                    os.fsync(lock_fd)
-                    _write_private(self.head_path, self._head_line(len(self.records) + 1, rec["h"]))
-                except Exception as e:
-                    try:                                       # N3: never leave an orphan line
-                        os.ftruncate(lock_fd, prev_len)
-                        os.fsync(lock_fd)
-                    except OSError:
-                        pass
-                    raise ChainError("chain %s: append failed (%s) — rolled back" % (self.id, e))
-                self.records.append(rec)
-                return rec
+                return self._append_locked(lock_fd, prev_len, event, fields)
             except ChainError:
                 raise
             except OSError as e:
@@ -292,6 +328,46 @@ class Chain:
                     fcntl.flock(lock_fd, fcntl.LOCK_UN)
                 finally:
                     os.close(lock_fd)
+
+    def _append_locked(self, lock_fd, prev_len, event, fields):
+        """Append one record; the caller holds LOCK_EX on lock_fd and self.records is in sync."""
+        prev = self.head
+        rec = {"seq": len(self.records), "t": time.time(),
+               "mono_ns": time.monotonic_ns() - self._mono0, "wpid": os.getpid(),
+               "event": str(event), "prev": prev}
+        g = _TIME_SOURCE["fn"]
+        if g is not None:
+            try:
+                gt = g()
+                if gt is not None:
+                    rec["gps_t"] = float(gt)
+            except Exception:
+                pass
+        for k, v in fields.items():
+            if k not in _PROTECTED:                  # N5: a caller's pid/t win
+                rec[k] = v
+        rec["h"] = self._h(prev, rec)
+        line = canonical(rec) + b"\n"
+        head_written = False
+        try:
+            os.lseek(lock_fd, 0, os.SEEK_END)
+            n = os.write(lock_fd, line)
+            if n != len(line):
+                raise OSError("short write")
+            os.fsync(lock_fd)
+            head_written = _write_private(self.head_path,
+                                          self._head_line(len(self.records) + 1, rec["h"]))
+        except Exception as e:
+            if not head_written:
+                try:                                       # N3: never leave an orphan line
+                    os.ftruncate(lock_fd, prev_len)
+                    os.fsync(lock_fd)
+                except OSError:
+                    pass
+                raise ChainError("chain %s: append failed (%s) — rolled back" % (self.id, e))
+        self.records.append(rec)
+        _HIGH_WATER[(os.path.realpath(self.dir), self.id)] = len(self.records)
+        return rec
 
     # ---------------------------------------------------------------- views
     def states(self):
@@ -327,8 +403,19 @@ class Chain:
                 tid = r.get("ticket")
                 key = by_ticket.get(tid)
                 if key is None:
-                    # N10: fold the ticket into the AUTHORIZED row it came from (same action+target)
-                    akey = pending.pop((r.get("label", ""), str(r.get("target", ""))), None)
+                    # RA-CL3 N15: fold the ticket into the AUTHORIZED row whose seq its issue
+                    # record carries (auth_seq). Older chains have no auth_seq: N10's fallback
+                    # folds by (action, target).
+                    akey = None
+                    aseq = r.get("auth_seq") if ev == "issue" else None
+                    if isinstance(aseq, int) and not isinstance(aseq, bool) \
+                            and ("a", aseq) in rows and rows[("a", aseq)]["ticket"] is None:
+                        akey = ("a", aseq)
+                        for pk, pv in list(pending.items()):
+                            if pv == akey:
+                                del pending[pk]
+                    else:
+                        akey = pending.pop((r.get("label", ""), str(r.get("target", ""))), None)
                     if akey is not None:
                         key = akey
                         rows[key]["ticket"] = tid
@@ -346,7 +433,11 @@ class Chain:
                     row["state"], row["detail"] = "RUNNING", "pid %s" % r.get("pid")
                 elif ev == "exit":
                     code = r.get("exit_code")
-                    if r.get("stopped"):
+                    if row["state"] == "KILLED" and isinstance(code, int) and code < 0:
+                        # RA-CL3d N21: a process END (or the executor) killed, whose exit then
+                        # reports the signal, stays KILLED — not FAILED "exit -15"
+                        pass
+                    elif r.get("stopped"):
                         row["state"], row["detail"] = "KILLED", str(r.get("stopped"))
                     elif code == 0:
                         row["state"], row["detail"] = "EXECUTED", "exit 0"
@@ -356,9 +447,11 @@ class Chain:
                     row["state"], row["detail"] = "EXECUTED", "%s bytes" % r.get("bytes")
                 elif ev == "kill":
                     row["state"], row["detail"] = "KILLED", str(r.get("reason", ""))
-                elif ev == "unconfirmed" and row["state"] == "RUNNING":
+                elif ev == "unconfirmed" and (row["state"] == "RUNNING" or (
+                        r.get("group_survivor") and row["state"] == "KILLED")):
                     # RA-CL3c N16: END could not confirm this process ended. Not KILLED: nothing
                     # was signalled by END and it may still be running. A later exit overrides.
+                    # RA-CL3d N20: a kill after which a process in the group survived is not KILLED
                     row["state"], row["detail"] = "UNCONFIRMED", str(r.get("reason", ""))
         return [rows[k] for k in reversed(order)]
 
@@ -435,10 +528,15 @@ def reset_for_tests():
     with _LOCK:
         _CACHE.clear()
         _SESSION["chain"] = None
+        _HIGH_WATER.clear()
 
 
 # -------------------------------------------------------------------- file helpers
 def _write_private(path, data):
+    """Write data to path atomically (tmp + fsync + rename). Returns True once the rename is done:
+    from then on the new content IS the file (RA-CL3c N13a), so a failure to fsync the directory
+    afterwards is not raised — rolling back the jsonl under an already-advanced head would brick
+    the chain. Raises OSError for anything that fails before the rename."""
     if os.path.islink(path):
         raise OSError("refusing to write through a symlink: %s" % path)
     tmp = "%s.%s.tmp" % (path, uuid.uuid4().hex[:8])
@@ -449,17 +547,21 @@ def _write_private(path, data):
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(tmp, path)
-        dfd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
-        try:
-            os.fsync(dfd)
-        finally:
-            os.close(dfd)
     except OSError:
         try:
             os.unlink(tmp)
         except OSError:
             pass
         raise
+    try:
+        dfd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    except OSError:
+        pass                    # best effort: the rename has happened (RA-CL3c N13a)
+    return True
 
 
 def _check_private(path):

@@ -104,6 +104,17 @@ class MapPanel(QtWidgets.QFrame):
         self._combo.setCurrentIndex(0)
         self._style_changed(0)
 
+    def set_home(self, lat, lon, known=True):
+        """H5: re-centre the basemap on a new HOME (it was fixed at construction). known=False hides
+        the HOME marker: the map is then relative to a provisional origin, not the operator."""
+        self.home.setVisible(bool(known))
+        if lat is None or lon is None:
+            return
+        if (self._tiles.home_lat, self._tiles.home_lon) != (lat, lon):
+            self._tiles.home_lat, self._tiles.home_lon = lat, lon
+            self._tile_img.clear()
+            self._tiles.fetch(self._current_style)
+
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
         self._combo.move(self.width() - self._combo.width() - 10, 10)

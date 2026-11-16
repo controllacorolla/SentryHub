@@ -141,7 +141,7 @@ class SerialWorker(Worker):
     """hwlab serial console — DemoSerial in demo, SerialReader live (via a seam). Reuses read_lines
     / write / clean_text AS-IS. No device -> standby; tests never open a real port."""
 
-    def __init__(self, demo=True, port=None, baud=115200, parent=None):
+    def __init__(self, demo=False, port=None, baud=115200, parent=None):
         super().__init__(demo=demo, interval_ms=300, parent=parent)
         self.port, self.baud = port, baud
         self._reader = None
@@ -224,7 +224,7 @@ class CanWorker(Worker):
     """canbus monitor — candump stream parsed + decoded AS-IS (parse_candump/decode). Demo uses
     canbus.Demo(); live needs SocketCAN (device-only) -> standby here. Receive-only."""
 
-    def __init__(self, demo=True, iface="can0", parent=None):
+    def __init__(self, demo=False, iface="can0", parent=None):
         super().__init__(demo=demo, interval_ms=500, parent=parent)
         self.iface = iface
         self._demo = None
@@ -255,7 +255,7 @@ class SensorWorker(Worker):
     """sensors readout — rtl_433 ISM decode (parse_report) AS-IS. Demo uses demo_report(); live
     needs rtl_433 + the SDR (device-only) -> standby. Receive-only."""
 
-    def __init__(self, demo=True, parent=None):
+    def __init__(self, demo=False, parent=None):
         super().__init__(demo=demo, interval_ms=1500, parent=parent)
         self._t0 = time.time()
 

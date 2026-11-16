@@ -648,6 +648,7 @@ class AdsbFeed:
         self.status = "none"     # live | stale | none
         self.source = None
         self.updated = 0.0
+        self.data_t = None       # E1: the receiver's own timestamp of the last data read
         self.trails = {}         # hex -> [(lat, lon)]
         self.history = []        # [(t, [compact aircraft])], one frame per ~2 s, last 60 min
         self._last_frame = 0.0
@@ -688,6 +689,9 @@ class AdsbFeed:
                 except Exception:
                     continue
             with self.lock:
+                if not got:
+                    self.status = "none"             # E1: nothing answered — not "live"
+                    self.aircraft = []
                 if got:
                     src, data = got
                     now = data.get("now", time.time())
@@ -697,6 +701,7 @@ class AdsbFeed:
                     self.aircraft = acs
                     self.source = src
                     self.status = "live" if time.time() - now < 10 else "stale"
+                    self.data_t = now                # E1: when the receiver wrote this data
                     self.updated = time.time()
                     for a in acs:
                         if "lat" in a and a.get("seen_pos", 99) < 5:

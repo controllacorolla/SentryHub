@@ -149,7 +149,7 @@ class GatedTool(QtWidgets.QFrame):
 class WifiScanWorker(Worker):
     """wifisurvey: passive AP scan (iw scan -> parse_iw_scan). No gate, no TX."""
 
-    def __init__(self, demo=True, iface="wlan0", parent=None):
+    def __init__(self, demo=False, iface="wlan0", parent=None):
         super().__init__(demo=demo, interval_ms=4000, parent=parent)
         self.iface = iface
 
@@ -171,7 +171,7 @@ class BleScanWorker(Worker):
     """blescan: passive BLE enumeration. No gate, no TX. Live needs bleak + an adapter; absent ->
     honest standby. The bleak scan is behind a seam so tests never open a real adapter."""
 
-    def __init__(self, demo=True, parent=None):
+    def __init__(self, demo=False, parent=None):
         super().__init__(demo=demo, interval_ms=3000, parent=parent)
 
     def _scan_adverts(self):
@@ -203,7 +203,7 @@ class DetectorWorker(Worker):
     (SDR sweep / modem / gpsd); with none it reports honest standby. Demo synthesises a feed, runs
     the real detector AS-IS, and raises alerts. NO TX / jam / attack path anywhere."""
 
-    def __init__(self, demo=True, kind="jammer", parent=None):
+    def __init__(self, demo=False, kind="jammer", parent=None):
         super().__init__(demo=demo, interval_ms=1500, parent=parent)
         self.kind = kind
         self._det = None

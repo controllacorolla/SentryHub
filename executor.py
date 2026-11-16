@@ -186,7 +186,8 @@ def issue(argv=None, recheck=None, label="", binding="scoped", reason="", files=
     # RA-CL3b B3/N14: the ticket is bound to the chain this record went to (see record()).
     cid = record("issue", ticket=t.id, label=label, binding=binding, reason=reason,
                  argv=list(t.argv) if t.argv else None, issuer=caller, emitter=emitter,
-                 target=str((meta or {}).get("target", "")))
+                 target=str((meta or {}).get("target", "")),
+                 auth_seq=(meta or {}).get("auth_seq"))
     with _LOCK:
         _ISSUED[t.id] = {"ticket": t, "digest": _digest(kind, t.argv, t.payload, t.files),
                          "expires": _mono() + float(TICKET_TTL_S if ttl is None else ttl),
@@ -233,23 +234,52 @@ def _default_spawner(argv, **kw):
 
 
 def _kill_group(proc, grace=1.0):
-    if proc is None or proc.poll() is not None:
-        return
+    """SIGTERM the process's group, wait, SIGKILL whatever is left, wait. Returns True only when
+    the leader is reaped AND no live process is left in its group (RA-CL3d N20: a member that
+    ignores SIGTERM used to survive a kill that waited only for the leader). A group with live
+    members cannot have its pgid reused as a new pid, so signalling it after the leader exited is
+    safe."""
+    if proc is None:
+        return True
+    import gatestate
+    pg = getattr(proc, "pid", None)
+    own = isinstance(pg, int) and pg > 1 and pg != os.getpgrp()
+
+    def group_left():
+        return own and gatestate.group_alive(pg)
+    if proc.poll() is not None and not group_left():
+        return True
     for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, 2.0)):
-        try:
-            os.killpg(proc.pid, sig)
-        except (ProcessLookupError, PermissionError, OSError):
+        sent = False
+        if own:
+            try:
+                os.killpg(pg, sig)
+                sent = True
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        if not sent and proc.poll() is None:
             try:
                 proc.kill() if sig == signal.SIGKILL else proc.terminate()
             except Exception:
-                return
-        try:
-            proc.wait(timeout=wait)
-            return
-        except subprocess.TimeoutExpired:
-            continue
-        except Exception:
-            return
+                pass
+        end = time.monotonic() + wait
+        while time.monotonic() < end:
+            try:
+                proc.wait(timeout=0.05)
+            except subprocess.TimeoutExpired:
+                continue
+            except Exception:
+                break
+            if not group_left():
+                return True
+            time.sleep(0.02)
+        if proc.poll() is not None and not group_left():
+            return True
+    try:
+        proc.wait(timeout=0.5)
+    except Exception:
+        pass
+    return proc.poll() is not None and not (own and gatestate.group_alive(pg, grace_s=0.2))
 
 
 class Handle:
@@ -266,6 +296,10 @@ class Handle:
         self.chain_id = (entry or {}).get("chain")    # RA-CL3b B3: the chain issued under
         self._on_line = on_line
         self._done = threading.Event()
+        # RA-CL3d N21: the exit record and stop()'s kill record are decided under ONE lock, so a
+        # stop() that races the exit never logs a kill of a process whose exit is already recorded
+        self._rec_lock = threading.Lock()
+        self._exited = False
         self._reader = threading.Thread(target=self._pump, daemon=True)
         self._reader.start()
 
@@ -294,9 +328,13 @@ class Handle:
         with _LOCK:
             if self in _RUNNING:
                 _RUNNING.remove(self)
-        record("exit", chain_id=self.chain_id, ticket=self.ticket.id, label=self.ticket.label,
-               exit_code=code, stopped=self.stopped)
-        self._done.set()
+        with self._rec_lock:
+            self._exited = True
+            try:
+                record("exit", chain_id=self.chain_id, ticket=self.ticket.id,
+                       label=self.ticket.label, exit_code=code, stopped=self.stopped)
+            finally:
+                self._done.set()
 
     def running(self):
         return not self._done.is_set()
@@ -306,12 +344,27 @@ class Handle:
         return self.exit_code
 
     def stop(self, reason="stopped"):
-        if self.stopped is None:
-            self.stopped = reason
-            record("kill", chain_id=self.chain_id, ticket=self.ticket.id,
-                   label=self.ticket.label, reason=reason, pid=getattr(self.proc, "pid", None))
-        _kill_group(self.proc)
+        """Kill the process's group. The kill is recorded only while the exit is not yet recorded
+        (RA-CL3d N21: never a kill of an already-exited process, never a second kill). If a
+        process in the group survives SIGKILL the trail says so (`unconfirmed`, N20) instead of
+        resting on KILLED."""
+        first = False
+        with self._rec_lock:
+            if self.stopped is None and not self._exited:
+                self.stopped = reason
+                first = True
+                record("kill", chain_id=self.chain_id, ticket=self.ticket.id,
+                       label=self.ticket.label, reason=reason, pid=getattr(self.proc, "pid", None))
+        gone = _kill_group(self.proc)
         self._done.wait(3.0)
+        if first and not gone:
+            try:
+                record("unconfirmed", chain_id=self.chain_id, ticket=self.ticket.id,
+                       label=self.ticket.label, group_survivor=True,
+                       pid=getattr(self.proc, "pid", None),
+                       reason="killed, but a process in its group survived SIGKILL")
+            except Exception:
+                pass
 
 
 def start(ticket, argv=None, spawner=None, on_line=None):

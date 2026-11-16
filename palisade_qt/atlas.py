@@ -50,7 +50,7 @@ class _Track:
 
     def __init__(self, kind):
         self.kind = kind
-        home = eventbus.HOME
+        home = eventbus.home() or eventbus.DEMO_HOME          # demo tracks only (H5)
         self.lat, self.lon = _offset(home[0], home[1], random.uniform(5, 68),
                                      random.uniform(0, 360))
         self.hdg = random.uniform(0, 360)
@@ -85,12 +85,13 @@ class _Track:
     def event(self):
         sev = "alert" if (self.mil or self.kind == "drone") else "live"
         return eventbus.contact("ATLAS", self.id, self.lat, self.lon, alt=self.alt,
-                                kind=self.kind, severity=sev, spd=round(self.spd), mil=self.mil)
+                                kind=self.kind, severity=sev, spd=round(self.spd), mil=self.mil,
+                                demo=True)
 
     def operator_event(self):
         return eventbus.contact("RID", self.id + "-OP", self.op_lat, self.op_lon,
                                 kind="operator", severity="warn", label="OP " + self.id,
-                                drone=self.id)
+                                drone=self.id, demo=True)
 
 
 class AtlasDemoWorker(Worker):
@@ -439,7 +440,7 @@ class LeaseSource:
         st, owner = arb.state()
         if owner != self.NAME:                       # freed under us (forced free)
             self._has_radio = False
-            self._give_back("radio taken back")
+            self._give_back(radio_arbiter.lost_reason(self.NAME))
             return []
         if st != "HELD":
             return []                                # ACQUIRING: readsb is still being paused
@@ -447,7 +448,7 @@ class LeaseSource:
             self._proc = self._open_pipe()
             if self._proc is not None and not arb.held_by(self.NAME):
                 self._has_radio = False              # N-j: lost it while spawning — reap first
-                self._give_back("radio taken back")
+                self._give_back(radio_arbiter.lost_reason(self.NAME))
                 return []
             if self._proc is not None:
                 self._thread = threading.Thread(target=self._read, daemon=True)
@@ -678,12 +679,24 @@ class AtlasLiveWorker(Worker):
         self.poke()
 
     def _adsb_contacts(self):
+        """E1: aircraft are published only while the feed is LIVE. A stale aircraft.json (readsb
+        stopped writing it) or no answering source publishes nothing and says so, with the age of
+        the last data — an hour-old file used to be republished as live, age 0 s."""
         if self._adsb is None:
+            self.status.emit({"adsb": {"state": "none", "why": "no ADS-B engine"}})
             return []
         try:
-            aircraft, _trails, _status, _rcv = self._adsb.snapshot()
-        except Exception:
+            aircraft, _trails, status, _rcv = self._adsb.snapshot()
+        except Exception as e:
+            self.status.emit({"adsb": {"state": "none", "why": str(e)[:60]}})
             return []
+        data_t = getattr(self._adsb, "data_t", None)
+        age = (time.time() - data_t) if data_t else None
+        if status != "live":
+            self.status.emit({"adsb": {"state": "stale" if status == "stale" else "none",
+                                       "age": age}})
+            return []
+        self.status.emit({"adsb": {"state": "live", "age": age, "n": len(aircraft)}})
         return adsb_contacts(aircraft)
 
     def run(self):
@@ -720,8 +733,10 @@ class AtlasApp(PalisadeApp):
         split.setContentsMargins(0, 0, 0, 0)
         split.setSpacing(10)
 
-        self.map = MapPanel(span_nm=80, mode=self.mode,
-                            home_lat=eventbus.HOME[0], home_lon=eventbus.HOME[1])
+        home = eventbus.home() or (self.demo and eventbus.DEMO_HOME) or (0.0, 0.0)
+        self.map = MapPanel(span_nm=80, mode=self.mode, home_lat=home[0], home_lon=home[1])
+        self.map.set_home(None, None, known=eventbus.home_set())
+        self._adsb_health = None                     # E1 / H10: the ADS-B feed's own state
         split.addWidget(self.map, 3)
 
         right = QtWidgets.QVBoxLayout()
@@ -746,6 +761,7 @@ class AtlasApp(PalisadeApp):
         split.addLayout(right, 2)
 
         eventbus.bus.published.connect(self._on_event)
+        eventbus.bus.home_changed.connect(self._on_home_changed)
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._render)
         self._timer.start(700)
@@ -824,6 +840,15 @@ class AtlasApp(PalisadeApp):
         if "acquiring_layers" in status:
             self._acquiring = set(status["acquiring_layers"])
             self._update_busy()
+        if "adsb" in status:
+            self._adsb_health = status["adsb"]
+
+    def _on_home_changed(self):
+        """H5: HOME was set in SETTINGS: re-centre now; positions re-project as contacts refresh."""
+        h = eventbus.home()
+        self._contacts = {}
+        self.map.set_home(h[0] if h else None, h[1] if h else None, known=h is not None)
+        self._render()
 
     def on_panic(self):
         """PANIC (CL5-fix 5): every lease layer gives the radio back and is unticked; the BLE
@@ -840,11 +865,13 @@ class AtlasApp(PalisadeApp):
             return
         pl = ev["payload"]
         x, y = eventbus.to_xy(pl["lat"], pl["lon"])
+        known = eventbus.home_set()                  # H5: no range/bearing from a guessed HOME
         self._contacts[pl["id"]] = {
             "id": pl["id"], "label": pl.get("label", pl["id"]), "kind": pl.get("kind", "air"),
             "x": x, "y": y, "alt": pl.get("alt"), "spd": pl.get("spd"),
             "severity": ev["severity"], "_ts": ev["ts"],
-            "rng": math.hypot(x, y), "brg": math.degrees(math.atan2(x, y)) % 360}
+            "rng": math.hypot(x, y) if known else None,
+            "brg": (math.degrees(math.atan2(x, y)) % 360) if known else None}
 
     def _render(self):
         now = time.time()
@@ -854,17 +881,54 @@ class AtlasApp(PalisadeApp):
                               labels=[c["label"] for c in shown],
                               colors=[self._color(c["kind"], c["severity"]) for c in shown])
         rows = []
-        for c in sorted(shown, key=lambda c: c["rng"]):
+        for c in sorted(shown, key=lambda c: (c["rng"] is None, c["rng"] or 0, c["label"])):
             rows.append({"_id": c["id"], "label": c["label"],
                          "kind": KIND_LABEL.get(c["kind"], c["kind"]),
-                         "rng": "%.0f" % c["rng"], "alt": "%d" % c["alt"] if c["alt"] else "—",
+                         "rng": "%.0f" % c["rng"] if c["rng"] is not None else "—",
+                         "alt": "%d" % c["alt"] if c["alt"] else "—",
                          "_src": c, "_colors": {"rng": self._color(c["kind"], c["severity"])}})
         self.feed.model.set_rows(rows)
         if self._selected is not None and self._selected not in {c["id"] for c in shown}:
             self._show_lost()
-        self.set_chip("sdr", ("%d CONTACTS" % len(shown)) if (self.demo or shown) else "NO FEED",
-                      state="neutral")
+        text, state = self._layer_summary(shown)
+        self.set_chip("sdr", text, state=state)
+        if not eventbus.home_set():
+            self.set_chip("home", "HOME NOT SET — range/bearing hidden (SYSTEM › SETTINGS)",
+                          state="warn")
+        else:
+            self._last_status.pop("home", None)
         self._update_busy()
+
+    def _layer_summary(self, shown):
+        """H10: per-layer health instead of one total that let a live APRS station hide a dead
+        ADS-B feed. Every layer that is ON says its own count or state."""
+        counts = {}
+        for c in shown:
+            counts[c["kind"]] = counts.get(c["kind"], 0) + 1
+        parts, worst = [], "neutral"
+        rank = {"neutral": 0, "warn": 1, "alert": 2}
+        for k, lbl, _tok in KINDS:
+            if k not in self._layers or k == "operator":
+                continue
+            n = counts.get(k, 0)
+            word = "%s %d" % (lbl, n)
+            st = "neutral"
+            if k == "aircraft" and not self.demo:
+                h = self._adsb_health or {}
+                if h.get("state") == "stale":
+                    age = h.get("age")
+                    word = "ADS-B STALE%s" % (" %ds" % age if age is not None else "")
+                    st = "alert"
+                elif h.get("state") == "none":
+                    word, st = "ADS-B NO FEED", "warn"
+                elif not h:
+                    word = "ADS-B —"
+            elif n == 0 and not self.demo:
+                word = "%s —" % lbl
+            parts.append(word)
+            if rank[st] > rank[worst]:
+                worst = st
+        return (" · ".join(parts) if parts else "NO LAYERS ON"), worst
 
     def _update_busy(self):
         """Derive RADIO BUSY from the single arbiter: a toggled-on lease-layer (or ADS-B) that the
@@ -902,8 +966,8 @@ class AtlasApp(PalisadeApp):
             ("TYPE", KIND_LABEL.get(c.get("kind"), "—")),
             ("ALTITUDE", "%d ft" % c["alt"] if c.get("alt") else "—"),
             ("SPEED", "%d kt" % c["spd"] if c.get("spd") else "—"),
-            ("RANGE", "%.0f nm" % c.get("rng", 0)),
-            ("BEARING", "%03d°" % c.get("brg", 0))])
+            ("RANGE", "%.0f nm" % c["rng"] if c.get("rng") is not None else "— (HOME NOT SET)"),
+            ("BEARING", "%03d°" % c["brg"] if c.get("brg") is not None else "—")])
 
     def _show_lost(self):
         """The selected contact is gone (stale or its layer hidden): say so, and drop its last fix
@@ -916,6 +980,10 @@ class AtlasApp(PalisadeApp):
     def stop(self):
         try:
             eventbus.bus.published.disconnect(self._on_event)
+        except (RuntimeError, TypeError):
+            pass
+        try:
+            eventbus.bus.home_changed.disconnect(self._on_home_changed)
         except (RuntimeError, TypeError):
             pass
         if hasattr(self, "_timer"):

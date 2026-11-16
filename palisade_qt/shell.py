@@ -66,6 +66,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
         super().__init__()
         self.demo = demo
         self.mode = mode
+        if demo and eventbus.home() is None:
+            eventbus.set_home(eventbus.DEMO_HOME, "demo")     # H5: a demo frame, flagged as such
         self.setWindowTitle("PALISADE")
         self.resize(*SCREEN)
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
@@ -544,6 +546,7 @@ def main(argv=None):
     theme.set_app_font(app)
     theme.set_palette(app, mode)
     app.setStyleSheet(theme.qss(mode))
+    eventbus.load_home(demo=demo)              # H5: the saved HOME, before any page reads it
     hub = PalisadeHub(demo=demo, mode=mode)
     hub.show()
     return app.exec()

@@ -49,17 +49,18 @@ class DemoFeedWorker(Worker):
         if random.random() < 0.5:
             proto, summ = random.choice(self._decodes)
             eventbus.bus.publish(eventbus.decode("BABEL", proto,
-                                                 "%04X" % random.randint(0x1000, 0xFFFF), summ))
+                                                 "%04X" % random.randint(0x1000, 0xFFFF), summ,
+                                                 demo=True))
         if random.random() < 0.12:
             kind, sev, src = random.choice([
                 ("Drone Remote-ID", "alert", "ATLAS"),
                 ("Open AP · linksys", "warn", "RECON"),
                 ("MIL contact inbound", "info", "ATLAS")])
-            eventbus.bus.publish(eventbus.alert(src, kind, severity=sev))
+            eventbus.bus.publish(eventbus.alert(src, kind, severity=sev, demo=True))
         batt = max(5, 96 - (now - self._t0) * 0.02)
         eventbus.bus.publish(eventbus.make_event("decode", "OPS", {
             "kind": "telemetry", "temp": 62 + 3 * math.sin((now - self._t0) * 0.1),
-            "batt": batt, "gps": 9}, severity="info"))
+            "batt": batt, "gps": 9}, severity="info", demo=True))
         self.status.emit({"sdr": {"text": "SDR DEMO", "state": "neutral"},
                           "gps": {"text": "GPS 9 SV", "state": "neutral"},
                           "pwr": {"text": "PWR %d%%" % batt,

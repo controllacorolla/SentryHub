@@ -110,7 +110,7 @@ class MeshWorker(Worker):
     """Meshtastic node list + messages. Demo -> a static mirror of mesh_dash.FakeIface's data; live
     needs a real node (device-only) -> honest standby. Receive-only here (send is a separate action)."""
 
-    def __init__(self, demo=True, parent=None):
+    def __init__(self, demo=False, parent=None):
         super().__init__(demo=demo, interval_ms=2000, parent=parent)
         self._iface = None
         self._emitted = False

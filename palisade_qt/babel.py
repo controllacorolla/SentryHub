@@ -17,6 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .app import PalisadeApp
 from . import theme, radio_arbiter, eventbus
+from .timebase import zulu
 from .kit import ControlBar, FeedTable, DetailCard
 from .worker import Worker
 
@@ -69,9 +70,16 @@ def _stderr_tail(proc, n=3):
         return ""
 
 
+def _publish_decode(source, row):
+    """H16: every real decode reaches the bus (OPS, SITREP and the assistant read it), not only
+    TPMS and SSTV. Live runners only — demo rows stay local."""
+    eventbus.bus.publish(eventbus.decode(source, row["proto"], str(row["id"]),
+                                         str(row.get("summary", ""))[:80], severity="info"))
+
+
 def _synth(mode):
     """Demo-only synthetic messages (unchanged from the original scaffold)."""
-    now = time.strftime("%H:%M:%S")
+    now = zulu()
     if mode == "AIS":
         mmsi = random.randint(200000000, 775000000)
         return {"time": now, "proto": "AIS", "id": str(mmsi), "summary": "pos report",
@@ -162,7 +170,7 @@ def _run_ais(worker):
             msg = asm.feed(line.rstrip("\n"))
             if not msg or not msg.get("mmsi"):
                 continue
-            now = time.strftime("%H:%M:%S")
+            now = zulu()
             n += 1
             row = {"time": now, "proto": "AIS", "id": str(msg["mmsi"]),
                    "summary": msg.get("status_name", "type %d" % msg.get("type", 0)),
@@ -178,6 +186,7 @@ def _run_ais(worker):
                 row["detail"].append(("NAME", msg["name"]))
                 row["summary"] = msg["name"]
             worker.row.emit(row)
+            _publish_decode("BABEL-AIS", row)
             if n % 5 == 0:
                 worker.status.emit({"sdr": {"text": "AIS %d" % n, "ok": True}})
     finally:
@@ -209,7 +218,7 @@ def _run_acars(worker):
             msg = parser(line.rstrip("\n"))
             if not msg:
                 continue
-            now = time.strftime("%H:%M:%S")
+            now = zulu()
             n += 1
             flight = msg.get("flight") or msg.get("reg") or "—"
             row = {"time": now, "proto": "ACARS", "id": flight,
@@ -219,6 +228,7 @@ def _run_acars(worker):
                               ("LABEL", msg.get("label", "")),
                               ("TEXT", msg.get("text", ""))]}
             worker.row.emit(row)
+            _publish_decode("BABEL-ACARS", row)
             if n % 3 == 0:
                 worker.status.emit({"sdr": {"text": "ACARS %d" % n, "ok": True}})
     finally:
@@ -244,7 +254,7 @@ def _run_pocsag(worker):
             page = engine.parse_line(line.rstrip("\n"))
             if not page:
                 continue
-            now = time.strftime("%H:%M:%S")
+            now = zulu()
             n += 1
             row = {"time": now, "proto": page.get("proto", "POCSAG"),
                    "id": str(page["address"]),
@@ -254,6 +264,7 @@ def _run_pocsag(worker):
                               ("KIND", page.get("kind", "")),
                               ("TEXT", page.get("text", ""))]}
             worker.row.emit(row)
+            _publish_decode("BABEL-POCSAG", row)
             if n % 3 == 0:
                 worker.status.emit({"sdr": {"text": "POCSAG %d" % n, "ok": True}})
     finally:
@@ -283,7 +294,7 @@ def _run_rds(worker):
             st = stations.add(r)
             if not st:
                 continue
-            now = time.strftime("%H:%M:%S")
+            now = zulu()
             n += 1
             row = {"time": now, "proto": "RDS", "id": st["pi"],
                    "summary": st.get("ps") or st.get("callsign") or "—",
@@ -293,6 +304,7 @@ def _run_rds(worker):
                               ("PTY", st.get("pty")),
                               ("RT", st.get("rt", ""))]}
             worker.row.emit(row)
+            _publish_decode("BABEL-RDS", row)
             if n % 5 == 0:
                 worker.status.emit({"sdr": {"text": "RDS %d stn" % len(stations.by_pi), "ok": True}})
     finally:
@@ -327,7 +339,7 @@ def _run_tpms(worker):
                 continue
             veh.add(r)
             n += 1
-            now = time.strftime("%H:%M:%S")
+            now = zulu()
             dist = engine.rssi_to_distance_m(r.get("rssi"))
             detail = [("ID", r["id"]), ("MODEL", r.get("model") or "—")]
             if r.get("pressure_kpa") is not None:
@@ -392,7 +404,7 @@ class DecoderWorker(Worker):
     NAME = LEASE_NAME                # the lease this worker takes (app.swap_worker reads it)
     PAUSE_WHEN_HIDDEN = False          # it must keep stepping to release the dongle when hidden
 
-    def __init__(self, demo=True, mode="AIS", parent=None):
+    def __init__(self, demo=False, mode="AIS", parent=None):
         super().__init__(demo=demo, interval_ms=600, parent=parent)
         self.mode = mode
         self._n = 0
@@ -517,9 +529,10 @@ class DecoderWorker(Worker):
         """Acquire the single SDR via the shared arbiter, run the real decoder, then release. If
         another callsign holds the radio, show RADIO BUSY and (being live) synthesise nothing."""
         if not radio_arbiter.arbiter.request(LEASE_NAME):
-            owner = radio_arbiter.owner_label() or radio_arbiter.arbiter.owner() or "?"
-            self.status.emit({"sdr": {"text": "RADIO BUSY — %s" % owner, "ok": False},
-                              "busy": owner})
+            owner = radio_arbiter.owner_label() or radio_arbiter.arbiter.owner()
+            text = radio_arbiter.busy_text(LEASE_NAME)
+            self.status.emit({"sdr": {"text": "%s — %s" % (text, owner) if owner else text,
+                                      "ok": False}, "busy": owner})
             waited = 0                       # idle and retry while the radio is held elsewhere
             while waited < 1500 and not self._stop and not self._mode_changed and self.wants_radio():
                 self.sleep(50)
@@ -532,6 +545,12 @@ class DecoderWorker(Worker):
             while not arb.held_by(LEASE_NAME):
                 if self._stop or self._mode_changed or not self.wants_radio() \
                         or arb.owner() != LEASE_NAME:
+                    why = arb.failure(LEASE_NAME)
+                    if why and arb.owner() is None:          # H4: the acquire failed — say so
+                        self.status.emit({"busy": None, "live": False,
+                                          "sdr": {"text": "%s OFF — %s" % (
+                                              mode, radio_arbiter.lost_reason(LEASE_NAME)),
+                                              "state": "warn", "ok": False}})
                     return                   # finally: release (nothing was started)
                 self.status.emit({"busy": None, "live": False, "acquiring": True,
                                   "sdr": {"text": "%s ACQUIRING radio" % mode, "state": "warn",
@@ -552,7 +571,8 @@ class DecoderWorker(Worker):
                 if not radio_arbiter.arbiter.held_by(LEASE_NAME):    # freed under us
                     self._running = False
                     self.status.emit({"run_off": True, "busy": None, "live": False, "idle": True,
-                                      "sdr": {"text": "%s OFF — radio taken back" % mode,
+                                      "sdr": {"text": "%s OFF — %s" % (
+                                          mode, radio_arbiter.lost_reason(LEASE_NAME)),
                                               "state": "warn", "ok": False}})
                     break
                 if self._proc is None:
@@ -697,7 +717,7 @@ class SstvWorker(Worker):
     NAME = SSTV_LEASE
     PAUSE_WHEN_HIDDEN = False          # R1: it must keep stepping to give the radio back when hidden
 
-    def __init__(self, demo=True, freq=SSTV_DEFAULT_FREQ, gain=40, parent=None):
+    def __init__(self, demo=False, freq=SSTV_DEFAULT_FREQ, gain=40, parent=None):
         super().__init__(demo=demo, interval_ms=1000, parent=parent)
         self.freq, self.gain = freq, gain
         self._running = False          # R1 / CL5-fix 3: the radio is taken only on RUN …
@@ -923,7 +943,7 @@ class SstvWorker(Worker):
         if not self._has_radio:
             if not arb.request(self.NAME):
                 self.status.emit({"busy": radio_arbiter.owner_label(), "live": False,
-                                  "sdr": {"text": "RADIO BUSY", "ok": False}})
+                                  "sdr": {"text": radio_arbiter.busy_text(self.NAME), "ok": False}})
                 return False
             with self._lock:
                 self._has_radio = True
@@ -932,7 +952,7 @@ class SstvWorker(Worker):
             with self._lock:
                 self._has_radio = False
             self._running = False
-            self._give_back("radio taken back")
+            self._give_back(radio_arbiter.lost_reason(self.NAME))
             self.status.emit({"run_off": True})
             return False
         if st != "HELD":
