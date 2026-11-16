@@ -233,9 +233,13 @@ class Chain:
         return self.records[-1]["h"] if self.records else GENESIS
 
     # ---------------------------------------------------------------- append
-    def record(self, event, **fields):
+    def record(self, event, _only_if=None, **fields):
         """Append one record durably. Raises ChainError if it cannot — callers that are gates
-        must then refuse. A half-written append is rolled back (N3). Returns the record."""
+        must then refuse. A half-written append is rolled back (N3). Returns the record.
+
+        `_only_if(records) -> bool` (RA-CL3c N17) is evaluated under the EXCLUSIVE lock against the
+        freshly re-read records; if it returns False nothing is appended and None is returned.
+        Use it for a record that is only true if nothing else happened first (END's void)."""
         with self._lock:
             try:
                 lock_fd = os.open(self.path, os.O_RDWR)
@@ -244,6 +248,8 @@ class Chain:
             try:
                 fcntl.flock(lock_fd, fcntl.LOCK_EX)
                 prev_len = self._load_and_verify(fd=lock_fd)     # re-sync: others may have appended
+                if _only_if is not None and not _only_if(list(self.records)):
+                    return None
                 prev = self.head
                 rec = {"seq": len(self.records), "t": time.time(),
                        "mono_ns": time.monotonic_ns() - self._mono0, "wpid": os.getpid(),
@@ -290,7 +296,7 @@ class Chain:
     # ---------------------------------------------------------------- views
     def states(self):
         """H9: one row per authorization, carried through its ticket, newest first.
-        state ∈ AUTHORIZED · ISSUED · RUNNING · EXECUTED · FAILED · KILLED · REFUSED."""
+        state ∈ AUTHORIZED · ISSUED · RUNNING · EXECUTED · FAILED · KILLED · REFUSED · UNCONFIRMED."""
         rows, order, by_ticket = {}, [], {}
         pending = {}                                    # (action, target) -> key of AUTHORIZED row
         for r in self.records:
@@ -305,8 +311,11 @@ class Chain:
             elif ev == "refuse_ticket" and r.get("ticket") in by_ticket:
                 # RA-CL3b B3: a known ticket refused at redeem, or voided at END, is that
                 # action's row — REFUSED, not a second row beside a stale ISSUED one
+                # RA-CL3c N17: a refusal only ever replaces a not-yet-used state; it can never
+                # hide a RUNNING / EXECUTED / FAILED / KILLED outcome
                 row = rows[by_ticket[r["ticket"]]]
-                row["state"], row["detail"] = "REFUSED", _short_reason(r.get("reason", ""))
+                if row["state"] in ("AUTHORIZED", "ISSUED"):
+                    row["state"], row["detail"] = "REFUSED", _short_reason(r.get("reason", ""))
             elif ev in ("refuse", "refuse_ticket"):
                 key = ("r", r["seq"])
                 short = _short_reason(r.get("reason", ""))
@@ -314,7 +323,7 @@ class Chain:
                              "target": r.get("target", ""), "state": "REFUSED",
                              "binding": "", "detail": short, "ticket": r.get("ticket")}
                 order.append(key)
-            elif ev in ("issue", "spawn", "exit", "write", "kill"):
+            elif ev in ("issue", "spawn", "exit", "write", "kill", "unconfirmed"):
                 tid = r.get("ticket")
                 key = by_ticket.get(tid)
                 if key is None:
@@ -347,6 +356,10 @@ class Chain:
                     row["state"], row["detail"] = "EXECUTED", "%s bytes" % r.get("bytes")
                 elif ev == "kill":
                     row["state"], row["detail"] = "KILLED", str(r.get("reason", ""))
+                elif ev == "unconfirmed" and row["state"] == "RUNNING":
+                    # RA-CL3c N16: END could not confirm this process ended. Not KILLED: nothing
+                    # was signalled by END and it may still be running. A later exit overrides.
+                    row["state"], row["detail"] = "UNCONFIRMED", str(r.get("reason", ""))
         return [rows[k] for k in reversed(order)]
 
     def sign_head_argv(self, out_path=None, key=None):

@@ -534,41 +534,125 @@ def _open_tickets(ch):
             continue
         elif ev == "spawn":
             out[tid]["spawned"] = True
+            out[tid]["pid"], out[tid]["pstart"] = r.get("pid"), r.get("pstart")
         elif ev == "kill":
             out[tid]["killed"] = True
-        elif ev in ("exit", "write", "refuse_ticket"):
+        elif ev in ("exit", "write", "refuse_ticket", "unconfirmed"):
             out[tid]["done"] = True
     return {t: i for t, i in out.items() if not i.get("done")}
 
 
+def _ticket_events(records, tid):
+    return [r.get("event") for r in records if r.get("ticket") == tid]
+
+
+def _same_process(pid, pstart):
+    """True only if `pid` is alive AND its start time equals the one logged at launch (the
+    gatestate.proc_start identity check — a recycled pid never matches; unknown is no)."""
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1 or not pstart:
+        return False
+    if pid == os.getpid():
+        return False
+    import gatestate
+    if gatestate.proc_start(pid) != pstart:
+        return False
+    return not _zombie(pid)                 # exited, only the reap is pending: it is gone
+
+
+def _zombie(pid):
+    try:
+        if sys.platform.startswith("linux"):
+            with open("/proc/%d/stat" % pid) as fh:
+                raw = fh.read()
+            return raw[raw.rindex(")") + 2:].split()[0] == "Z"
+        # elsewhere (macOS) no spawn from a gate module (CL2 one-gate rule): an orphan's zombie is
+        # reaped by launchd within moments; if not, END says "still alive" (UNCONFIRMED), never
+        # a false KILLED
+        return False
+    except (OSError, ValueError, IndexError):
+        return True                         # the process is gone
+    except Exception:
+        return False
+
+
+def _kill_orphan(pid, pstart, grace=1.0):
+    """SIGTERM then SIGKILL the orphan's process group (gated processes lead their own group), only
+    while the pid still proves to be the launched process. Returns True when verified gone."""
+    import signal
+    for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, 1.0)):
+        if not _same_process(pid, pstart):
+            return True
+        try:
+            if os.getpgid(pid) == pid and pid != os.getpgrp():
+                os.killpg(pid, sig)
+            else:
+                os.kill(pid, sig)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            return False
+        t_end = time.monotonic() + wait
+        while time.monotonic() < t_end:
+            if not _same_process(pid, pstart):
+                return True
+            time.sleep(0.05)
+    return not _same_process(pid, pstart)
+
+
 def _settle_tickets(ch):
-    """RA-CL3b B3: before engagement.close, every ticket of this engagement gets an outcome in
-    THIS chain, so no row stays RUNNING / ISSUED after END.
+    """RA-CL3b B3 / RA-CL3c N16 N17 N18: before engagement.close, every ticket of this engagement
+    has an outcome in THIS chain, so no row stays RUNNING / ISSUED after END — and END never
+    writes an outcome it has not observed.
 
     The engagement has just been marked expired and published (the caller's _notify): this
     process's executor has already killed its own processes (kill + exit recorded), and every bound
     child's executor sees the expired engagement on its next sweep, kills its process and records
     kill + exit — in this chain, because a ticket is bound to the chain it was issued under. Wait up
-    to END_DRAIN_S for every spawned ticket's exit. Then, for any ticket still open:
-      spawned, no kill -> a `kill` record by END (the reason says the exit was not confirmed in
-                          time; the process's own kill/exit still land here later if it reports)
-      never spawned    -> a `refuse_ticket` record: the ticket is void (its re-check fails now)."""
+    to END_DRAIN_S for every spawned ticket's exit. Then, for any ticket still open, each record is
+    appended under the chain's EXCLUSIVE lock and only if, at that instant, it is still true (N17):
+      spawned, no kill/exit  -> an orphan (its child died without reporting). Owner decision N16:
+                                if its pid AND the start time logged at spawn still match, END
+                                kills its process group and, once verified gone, records `kill`
+                                "orphan at END". Otherwise (no match, unknown, or it survived)
+                                `unconfirmed` — never KILLED. A later exit from it overrides.
+      no spawn/write/outcome -> `refuse_ticket`: END saw no use of the ticket; from now on its
+                                re-check fails. If a use that had already passed its gate lands
+                                after this (N18), its spawn/kill/exit follow and the row shows them."""
     deadline = time.monotonic() + END_DRAIN_S
     open_ = _open_tickets(ch)
     while open_ and any(i["spawned"] for i in open_.values()) and time.monotonic() < deadline:
         time.sleep(0.05)
         open_ = _open_tickets(ch)
+
+    def unreported(t):
+        return lambda recs: not ({"kill", "exit"} & set(_ticket_events(recs, t)))
     for tid, i in (open_ or {}).items():
         common = dict(ticket=tid, label=i["label"], target=i["target"], by="end")
         try:
             if i["spawned"]:
-                if not i["killed"]:
-                    ch.record("kill", reason="engagement ended — process exit not confirmed "
-                                             "within %gs (kill signalled by END)" % END_DRAIN_S,
-                              **common)
+                pid, pstart = i.get("pid"), i.get("pstart")
+                fresh = _open_tickets(ch) or {}
+                if tid not in fresh or fresh[tid].get("killed"):
+                    continue                    # the process reported (or its child killed it)
+                if _same_process(pid, pstart):
+                    if _kill_orphan(pid, pstart):
+                        ch.record("kill", _only_if=unreported(tid), reason="orphan at END",
+                                  pid=pid, pstart=pstart, verified_gone=True, **common)
+                    else:
+                        ch.record("unconfirmed", _only_if=unreported(tid),
+                                  reason="orphan at END: signalled, still alive", pid=pid,
+                                  **common)
+                else:
+                    ch.record("unconfirmed", _only_if=unreported(tid),
+                              reason="engagement ended — exit not confirmed; pid %s does not match "
+                                     "the process logged at launch, END sent no signal" % pid,
+                              pid=pid, **common)
             else:
-                ch.record("refuse_ticket", reason="engagement ended before the ticket was used "
-                                                  "— void", **common)
+                ch.record("refuse_ticket", _only_if=lambda recs, t=tid: not (
+                    {"spawn", "write", "exit", "kill", "refuse_ticket"}
+                    & set(_ticket_events(recs, t))),
+                    reason="engagement ended — no use of this ticket recorded by then; it can no "
+                           "longer pass its gate", **common)
         except Exception:
             pass                        # END is the kill path; never block it on a record
 

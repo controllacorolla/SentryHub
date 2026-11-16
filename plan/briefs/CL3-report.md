@@ -119,3 +119,25 @@ The 4 are the known baseline (`test_audit_tiles::test_undecodable_tile_is_marked
 `test_hwlab::test_doctor_hwbench_check`, `test_sstvdec::…iss_passes…`, flaky
 `test_cl1_screen::test_up_down_drive_the_list_and_the_detail_follows`). CL1/CL2/CL3 test files
 re-run after the final edit: 119 passed (+ the flaky up/down). pyflakes clean on touched files.
+
+---
+
+## CL3-fix3 — close RA-CL3c N16 N17 (+ N18 N19) (planner thread, 2026-11-16)
+
+| ID | Status | Fix | Test (`tests/test_cl3_fix2.py`) |
+|---|---|---|---|
+| **N16** END wrote a false KILLED for an orphan | CLOSED (owner decision: option B, honest records) | `executor.start` logs `pstart = gatestate.proc_start(pid)` (the CL2-fix N3 pid-identity check) in the `spawn` record. After the drain, for a spawned ticket with no kill/exit, END (`_settle_tickets`) kills the process group **only if** the live pid's start time equals the logged one and it is not a zombie (`_same_process`), SIGTERM→SIGKILL, re-checking identity before each signal; once verified gone it records `kill` reason **"orphan at END"** (`verified_gone: true`). No match / unknown start / survived → `unconfirmed` (new event; row state **UNCONFIRMED**, never KILLED; a later exit overrides). | `test_n16_end_kills_an_orphan_whose_pid_and_start_time_match`, `test_n16_end_never_signals_a_pid_whose_start_time_does_not_match` (process left untouched), `test_n16_spawn_records_the_process_start_time`, `test_n16_a_late_exit_overrides_unconfirmed`, `test_b3_end_leaves_no_ticket_running_or_issued_even_without_confirmation` (no start time logged → UNCONFIRMED) |
+| **N17** END void could hide an executed write | CLOSED | `Chain.record(..., _only_if=pred)`: the predicate runs under `LOCK_EX` on the freshly re-read records; END's `refuse_ticket` is appended only if the ticket still has no spawn/write/exit/kill/refusal, and its `kill`/`unconfirmed` only if no kill/exit. `states()`: a `refuse_ticket` changes a row only while it is AUTHORIZED/ISSUED. | `test_n17_end_never_voids_a_ticket_used_after_it_looked` (write lands between END's read and its void → no void, row EXECUTED), `test_n17_a_refusal_never_hides_an_outcome_in_the_trail` |
+| N18 void reason said "never used" | CLOSED (wording) | void reason now states what END observed: "no use of this ticket recorded by then; it can no longer pass its gate". A use that had already passed its gate shows its spawn/kill/exit after it. | covered by N17 tests |
+| N19 two kills for one ticket | CLOSED | END writes nothing for a ticket whose child already recorded a kill. | `test_n19_end_writes_nothing_for_a_process_its_child_already_killed` |
+
+Expected change vs the RA-CL3c PoC `test_OK_stopped_child_misses_rollover_…`: with N16 option B, END now
+kills the SIGSTOPped child's process (pid + start match) and records `kill` "orphan at END" before close;
+after close alpha receives only the child's `exit` (no second kill). Bravo still sees nothing.
+RA-CL3c PoCs `test_DEFECT_sigkilled_child…`, `…redeem_racing_end…`, `…void_after_write…` now fail (= fixed).
+
+Full suite (Linux, Python 3.12.3, xvfb offscreen): 1300 passed, 5 failed — the 4 known baseline/flaky
+plus `test_cl2_gates::test_one_gate_no_spawn_…`, caught because the first cut of the zombie check
+ran `ps` from engagement.py. Removed (Linux reads `/proc`; elsewhere zombie = not detected →
+"still alive" → UNCONFIRMED, never a false KILLED). After that: cl2_gates + all CL3 test files
+126 passed. pyflakes clean.

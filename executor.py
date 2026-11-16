@@ -330,8 +330,15 @@ def start(ticket, argv=None, spawner=None, on_line=None):
         if not h._done.is_set():
             _RUNNING.append(h)
     _ensure_monitor()
+    # RA-CL3c N16 (owner decision): the process start time is logged at launch, so END can later
+    # prove a pid is still THIS process (never a recycled pid) before it kills an orphan.
+    try:
+        import gatestate
+        pstart = gatestate.proc_start(proc.pid)
+    except Exception:
+        pstart = None
     record("spawn", chain_id=h.chain_id, ticket=ticket.id, label=ticket.label,
-           argv=list(run_argv), pid=proc.pid)
+           argv=list(run_argv), pid=proc.pid, pstart=pstart)
     _sweep()                     # the gate could have flipped between redeem and register
     return h
 

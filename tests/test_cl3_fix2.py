@@ -166,10 +166,12 @@ def test_b3_end_leaves_no_ticket_running_or_issued_even_without_confirmation(mon
     assert names[-1] == "engagement.close"
     by_end = [r for r in recs if r.get("by") == "end"]
     assert sorted((r["event"], r["target"]) for r in by_end) == \
-        [("kill", "10.0.0.8"), ("refuse_ticket", "10.0.0.9")]
+        [("refuse_ticket", "10.0.0.9"), ("unconfirmed", "10.0.0.8")]
+    # RA-CL3c N16: END signalled nothing, so the orphan is UNCONFIRMED — never a false KILLED
+    assert not any(r["event"] == "kill" for r in by_end)
     rows = chain.Chain.open(info["id"]).states()
     assert sorted((r["target"], r["state"]) for r in rows) == \
-        [("10.0.0.8", "KILLED"), ("10.0.0.9", "REFUSED")]       # one row each, none open
+        [("10.0.0.8", "UNCONFIRMED"), ("10.0.0.9", "REFUSED")]  # one row each, none open
     assert not any(r["state"] in ("RUNNING", "ISSUED") for r in rows)
 
 
@@ -247,6 +249,137 @@ def test_b3_end_does_not_claim_to_kill_a_txguard_ticket_it_does_not_end(monkeypa
     recs = [r for r in _recs(info["path"]) if r.get("ticket") == t.id]
     assert [r["event"] for r in recs] == ["issue", "spawn", "exit"]
     assert not any(r.get("by") == "end" for r in recs)
+
+
+# ============================================================================ RA-CL3c
+def _orphan(start_new_session=True):
+    return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                            start_new_session=start_new_session, stdout=subprocess.DEVNULL)
+
+
+def test_n16_end_kills_an_orphan_whose_pid_and_start_time_match(monkeypatch):
+    """Owner decision (N16 option B): a bound child died after spawning (SIGKILL) and never
+    reported. Its gated process is still running in its own session. pid + start time match the
+    spawn record -> END kills it, verifies it gone, and records `kill` "orphan at END"."""
+    import gatestate
+    monkeypatch.setattr(E, "END_DRAIN_S", 0.2)
+    info = _start()
+    ch = chain.for_id(info["id"])
+    p = _orphan()
+    try:
+        ps = gatestate.proc_start(p.pid)
+        assert ps
+        ch.record("issue", ticket="o1", label="net:portscan", target="10.0.0.6",
+                  issuer="engagement")
+        ch.record("spawn", ticket="o1", label="net:portscan", pid=p.pid, pstart=ps)
+        E.end()
+        assert p.wait(5) is not None                         # really gone
+        recs = [r for r in _recs(info["path"]) if r.get("ticket") == "o1"]
+        k = recs[-1]
+        assert (k["event"], k["reason"], k["by"], k["pid"], k["verified_gone"]) == \
+            ("kill", "orphan at END", "end", p.pid, True)
+        names = [r["event"] for r in _recs(info["path"])]
+        assert names[-1] == "engagement.close" and k["seq"] < names.index("engagement.close")
+        assert [r["state"] for r in chain.Chain.open(info["id"]).states()] == ["KILLED"]
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait(5)
+
+
+def test_n16_end_never_signals_a_pid_whose_start_time_does_not_match(monkeypatch):
+    """Same orphan, but the logged start time does not match the live pid (a recycled pid): END
+    sends NO signal and records UNCONFIRMED — never KILLED."""
+    monkeypatch.setattr(E, "END_DRAIN_S", 0.2)
+    info = _start()
+    ch = chain.for_id(info["id"])
+    p = _orphan()
+    try:
+        ch.record("issue", ticket="o2", label="net:portscan", target="10.0.0.6",
+                  issuer="engagement")
+        ch.record("spawn", ticket="o2", label="net:portscan", pid=p.pid, pstart="linux:1")
+        E.end()
+        time.sleep(0.3)
+        assert p.poll() is None                               # untouched
+        recs = [r for r in _recs(info["path"]) if r.get("ticket") == "o2"]
+        assert [r["event"] for r in recs] == ["issue", "spawn", "unconfirmed"]
+        assert "does not match" in recs[-1]["reason"]
+        assert [r["state"] for r in chain.Chain.open(info["id"]).states()] == ["UNCONFIRMED"]
+    finally:
+        p.kill()
+        p.wait(5)
+
+
+def test_n16_spawn_records_the_process_start_time():
+    import executor
+    import gatestate
+    import netpent
+    info = _start()
+    G.arm(True)
+    G.unlock_session(True)
+    ok, why, t = netpent.prepare("portscan", "10.0.0.5")
+    h = executor.start(t, spawner=_sleeper(30))
+    try:
+        sp = [r for r in _recs(info["path"]) if r["event"] == "spawn"][-1]
+        assert sp["pid"] == h.proc.pid and sp["pstart"] == gatestate.proc_start(h.proc.pid)
+        assert sp["pstart"]
+    finally:
+        h.stop("test")
+
+
+def test_n16_a_late_exit_overrides_unconfirmed():
+    """If the orphan does report after END, its real outcome replaces UNCONFIRMED."""
+    ch = chain.Chain.create(cid="n16-1")
+    ch.record("issue", ticket="t1", label="x", target="y", issuer="engagement")
+    ch.record("spawn", ticket="t1", label="x", pid=4242)
+    ch.record("unconfirmed", ticket="t1", label="x", reason="engagement ended", by="end")
+    assert [r["state"] for r in ch.states()] == ["UNCONFIRMED"]
+    ch.record("exit", ticket="t1", label="x", exit_code=0, stopped=None)
+    assert [(r["state"], r["detail"]) for r in ch.states()] == [("EXECUTED", "exit 0")]
+
+
+def test_n17_end_never_voids_a_ticket_used_after_it_looked(monkeypatch):
+    """PoC: END read the chain, a device write landed, END then wrote its void anyway and the trail
+    showed REFUSED for bytes that were sent. The void is now conditional under the exclusive lock,
+    and a refusal can never replace an outcome in the trail."""
+    monkeypatch.setattr(E, "END_DRAIN_S", 0.1)
+    info = _start()
+    ch = chain.for_id(info["id"])
+    ch.record("issue", ticket="w1", label="hid:type", target="10.0.0.3", issuer="engagement")
+    real = E._open_tickets
+
+    def stale_then_write(c):
+        snap = real(c)                                # END's view: w1 unused ...
+        c.record("write", ticket="w1", bytes=12)       # ... then the write lands
+        return snap
+    monkeypatch.setattr(E, "_open_tickets", stale_then_write)
+    E.end()
+    recs = _recs(info["path"])
+    assert [r["event"] for r in recs if r.get("ticket") == "w1"] == ["issue", "write"]
+    assert [(r["state"], r["detail"]) for r in chain.Chain.open(info["id"]).states()] == \
+        [("EXECUTED", "12 bytes")]
+
+
+def test_n17_a_refusal_never_hides_an_outcome_in_the_trail():
+    ch = chain.Chain.create(cid="n17-2")
+    ch.record("issue", ticket="t2", label="x", target="y")
+    ch.record("write", ticket="t2", label="x", bytes=3)
+    ch.record("refuse_ticket", ticket="t2", label="x", reason="engagement ended")
+    assert [r["state"] for r in ch.states()] == ["EXECUTED"]
+
+
+def test_n19_end_writes_nothing_for_a_process_its_child_already_killed(monkeypatch):
+    """The child recorded its kill but its exit is slow: END must not add a second kill."""
+    monkeypatch.setattr(E, "END_DRAIN_S", 0.2)
+    info = _start()
+    ch = chain.for_id(info["id"])
+    ch.record("issue", ticket="k1", label="net:portscan", target="10.0.0.4", issuer="engagement")
+    ch.record("spawn", ticket="k1", label="net:portscan", pid=4243)
+    ch.record("kill", ticket="k1", label="net:portscan", reason="gate closed", pid=4243)
+    E.end()
+    recs = [r for r in _recs(info["path"]) if r.get("ticket") == "k1"]
+    assert [r["event"] for r in recs] == ["issue", "spawn", "kill"]
+    assert [r["state"] for r in chain.Chain.open(info["id"]).states()] == ["KILLED"]
 
 
 # ============================================================================ N14
