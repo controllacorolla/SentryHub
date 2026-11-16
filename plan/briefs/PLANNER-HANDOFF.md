@@ -28,9 +28,9 @@ ham callsign, head signing automation, session-chain prune policy, the v0.1 laun
 |---|---|---|
 | CL1 screen | merged (PR #19) | RA-CL1d MERGE |
 | CL2 gates | merged (PR #20) | RA-CL2e MERGE. **RA-MAIN-1** (post-merge check) was queued on the Mac runner; if no `RA-MAIN-1-report.md` exists on `audit/ra-main-1`, run it as a subagent |
-| CL3 evidence chain | `fix/cl3-evidence` @ 13c04a4 | CL3-fix pushed; **RA-CL3b** was queued on the Mac runner. If `plan/briefs/RA-CL3b-report.md` is not on the branch, run it as a subagent. MERGE → open PR → merge → tell owner |
+| CL3 evidence chain | **merged (PR #21, 5c5607b)** | RA-CL3d MERGE (via RA-CL3b → CL3-fix2 B3/N14 → RA-CL3c → CL3-fix3 N16–N19). Owner decisions: 2 s END drain accepted; N16 = kill orphan only on pid+start-time match ("orphan at END"), else UNCONFIRMED. Follow-ups for CL4: **N20 Med** (verified_gone/`_kill_group` check only the group leader — probe killpg(pg,0), SIGKILL rest, UNCONFIRMED if any survive), N21–N25 Low (see RA-CL3d-report), plus N11 N12 N13 N15 R1 |
 | CL5 radio/threads | `fix/cl5-radio` @ ed4694a | 2026-11-16: 3 stale tests fixed + RA-MAIN-1 F1 (strip ≤1270, `N tgts` for 100–999) and F2 (false finding; font-load test) folded in; CL5-report.md + renders pushed. **RA-CL5 = DO NOT MERGE**: A1 R1 R3 open, A3 regressed (decoders start/LIVE while ACQUIRING), PANIC leaves arbiter HELD + pages respawn, GUI-thread blocks on free/stop, NWR false all-clear after FREE (Critical), bus drops alerts (High). Next: **CL5-fix** = the 12-item list in `RA-CL5-report.md`, then spawn `RA-CL5b`. Note: branch is based on c00f57b (pre-CL2), merges clean with main |
-| CL4 honest state | not started | H1–H19 E1 E4 D4(empty) L5 — branch off main once CL3 merges |
+| CL4 honest state | not started | H1–H19 E1 E4 D4(empty) L5 + CL3 follow-ups N20 (Med) N21–N25 N11 N12 N13 N15 — branch off main (CL3 is in) |
 | CL6, CL7, CL8 | not started | `plan/audit/AUDIT_INDEX.md` |
 
 ## Owner decisions 2026-11-16
