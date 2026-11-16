@@ -632,8 +632,9 @@ def test_l5_remote_mode_serves_real_adsb_contacts_when_live():
     feed = types.SimpleNamespace(
         snapshot=lambda: ([{"hex": "a1b2c3", "flight": "UAL1 ", "lat": 1.0, "lon": 2.0},
                            {"hex": "nopos"}], {}, "live", None), data_t=time.time())
-    app = headless.make_app(headless.adsb_providers(feed))
+    app = headless.make_app(headless.adsb_providers(feed), token="t" * 24)   # C1 (CL8)
     c = app.test_client()
+    c.environ_base["HTTP_AUTHORIZATION"] = "Bearer " + "t" * 24
     assert c.get("/api/contacts").get_json()["contacts"] == [
         {"id": "a1b2c3", "label": "UAL1", "type": "aircraft", "lat": 1.0, "lon": 2.0,
          "alt": None}]

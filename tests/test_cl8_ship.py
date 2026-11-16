@@ -293,3 +293,49 @@ def test_l4_pipegroup_missing_stage_kills_the_started_ones(tmp_path):
         pid = int(pidfile.read_text())
         assert _until(lambda: not os.path.exists("/proc/%d" % pid) or
                       open("/proc/%d/stat" % pid).read().split(") ")[1][0] == "Z", 3000)
+
+
+# ================================================================== C1 — Remote Mode token
+def _remote(token="r" * 24):
+    pytest.importorskip("flask")
+    import headless
+    return headless.make_app({"status": lambda: {"active_contacts": 1},
+                              "contacts": lambda: [{"id": "<img src=x onerror=alert(1)>"}]},
+                             token=token)
+
+
+def test_c1_remote_mode_refuses_to_build_without_a_token():
+    pytest.importorskip("flask")
+    import headless
+    for bad in (None, "", "short", "x" * 15, 12345, "has space in it 1234"):
+        with pytest.raises(ValueError):
+            headless.make_app({}, token=bad)
+
+
+def test_c1_every_route_but_health_needs_the_token():
+    c = _remote().test_client()
+    assert c.get("/health").status_code == 200
+    assert "ts" not in c.get("/health").get_json()            # nothing but liveness unauthed
+    for path in ("/", "/api/status", "/api/contacts", "/api/status?token=" + "r" * 24):
+        assert c.get(path).status_code == 401, path
+    for hdr in ("Bearer " + "r" * 23, "Bearer " + "R" * 24, "r" * 24, "Basic " + "r" * 24):
+        assert c.get("/api/contacts", headers={"Authorization": hdr}).status_code == 401, hdr
+    ok = c.get("/api/contacts", headers={"Authorization": "Bearer " + "r" * 24})
+    assert ok.status_code == 200 and ok.headers["Cache-Control"] == "no-store"
+    page = c.get("/?token=" + "r" * 24)
+    assert page.status_code == 200 and "default-src 'none'" in page.headers[
+        "Content-Security-Policy"]
+    html = page.get_data(as_text=True)
+    assert "innerHTML" not in html and "Authorization" in html and "replaceState" in html
+
+
+def test_c1_token_is_generated_once_and_saved_owner_only(tmp_path):
+    import headless
+    s = {"token": ""}
+    tok, changed = headless.ensure_token(s)
+    assert changed and headless.valid_token(tok) and s["token"] == tok
+    assert headless.ensure_token(s) == (tok, False)
+    p = str(tmp_path / "headless.json")
+    headless._save_private(p, s)
+    assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+    assert json.load(open(p))["token"] == tok
