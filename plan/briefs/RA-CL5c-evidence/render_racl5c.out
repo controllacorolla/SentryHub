@@ -1,0 +1,15 @@
+prowl_nwr_wedged_dark_live.png 1280x720 arbiter=('HELD', 'PROWL-NWR') state='NOT MONITORING — NWR — waiting for audio' chip='NWR — waiting for audio' procs=['396:Ss:python3', '14752:Ss:python3', '14825:Ss:python3', '14991:Ss:python3', '15081:Ss:python3']
+prowl_slow_switch_dark_live.png 1280x720 arbiter=('FREE', None) busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes' swapping=True
+[lifecycle] PROWL: worker NwrWorker did not stop within 3000 ms — parked (not killed, not dropped)
+radios_after_atlas_hidden_revoke_dark_live.png 1280x720 arbiter=('FREE', None) rtl_ais=[] hist=[('RELEASE', 'AIS'), ('HELD', 'AIS'), ('ACQUIRING', 'AIS')]
+babel_after_panic_dark_live.png 1280x720 arbiter=('FREE', None) banner='TX disarmed · no engagement was open · 1 child process(es) stopped by their pages (verified gone) · radio released (was BABEL) · TX OFF' children=[] RUN=False
+prowl_nwr_wedged_sun_live.png 1280x720 arbiter=('HELD', 'PROWL-NWR') state='NOT MONITORING — NWR — waiting for audio' chip='NWR — waiting for audio' procs=['726:Ss:rtl_fm', '14752:Ss:python3', '14825:Ss:python3', '14991:Ss:python3', '15081:Ss:python3']
+Traceback (most recent call last):
+  File "/home/user/wt-RA-CL5c/palisade_qt/app.py", line 364, in <lambda>
+    w.finished.connect(lambda w=w: self._retired.emit(w))   # worker thread -> GUI thread
+                                   ^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Signal source has been deleted
+prowl_slow_switch_sun_live.png 1280x720 arbiter=('FREE', None) busy='FM: waiting for the previous mode to give the radio back' chip='SDR — switching modes' swapping=True
+[lifecycle] PROWL: worker NwrWorker did not stop within 3000 ms — parked (not killed, not dropped)
+radios_after_atlas_hidden_revoke_sun_live.png 1280x720 arbiter=('FREE', None) rtl_ais=[] hist=[('RELEASE', 'AIS'), ('HELD', 'AIS'), ('ACQUIRING', 'AIS')]
+babel_after_panic_sun_live.png 1280x720 arbiter=('FREE', None) banner='TX disarmed · no engagement was open · 1 child process(es) stopped by their pages (verified gone) · radio released (was BABEL) · TX OFF' children=[] RUN=False

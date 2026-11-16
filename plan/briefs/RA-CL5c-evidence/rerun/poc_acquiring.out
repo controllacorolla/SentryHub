@@ -1,0 +1,35 @@
+=== 
+  0.23  0.23 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+ LEASE.acquire start BABEL (readsb would still hold the dongle)
+  0.33 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  0.43 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  0.53 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  0.63 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  0.74 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  0.75 SAMPLE arbiter=('ACQUIRING', 'BABEL') children=[]
+  0.84 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  0.94 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  1.04 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  1.14 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  1.24 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  1.26 SAMPLE arbiter=('ACQUIRING', 'BABEL') children=[]
+  1.34 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  1.44 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  1.54 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  1.64 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  1.74 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  1.77 SAMPLE arbiter=('ACQUIRING', 'BABEL') children=[]
+  1.84 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  1.94 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  2.04 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  2.15 STATUS babel AIS ACQUIRING radio | arbiter: ('ACQUIRING', 'BABEL')
+  2.24 LEASE.acquire done BABEL children-at-HELD: []
+  2.25 STATUS babel None | arbiter: ('HELD', 'BABEL')
+  2.25 STATUS babel AIS LIVE | arbiter: ('HELD', 'BABEL')
+  2.29 SAMPLE arbiter=('HELD', 'BABEL') children=['29679:rtl_ais', '29680:sleep']
+  2.80 SAMPLE arbiter=('HELD', 'BABEL') children=['29679:rtl_ais', '29692:sleep']
+  3.06 STATUS babel AIS 5 | arbiter: ('HELD', 'BABEL')
+  3.31 SAMPLE arbiter=('HELD', 'BABEL') children=['29679:rtl_ais', '29703:sleep']
+  3.33 LEASE.release BABEL children-at-release: []
+  3.84 END arbiter=('FREE', None) children=[]
+--- rc=0

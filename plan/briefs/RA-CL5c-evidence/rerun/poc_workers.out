@@ -1,0 +1,11 @@
+=== 
+== sleep: rc=0 wall=1.1s
+   stdout: 0.87 close() took 0.00s ; parked=0 ; running=[] |   0.97 event loop left; exiting
+   stderr: -
+== retry: rc=0 wall=3.0s
+   stdout: 2.76 close() took 0.00s ; parked=0 ; running=[] |   2.86 event loop left; exiting
+   stderr: [POC] device gone | [POC] device gone | [POC] device gone
+== stuck: rc=0 wall=6.1s
+   stdout: 3.84 close() took 3.00s ; parked=1 ; running=[True] |   5.94 event loop left; exiting
+   stderr: [lifecycle] POC: worker W did not stop within 3000 ms — parked (not killed, not dropped)
+--- rc=0
