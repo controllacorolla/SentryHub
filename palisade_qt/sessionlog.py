@@ -55,6 +55,13 @@ class SessionLog(QtCore.QObject):
                         now - it["ts"] < DEDUPE_S:
                     it["count"] += 1
                     it["ts"] = now
+                    if it["id"] <= self._seen_id:
+                        # RA-CL8: a repeat after the operator saw it is news again: new id, so the
+                        # fault indicator lights; moved to the top where the newest entries are
+                        it["id"] = self._next_id
+                        self._next_id += 1
+                        self.items.remove(it)
+                        self.items.insert(0, it)
                     break
             else:
                 self.items.insert(0, {"id": self._next_id, "ts": now, "level": level,
@@ -88,6 +95,13 @@ class SessionLog(QtCore.QObject):
         """Faults/errors recorded since the operator last opened the log (the strip indicator)."""
         with self._lock:
             return sum(1 for it in self.items if it["level"] in ATTENTION and it["id"] > self._seen_id)
+
+    def first_unseen_id(self):
+        """Id of the oldest fault/error not yet seen, or None."""
+        with self._lock:
+            ids = [it["id"] for it in self.items
+                   if it["level"] in ATTENTION and it["id"] > self._seen_id]
+        return min(ids) if ids else None
 
     def mark_seen(self):
         with self._lock:

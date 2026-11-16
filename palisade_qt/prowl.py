@@ -457,7 +457,7 @@ class FmWorker(_RadioWorker):
         import fm
         try:
             rtl, mid, sink = fm.pipeline(self.freq, self.mode, self.gain, self.squelch, self.rds)
-        except (TypeError, ValueError) as e:
+        except Exception as e:      # RA-CL8: any malformed setting refuses
             self._refuse_settings(e)
             return
         pipe = _open_fm_pipe(rtl, mid, sink, self._on_rds)
@@ -696,7 +696,7 @@ class NwrWorker(_RadioWorker):
         import nwr
         try:
             argv = nwr.pipeline_argv(self.channel, self.gain)
-        except ValueError as e:
+        except Exception as e:      # RA-CL8: any malformed setting refuses
             self._refuse_settings(e)
             return
         proc = _open_nwr_pipe(argv)

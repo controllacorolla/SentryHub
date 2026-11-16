@@ -68,6 +68,83 @@ def safe_tokens(argv, program=None):
     return argv
 
 
+# --- decoder command templates (RA-CL8) -------------------------------------------------------
+# An editable template may only use the options below. Anything that writes a file, reads a config
+# file, or sends decoded data to another host (rtl_433 -F syslog:/mqtt:/influx:, -w, -c, -S;
+# acarsdec/dumpvdl2 --output …:udp:/zmq:, acarsdec -j/-n/-N/-l) is refused: output goes to stdout
+# only, where the page reads it. Positional words must be frequencies.
+_STDOUT_OUTPUT = re.compile(r"^([a-z0-9_]+:){1,2}file:path=-$")
+_RTL433_F = {"json", "csv", "kv", "log"}
+
+
+def _num(v):
+    try:
+        float(v)
+    except ValueError:
+        raise SettingsRefused("not a number in command template: %r" % (v,))
+
+
+def _word(v):
+    if not re.match(r"^[A-Za-z0-9_.:,=+-]+$", v) or v.startswith("."):
+        raise SettingsRefused("bad option value in command template: %r" % (v,))
+
+
+def _device(v):
+    # a dongle index or :serial only; rtl_433 -d rtl_tcp:host:port / soapy driver=remote would
+    # stream from another host
+    if not re.match(r"^:?[A-Za-z0-9_]{1,32}$", v):
+        raise SettingsRefused("device %r refused: a dongle index or :serial only" % (v,))
+
+
+def _rtl433_out(v):
+    if v not in _RTL433_F:
+        raise SettingsRefused("rtl_433 -F %s refused: decoded output goes to stdout only "
+                              "(json, csv, kv or log)" % v)
+
+
+def _stdout_out(v):
+    if not _STDOUT_OUTPUT.match(v):
+        raise SettingsRefused("--output %s refused: decoded output goes to stdout only "
+                              "(…:file:path=-)" % v)
+
+
+# option -> value check (None = a flag without a value)
+TEMPLATE_OPTIONS = {
+    "rtl_433": {"-d": _device, "-g": _num, "-f": freq_arg, "-H": _num, "-s": freq_arg, "-p": _num,
+                "-F": _rtl433_out, "-M": _word, "-R": _word, "-Y": _word, "-C": _word,
+                "-E": _word, "-T": _num, "-v": None, "-vv": None, "-q": None},
+    "acarsdec": {"--output": _stdout_out, "--rtlsdr": _device, "-r": _device, "-g": _num,
+                 "-o": _num, "-p": _num, "-A": None, "-e": None, "-i": _word, "-b": _word,
+                 "-v": None},
+    "dumpvdl2": {"--output": _stdout_out, "--rtlsdr": _device, "--gain": _num,
+                 "--correction": _num, "--centerfreq": freq_arg, "--station-id": _word,
+                 "--decode-fragments": None, "--extended-header": None},
+}
+
+
+def template_argv(argv, program):
+    """safe_tokens, then every option must be one the decoder template may use (TEMPLATE_OPTIONS,
+    values checked) and every positional word must be a frequency. Returns argv."""
+    argv = safe_tokens(argv, program)
+    spec = TEMPLATE_OPTIONS[program]
+    i = 1
+    while i < len(argv):
+        t = argv[i]
+        if t.startswith("-") and not _FREQ_RE.match(t.lstrip("-")):
+            if t not in spec:
+                raise SettingsRefused("%s option %s is not allowed in a settings template" % (program, t))
+            check = spec[t]
+            if check is not None:
+                if i + 1 >= len(argv):
+                    raise SettingsRefused("%s option %s needs a value" % (program, t))
+                check(argv[i + 1])
+                i += 1
+        else:
+            freq_arg(t)
+        i += 1
+    return argv
+
+
 class PipeGroup:
     """A list of argv stages run as one process group (no shell): stage 1 leads a new process
     group, later stages join it, stdout of each feeds the next. Quacks like the Popen the legacy

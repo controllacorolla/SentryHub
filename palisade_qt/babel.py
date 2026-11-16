@@ -320,7 +320,10 @@ TPMS_HOP_S = 30        # B6: rtl_433's default hop with two -f is 600 s — one 
 def tpms_argv(s):
     """rtl_433 argv for TPMS from settings. L4: every frequency and the gain pass argsafe; B6: with
     more than one frequency, hop every hop_s seconds (5..600) instead of rtl_433's 600 s default."""
-    freqs = [argsafe.freq_arg(f) for f in (s.get("freqs") or ["315M", "433.92M"])]
+    fl = s.get("freqs") or ["315M", "433.92M"]
+    if not isinstance(fl, (list, tuple)):
+        raise argsafe.SettingsRefused("bad TPMS freqs in settings: %r" % (fl,))
+    freqs = [argsafe.freq_arg(f) for f in fl]
     gain = argsafe.gain_arg(s.get("gain") or 0)
     argv = ["rtl_433", "-F", "json", "-M", "level"]
     for f in freqs:
@@ -598,7 +601,17 @@ class DecoderWorker(Worker):
                                               "state": "alert", "ok": False}})
                     break
                 except Exception as e:
-                    self.error.emit("%s: %s" % (mode, str(e)[:150]))
+                    # RA-CL8: an unexpected error building or starting the decoder is a fault too.
+                    # Before, it fell into the "no capture (offline)" branch below and held the
+                    # radio, retrying every second. Say so, do not retry, give the radio back.
+                    msg = "%s failed to start: %s: %s" % (mode, type(e).__name__, str(e)[:140])
+                    self.error.emit(msg)
+                    self._running = False
+                    self.fault.emit("FAULT: " + msg)
+                    self.status.emit({"run_off": True, "live": False, "idle": True, "fault": msg,
+                                      "sdr": {"text": "%s FAULT — FAILED TO START" % mode,
+                                              "state": "alert", "ok": False}})
+                    break
                 if self._stop or self._mode_changed or not self.wants_radio():
                     break
                 if not radio_arbiter.arbiter.held_by(LEASE_NAME):    # freed under us

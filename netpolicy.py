@@ -173,11 +173,32 @@ def allowed(host, m=None):
     return False
 
 
+def _proxy_for(url, host):
+    """The proxy host urllib would use for this URL, or None (no proxy / host bypassed)."""
+    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    proxy = urllib.request.getproxies().get(scheme)
+    if not proxy:
+        return None
+    try:
+        if urllib.request.proxy_bypass(host):
+            return None
+    except Exception:
+        pass
+    return _host_of(proxy if "://" in proxy else "http://" + proxy) or proxy
+
+
 def check(url_or_host, purpose=""):
     """Raise NetBlocked unless the current mode allows this URL (or bare host). Logs it."""
-    host = _host_of(url_or_host) if "://" in str(url_or_host) else str(url_or_host).lower()
+    is_url = "://" in str(url_or_host)
+    host = _host_of(url_or_host) if is_url else str(url_or_host).lower()
     m = mode()
     ok = allowed(host, m)
+    if ok and is_url and m != "ONLINE":
+        # RA-CL8: urllib honours http_proxy/https_proxy, so a loopback request in OFFLINE could
+        # still go to a proxy on another host. The proxy is where the bytes go: it must pass too.
+        proxy = _proxy_for(str(url_or_host), host)
+        if proxy is not None and not allowed(proxy, m):
+            host, ok = "%s (via proxy %s)" % (host, proxy), False
     with _lock:
         _log.append((time.time(), m, "allowed" if ok else "blocked", host, purpose))
     _notify(("allowed" if ok else "blocked", m, host, purpose))

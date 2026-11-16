@@ -632,9 +632,18 @@ class SessionLogPanel(Overlay):
 
     def _changed(self):
         if self.isVisible():
-            if self.log.faults_unseen():
-                self.log.mark_seen()             # on screen now: seen
             self.refresh()
+            first = self.log.first_unseen_id()
+            if first is not None and self._row_on_screen(first):
+                self.log.mark_seen()             # on screen now: seen (RA-CL8: really on screen)
+
+    def _row_on_screen(self, item_id):
+        v = self.table.view
+        for i, r in enumerate(self.table.model.rows):
+            if r.get("_id") == item_id:
+                rect = v.visualRect(self.table.model.index(i, 0))
+                return rect.isValid() and rect.intersects(v.viewport().rect())
+        return False
 
     def refresh(self):
         m = self._netpolicy().mode()
@@ -659,7 +668,18 @@ class SessionLogPanel(Overlay):
                                len(items), "y" if len(items) == 1 else "ies", nf))
 
     def open(self):
+        # RA-CL8 (C4): a fault is only "seen" if it is on screen. Opening the log selects and
+        # scrolls to the oldest unseen fault/error before marking them seen.
+        first = self.log.first_unseen_id()
         super().open()
+        self.refresh()
+        if first is not None:
+            for i, r in enumerate(self.table.model.rows):
+                if r.get("_id") == first:
+                    idx = self.table.model.index(i, 0)
+                    self.table.view.setCurrentIndex(idx)
+                    self.table.view.scrollTo(idx, QtWidgets.QAbstractItemView.PositionAtCenter)
+                    break
         self.log.mark_seen()
 
 
@@ -749,7 +769,7 @@ class AlertsDrawer(Overlay):
 # ======================= key map =======================
 
 KEYMAP = [
-    ("1 – 8", "open a page"),
+    ("1 – 7", "open a page"),
     ("← →", "previous / next sub-tab"),
     ("↑ ↓", "move in the list; the detail follows"),
     ("Enter", "primary action of the page"),

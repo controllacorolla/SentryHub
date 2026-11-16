@@ -92,8 +92,20 @@ TILES = [
 # CL8 (owner decision 3, CL2-fix): the Tk gated tools could never be unlocked here (the Tk hub
 # has no UNLOCK and cannot open an engagement), so they are retired from the Tk hub. Their
 # engines stay: PALISADE (the Qt hub) runs the assessments behind engagement + txguard.
-RETIRED_TK = frozenset({"cw", "rtty", "digi", "replay", "pm3", "wifix", "blex", "zb", "zw", "hid"})
+# v0.1 line (owner, 2026-11-16): SWEEP is hidden in PALISADE until its detectors are validated;
+# the Tk hub hides the same detectors (bug sweep, jamming, IMSI-catcher, GNSS jam/spoof).
+HIDDEN_V01_TK = frozenset({"sweep", "jam", "imsi", "gnss"})
+RETIRED_TK = frozenset({"cw", "rtty", "digi", "replay", "pm3", "wifix", "blex", "zb", "zw",
+                        "hid"}) | HIDDEN_V01_TK
 TILES = [t for t in TILES if t[0] not in RETIRED_TK]
+
+
+def visible_groups(groups):
+    """The Tk home grid is built from GROUPS, not TILES (RA-CL8): drop retired/hidden keys there
+    too — a retired tile left in it was visible but dead (launch() had no command for it)."""
+    out = [(n, c, [t for t in ts if not (t[3][0] == "launch" and t[3][1] in RETIRED_TK)])
+           for n, c, ts in groups]
+    return [g for g in out if g[2]]
 
 class Shell:
     """The workstation: one window, every app a workspace inside it.
@@ -785,6 +797,9 @@ def main():
             return
         if key == "sdrpp":
             return launch_sdrpp()
+        if not cmd:                           # no command for this key: say so, never a TypeError
+            msg.config(text="%s is not available in this build." % key)
+            return
         if not os.path.exists(cmd[1]):
             msg.config(text="Missing %s - re-run the suite installer." % cmd[1])
             return
@@ -963,6 +978,8 @@ def main():
             w.bind("<Enter>", lambda e: hover(True))
             w.bind("<Leave>", lambda e: hover(False))
         return f
+
+    GROUPS = visible_groups(GROUPS)
 
     for _name, _col, _tiles in GROUPS:
         hdr = tk.Label(grid, text=T.spaced(_name), font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE,

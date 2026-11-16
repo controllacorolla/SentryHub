@@ -59,10 +59,19 @@ if [ "$PROFILE" = "field" ]; then
     case "$ans" in y|Y|yes|YES) ;; *) say "Aborted."; exit 0 ;; esac
   fi
   ensure_ufw
+  # `ufw reset` also turns ufw off. If any later step fails (set -e), the EXIT trap turns it back
+  # on with inbound denied, so the profile can never leave the firewall off (RA-CL8 / L2).
+  REENABLE=1
+  trap 'rc=$?; if [ "${REENABLE:-0}" = 1 ]; then
+          printf "harden: a step failed after the reset; turning the firewall back on, inbound denied\n" >&2
+          sudo ufw default deny incoming || true
+          sudo ufw --force enable || true
+        fi; exit $rc' EXIT
   sudo ufw --force reset
   sudo ufw default deny incoming
   sudo ufw default allow outgoing
   sudo ufw --force enable
+  REENABLE=0
   say ""
   sudo ufw status verbose
   say ""

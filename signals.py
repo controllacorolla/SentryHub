@@ -182,18 +182,21 @@ def build_argv(s):
     if not isinstance(tmpl, str):
         raise argsafe.SettingsRefused("bad %s in settings: %r" % (key, tmpl))
     try:
-        return argsafe.safe_tokens(_fill(tmpl, src, gain, s), program=program)
+        return argsafe.template_argv(_fill(tmpl, src, gain, s), program=program)
     except argsafe.SettingsRefused:
         raise
-    except (KeyError, IndexError, ValueError, AttributeError) as e:
-        raise argsafe.SettingsRefused("bad %s in settings: %s" % (key, e))
+    except Exception as e:       # any malformed value (RA-CL8: a TypeError held the radio)
+        raise argsafe.SettingsRefused("bad %s in settings: %s: %s" % (key, type(e).__name__, e))
 
 
 def _fill(tmpl, src, gain, s):
     import argsafe
     if src == "acars":
         freqs = []
-        for f in s.get("acars_freqs", []) or []:
+        fl = s.get("acars_freqs", []) or []
+        if not isinstance(fl, (list, tuple)):
+            raise argsafe.SettingsRefused("bad acars_freqs in settings: %r" % (fl,))
+        for f in fl:
             freqs.append("%.3f" % float(argsafe.freq_arg(f).rstrip("kKMG")))
         return tmpl.format(gain=gain, freqs=" ".join(freqs)).split()
     return tmpl.format(gain=gain).split()

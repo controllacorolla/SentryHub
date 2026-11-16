@@ -314,12 +314,50 @@ class NetScanner:
         return sorted(found)
 
 
+_NMCLI_OPTS = {"-t": False, "--terse": False, "-f": True, "--fields": True, "-e": True,
+               "--escape": True}
+
+
+def wifi_argv(cmd):
+    """scout.json's wifi_cmd -> argv (RA-CL8 / audit L4). Settings are data a restored backup can
+    write, so the command must be an nmcli Wi-Fi *list*: `nmcli [-t] [-f FIELDS] [-e yes|no]
+    dev|device wifi list [ifname IF] [--rescan yes|no|auto]`. Anything else raises
+    argsafe.SettingsRefused (never `bash -c …`, never `nmcli connection delete …`)."""
+    import argsafe
+    if not isinstance(cmd, str):
+        raise argsafe.SettingsRefused("bad wifi_cmd in settings: %r" % (cmd,))
+    argv = argsafe.safe_tokens(cmd.split(), program="nmcli")
+    i = 1
+    while i < len(argv) and argv[i].startswith("-"):
+        if argv[i] not in _NMCLI_OPTS:
+            raise argsafe.SettingsRefused("nmcli option %s is not allowed in wifi_cmd" % argv[i])
+        i += 2 if _NMCLI_OPTS[argv[i]] else 1
+    rest = argv[i:]
+    if len(rest) < 3 or rest[0] not in ("dev", "device") or rest[1:3] != ["wifi", "list"]:
+        raise argsafe.SettingsRefused("wifi_cmd must be an nmcli 'dev wifi list': %r" % (cmd,))
+    tail = rest[3:]
+    while tail:
+        if len(tail) >= 2 and tail[0] == "ifname" and re.match(r"^[A-Za-z0-9_-]{1,15}$", tail[1]):
+            tail = tail[2:]
+        elif len(tail) >= 2 and tail[0] == "--rescan" and tail[1] in ("yes", "no", "auto"):
+            tail = tail[2:]
+        else:
+            raise argsafe.SettingsRefused("wifi_cmd: %r is not allowed after 'wifi list'" % (tail[0],))
+    return argv
+
+
 def wifi_scan(cmd):
     """Parse nmcli (preferred, no root) into a list of APs. Falls back to a helpful message."""
-    if not shutil.which(cmd.split()[0]):
+    import argsafe
+    try:
+        argv = wifi_argv(cmd)
+    except argsafe.SettingsRefused as e:
+        return None, "SETTINGS REFUSED: %s" % str(e)[:120]
+    cmd = " ".join(argv)
+    if not shutil.which(argv[0]):
         return None, "%s not found - install NetworkManager (nmcli) for a no-root Wi-Fi scan." % cmd.split()[0]
     try:
-        r = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=15)
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.TimeoutExpired) as e:
         return None, "scan failed: %s" % str(e)[:60]
     aps = []

@@ -27,7 +27,9 @@ echo "      Fonts installed: Atkinson Hyperlegible + IBM Plex (SIL Open Font Lic
 
 echo "[4/8] Commands: palisade (the Qt hub, default), hub (legacy Tk hub + --doctor/--sitrep), sky"
 # L6: the launchers in /usr/local/bin are ROOT-OWNED files, not symlinks into the user-writable
-# ~/.local/bin (anyone who could write there could change what root runs as `hub`).
+# ~/.local/bin. Limit (RA-CL8): they still run the suite from $APP, which the user owns, so code
+# there runs as whoever starts it. Never run palisade/hub/sky with sudo; the suite asks for sudo
+# itself for the few steps that need it.
 for pair in "palisade:-m palisade_qt" "hub:$APP/hub.py" "sky:$APP/sky_app.py"; do
   name=${pair%%:*}; target=${pair#*:}
   TMPL=$(mktemp)
@@ -77,7 +79,7 @@ mk field "Field Status" "GPS, battery, thermals" field_status.py utilities-syste
 mk ai "Assistant" "Push-to-talk local AI" assistant.py audio-input-microphone
 mk tx "Transcripts" "Airband transcripts" "transcriber.py --view" accessories-text-editor
 # the older single-app entries now point at the suite copy
-[ -f "$D/sky.desktop" ] && sed -i "s#^Exec=.*#Exec=$HOME/.local/bin/sky#" "$D/sky.desktop"
+[ -f "$D/sky.desktop" ] && sed -i "s#^Exec=.*#Exec=/usr/local/bin/sky#" "$D/sky.desktop"   # RA-CL8: the root-owned launcher (L6)
 update-desktop-database "$D" 2>/dev/null || true
 
 echo "[6/8] Passwordless start/stop of the plane-map service (only that)"
