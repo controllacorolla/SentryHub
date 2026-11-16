@@ -22,14 +22,18 @@ def dashboard_html():
         "td,th{border-bottom:1px solid #223;padding:5px 8px;text-align:left;font-size:12px}"
         ".tag{color:#e8a33d}</style></head><body><h1>Sentry — remote</h1>"
         "<div id='status'>loading…</div><h2>Contacts</h2><table id='contacts'></table>"
+        # contact fields come off the air (ADS-B callsigns): build cells with textContent, never
+        # innerHTML, so a crafted callsign cannot inject script into the remote dashboard (S1)
         "<script>async function tick(){"
         "let s=await (await fetch('/api/status')).json();"
         "document.getElementById('status').textContent="
-        "'active '+(s.active_contacts||0)+' · '+(s.radio||'')+' · '+new Date().toLocaleTimeString();"
+        "(s.feed||'')+' · active '+(s.active_contacts||0)+' · '+(s.radio||'')+' · '+(s.time||'');"
         "let c=await (await fetch('/api/contacts')).json();"
-        "document.getElementById('contacts').innerHTML=c.contacts.map(x=>"
-        "'<tr><td class=tag>'+(x.id||'?')+'</td><td>'+(x.type||'')+'</td><td>'+"
-        "(x.lat!=null?x.lat.toFixed(3)+','+x.lon.toFixed(3):'')+'</td></tr>').join('');"
+        "let t=document.getElementById('contacts');t.replaceChildren();"
+        "for(const x of c.contacts){let r=t.insertRow();"
+        "for(const [v,k] of [[x.id||'?','tag'],[x.label||'',''],[x.type||'',''],"
+        "[x.lat!=null?Number(x.lat).toFixed(3)+','+Number(x.lon).toFixed(3):'','']]){"
+        "let d=r.insertCell();d.textContent=String(v);if(k)d.className=k;}}"
         "}tick();setInterval(tick,5000);</script></body></html>")
 
 
@@ -60,6 +64,47 @@ def make_app(providers=None):
 
 def webhook_payload(alert, source="sentry"):
     return {"text": str(alert), "source": source, "ts": time.time()}
+
+
+def adsb_providers(feed, radio=lambda: "idle", now=time.time):
+    """L5: real providers for Remote Mode — the ADS-B receiver (readsb/dump1090 aircraft.json via
+    sky_app.AdsbFeed), the one feed this standalone process can read without the Qt event bus.
+    Aircraft are served only while the feed is LIVE; a stale or absent feed serves none and the
+    status says so with the data age. Returns {'status': fn, 'contacts': fn} for make_app."""
+    def _snap():
+        if feed is None:
+            return [], "none", None
+        try:
+            aircraft, _trails, state, _rcv = feed.snapshot()
+        except Exception:
+            return [], "none", None
+        data_t = getattr(feed, "data_t", None)
+        return aircraft, state, (now() - data_t) if data_t else None
+
+    def contacts():
+        aircraft, state, _age = _snap()
+        if state != "live":
+            return []
+        out = []
+        for a in aircraft:
+            if a.get("lat") is None or a.get("lon") is None:
+                continue
+            out.append({"id": a.get("hex", "?"), "label": (a.get("flight") or "").strip(),
+                        "type": "aircraft", "lat": a["lat"], "lon": a["lon"],
+                        "alt": a.get("alt_baro")})
+        return out
+
+    def status():
+        aircraft, state, age = _snap()
+        feed_txt = {"live": "ADS-B LIVE", "stale": "ADS-B STALE", "none": "ADS-B NO FEED"}.get(
+            state, "ADS-B NO FEED")
+        if age is not None and state != "live":
+            feed_txt += " (last data %ds ago)" % int(age)
+        n = len(contacts()) if state == "live" else 0
+        return {"active_contacts": n, "feed": feed_txt, "feeds": {"adsb": state},
+                "data_age_s": age, "radio": radio() or "idle",
+                "time": time.strftime("%H:%M:%SZ", time.gmtime(now()))}
+    return {"status": status, "contacts": contacts}
 
 
 def post_webhook(url, alert, poster=None, timeout=5):
@@ -97,10 +142,14 @@ def main(parent=None):
     T = S.T
     st = {"srv": None}
 
-    def providers_status():
-        return {"active_contacts": 0, "radio": S.radio_holder() or "idle",
-                "time": time.strftime("%H:%M:%S")}
-    app = make_app({"status": providers_status, "contacts": lambda: []})
+    feed = None
+    try:
+        import sky_app
+        feed = sky_app.AdsbFeed(list(sky_app.DEFAULT_SETTINGS.get("adsb_sources")
+                                     or ["/run/readsb"]))
+    except Exception:
+        feed = None                      # no engine: status reports ADS-B NO FEED, never zero-as-OK
+    app = make_app(adsb_providers(feed, radio=S.radio_holder))
 
     S.top_bar(root, F, "Remote Mode", "Web dashboard + API + webhook alerts")
     status = tk.Label(root, bg=S.BG, fg=T.TXT_3, font=F["mono"], anchor="w", justify="left",
@@ -136,6 +185,8 @@ def main(parent=None):
         side="left", padx=(10, 6), pady=6)
 
     def on_close():
+        if feed is not None:
+            feed.stopped = True          # end the ADS-B poll thread with the window
         if st["srv"]:
             try:
                 st["srv"].shutdown()

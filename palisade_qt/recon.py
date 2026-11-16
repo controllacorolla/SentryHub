@@ -25,6 +25,7 @@ import random
 import shutil
 import subprocess
 import sys
+import time
 
 from PySide6 import QtCore, QtWidgets
 
@@ -32,6 +33,7 @@ from .app import PalisadeApp, _retain
 from . import theme, eventbus
 from .kit import ControlBar, FeedTable, micro, card
 from .worker import Worker
+from .timebase import zulu
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
@@ -46,16 +48,29 @@ def _offscreen():
 
 
 def _run_cmd(argv, timeout=12):
-    """Run a passive scan command and return stdout text, or None under offscreen/offline or when
-    the tool is absent — so tests/CI never spawn a real scan."""
+    """Run a passive scan command and return stdout text, or None under offscreen/offline, when
+    the tool is absent, or when it FAILED (H3: a failed scan is not "0 AP"). See _run_scan for
+    the reason."""
+    out, _why = _run_scan(argv, timeout)
+    return out
+
+
+def _run_scan(argv, timeout=12):
+    """-> (stdout, None) on exit 0, else (None, reason). Never spawns under offscreen/offline."""
     if _offscreen() or not argv:
-        return None
+        return None, "offline"
     if not shutil.which(argv[0]):
-        return None
+        return None, "%s not installed" % argv[0]
     try:
-        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None, "timed out after %ds" % timeout
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, str(e)
+    if r.returncode != 0:
+        err = (r.stderr or r.stdout or "").strip().splitlines()
+        return None, "exit %d%s" % (r.returncode, (" — " + err[-1][:80]) if err else "")
+    return r.stdout, None
 
 
 # ======================= shared engagement gate =======================
@@ -147,10 +162,14 @@ class GatedTool(QtWidgets.QFrame):
 # ======================= passive scan workers =======================
 
 class WifiScanWorker(Worker):
-    """wifisurvey: passive AP scan (iw scan -> parse_iw_scan). No gate, no TX."""
+    """wifisurvey: PASSIVE AP scan (`iw dev X scan passive` -> parse_iw_scan). No gate, no TX.
+    H3: the exit code is checked (a failed scan is SCAN FAILED, never "0 AP"), the scan is
+    passive (no probe requests), it runs every 15 s rather than 4 s, and RECON pauses it while
+    the WIFI sub-tab is not on screen."""
+    INTERVAL_MS = 15000
 
     def __init__(self, demo=False, iface="wlan0", parent=None):
-        super().__init__(demo=demo, interval_ms=4000, parent=parent)
+        super().__init__(demo=demo, interval_ms=self.INTERVAL_MS, parent=parent)
         self.iface = iface
 
     def step(self):
@@ -158,10 +177,12 @@ class WifiScanWorker(Worker):
         if self.demo:
             self.row.emit({"aps": _demo_aps(), "demo": True})
             return
-        out = _run_cmd(wifisurvey.scan_argv(self.iface))
-        if out is None:                     # no iw / no adapter / offscreen: honest standby
-            self.status.emit({"standby": True, "sdr": {"text": "WIFI STANDBY — no adapter/iw",
-                                                       "ok": False}})
+        out, why = _run_scan(wifisurvey.scan_argv(self.iface))
+        if out is None:
+            text = ("WIFI STANDBY — no adapter/iw" if why in ("offline", "iw not installed")
+                    else "WIFI SCAN FAILED — %s" % why)
+            self.status.emit({"standby": True, "scan_failed": why,
+                              "sdr": {"text": text, "ok": False}})
             return
         aps = wifisurvey.parse_iw_scan(out)
         self.row.emit({"aps": aps})
@@ -175,12 +196,16 @@ class BleScanWorker(Worker):
         super().__init__(demo=demo, interval_ms=3000, parent=parent)
 
     def _scan_adverts(self):
-        if _offscreen():
-            return None
+        """-> list of adverts, or None when there is no live feed (see _no_feed_text)."""
+        return None            # live bleak scanning is NOT IMPLEMENTED in this UI (E4)
+
+    @staticmethod
+    def _no_feed_text():
+        """E4: never blame the hardware for a feature that is not wired."""
         import importlib.util
         if importlib.util.find_spec("bleak") is None:
-            return None
-        return None            # real bleak wiring is device-only; dev host returns no feed
+            return "BLE STANDBY — bleak is not installed"
+        return "BLE NOT IMPLEMENTED — bleak is installed; live scanning is not wired here"
 
     def step(self):
         import blescan
@@ -189,8 +214,9 @@ class BleScanWorker(Worker):
             return
         adverts = self._scan_adverts()
         if adverts is None:
-            self.status.emit({"standby": True, "sdr": {"text": "BLE STANDBY — no bleak/adapter",
+            self.status.emit({"standby": True, "sdr": {"text": self._no_feed_text(),
                                                        "ok": False}})
+            self._stop = True          # nothing will change until it is wired: stop polling
             return
         devs = blescan.Devices()
         for adv in adverts:
@@ -203,21 +229,34 @@ class DetectorWorker(Worker):
     (SDR sweep / modem / gpsd); with none it reports honest standby. Demo synthesises a feed, runs
     the real detector AS-IS, and raises alerts. NO TX / jam / attack path anywhere."""
 
+    LEARN_SAMPLES = 4          # samples a detector takes to learn its baseline (LEARNING)
+    # E4/H1: what each detector would need — and the plain fact that the live feed is not wired
+    FEEDS = {"bugsweep": "an rtl_power sweep", "jammer": "an rtl_power sweep",
+             "imsicatch": "a cellular modem cell feed", "gnss": "gpsd satellite C/N0"}
+
     def __init__(self, demo=False, kind="jammer", parent=None):
         super().__init__(demo=demo, interval_ms=1500, parent=parent)
         self.kind = kind
         self._det = None
         self._n = 0
 
+    def offline_reason(self):
+        return ("NOT IMPLEMENTED — no live feed is wired (needs %s)"
+                % self.FEEDS.get(self.kind, "a feed"))
+
     def step(self):
+        # H1: report per detector on the row signal (SWEEP keeps one fixed row each) — never on
+        # the shared status chip, which the other workers overwrite.
         if not self.demo:
-            self.status.emit({"standby": True,
-                              "sdr": {"text": "%s STANDBY — no feed" % self.kind.upper(),
-                                      "ok": False}})
+            self.row.emit({"kind": self.kind, "state": "offline", "n": 0,
+                           "reason": self.offline_reason()})
+            self._stop = True              # nothing to poll until a feed is wired
             return
         alert = self._demo_detect()
         self._n += 1
-        self.row.emit({"kind": self.kind, "n": self._n, "alert": alert, "demo": True})
+        state = "learning" if self._n <= self.LEARN_SAMPLES else "watching"
+        self.row.emit({"kind": self.kind, "n": self._n, "alert": alert, "demo": True,
+                       "state": state, "ts": time.time()})
 
     def _demo_sweep(self, emitter):
         """A synthetic rtl_power-style sweep: list of (freq_hz, power_db), as the detectors expect
@@ -304,6 +343,7 @@ class ReconApp(PalisadeApp):
 
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._subtab = "WIFI"
+        self._open_alerted = set()
         self._gated = []                                 # cards to refresh on gate change
         self.evidence = None      # CL3: the ONE chain lives with the engagement (engagement.chain_states)
         super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
@@ -458,6 +498,18 @@ class ReconApp(PalisadeApp):
         self._subtab = tab
         self.stack.setCurrentWidget(self._pages[tab])
         self._sync_tabs()
+        self._sync_scan_pause()
+
+    def set_active(self, active):
+        super().set_active(active)
+        self._sync_scan_pause()
+
+    def _sync_scan_pause(self):
+        """H3: the Wi-Fi scan runs only while RECON › WIFI is on screen."""
+        visible = bool(getattr(self, "_active", False)) and self._subtab == "WIFI"
+        for w in getattr(self, "_workers", []):
+            if isinstance(w, WifiScanWorker):
+                w.pause(not visible)
 
     def _sync_tabs(self):
         self._sync_rail()
@@ -471,10 +523,18 @@ class ReconApp(PalisadeApp):
         self._workers = []
         self._workers.append(self._spawn(WifiScanWorker(demo=self.demo), self._on_wifi))
         self._workers.append(self._spawn(BleScanWorker(demo=self.demo), self._on_ble))
+        self._sync_scan_pause()
         self._refresh_gate()
+
+    def standby_tables(self):
+        return []                  # WIFI and BLE have separate workers: routed in _spawn
 
     def _spawn(self, worker, on_row):
         worker.row.connect(on_row)
+        table = self.wifi_feed if isinstance(worker, WifiScanWorker) else \
+            self.ble_feed if isinstance(worker, BleScanWorker) else None
+        if table is not None:
+            worker.status.connect(lambda st, t=table: self._feed_standby(t, st))
         worker.status.connect(self.on_status)
         worker.error.connect(self.on_error)
         worker.start()
@@ -491,6 +551,13 @@ class ReconApp(PalisadeApp):
         self._workers = []
         super().stop()
 
+    @staticmethod
+    def _feed_standby(table, st):
+        """D4: an empty WIFI/BLE table says why — the worker's own reason, never a blank."""
+        if st.get("standby") and isinstance(st.get("sdr"), dict):
+            table.model.set_rows([])
+            table.set_empty("offline", st["sdr"].get("text") or "OFFLINE")
+
     # ---- passive results -> feed + event bus ----
     def _on_wifi(self, msg):
         aps = msg.get("aps", [])
@@ -501,7 +568,9 @@ class ReconApp(PalisadeApp):
                          "ch": str(ap.get("channel") or "—"), "sig": str(int(ap["signal"]))
                          if ap.get("signal") is not None else "—",
                          "sec": ap.get("security", "")})
-            if live and ap.get("security") == "open":  # real open network -> OPS alert
+            if live and ap.get("security") == "open" and \
+                    ap.get("bssid") not in self._open_alerted:   # once per BSSID, not per scan
+                self._open_alerted.add(ap.get("bssid"))
                 eventbus.bus.publish(eventbus.alert(
                     "RECON", "open Wi-Fi: %s" % (ap.get("ssid") or ap.get("bssid")),
                     severity="warn"))
@@ -510,6 +579,9 @@ class ReconApp(PalisadeApp):
             for ap in aps:                             # real scan results on the bus (decode)
                 eventbus.bus.publish(eventbus.decode("RECON", "WIFI", ap.get("bssid", ""),
                                                      ap.get("ssid") or "<hidden>"))
+        if not rows:
+            self.wifi_feed.set_empty("watching", "no access points heard",
+                                     "last scan %s" % zulu())
         self.header.set_chip("sdr", "%d AP" % len(rows), state="neutral")
 
     def _on_ble(self, msg):

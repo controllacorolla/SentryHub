@@ -25,6 +25,9 @@ from collections import deque
 from PySide6 import QtCore
 
 TYPES = ("contact", "decode", "alert")
+CONTACT_TTL_S = 300.0                 # H17: a contact not heard from in 5 min leaves the store
+CONTACT_CAP = 5000
+FEED_LIVE_S = 120.0                   # a source that published within 2 min counts as running
 SEVERITIES = ("info", "live", "warn", "alert")
 
 # Operator home position (audit H5). There is NO built-in default any more: a hard-coded Seattle
@@ -148,6 +151,12 @@ def alert(source, text, severity="warn", demo=False, **extra):
     return make_event("alert", source, p, severity, demo=demo)
 
 
+def is_telemetry(ev):
+    """OPS publishes device telemetry (temperature, battery) as a "decode" event. It is not a
+    decode and not a feed: SITREP / the assistant must not count it as either (H17)."""
+    return (ev.get("payload") or {}).get("kind") == "telemetry"
+
+
 class EventBus(QtCore.QObject):
     """A6: publish() stores a COPY (publishers cannot mutate what subscribers see), the retained
     log is bounded and resizable (set_retention), and the queued signal backlog is bounded: when
@@ -162,6 +171,12 @@ class EventBus(QtCore.QObject):
     def __init__(self, maxlen=1000, parent=None):
         super().__init__(parent)
         self._log = deque(maxlen=maxlen)
+        # H17: map traffic must not evict alerts/decodes. Each type has its own bounded log, and
+        # contacts also live in a latest-state store keyed by id (pruned by age), so "what is on
+        # the map" is never answered from a window that 30 aircraft refill every few seconds.
+        self._by_type = {t: deque(maxlen=maxlen) for t in TYPES}
+        self._contacts = {}
+        self._last_by_source = {}
         self._lock = threading.Lock()
         self._pending = 0
         self._dropped = 0
@@ -172,6 +187,18 @@ class EventBus(QtCore.QObject):
         ev = copy.deepcopy(event)
         with self._lock:
             self._log.append(ev)
+            t = ev.get("type")
+            if t in self._by_type:
+                self._by_type[t].append(ev)
+            src = ev.get("source")
+            if src is not None and not is_telemetry(ev):    # device telemetry is not a feed
+                self._last_by_source[src] = ev.get("ts", time.time())
+            if t == "contact":
+                cid = (ev.get("payload") or {}).get("id")
+                if cid is not None:
+                    self._contacts[(src, cid)] = ev
+                    if len(self._contacts) > CONTACT_CAP:
+                        self._prune_contacts_locked(time.time())
             if self._pending >= self._maxlen and ev.get("type") != "alert":
                 self._dropped += 1
                 return copy.deepcopy(ev)
@@ -188,6 +215,8 @@ class EventBus(QtCore.QObject):
         with self._lock:
             self._maxlen = int(maxlen)
             self._log = deque(self._log, maxlen=int(maxlen))
+            for t in self._by_type:
+                self._by_type[t] = deque(self._by_type[t], maxlen=int(maxlen))
 
     def pending(self):
         with self._lock:
@@ -197,18 +226,53 @@ class EventBus(QtCore.QObject):
         with self._lock:
             return self._dropped
 
+    def retention(self):
+        with self._lock:
+            return self._maxlen
+
     def recent(self, n=50, etype=None, source=None):
         with self._lock:
-            items = list(self._log)
+            items = list(self._by_type[etype] if etype in self._by_type else self._log)
         if etype is not None:
             items = [e for e in items if e["type"] == etype]
         if source is not None:
             items = [e for e in items if e["source"] == source]
         return items[-n:]
 
+    def _prune_contacts_locked(self, now):
+        for k in [k for k, e in self._contacts.items() if now - e.get("ts", now) > CONTACT_TTL_S]:
+            del self._contacts[k]
+        if len(self._contacts) > CONTACT_CAP:      # still over: drop the oldest
+            for k, _e in sorted(self._contacts.items(), key=lambda kv: kv[1].get("ts", 0))[
+                    :len(self._contacts) - CONTACT_CAP]:
+                del self._contacts[k]
+
+    def contacts(self, max_age=CONTACT_TTL_S, demo=None):
+        """H17: the latest event per contact id seen within `max_age` seconds (newest first).
+        `demo` True/False filters on the event's demo flag; None returns both."""
+        now = time.time()
+        with self._lock:
+            self._prune_contacts_locked(now)
+            items = [copy.deepcopy(e) for e in self._contacts.values()
+                     if now - e.get("ts", now) <= max_age]
+        if demo is not None:
+            items = [e for e in items if bool(e.get("demo")) == bool(demo)]
+        return sorted(items, key=lambda e: e.get("ts", 0), reverse=True)
+
+    def feeds(self, max_age=FEED_LIVE_S):
+        """Sources that published anything in the last `max_age` seconds -> {source: age_s}.
+        Empty means no feed is running — SITREP must not read that as an all-clear."""
+        now = time.time()
+        with self._lock:
+            return {s: now - t for s, t in self._last_by_source.items() if now - t <= max_age}
+
     def clear(self):
         with self._lock:
             self._log.clear()
+            for d in self._by_type.values():
+                d.clear()
+            self._contacts.clear()
+            self._last_by_source.clear()
             self._pending = 0
             self._dropped = 0
 

@@ -892,6 +892,10 @@ class AtlasApp(PalisadeApp):
             self._show_lost()
         text, state = self._layer_summary(shown)
         self.set_chip("sdr", text, state=state)
+        if not rows:                                   # D4: the list says why it is empty
+            live = self.demo or (self._adsb_health or {}).get("state") == "live"
+            self.feed.set_empty("watching" if live else "offline",
+                                "no contacts" if live else "NO LIVE LAYER", text)
         if not eventbus.home_set():
             self.set_chip("home", "HOME NOT SET — range/bearing hidden (SYSTEM › SETTINGS)",
                           state="warn")

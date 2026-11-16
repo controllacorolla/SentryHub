@@ -140,9 +140,13 @@ class Worker(QtCore.QThread):
 
     def _wait_interval(self):
         """Sleep the interval (longer while backing off); block while paused."""
+        waited = False
         with self._cv:
             while not self._stop and self._paused:
+                waited = True
                 self._cv.wait(0.5)
+        if waited:
+            return             # just resumed (page shown): step now, not one interval later
         self.sleep(self._current_interval())
 
     def _current_interval(self):

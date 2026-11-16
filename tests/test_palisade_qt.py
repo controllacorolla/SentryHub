@@ -220,7 +220,7 @@ def test_eventbus_typed_contract():
     for e in (c, d, a):
         eventbus.bus.publish(e)
     for e in (c, d, a):
-        assert set(e) == {"type", "source", "severity", "ts", "payload"}
+        assert set(e) == {"type", "source", "severity", "ts", "payload", "demo"}   # H7: demo flag
     assert c["type"] == "contact" and c["payload"]["lat"] == 47.5 and c["payload"]["lon"] == -122.3
     assert c["payload"]["kind"] == "air" and c["payload"]["mil"] is True
     assert d["type"] == "decode" and d["payload"]["proto"] == "ADS-B"

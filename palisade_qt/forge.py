@@ -235,11 +235,12 @@ class CanWorker(Worker):
         if self._bus is None:
             self._bus = canbus.Bus()
         if not self.demo:
-            if _offscreen() or not canbus.detect():
-                self.status.emit({"standby": True,
-                                  "sdr": {"text": "NO DEVICE — bring up SocketCAN (can0)", "ok": False}})
-                return
-            return                               # live candump streaming is device-only
+            up = False if _offscreen() else bool(canbus.detect())
+            self.status.emit({"standby": True, "sdr": {
+                "text": ("CAN NOT IMPLEMENTED — SocketCAN is up; live candump is not wired here"
+                         if up else "NO DEVICE — bring up SocketCAN (can0)"), "ok": False}})
+            self._stop = True                    # E4: say so once; nothing to poll
+            return
         if self._demo is None:
             self._demo = canbus.Demo()
         for _ in range(3):
@@ -263,11 +264,13 @@ class SensorWorker(Worker):
         import sensors
         if not self.demo:
             import shutil
-            if _offscreen() or not shutil.which("rtl_433"):
-                self.status.emit({"standby": True,
-                                  "sdr": {"text": "NO DEVICE — rtl_433 + SDR for ISM sensors", "ok": False}})
-                return
-            return                               # live rtl_433 streaming is device-only
+            have = False if _offscreen() else bool(shutil.which("rtl_433"))
+            self.status.emit({"standby": True, "sdr": {
+                "text": ("SENSORS NOT IMPLEMENTED — rtl_433 is installed; live decode is not "
+                         "wired here" if have else "NO DEVICE — rtl_433 not installed"),
+                "ok": False}})
+            self._stop = True                    # E4: say so once; nothing to poll
+            return
         rep = sensors.parse_report(sensors.demo_report(self._t0))
         if rep:
             key, title, data = rep
