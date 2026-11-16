@@ -82,7 +82,7 @@ def test_nk_a_revoke_during_a_babel_switch_sticks_and_unticks_run(monkeypatch, l
     lease = _SlowLease(2.0)
     monkeypatch.setattr(ra, "_make_lease", lease.make)
     import ais
-    monkeypatch.setattr(ais, "pipeline", lambda gain=0: [["rtl_fm", "-f", "162.0M", "-"]])
+    monkeypatch.setattr(ais, "pipeline_argv", lambda gain=0: [["rtl_fm", "-f", "162.0M", "-"]])
     b = babel.BabelApp(demo=False, mode="dark")
     b.set_active(True)
     b.start()

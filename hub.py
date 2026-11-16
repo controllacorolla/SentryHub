@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Radio Hub - one launcher for the uConsole suite, and the owner of the built-in SDR."""
 
+import re
 import json
 import os
 import shutil
@@ -1382,13 +1383,19 @@ def main():
                 sdr_lease[0]._write(pid=p.pid)
             except OSError:
                 pass
-            paused = " ".join(sdr_lease[0].paused)
-            script = ("while kill -0 %d 2>/dev/null; do sleep 2; done; "
-                      "for s in %s; do sudo -n systemctl start $s; done; "
-                      "python3 -c 'import json,sys;p=sys.argv[1];d=json.load(open(p));"
-                      "d.update(owner=None,pid=None,paused=[]);json.dump(d,open(p,\"w\"))' '%s'"
-                      % (p.pid, paused, S.LEASE_STATE))
-            S.fire_and_forget(["bash", "-c", script])
+            # L4: no shell. The service names travel as argv and must be plain words.
+            paused = [n for n in sdr_lease[0].paused if re.match(r"^[A-Za-z0-9_.@-]+$", str(n))]
+            watcher = ("import json,os,subprocess,sys,time\n"
+                       "pid=int(sys.argv[1]);p=sys.argv[2]\n"
+                       "while True:\n"
+                       "    try: os.kill(pid,0)\n"
+                       "    except OSError: break\n"
+                       "    time.sleep(2)\n"
+                       "for s in sys.argv[3:]:\n"
+                       "    subprocess.run(['sudo','-n','systemctl','start',s])\n"
+                       "d=json.load(open(p));d.update(owner=None,pid=None,paused=[])\n"
+                       "json.dump(d,open(p,'w'))\n")
+            S.fire_and_forget([sys.executable, "-c", watcher, str(p.pid), S.LEASE_STATE] + paused)
             msg.config(text="SDR++ stays open; the plane map returns when it closes.")
             return True
         return False

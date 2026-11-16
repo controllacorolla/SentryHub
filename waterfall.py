@@ -163,8 +163,8 @@ def main(parent=None):
         hi = int(float(s.get("hi_mhz", 430)) * 1e6)
         binhz = int(float(s.get("bin_khz", 250)) * 1e3)
         with S.errfile(os.path.join(S.CACHE, "waterfall.err")) as err:
-            p = S.spawn(" ".join(rtl_power_sweep_argv(lo, hi, binhz, "-", s.get("gain", 0), "1")),
-                        shell=True, stdout=__import__("subprocess").PIPE, stderr=err, text=True)
+            p = S.spawn(rtl_power_sweep_argv(lo, hi, binhz, "-", s.get("gain", 0), "1"),
+                        stdout=__import__("subprocess").PIPE, stderr=err, text=True)
         try:
             for line in p.stdout:
                 if not st["on"] or st["gen"] != gen:

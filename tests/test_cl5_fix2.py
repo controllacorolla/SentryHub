@@ -171,7 +171,7 @@ def test_nc_babel_decoder_switch_never_waits_on_the_gui_thread(monkeypatch, live
     lease = _SlowLease(2.2)
     monkeypatch.setattr(ra, "_make_lease", lease.make)
     import ais
-    monkeypatch.setattr(ais, "pipeline", lambda gain=0: [["rtl_fm", "-f", "162.0M", "-"]])
+    monkeypatch.setattr(ais, "pipeline_argv", lambda gain=0: [["rtl_fm", "-f", "162.0M", "-"]])
     b = babel.BabelApp(demo=False, mode="dark")
     b.set_active(True)
     b.start()
@@ -202,7 +202,7 @@ def test_nb_decoder_fault_shows_its_stderr_through_the_real_runner(monkeypatch, 
     lease.gate.set()
     monkeypatch.setattr(ra, "_make_lease", lease.make)
     import ais
-    monkeypatch.setattr(ais, "pipeline", lambda gain=0: [
+    monkeypatch.setattr(ais, "pipeline_argv", lambda gain=0: [
         ["sh", "-c", "echo 'usb_claim_interface error -6' >&2; exit 1"]])
     w = babel.DecoderWorker(demo=False, mode="AIS")
     faults = []

@@ -296,7 +296,7 @@ def main(parent=None):
                 time.sleep(0.15)
             return
         with S.errfile(os.path.join(S.CACHE, "canbus.err")) as err:
-            p = S.spawn(" ".join(candump_argv(s.get("iface", "can0"))), shell=True,
+            p = S.spawn(candump_argv(s.get("iface", "can0")),
                         stdout=subprocess.PIPE, stderr=err, text=True)
         try:
             for line in p.stdout:

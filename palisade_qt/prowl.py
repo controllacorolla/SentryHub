@@ -6,7 +6,7 @@ on background/close):
 
   * SCAN — scanner.listen_channel() across a preset bank (lease "PROWL-SCAN").
   * FM   — fm.pipeline()/fm.Pipe broadcast + weather tuner with audio + RDS (lease "PROWL-FM").
-  * NWR  — nwr.pipeline()/nwr.parse_same() NOAA Weather Radio SAME/EAS alerts (lease "PROWL-NWR").
+  * NWR  — nwr.pipeline_argv()/nwr.parse_same() NOAA Weather Radio SAME/EAS alerts (lease "PROWL-NWR").
 
 Legacy decode/radio paths are reused AS-IS — this module only wires them to Qt and the arbiter.
 Honesty: live mode publishes only real decodes; with no rtl_fm it shows STANDBY (never synth).
@@ -40,7 +40,7 @@ DEMO_CHANNELS = [
 ]
 
 # NOAA Weather Radio 7-channel plan (162.400–162.550 MHz). nwr.py only hardcodes 162.400, so the
-# PROWL NWR sub-mode owns the channel list and calls nwr.pipeline() per channel (reused AS-IS).
+# PROWL NWR sub-mode owns the channel list and calls nwr.pipeline_argv() per channel (reused AS-IS).
 NWR_CHANNELS = [
     ("162.400M", "WX2"), ("162.425M", "WX4"), ("162.450M", "WX5"), ("162.475M", "WX3"),
     ("162.500M", "WX6"), ("162.525M", "WX7"), ("162.550M", "WX1"),
@@ -172,6 +172,17 @@ class _RadioWorker(Worker):
         self.status.emit({"src": self.LABEL, "busy": None, "live": False, "off": True,
                           "sdr": {"text": "%s OFF — %s" % (self.LABEL, why),
                                   "state": "warn", "ok": False}})
+
+    def _refuse_settings(self, err):
+        """L4: a settings value failed its check (frequency, gain). Give the radio back, show a
+        FAULT, and do not retry until the operator retunes — never a silent default."""
+        self._refused = str(err)[:120]
+        self._give_back("settings refused")
+        self.fault.emit("FAULT: %s settings refused: %s" % (self.LABEL, self._refused))
+        self.status.emit({"src": self.LABEL, "busy": None, "live": False, "off": True,
+                          "fault": self._refused,
+                          "sdr": {"text": "%s FAULT — SETTINGS REFUSED" % self.LABEL,
+                                  "state": "alert", "ok": False}})
 
     # kept for callers of the old name; same ordering as _give_back
     def _release_radio(self):
@@ -408,6 +419,7 @@ class FmWorker(_RadioWorker):
             self.rds = bool(rds)
         with self._lock:
             self._rds = {}
+        self._refused = None
         self._retune = True
 
     def step(self):
@@ -421,6 +433,9 @@ class FmWorker(_RadioWorker):
             self.status.emit({"sdr": {"text": "FM STANDBY — no rtl_fm", "ok": False},
                               "standby": True, "live": False})
             return
+        if getattr(self, "_refused", None) and not self._retune:
+            return                            # L4: refused settings hold until a retune
+        self._refused = None
         if not self._ensure_lease():          # gives the radio back (kill, wait, release) if off
             return
         if self._retune:
@@ -430,6 +445,8 @@ class FmWorker(_RadioWorker):
             self._spawn()
         elif self._pipe.poll() is not None:         # pipeline died (device yanked / preempted)
             self._respawn()
+        if self._refused:
+            return
         with self._lock:
             rds = dict(self._rds)
         audio = self._pipe is not None
@@ -441,7 +458,11 @@ class FmWorker(_RadioWorker):
 
     def _spawn(self):
         import fm
-        rtl, mid, sink = fm.pipeline(self.freq, self.mode, self.gain, self.squelch, self.rds)
+        try:
+            rtl, mid, sink = fm.pipeline(self.freq, self.mode, self.gain, self.squelch, self.rds)
+        except (TypeError, ValueError) as e:
+            self._refuse_settings(e)
+            return
         pipe = _open_fm_pipe(rtl, mid, sink, self._on_rds)
         orphan = None
         with self._lock:                 # guard against a concurrent stop / revoke / PANIC
@@ -605,6 +626,7 @@ class NwrWorker(_RadioWorker):
 
     def set_channel(self, channel, label):
         self.channel, self.label = channel, label
+        self._refused = None
         self._retune = True
 
     def step(self):
@@ -618,6 +640,9 @@ class NwrWorker(_RadioWorker):
             self.status.emit({"src": "NWR", "sdr": {"text": "NWR STANDBY — no rtl_fm", "ok": False},
                               "standby": True, "live": False})
             return
+        if getattr(self, "_refused", None) and not self._retune:
+            return                            # L4: refused settings hold until a retune
+        self._refused = None
         if not self._ensure_lease():          # gives the radio back (kill, wait, release) if off
             return
         if self._proc is None and self._flap_hold():
@@ -627,6 +652,8 @@ class NwrWorker(_RadioWorker):
             self._respawn()
         elif self._proc is None:
             self._spawn()
+        if self._refused:
+            return
         if self._proc is not None and self._proc.poll() is not None:   # R3: dead ≠ healthy
             rc = self._proc.poll()
             self._kill()
@@ -670,7 +697,12 @@ class NwrWorker(_RadioWorker):
 
     def _spawn(self):
         import nwr
-        proc = _open_nwr_pipe(nwr.pipeline_argv(self.channel, self.gain))
+        try:
+            argv = nwr.pipeline_argv(self.channel, self.gain)
+        except ValueError as e:
+            self._refuse_settings(e)
+            return
+        proc = _open_nwr_pipe(argv)
         orphan = None
         with self._lock:                 # guard against a concurrent stop / revoke / PANIC
             if self._stop or not self._active or not radio_arbiter.arbiter.held_by(self.NAME):

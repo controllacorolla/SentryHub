@@ -25,6 +25,8 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import argsafe  # noqa: E402  (repo root, after the path fix: L4 settings checks)
+
 MODES = ["AIS", "ACARS", "POCSAG", "RDS", "TPMS", "SSTV", "CW", "RTTY"]
 
 SSTV_LEASE = "BABEL-SSTV"       # SSTV captures off-air (ISS 145.800) -> needs the single SDR
@@ -153,7 +155,7 @@ def _can_run(mode):
 def _run_ais(worker):
     import ais as engine
     s = _load_settings("ais", engine.DEFAULTS)
-    cmd = engine.pipeline(gain=s.get("gain", 0))
+    cmd = engine.pipeline_argv(s.get("gain", 0))           # L4: argv, settings checked
     asm = engine.AivdmAssembler()
     n = 0
     proc = _open_pipe(cmd)
@@ -238,7 +240,7 @@ def _run_acars(worker):
 def _run_pocsag(worker):
     import pager as engine
     s = _load_settings("pager", engine.DEFAULTS)
-    cmd = engine.pipeline(freq=s.get("freq", engine.FREQ_DEFAULT), gain=s.get("gain", 0))
+    cmd = engine.pipeline_argv(s.get("freq", engine.FREQ_DEFAULT), s.get("gain", 0))   # L4
     n = 0
     proc = _open_pipe(cmd)
     if proc is None:
@@ -274,7 +276,7 @@ def _run_pocsag(worker):
 def _run_rds(worker):
     import rds as engine
     s = _load_settings("rds", engine.DEFAULTS)
-    cmd = engine.pipeline(freq=s.get("freq", engine.FREQ_DEFAULT), gain=s.get("gain", 0))
+    cmd = engine.pipeline_argv(s.get("freq", engine.FREQ_DEFAULT), s.get("gain", 0))   # L4
     stations = engine.Stations()
     n = 0
     proc = _open_pipe(cmd)
@@ -564,6 +566,16 @@ class DecoderWorker(Worker):
                 self._proc = None
                 try:
                     _LIVE_RUNNERS[mode](self)
+                except argsafe.SettingsRefused as e:
+                    # L4: a settings value failed argsafe (frequency, gain, command template).
+                    # Refuse to start, say so, do not retry, give the radio back.
+                    msg = "%s settings refused: %s" % (mode, str(e)[:150])
+                    self._running = False
+                    self.fault.emit("FAULT: " + msg)
+                    self.status.emit({"run_off": True, "live": False, "idle": True, "fault": msg,
+                                      "sdr": {"text": "%s FAULT — SETTINGS REFUSED" % mode,
+                                              "state": "alert", "ok": False}})
+                    break
                 except Exception as e:
                     self.error.emit("%s: %s" % (mode, str(e)[:150]))
                 if self._stop or self._mode_changed or not self.wants_radio():

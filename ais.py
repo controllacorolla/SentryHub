@@ -204,15 +204,14 @@ class Demo:
 
 def pipeline_argv(gain=0):
     """rtl_ais as one argv list (no shell) for the Qt pages (audit A4)."""
+    import argsafe
     argv = ["rtl_ais", "-n"]
-    if gain:
-        argv += ["-g", str(int(gain))]
+    g = argsafe.gain_arg(gain)
+    if g:
+        argv += ["-g", str(g)]
     return [argv]
 
 
-def pipeline(gain=0):
-    g = " -g %d" % int(gain) if gain else ""
-    return "rtl_ais -n%s 2>/dev/null" % g        # prints AIVDM sentences to stdout
 
 
 DEFAULTS = {"home": {"lat": 47.6, "lon": -122.33}, "range_nm": 20.0, "gain": 0}
@@ -309,8 +308,9 @@ def main(parent=None):
                 time.sleep(1.0)
             return
         with S.errfile(os.path.join(S.CACHE, "ais.err")) as err:
-            p = S.spawn(pipeline(s.get("gain", 0)), shell=True,
-                        stdout=__import__("subprocess").PIPE, stderr=err, text=True, errors="replace")
+            import argsafe
+            p = argsafe.spawn_pipeline(pipeline_argv(s.get("gain", 0)), stderr=err, text=True,
+                                       errors="replace")
         try:
             for line in p.stdout:
                 if not st["on"] or st["gen"] != gen:
@@ -322,6 +322,13 @@ def main(parent=None):
     def start():
         if st["on"]:
             return
+        if not demo:
+            try:                       # L4: refuse a bad settings value before anything starts
+                pipeline_argv(s.get("gain", 0))
+            except ValueError as e:
+                state_pill.config(text="Fault", bg=S.RED)
+                print("settings refused:", e)
+                return
         st["gen"] += 1
         st["on"] = True
         state_pill.config(text="Listening" + (" (demo)" if demo else ""), bg=S.GREEN)

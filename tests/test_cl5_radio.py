@@ -378,15 +378,18 @@ def test_a4_pipeline_kills_a_stage_that_ignores_sigterm():
 
 
 def test_a4_decoder_argv_builders_match_the_legacy_strings():
+    # CL8 L4 deleted the legacy `a | b` strings (no shell anywhere). The argv the strings used to
+    # split into is frozen here, so the decoders still get exactly the same command line.
     import aprs
     import ais
     import nwr
-    from palisade_qt.kit.procs import split_shell_pipeline
-    for legacy, argv in ((aprs.pipeline(10), aprs.pipeline_argv(10)),
-                         (ais.pipeline(0), ais.pipeline_argv(0)),
-                         (nwr.pipeline("162.400M", 20), nwr.pipeline_argv("162.400M", 20))):
-        split = split_shell_pipeline(legacy)
-        assert split == argv, (legacy, split, argv)
+    assert aprs.pipeline_argv(10) == [
+        ["rtl_fm", "-f", "144.390M", "-M", "fm", "-s", "22050", "-g", "10", "-E", "dc", "-"],
+        ["stdbuf", "-oL", "multimon-ng", "-t", "raw", "-a", "AFSK1200", "-A", "/dev/stdin"]]
+    assert ais.pipeline_argv(0) == [["rtl_ais", "-n"]]
+    assert nwr.pipeline_argv("162.400M", 20) == [
+        ["rtl_fm", "-f", "162.400M", "-M", "fm", "-s", "22050", "-g", "20", "-E", "dc", "-"],
+        ["multimon-ng", "-t", "raw", "-a", "EAS", "/dev/stdin"]]
 
 
 def test_a4_no_shell_true_pipelines_remain_in_the_qt_package():

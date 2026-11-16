@@ -98,10 +98,17 @@ class Demo:
         return [self.LINES[self.i % len(self.LINES)]]
 
 
-def pipeline(freq, gain=0):
-    g = " -g %d" % int(gain) if gain else ""
-    mm = "multimon-ng -t raw -a POCSAG512 -a POCSAG1200 -a POCSAG2400 -a FLEX /dev/stdin"
-    return "rtl_fm -f %s -M fm -s 22050%s -E dc - 2>/dev/null | %s" % (freq, g, mm)
+def pipeline_argv(freq, gain=0):
+    """rtl_fm -> multimon-ng as two argv lists (no shell). freq/gain from settings are checked
+    strictly (audit L4: a pager.json frequency used to reach `sh -c`)."""
+    import argsafe
+    rtl = ["rtl_fm", "-f", argsafe.freq_arg(freq), "-M", "fm", "-s", "22050"]
+    g = argsafe.gain_arg(gain)
+    if g:
+        rtl += ["-g", str(g)]
+    rtl += ["-E", "dc", "-"]
+    return [rtl, ["multimon-ng", "-t", "raw", "-a", "POCSAG512", "-a", "POCSAG1200",
+                  "-a", "POCSAG2400", "-a", "FLEX", "/dev/stdin"]]
 
 
 DEFAULTS = {"freq": FREQ_DEFAULT, "gain": 0, "watch": []}       # watch: addresses to alert on
@@ -165,8 +172,9 @@ def main(parent=None):
                 time.sleep(1.2)
             return
         with S.errfile(os.path.join(S.CACHE, "pager.err")) as err:
-            p = S.spawn(pipeline(s.get("freq", FREQ_DEFAULT), s.get("gain", 0)), shell=True,
-                        stdout=__import__("subprocess").PIPE, stderr=err, text=True, errors="replace")
+            import argsafe
+            p = argsafe.spawn_pipeline(pipeline_argv(s.get("freq", FREQ_DEFAULT), s.get("gain", 0)),
+                                       stderr=err, text=True, errors="replace")
         st["proc"] = p
         try:
             for line in p.stdout:
@@ -179,6 +187,13 @@ def main(parent=None):
     def start():
         if st["on"]:
             return
+        if not demo:
+            try:                       # L4: refuse a bad settings value before anything starts
+                pipeline_argv(s.get("freq", FREQ_DEFAULT), s.get("gain", 0))
+            except ValueError as e:
+                state_pill.config(text="Fault", bg=S.RED)
+                print("settings refused:", e)
+                return
         st["gen"] += 1
         st["on"] = True
         state_pill.config(text="Listening" + (" (demo)" if demo else ""), bg=S.GREEN)

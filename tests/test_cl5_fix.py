@@ -480,7 +480,7 @@ def test_fix6_stop_hide_and_revoke_never_block_the_gui_thread(monkeypatch, live)
     lease.gate.set()
     monkeypatch.setattr(ra, "_make_lease", lease.make)
     import ais
-    monkeypatch.setattr(ais, "pipeline", lambda gain=0: [["rtl_fm", "-f", "162.0M", "-"]])
+    monkeypatch.setattr(ais, "pipeline_argv", lambda gain=0: [["rtl_fm", "-f", "162.0M", "-"]])
     w = babel.DecoderWorker(demo=False, mode="AIS")
     w.set_running(True)
     w.start()

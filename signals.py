@@ -168,15 +168,33 @@ class Decoder:
 
 
 def build_argv(s):
-    if s["source"] == "acars":
-        freqs = " ".join("%.3f" % f for f in s.get("acars_freqs", []))
-        tmpl = s.get("acars_cmd") or DEFAULTS["acars_cmd"]
-        return tmpl.format(gain=int(s["gain"]), freqs=freqs).split()
-    if s["source"] == "vdl2":
-        tmpl = s.get("vdl2_cmd") or DEFAULTS["vdl2_cmd"]
-        return tmpl.format(gain=int(s["gain"])).split()
-    tmpl = s.get("rtl433_cmd") or DEFAULTS["rtl433_cmd"]
-    return tmpl.format(gain=int(s["gain"])).split()
+    """Settings -> decoder argv (audit L4). The command template is editable, but it may not
+    change the program, smuggle shell syntax or carry a non-numeric gain/frequency: anything
+    else raises ValueError, which the page shows instead of starting."""
+    import argsafe
+    gain = argsafe.gain_arg(s.get("gain", DEFAULTS["gain"]))
+    src = s.get("source")
+    key = {"acars": "acars_cmd", "vdl2": "vdl2_cmd"}.get(src, "rtl433_cmd")
+    tmpl = s.get(key) or DEFAULTS[key]
+    program = DEFAULTS[key].split()[0]
+    if not isinstance(tmpl, str):
+        raise argsafe.SettingsRefused("bad %s in settings: %r" % (key, tmpl))
+    try:
+        return argsafe.safe_tokens(_fill(tmpl, src, gain, s), program=program)
+    except argsafe.SettingsRefused:
+        raise
+    except (KeyError, IndexError, ValueError, AttributeError) as e:
+        raise argsafe.SettingsRefused("bad %s in settings: %s" % (key, e))
+
+
+def _fill(tmpl, src, gain, s):
+    import argsafe
+    if src == "acars":
+        freqs = []
+        for f in s.get("acars_freqs", []) or []:
+            freqs.append("%.3f" % float(argsafe.freq_arg(f).rstrip("kKMG")))
+        return tmpl.format(gain=gain, freqs=" ".join(freqs)).split()
+    return tmpl.format(gain=gain).split()
 
 
 def parse_vdl2(line):
@@ -545,8 +563,14 @@ def main():
     active = [False]           # what the user asked for, independent of process state
 
     def start():
+        try:
+            argv = build_argv(s)              # L4: a bad settings value refuses to start
+        except ValueError as e:
+            active[0] = False
+            state_pill.config(text="Fault", bg=S.RED)
+            status.config(text=str(e)[:120], fg=S.RED)
+            return
         active[0] = True
-        argv = build_argv(s)
         if not dec[0]:
             dec[0] = Decoder(on_line, on_status)
             if dec[0].lease:
