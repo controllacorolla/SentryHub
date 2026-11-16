@@ -800,7 +800,8 @@ def test_bracket_keys_step_prowl_scan_bank_and_fm_frequency():
 
 
 # ================================================================ 18. SWEEP detectors start on open
-def test_detectors_start_when_sweep_opens_and_not_before():
+def test_detectors_start_when_sweep_opens_and_not_before(monkeypatch):
+    monkeypatch.setenv("PALISADE_SHOW_HIDDEN", "1")  # CL8 v0.1: SWEEP is hidden; its own test shows it
     from palisade_qt import sweep
     hub = _hub(demo=True)
     try:

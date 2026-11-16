@@ -915,3 +915,19 @@ def test_e6_a_pass_in_progress_is_kept(monkeypatch, tmp_path):
     assert passes and passes[0]["in_progress"] is True
     assert abs(passes[0]["aos"] - aos.utc_datetime().timestamp()) < 2
     assert all(p["los"] > mid.utc_datetime().timestamp() for p in passes)
+
+
+def test_l3_offline_sitrep_and_tiles_never_call_urlopen(net, monkeypatch, tmp_path):
+    """The network-failure tests now run ONLINE; OFFLINE must not reach urllib at all."""
+    import urllib.request
+    import sitrep
+    calls = []
+    def fake(req, *a, **k):
+        calls.append(getattr(req, "full_url", req))
+        raise OSError("no local feed")
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    monkeypatch.setattr(sitrep.core, "AIRPORTS", {k: {"name": k} for k in ("KAPA", "KDEN")})
+    assert net.mode() == "OFFLINE"
+    d = sitrep.gather()
+    assert d["metar"] is None and sitrep._tfr(["CO"]) is None
+    assert calls and all(u.startswith("http://127.0.0.1") for u in calls), calls   # loopback only

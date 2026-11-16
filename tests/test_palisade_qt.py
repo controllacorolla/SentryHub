@@ -155,7 +155,8 @@ ALL_CALLSIGNS = PAGE_KEYS + FOLDED_CALLSIGNS
 
 
 @pytest.mark.parametrize("name", ALL_CALLSIGNS)
-def test_every_callsign_opens_pumps_closes_clean(name):
+def test_every_callsign_opens_pumps_closes_clean(name, monkeypatch):
+    monkeypatch.setenv("PALISADE_SHOW_HIDDEN", "1")  # CL8 v0.1: SWEEP is hidden but still built
     _app()
     from palisade_qt.shell import PalisadeHub
     hub = PalisadeHub(demo=True, mode="dark")
@@ -180,11 +181,12 @@ def test_all_callsigns_build_in_both_themes(mode):
         page.stop()
 
 
-def test_hub_soak_open_all_callsigns_then_close_no_leaks():
+def test_hub_soak_open_all_callsigns_then_close_no_leaks(monkeypatch):
     """Back-test: one hub, open every callsign in sequence, pump, close -> zero running QThreads."""
     from PySide6 import QtCore
     _app()
     from palisade_qt.shell import PalisadeHub, QT_PAGES
+    monkeypatch.setenv("PALISADE_SHOW_HIDDEN", "1")  # CL8 v0.1: SWEEP hidden, still soaked
     before = QtCore.QThread.__subclasses__()  # noqa: F841 (kept for clarity)
     hub = PalisadeHub(demo=True, mode="dark")
     hub.show()

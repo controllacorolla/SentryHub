@@ -29,6 +29,7 @@ def test_template_handles_empty_dict():
 
 
 def test_tfr_filters_by_state(monkeypatch):
+    monkeypatch.setenv("PALISADE_NET", "ONLINE")    # CL8/L3: OFFLINE is the default; this is ONLINE
     sample = [{"type": "VIP", "state": "CO", "description": "Denver"},
               {"type": "HAZARDS", "state": "TX", "description": "Dallas"}]
 
