@@ -75,9 +75,13 @@ def scope_summary(scope):
     if len(scope) == 1 and len(scope[0]) <= SCOPE_CHARS and scope[0].strip().upper() not in STATE_WORDS:
         return scope[0]
     if len(scope) > SCOPE_MAX:
-        # RA-CL1c F2: "1000 targets" pushed the strip past 1280 px. "999 targets" (11 chars) is the
-        # widest value the strip is sized for, so the capped form may not be longer than that.
+        # RA-CL1c F2: "1000 targets" pushed the strip past 1280 px. The capped form ("999+ tgts",
+        # 9 chars) is no longer than the widest single target (SCOPE_CHARS).
         return "%d+ tgts" % SCOPE_MAX
+    if len(scope) >= 100:
+        # RA-MAIN-1 F1: "999 targets" (11 chars) left 1 px of the 1280 strip in SUN. Three-digit
+        # counts use the short form so no scope summary is longer than SCOPE_CHARS (10).
+        return "%d tgts" % len(scope)
     return "%d target%s" % (len(scope), "" if len(scope) == 1 else "s")
 
 

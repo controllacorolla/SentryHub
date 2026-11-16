@@ -638,9 +638,13 @@ def test_babel_live_mode_acquires_and_releases_via_arbiter(monkeypatch):
     from palisade_qt import babel, radio_arbiter as ra
     monkeypatch.setattr(ra, "_make_lease", lambda name: None)       # no real radio
     seen = []
+    ra.arbiter.reset_for_tests()
+    # CL5 (B1): BABEL only takes the radio while RUN is on and the page is active (wants_radio)
     monkeypatch.setitem(babel._LIVE_RUNNERS, "AIS",
-                        lambda worker: seen.append(ra.arbiter.owner()))
+                        lambda worker: (seen.append(ra.arbiter.owner()),
+                                        setattr(worker, "_stop", True)))
     w = babel.DecoderWorker(demo=False, mode="AIS")
+    w._running, w._active = True, True
     w._run_live("AIS")
     assert seen == ["BABEL"], "BABEL must own the radio while its decoder runs"
     assert ra.arbiter.owner() is None, "_run_live must release the SDR when the decoder returns"
@@ -1525,7 +1529,18 @@ def test_overwatch_radio_director_tracks_arbiter_and_frees(monkeypatch):
     _pump(100)
     assert p.hist_feed.model.rowCount() >= 1
     assert "APRS" in p.holder.hero.text()
+    # CL5 (A1): FREE RADIO asks the holder to release; the arbiter forces it only after the
+    # revoke timeout when nobody acknowledges (no ATLAS page is listening here)
+    monkeypatch.setattr(ra, "REVOKE_TIMEOUT_S", 0.05)
+    asked = []
+    ra.arbiter.revoked.connect(asked.append)
     p._free_radio()
+    assert asked == ["ATLAS-APRS"]
+    import time as _t
+    deadline = _t.time() + 2.0
+    while ra.arbiter.owner() is not None and _t.time() < deadline:
+        _pump(20)
+    ra.arbiter.revoked.disconnect(asked.append)
     assert ra.arbiter.owner() is None
     p.stop()
     ra.arbiter._owner = None

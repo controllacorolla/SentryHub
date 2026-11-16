@@ -104,11 +104,30 @@ def test_nav_key_focus_cue_does_not_widen_the_strip():
 # ================================================================ F2 scope size never overflows
 def test_scope_summary_caps_the_target_count():
     from palisade_qt.chrome import scope_summary
-    assert scope_summary(["h%d" % i for i in range(999)]) == "999 targets"
+    assert scope_summary(["h%d" % i for i in range(99)]) == "99 targets"
+    assert scope_summary(["h%d" % i for i in range(100)]) == "100 tgts"      # RA-MAIN-1 F1
+    assert scope_summary(["h%d" % i for i in range(999)]) == "999 tgts"
     assert scope_summary(["h%d" % i for i in range(1000)]) == "999+ tgts"
     assert scope_summary(["h%d" % i for i in range(100000)]) == "999+ tgts"
-    # the capped form is never wider than the widest uncapped value the strip is sized for
-    assert len(scope_summary(["h"] * 10 ** 6)) <= len("999 targets")
+    # no count form is wider than the widest single target the strip shows as itself
+    from palisade_qt.chrome import SCOPE_CHARS
+    for n in (1, 9, 10, 99, 100, 999, 1000, 10 ** 6):
+        assert len(scope_summary(["h"] * n)) <= SCOPE_CHARS, n
+
+
+STRIP_HEADROOM = 10    # RA-MAIN-1 F1: worst case was 1279 (1 px spare) on both Mac and Linux
+
+
+def test_bundled_plex_fonts_are_loaded():
+    """RA-MAIN-1 F2 (claim: load_fonts reads palisade_qt/fonts/ and is a no-op). Every metric
+    test above measures the font the device ships, so pin that the bundled Plex really loads."""
+    from PySide6 import QtGui
+    from palisade_qt import theme
+    _app()
+    theme.load_fonts()
+    fams = set(QtGui.QFontDatabase.families())
+    assert {"IBM Plex Mono", "IBM Plex Sans"} <= fams, sorted(f for f in fams if "Plex" in f)
+    assert QtGui.QFontInfo(QtGui.QFont("IBM Plex Mono")).family() == "IBM Plex Mono"
 
 
 @pytest.mark.parametrize("mode", THEMES)
@@ -126,15 +145,18 @@ def test_strip_fits_1280_with_a_huge_scope(mode, demo):
             engagement.reset()
             engagement.start("t", "ROE-1", ["10.0.%d.%d" % (i // 250, i % 250) for i in range(n)], "op")
             st = chrome.read_engagement()
-            assert st[0] == "ACTIVE" and st[1] in ("999 targets", "999+ tgts"), st
-            for owner in ("PROWL SC", longest):
-                hub.topbar.set_state("DEMO" if demo else "LIVE", ("HELD", owner), "PERMITTED", st)
+            assert st[0] == "ACTIVE" and st[1] in ("999 tgts", "999+ tgts"), st
+            for owner, scope_word in [(o, w) for o in ("PROWL SC", longest)
+                                      for w in (st[1], "W" * chrome.SCOPE_CHARS)]:
+                hub.topbar.set_state("DEMO" if demo else "LIVE", ("HELD", owner), "PERMITTED",
+                                     (st[0], scope_word) + tuple(st[2:]))
                 hub.topbar.set_alerts(150)
                 hub.topbar.nav_keys["SYSTEM"].setFocus()
                 _pump(60)
-                assert hub.minimumSizeHint().width() <= 1280, (mode, demo, n, owner,
-                                                               hub.minimumSizeHint().width())
-                assert hub.topbar.minimumSizeHint().width() <= 1280
+                # RA-MAIN-1 F1: keep STRIP_HEADROOM px spare for font-engine differences
+                assert hub.minimumSizeHint().width() <= 1280 - STRIP_HEADROOM, (
+                    mode, demo, n, owner, scope_word, hub.minimumSizeHint().width())
+                assert hub.topbar.minimumSizeHint().width() <= 1280 - STRIP_HEADROOM
     finally:
         engagement.reset()
         hub.close()
