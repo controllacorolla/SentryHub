@@ -841,8 +841,9 @@ def test_radios_panel_opens_from_the_radio_slot_and_frees_the_holder(monkeypatch
         hub.radios_panel.takeover_btn.click()
         _pump(40)
         assert ra.arbiter.owner() == "ATLAS-APRS" and ra.arbiter.revoking()
-        assert "RELEASE REQUESTED" in hub.radios_panel.holder.rows_text() \
-            if hasattr(hub.radios_panel.holder, "rows_text") else True
+        card_text = " ".join(lb.text() for lb in
+                             hub.radios_panel.holder.findChildren(QtWidgets.QLabel))
+        assert "RELEASE REQUESTED" in card_text, card_text      # RA-CL5 N14: no longer vacuous
         _pump(600)
         assert ra.arbiter.owner() is None and hub.topbar.slots["radio"].text() == "FREE"
         _key(hub, QtCore.Qt.Key_Escape)

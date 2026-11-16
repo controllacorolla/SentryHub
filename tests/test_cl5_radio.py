@@ -563,12 +563,14 @@ def test_r5_sstv_recorder_keeps_a_rolling_window_and_writes_under_cache(tmp_path
     rec.flush()
     with wave.open(path) as w:
         secs = w.getnframes() / float(w.getframerate())
-    assert 0 < secs <= 4.0, secs
-    with wave.open(path[:-4] + ".prev.wav") as w:
-        assert w.getnframes() / float(w.getframerate()) <= 4.0
+    # R5 contract restored (CL5-fix2, RA-CL5b N-f): the finished file is the LAST window, whole
+    assert 3.5 <= secs <= 4.0, secs
+    assert rec.rotations >= 6, "capped on disk while recording (rotated, not grown)"
+    assert not os.path.exists(path[:-4] + ".prev.wav"), "no frame left split across two files"
     assert rec.window_seconds() <= 4.0
     assert os.path.getsize(path) < 2 * sstv.RATE * 5
-    assert rec.bytes_written == sstv.RATE * 2 * 30, "each byte written once (append, no rewrite)"
+    # each captured byte appended once, plus ONE rewrite of the last window at the end
+    assert rec.bytes_written == sstv.RATE * 2 * 30 + rec._bytes, rec.bytes_written
     # the Qt worker places the capture under the cache dir, not /tmp
     import inspect
     from palisade_qt import babel

@@ -763,6 +763,7 @@ def test_fix12_sstv_decodes_only_new_audio_and_publishes_one_event_per_frame(mon
             a = max(0, int(a), self.n - 240 * fs)
             return b"\0\0" * (self.n - a), a
     rec = Rec()
+    w._rec = rec               # the live recorder (CL5-fix2 N-e: a job for any other is dropped)
     result = {"r": None}
 
     def decode(x, f):
