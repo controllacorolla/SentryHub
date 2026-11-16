@@ -86,3 +86,30 @@ semantic changes, fixed in the tests (commit 889b7ed):
   `PALISADE_SHOW_HIDDEN=1`, so it is still built and soaked.
 
 Second full run (889b7ed): **1556 passed, 7 skipped; 2 failed + 7 errors, all baseline** (same on main, env).
+
+## CL8-fix (after RA-CL8: DO NOT MERGE, 4 blockers)
+
+Commit `ccdbbed`; tests `test_ra_*` in `tests/test_cl8_ship.py` (36 new, 122 total).
+
+| RA-CL8 finding | Fix | Test |
+|---|---|---|
+| **Blocker 1** scout.json `wifi_cmd` ran any program | `scout.wifi_argv`: must be `nmcli [-t] [-f F] [-e yes/no] dev wifi list [ifname IF] [--rescan …]`; else SETTINGS REFUSED, nothing runs | `test_ra_scout_wifi_cmd_…` |
+| **Blocker 2** templates sent decoded data off-device / wrote files | `argsafe.template_argv`: per-program option allowlist; output to stdout only (`-F json/csv/kv/log`, `--output …:file:path=-`); `-d`/`--rtlsdr` index or `:serial`; positional words must be frequencies | `test_ra_decoder_templates_…` (22 cases), `test_ra_shipped_and_old_default_templates_still_build` |
+| **Blocker 3 / NEW-1** TypeError held the radio | `build_argv` turns any error into SettingsRefused; `tpms_argv`/`_fill` check list types; BABEL's generic start error is a FAULT · FAILED TO START, radio released, no retry; PROWL FM/NWR refuse on any settings error | `test_ra_malformed_setting_type_…` (3 PoCs), `test_ra_unexpected_start_error_…` |
+| **Blocker 4** harden.sh could leave ufw off | EXIT trap after `ufw --force reset`: on any failure, `default deny incoming` + `enable`, exit code kept | `test_ra_harden_field_never_leaves_…` (2) |
+| L3 proxy | OFFLINE/LAN: the proxy urllib would use must pass the mode too | `test_ra_offline_loopback_through_a_remote_proxy_…` |
+| C4 seen when not on screen | open scrolls to + selects the oldest unseen fault; live updates mark seen only if that row is on screen; a repeat after seen relights | `test_ra_session_log_open_…` |
+| Tk retirement in GROUPS | `hub.visible_groups` filters the home grid; v0.1 also hides sweep/jam/imsi/gnss in the Tk hub (same detectors SWEEP hides); no-command key says so | `test_ra_tk_home_grid_…` |
+| B4 prepend | FeedTable keeps the top visible item on `rowsInserted` when scrolled | `test_ra_prepended_rows_…` |
+| L6 sky.desktop, Lows | Sky menu → `/usr/local/bin/sky`; doctor "unavailable" for unsupported hash; keymap 1–7 | `test_ra_doctor_…`, `test_ra_keymap_…` |
+
+**Not fixed here (follow-ups, flagged):**
+- L3 LAN DNS rebinding (check resolves, urllib resolves again). Pinning the address needs a
+  custom connection handler; LAN is opt-in, OFFLINE is the default and never resolves.
+- DNS lookups in `engagement.py`/`scout.py` don't consult the mode (lookups only, no payload).
+- L6: launchers are root-owned but run code from the user-owned `$APP`; the real fix is a
+  root-owned install location. Comment in `install_tail.sh` now says so.
+- Settings values that become a single option *value* (wxsat `--source`, iface names) are not
+  allowlisted; no settings value can now choose the program or add options.
+- Duplicate settings loaders (babel/prowl), standalone Tk `dronewatch.py` single-advert alert
+  (not on any hub or menu).
