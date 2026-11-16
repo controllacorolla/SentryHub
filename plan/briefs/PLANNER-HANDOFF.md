@@ -50,11 +50,11 @@ ham callsign, head signing automation, session-chain prune policy, the v0.1 laun
   CL8), CL2-fix2 (SSH program allowlist, no ProxyJump in v0.1, digimodes refused until CL8),
   CL1-fix2 (PANIC unchecks BENCH ack, nav labels visible, ATLAS no h-scroll), CL3 (strict
   defaults; head signing not automated — owner question open).
-- Proposed launch line (owner has NOT confirmed): v0.1 = CL1–CL5 + CL8 with SWEEP and unfinished
+- **Launch line CONFIRMED by owner 2026-11-16:** v0.1 = CL1–CL5 + CL8 with SWEEP and unfinished
   tools hidden; CL6/CL7 → v0.2. Ask him when CL5 is in.
 
 ## First actions in a new chat
 1. `git fetch origin`; check for `RA-CL3b-report.md` on `fix/cl3-evidence` and `RA-MAIN-1-report.md`
    on `audit/ra-main-1`. Missing → spawn each as a cold subagent. Present → act on the verdict.
 2. CL5: fix the 3 tests above, report, `RA-CL5` subagent. 3. CL4 off main once CL3 merges, then CL8.
-4. CL5 merged 2026-11-16: ask the owner to confirm the v0.1 launch line. Tell him in one line after each merge.
+4. CL5 merged 2026-11-16; v0.1 launch line confirmed. Next: CL4 off main, then CL8. Tell him in one line after each merge.
