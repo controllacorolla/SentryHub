@@ -182,3 +182,15 @@ the common case) IS caught. Fixing the rest means reading rtl_fm's stderr or run
 zero-padding (`-E pad`), which changes the scan engine: proposed as a CL5 follow-up.
 NEW-R (files with any tx_ key are skipped whole, silently) and NEW-W (SCAN HOLD keeps the radio
 with no rtl_fm) are follow-ups too.
+
+## RA-CL8f and the owner decision
+
+RA-CL8f: every CL8 finding and every fix-round finding is CLOSED, except the **decoder-liveness
+class**, all present on main 1bc8ad1 too: NFM SCAN dongle that dies/hangs after the 1 s kill
+(NEW-M remainder), AM SCAN / SSTV / BABEL / ATLAS decoders that start, then stall while still
+running (NEW-X, NEW-Y, NEW-Z), and slow deaths every 6–7 s (NEW-AA). The auditor agrees the NFM
+part is a limit of the current scan design. Its verdict is conditional: MERGE if this class goes
+to a CL5 follow-up (one stall watchdog for every radio path, as NWR already has).
+
+Commit after RA-CL8f: restore's TX check matches `"tx_…":` keys only (NEW-AB, a label such as
+ATX_TOWER no longer blocks scanner.json) — `test_ra8f_restore_tx_check_matches_keys_not_labels`.

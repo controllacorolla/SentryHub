@@ -882,8 +882,10 @@ def _restores_tx_setting(tf, member):
         raw = f.read() if f else b""
     except OSError:
         return True                 # unreadable: do not restore it (fail closed, RA-CL8e NEW-U)
-    if b"tx_" in raw.lower():
-        return True                 # any tx_ key, however the file is padded or malformed
+    import re
+    if re.search(rb'"\s*tx_[a-z0-9_]*\s*"\s*:', raw.lower()):
+        return True                 # a "tx_…": key, however the file is padded or malformed
+        # (a value such as a channel label "ATX_TOWER" is not a key: RA-CL8f NEW-AB)
     try:
         d = json.loads(raw.decode("utf-8", "replace"))
     except ValueError:

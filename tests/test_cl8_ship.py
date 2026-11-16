@@ -1609,3 +1609,17 @@ def test_ra8e_restore_tx_check_cannot_be_padded_past(tmp_path, monkeypatch):
         tf.add(str(pad), arcname=".config/uconsole-suite/replay.json")
         tf.add(str(broken), arcname=".config/uconsole-suite/cw.json")
     assert S.restore_configs(arc) == []
+
+
+def test_ra8f_restore_tx_check_matches_keys_not_labels(tmp_path, monkeypatch):
+    import tarfile
+    import suite as S
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(S, "HOME", str(home))
+    f = tmp_path / "s.json"
+    f.write_text('{"custom": ["118.300 ATX_TOWER am"], "label": "tx_note"}')
+    arc = str(tmp_path / "b.tar.gz")
+    with tarfile.open(arc, "w:gz") as tf:
+        tf.add(str(f), arcname=".config/uconsole-suite/scanner.json")
+    assert S.restore_configs(arc) == [".config/uconsole-suite/scanner.json"]
