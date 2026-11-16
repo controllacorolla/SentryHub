@@ -51,3 +51,44 @@ Visible changes: PROWL defaults to the GMRS/FRS bank and the squelch shows the e
 
 ## Open for the owner
 None new. PERMITTED stays for v0.1 (decided 2026-11-16).
+
+---
+
+# CL5-fix — the 12 RA-CL5 items (`fix/cl5-radio`, after `ed4694a`)
+
+Written by the planner (Opus 5.5). Self-report; **RA-CL5b** decides. Regression tests are in
+`tests/test_cl5_fix.py` (32 tests, real processes and real threads; only `_make_lease` patched).
+31 of 32 fail on `ed4694a`; `fm-stop` already passed there.
+
+| # | Item | Status | Where | Test (`test_cl5_fix.py`) |
+|---|---|---|---|---|
+| 1 | Decoders start only on HELD; pages say ACQUIRING meanwhile (N1) | CLOSED | `radio_arbiter.held_by`; every holder: `prowl._RadioWorker._ensure_lease`, `babel.DecoderWorker._run_live` + `_adopt`, `SstvWorker._ensure_lease`, `prism.SweepWorker.step`, `atlas.LeaseSource.poll` | `test_fix1_no_decoder_starts_before_the_arbiter_says_held`, `test_fix1_every_other_holder_waits_for_held[nwr,fm,prism,atlas,sstv]` |
+| 2 | Kill → wait → release in every PROWL path, incl. `ScanWorker.stop` (N4) | CLOSED | `prowl._RadioWorker._give_back` / `_finish`; `stop()` is flags-only, `run()` releases | `test_fix2_prowl_kills_and_waits_before_it_releases[nwr-hide,nwr-revoke,fm-hide,fm-stop]`, `test_fix2_scan_stop_never_releases_while_listen_channel_runs` |
+| 3 | SSTV: RUN / hide / revoke; `PAUSE_WHEN_HIDDEN=False` (R1) | CLOSED | `babel.SstvWorker` `set_running`/`set_active`/`hold_off`/`_give_back` | `test_fix3_sstv_takes_the_radio_only_on_run_and_gives_it_back` |
+| 4 | SCAN revoke breaks `listen_channel` | CLOSED | `ScanWorker._interrupt` (scan pause) | `test_fix4_scan_revoke_breaks_an_active_listen` (real `listen_channel`, loud fake rtl_fm) |
+| 5 | PANIC frees the arbiter; nothing respawns (N3) | CLOSED | `shell.panic`: pages' `on_panic` hold off first, then the tree kill, then `arbiter.panic_free()`; the banner reports the arbiter's state after. BABEL unticks RUN; PROWL/PRISM stay off until Enter or re-opening; ATLAS unticks APRS/AIS | `test_fix5_panic_frees_the_radio_and_nothing_respawns` (real hub), `test_fix5_panic_holds_nwr_off_until_the_operator_resumes` |
+| 6 | No GUI-thread blocks on revoke / RUN / hide / STOP | CLOSED | handlers set flags + `Worker.poke()`; `kit.procs.terminate_async`; ATLAS acks in `poll()` | `test_fix6_stop_hide_and_revoke_never_block_the_gui_thread` (SIGTERM-ignoring stage), `test_fix6_atlas_revoke_ack_is_off_the_gui_thread` |
+| 7 | Honest give-back; NWR never MONITORING / no alerts without a live decoder (N2) | CLOSED | every give-back emits `off`; NWR "Receiver" reads LIVE only while `held_by("PROWL-NWR")` and a healthy status < 3 s old, else NOT MONITORING (alert colour), detail "NOT MONITORING"; 1 s watchdog timer | `test_fix7_nwr_never_reads_monitoring_after_the_radio_is_given_back`, `test_fix7_a_silent_or_forced_free_receiver_goes_not_monitoring`, `test_fix7_every_prowl_give_back_says_off[*]`, `test_fix7_prism_says_off_…` |
+| 8 | Bus never drops alerts (N5) | CLOSED | `eventbus.publish`: the backlog cap applies to contact/decode only | `test_fix8_a_warning_during_a_gui_stall_reaches_the_alert_store` |
+| 9 | Pipeline: SIGKILL any group survivor; signal groups whose leader exited; clean up a partial start (N7) | CLOSED (setsid grandchild remains a known limit) | `kit/procs.py` `_signal`, `_groups_alive`, `_done` guard against pgid reuse | `test_fix9_*` (3) |
+| 10 | E3 passive on BlueZ; faults on the page (N8) | CLOSED | `RidSource.scanner_kwargs` adds `bluez.or_patterns` (AD 0x16, `FA FF`); `AtlasApp.on_error` → fault chip | `test_fix10_passive_ble_scan_has_bluez_or_patterns` (real bleak: refused without, accepted with), `test_fix10_atlas_shows_a_source_fault_on_the_page` |
+| 11 | B2 retune is not a hit (N10) | CLOSED | `ScanWorker._run_live`: `"retune"` re-listens the same channel | `test_fix11_a_squelch_retune_is_not_a_hit` |
+| 12 | SSTV: append, decode only new audio, one event per frame (N9) | CLOSED | `sstv.Recorder` appends (header patch only), rotates to `.prev.wav` at `window_s`; `sstvdec.decode_samples` (decode_wav's body, unchanged maths); `SstvWorker._decode_job`/`_fold_frame` | `test_fix12_sstv_decodes_only_new_audio_…`, `test_fix12_recorder_appends_and_never_rewrites` |
+
+Also: N12 (forced release is generation-checked, `_release(name, gen)`); N13 partly (workers
+disconnect `revoked` at the end of `run()`; `publish()` returns a copy). Not done: N6 (opening BABEL
+briefly fronts PROWL SCAN), N11 (RADIOS history), N13 legacy Tk `shell=True`, N14 — follow-ups.
+
+## Tests changed, and why (diff vs `ed4694a`)
+- `test_cl5_radio`: `a1_lease_source` (ack now in the worker's `poll()`, kill-before-release asserted); `a6` (drops are now proven with contacts; alerts are never dropped — item 8); `r3`/`r4` (hold the radio for real instead of stubbing `_ensure_lease`: item 1); `r5` (rotation + `bytes_written`: item 12); `e3` (Linux kwargs include `bluez`: item 10).
+- `test_palisade_qt`: PROWL/BABEL/SSTV tests wait for HELD, press RUN for SSTV, and finish via `run()` because `stop()` no longer releases on the GUI thread (items 1, 3, 6); the SSTV decode seam is now `_decode(x, fs)` (item 12). No assertion was removed; each now proves the same claim under the new ordering.
+- Side fix: PROWL scan rows carry `_id` (the cursor follows a channel across refreshes) and a demo worker is not poked on page focus; this made `test_cl1_screen::test_up_down_…` deterministic (it failed 4/4 with the first draft of this fix).
+
+## Suite (Linux, Python 3.12.3, PySide6 6.12.0, tkinter present, offscreen + xvfb)
+`1050 passed, 3 failed, 3 skipped` — the 3 known baseline failures only (`test_audit_tiles::…undecodable…`, `test_hwlab::test_doctor_hwbench_check`, `test_sstvdec::…iss_passes…`). pyflakes on touched files: clean except the pre-existing unused `math` in `sstvdec.py`.
+
+## Renders (1280×720, live, dark + sun)
+`plan/briefs/CL5-fix-renders/`: `babel_acquiring_*` (chip "AIS ACQUIRING radio", no decoder), `prowl_nwr_live_*` (Receiver "LIVE · WX2 162.400"), `prowl_nwr_after_revoke_*` (NOT MONITORING in red, SDR FREE, no process), `babel_after_panic_*` (banner "radio released (was BABEL)", RUN unticked, FREE). Script `render_cl5fix.py`.
+
+## For the owner
+After PANIC (or a revoke), PROWL and PRISM stay off the radio until you press **Enter** on that page or re-open it; BABEL needs RUN again. NWR shows NOT MONITORING in red meanwhile.
