@@ -1,4 +1,4 @@
-"""RA-CL3b PoCs — attacks on the CL3-fix routing, head MAC, rollback and readers (tip 13c04a4).
+"""RA-CL3b PoCs — attacks on the CL3-fix routing, head MAC, rollback and readers (tip 13c04a4; B3/N14 tests flipped to FIXED_* at 4995c5c by RA-CL3c).
 OK_* = the fix holds. DEFECT_* = the defect reproduces (the test PASSES when it does).
 Run: SUITE=<worktree> pytest -q poc_ra_cl3b.py"""
 import json
@@ -136,10 +136,10 @@ def test_OK_child_started_before_the_engagement(tmp_path):
     assert ev.count("authorize") == 1 and "issue" in ev and "spawn" in ev and "exit" in ev
 
 
-def test_DEFECT_ticket_from_before_START_exits_into_the_engagement_chain():
-    """A TX-only bench ticket issued with no engagement (session chain) whose process is still
-    running when an engagement STARTs: its exit lands in the ENGAGEMENT chain; the session chain
-    never gets it. states() then shows an EXECUTED row the engagement never authorized."""
+def test_FIXED_ticket_from_before_START_keeps_its_exit_in_the_session_chain():
+    """RA-CL3c (was DEFECT N14): a TX-only bench ticket issued with no engagement (session chain)
+    whose process is still running when an engagement STARTs. Its exit stays in the SESSION chain
+    (the chain it was issued under); the engagement chain never sees the ticket."""
     import executor
     G.arm(True); G.unlock_session(True)
     ok, why, t, _p = G.issue_ticket("bench", ["hackrf_transfer", "-t", "x", "-f", "915000000",
@@ -153,14 +153,18 @@ def test_DEFECT_ticket_from_before_START_exits_into_the_engagement_chain():
                                                                start_new_session=True))
     info = _start("eng")
     h.wait(5)
+    time.sleep(0.2)
     eng = _recs(info["path"])
     print("ENG:", [(r["event"], r.get("label")) for r in eng])
-    print("SESSION:", [r["event"] for r in _recs(sess.path)])
-    assert any(r["event"] == "exit" and r.get("ticket") == t.id for r in eng)
-    assert not any(r["event"] == "exit" for r in _recs(sess.path))
+    srecs = _recs(sess.path)
+    print("SESSION:", [r["event"] for r in srecs])
+    assert not any(r.get("ticket") == t.id for r in eng)
+    ex = [r for r in srecs if r["event"] == "exit" and r.get("ticket") == t.id]
+    assert len(ex) == 1 and ex[0]["exit_code"] == 0
     rows = chain.Chain.open(info["id"]).states()
-    print(rows)
-    assert any(r.get("ticket") == t.id and r["state"] == "EXECUTED" for r in rows)
+    assert not any(r.get("ticket") == t.id for r in rows)
+    srows = chain.Chain.open(sess.id).states()
+    assert [r["state"] for r in srows if r.get("ticket") == t.id] == ["EXECUTED"]
 
 
 def test_OK_shared_state_names_an_unopenable_chain_child_refuses_no_session_fallback(tmp_path):
@@ -207,11 +211,10 @@ def test_OK_shared_state_names_an_unopenable_chain_child_refuses_no_session_fall
         pub.close()
 
 
-def test_DEFECT_end_while_a_bound_childs_process_runs_kill_exit_leave_the_engagement_chain(tmp_path):
-    """Hub END while a bound child's gated process runs. The hub's end() publishes 'expired' and
-    then 'none' back-to-back; the child's executor sweeps every 250 ms, sees no engagement, and
-    its kill + exit records route to a NEW per-child session chain. The engagement chain ends
-    ... spawn, engagement.close — the row stays RUNNING forever."""
+def test_FIXED_end_while_a_bound_childs_process_runs_kill_exit_in_the_engagement_chain(tmp_path):
+    """RA-CL3c (was DEFECT B3): hub END while a bound child's gated process runs. The child's own
+    kill + exit (real, non-zero exit code) land in the ENGAGEMENT chain before engagement.close;
+    the row is KILLED; no session chain exists."""
     info = _start()
     G.arm(True)
     pub, env = _bound_env(tmp_path)
@@ -233,20 +236,21 @@ def test_DEFECT_end_while_a_bound_childs_process_runs_kill_exit_leave_the_engage
     finally:
         pub.close()
     print(line, out, err[-800:])
+    assert "SESS None" in out
     eng = _recs(info["path"])
     names = [r["event"] for r in eng]
     print("ENG CHAIN:", names)
-    d = os.path.dirname(info["path"])
-    sess = _sessions(d)
-    print("SESSIONS:", sess)
-    assert "spawn" in names
-    assert "kill" not in names and "exit" not in names
-    assert sess
-    sev = [r["event"] for r in _recs(os.path.join(d, sess[0]))]
-    print("CHILD SESSION:", sev)
-    assert "kill" in sev and "exit" in sev
+    close = names.index("engagement.close")
+    kill = [r for r in eng if r["event"] == "kill"]
+    ex = [r for r in eng if r["event"] == "exit"]
+    assert len(kill) == 1 and len(ex) == 1, names
+    assert kill[0]["seq"] < close and ex[0]["seq"] < close
+    assert kill[0]["wpid"] == p.pid and ex[0]["wpid"] == p.pid      # the child's own records
+    assert ex[0]["exit_code"] not in (None, 0) and ex[0]["stopped"]
+    assert not any(r.get("by") == "end" for r in eng)
+    assert not _sessions(os.path.dirname(info["path"]))
     rows = chain.Chain.open(info["id"]).states()
-    assert [r["state"] for r in rows if r["target"] == "10.0.0.7"] == ["RUNNING"]
+    assert [r["state"] for r in rows if r["target"] == "10.0.0.7"] == ["KILLED"]
 
 
 def test_OK_end_while_a_hub_process_runs_kill_exit_before_close():
