@@ -1052,7 +1052,7 @@ SPAWN_ALLOWLIST = {
         "RF tab: rtl_power receive-only spectrum survey (RX, no TX, no target contact)",
     ("scout.py", "work", "subprocess.run"): "harden.sh --dry-run: prints the plan, changes nothing",
     ("radio.py", "_run", "subprocess.run"): "SDR enumeration (hackrf_info / SoapySDRUtil --find)",
-    ("palisade_qt/recon.py", "_run_cmd", "subprocess.run"):
+    ("palisade_qt/recon.py", "_run_scan", "subprocess.run"):
         "passive survey commands (iw scan / bluetoothctl) — no target contact",
     ("devterm.py", "ssh_open", "subprocess.Popen"):
         "opens an interactive terminal; the host passed devterm.authorize_ssh_host first",
