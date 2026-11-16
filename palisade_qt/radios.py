@@ -40,6 +40,38 @@ def usb_sdrs(sys_root="/sys"):
     return out
 
 
+# kernel drivers that bind an RTL2832U as a DVB-T TV tuner: while one is bound, librtlsdr tools
+# (rtl_fm, rtl_power, readsb) usually cannot claim the dongle (audit H6)
+DVB_DRIVERS = ("dvb_usb_rtl28xxu", "rtl2832", "rtl2832_sdr", "dvb_usb_v2")
+
+
+def sdr_state(sys_root="/sys"):
+    """The built-in SDR as the kernel sees it (audit H6), for OPS's SDR chip:
+      {"present": True/False/None, "name": ..., "id": "0bda:2838", "driver": "dvb_usb_rtl28xxu"|
+       None, "usable": True/False/None}
+    present None = no USB sysfs on this host (cannot tell). usable False when a DVB kernel driver
+    has bound the dongle (the state /dev/swradio0 appears in — the old check called that OK)."""
+    base = os.path.join(sys_root, "bus", "usb", "devices")
+    if not os.path.isdir(base):
+        return {"present": None, "name": None, "id": None, "driver": None, "usable": None}
+    for dev in sorted(glob.glob(os.path.join(base, "*"))):
+        vid, pid = _read(os.path.join(dev, "idVendor")), _read(os.path.join(dev, "idProduct"))
+        if not (vid and pid) or (vid.lower(), pid.lower()) not in SDR_USB_IDS:
+            continue
+        drivers = []
+        for d in sorted(glob.glob(dev + ":*" + os.sep + "driver")):
+            try:
+                drivers.append(os.path.basename(os.path.realpath(d)))
+            except OSError:
+                continue
+        dvb = [d for d in drivers if d in DVB_DRIVERS]
+        return {"present": True, "name": SDR_USB_IDS[(vid.lower(), pid.lower())],
+                "id": "%s:%s" % (vid.lower(), pid.lower()),
+                "driver": dvb[0] if dvb else (drivers[0] if drivers else None),
+                "usable": not dvb}
+    return {"present": False, "name": None, "id": None, "driver": None, "usable": False}
+
+
 def rfkill_switches(sys_root="/sys"):
     """rfkill switches -> list of {name, type, power}. None if there is no rfkill sysfs here."""
     base = os.path.join(sys_root, "class", "rfkill")
