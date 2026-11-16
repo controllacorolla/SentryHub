@@ -85,4 +85,4 @@ semantic changes, fixed in the tests (commit 889b7ed):
   `test_palisade_qt::test_hub_soak_…` — SWEEP is hidden in v0.1; its own tests set
   `PALISADE_SHOW_HIDDEN=1`, so it is still built and soaked.
 
-Second full run: see below.
+Second full run (889b7ed): **1556 passed, 7 skipped; 2 failed + 7 errors, all baseline** (same on main, env).
