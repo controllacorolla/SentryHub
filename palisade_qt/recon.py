@@ -537,6 +537,8 @@ class ReconApp(PalisadeApp):
             worker.status.connect(lambda st, t=table: self._feed_standby(t, st))
         worker.status.connect(self.on_status)
         worker.error.connect(self.on_error)
+        if isinstance(worker, WifiScanWorker):     # RA-CL4 N30: paused BEFORE it can step
+            worker.pause(not (getattr(self, "_active", False) and self._subtab == "WIFI"))
         worker.start()
         return worker
 

@@ -286,6 +286,34 @@ class EmptyState(QtWidgets.QFrame):
         p.end()
 
 
+class Cover(QtCore.QObject):
+    """An EmptyState laid over another widget (same rect, kept in step on resize). Used where a
+    view must not be drawn at all — e.g. a range picture with no HOME (N26)."""
+
+    def __init__(self, target, state="offline", title="", detail=""):
+        super().__init__(target)
+        self._target = target
+        self.empty = EmptyState(title, detail, parent=target, state=state)
+        self.empty.hide()
+        target.installEventFilter(self)
+
+    def show(self, on=True, state=None, title=None, detail=None):
+        if title is not None:
+            self.empty.set_state(state or self.empty.state, title, detail or "")
+        self.empty.setGeometry(self._target.rect())
+        self.empty.setVisible(bool(on))
+        if on:
+            self.empty.raise_()
+
+    def shown(self):
+        return not self.empty.isHidden()
+
+    def eventFilter(self, obj, ev):
+        if obj is self._target and ev.type() == QtCore.QEvent.Resize:
+            self.empty.setGeometry(self._target.rect())
+        return False
+
+
 def _tokens_for(widget):
     """The theme tokens the app is drawn in (matched on the application palette's window colour)."""
     from .. import theme

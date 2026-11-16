@@ -694,13 +694,22 @@ class AdsbFeed:
                     self.aircraft = []
                 if got:
                     src, data = got
-                    now = data.get("now", time.time())
+                    now = data.get("now") if isinstance(data, dict) else None
+                    if not isinstance(now, (int, float)):
+                        # RA-CL4 E1 residual: no receiver timestamp -> the file's own mtime;
+                        # over HTTP there is none, and "unknown age" is never live
+                        try:
+                            now = (os.path.getmtime(os.path.join(src, "aircraft.json"))
+                                   if not src.startswith("http") else 0.0)
+                        except OSError:
+                            now = 0.0
                     acs = [clean_aircraft(a) for a in data.get("aircraft", [])
                            if isinstance(a, dict) and a.get("hex")]
                     acs = [a for a in acs if a["hex"] and a.get("seen", 99) < 60]
                     self.aircraft = acs
                     self.source = src
-                    self.status = "live" if time.time() - now < 10 else "stale"
+                    age = time.time() - now
+                    self.status = "live" if -10 < age < 10 else "stale"   # a future "now" is not live
                     self.data_t = now                # E1: when the receiver wrote this data
                     self.updated = time.time()
                     for a in acs:

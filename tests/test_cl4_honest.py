@@ -707,3 +707,135 @@ def test_d4_atlas_and_engagement_empty_states_say_why():
     p = EngagePanel("dark")
     p.render_actions()
     assert p.eng_actions.showing_empty() and p.eng_actions.empty.text()
+
+
+# ================================================================ RA-CL4 fixes (N26–N32, E1 res.)
+
+def test_n26_no_home_no_range_picture_on_ops_or_atlas():
+    from palisade_qt.ops import OpsHome
+    from palisade_qt.atlas import AtlasApp
+    o = OpsHome(demo=False)
+    o._contacts = {"A": {"id": "A", "_ts": time.time(), "rng": 4.0, "x": 1.0, "y": 1.0,
+                         "severity": "info", "label": "A"}}
+    plotted = []
+    o.ppi.set_contacts = lambda c, selected=None: plotted.append(list(c))
+    o._refresh_ppi()
+    assert o._home_cover.shown() and plotted[-1] == [], "no contact drawn on rings"
+    assert "HOME NOT SET" in o._home_cover.empty.text()
+    _close(o)
+    a = AtlasApp(demo=False)
+    assert not a.map._can_fetch, "never request tiles for a placeholder origin"
+    a._render()
+    assert a._home_cover.shown()
+    _close(a)
+
+
+def test_n26_home_set_draws_again_and_fetches_tiles():
+    from palisade_qt import eventbus
+    from palisade_qt.atlas import AtlasApp
+    a = AtlasApp(demo=False)
+    eventbus.set_home((40.0, -105.0))
+    _app().processEvents()
+    a._render()
+    assert not a._home_cover.shown() and a.map._can_fetch
+    assert (a.map._tiles.home_lat, a.map._tiles.home_lon) == (40.0, -105.0)
+    _close(a)
+
+
+def _engage(monkeypatch, **kw):
+    import engagement
+    from palisade_qt.panels import EngagePanel
+    for k, v in kw.items():
+        monkeypatch.setattr(engagement, k, v)
+    p = EngagePanel("dark")
+    p.render_actions()
+    return p
+
+
+def test_n27_tampered_trail_is_not_watching(monkeypatch):
+    p = _engage(monkeypatch, chain_info=lambda: {"id": "c1", "records": 3, "verified": False,
+                                                 "why": "hash mismatch at 2", "path": "x"},
+                chain_states=lambda: [], chain_unreadable=lambda: None)
+    assert p.eng_actions.empty.state == "stale" and "UNREADABLE" in p.eng_actions.empty.text()
+
+
+def test_n28_active_engagement_with_unreadable_chain_is_not_no_engagement(monkeypatch):
+    p = _engage(monkeypatch, chain_info=lambda: None, chain_states=lambda: [],
+                chain_unreadable=lambda: "malformed head")
+    assert "NO ENGAGEMENT" not in p.eng_actions.empty.text()
+    assert "UNREADABLE" in p.eng_chain.text().upper() and "malformed head" in p.eng_chain.text()
+
+
+def test_n28_chain_unreadable_reports_the_open_failure(monkeypatch):
+    import engagement
+    import chain
+    monkeypatch.setattr(engagement, "current_chain_id", lambda: "c1")
+    monkeypatch.setattr(chain, "for_id", lambda cid: (_ for _ in ()).throw(chain.ChainError("bad head")))
+    assert "bad head" in engagement.chain_unreadable()
+    monkeypatch.setattr(engagement, "current_chain_id", lambda: None)
+    assert engagement.chain_unreadable() is None
+
+
+def test_n29_alerts_and_predictions_are_not_a_running_feed():
+    from palisade_qt import eventbus
+    from palisade_qt.system import MoreApp
+    eventbus.bus.publish(eventbus.alert("OVERWATCH", "next pass: ISS 12:00Z"))
+    eventbus.bus.publish(eventbus.alert("ATLAS", "RADIO BUSY — held by PRISM"))
+    assert eventbus.bus.feeds() == {}
+    p = MoreApp(demo=False)
+    text = " ".join(p._sitrep_lines())
+    assert "No feed is running" in text and "Watching" not in text
+    _close(p)
+
+
+def test_n30_wifi_worker_is_paused_before_it_starts(monkeypatch):
+    from palisade_qt import recon
+    calls = []
+    monkeypatch.setattr(recon, "_run_scan", lambda argv, timeout=12: calls.append(1) or ("", None))
+    for _ in range(10):
+        p = recon.ReconApp(demo=False)
+        p._subtab = "BLE"
+        p.start()
+        time.sleep(0.05)
+        _close(p)
+    assert calls == [], "no Wi-Fi scan while RECON › WIFI was never on screen"
+
+
+def test_n31_an_orphan_that_exited_by_itself_is_not_recorded_as_killed():
+    import subprocess
+    import gatestate
+    import engagement
+    proc = subprocess.Popen([sys.executable, "-c", "pass"])
+    ps = gatestate.proc_start(proc.pid)
+    proc.wait()
+    res = engagement._kill_orphans({"t": (proc.pid, ps or "x")})
+    assert res["t"] == (False, "exited")
+    assert "exited on its own" in engagement._ORPHAN_FAIL["exited"]
+
+
+def test_n32_session_leader_and_ancestors_are_protected():
+    import engagement
+    prot = engagement._protected_pids()
+    assert os.getsid(0) in prot and os.getppid() in prot and os.getpid() in prot
+    assert engagement._identity(os.getsid(0), "anything") == "mismatch"
+
+
+def test_e1_residual_missing_or_future_now_is_not_live(tmp_path):
+    import json
+    import sky_app
+    d = tmp_path / "readsb"
+    d.mkdir()
+    f = d / "aircraft.json"
+    f.write_text(json.dumps({"aircraft": [{"hex": "a1", "seen": 1}]}))
+    old = time.time() - 3600
+    os.utime(f, (old, old))
+    feed = sky_app.AdsbFeed.__new__(sky_app.AdsbFeed)   # no poll thread: drive _tick directly
+    import threading
+    feed.sources, feed.aircraft, feed.receiver, feed.status = [str(d)], [], None, "none"
+    feed.source, feed.updated, feed.data_t, feed.trails, feed.history = None, 0.0, None, {}, []
+    feed._last_frame, feed._rcv_retry, feed.lock = 0.0, 0.0, threading.Lock()
+    feed._tick([str(d)])
+    assert feed.status == "stale", "no 'now' -> file mtime (an hour old) -> stale"
+    f.write_text(json.dumps({"now": time.time() + 3600, "aircraft": []}))
+    feed._tick([str(d)])
+    assert feed.status == "stale", "a timestamp in the future is not live"

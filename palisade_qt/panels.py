@@ -343,6 +343,7 @@ class EngagePanel(Overlay):
                                       QtWidgets.QSizePolicy.Minimum)
         right.addWidget(self.eng_detail)
         self.eng_chain = micro("Evidence chain")
+        self.eng_chain.setWordWrap(True)          # RA-CL4 N34: never clipped at the panel edge
         right.addWidget(self.eng_chain)
         # N11: the trail fits the panel width (long targets/results elide, full text in the
         # tooltip) — no sideways scroll hiding the RESULT column
@@ -437,10 +438,27 @@ class EngagePanel(Overlay):
             rows = [{"t": 0, "state": "UNKNOWN", "action": "UNKNOWN — evidence trail unreadable",
                      "target": str(e)[:40], "detail": "",
                      "_colors": {"state": self._tok["warn"], "action": self._tok["warn"]}}]
-        if info is None:                    # D4: the empty trail says why
+        bad = None
+        if info is None:
+            try:
+                bad = eng.chain_unreadable()
+            except Exception as e:
+                bad = str(e)[:120]
+        # D4: the empty trail says why — and never claims "nothing authorized" when it cannot
+        # read the trail (RA-CL4 N27 tampered, N28 unreadable while an engagement is active)
+        if bad:
+            self.eng_chain.setText("Evidence chain UNREADABLE — %s" % bad[:60])
+            self.eng_actions.set_empty("stale", "TRAIL UNREADABLE",
+                                       "the engagement's evidence chain cannot be opened: %s — "
+                                       "actions are refused until it is" % bad)
+        elif info is None:
             self.eng_chain.setText("Evidence chain — none open")
             self.eng_actions.set_empty("offline", "NO ENGAGEMENT",
                                        "the trail starts when an engagement is activated")
+        elif not info["verified"]:
+            self.eng_actions.set_empty("stale", "TRAIL UNREADABLE",
+                                       "the chain failed verification — nothing it holds can be "
+                                       "shown as fact")
         else:
             self.eng_actions.set_empty("watching", "nothing authorized yet",
                                        "every authorization and execution is recorded here")

@@ -191,7 +191,9 @@ class EventBus(QtCore.QObject):
             if t in self._by_type:
                 self._by_type[t].append(ev)
             src = ev.get("source")
-            if src is not None and not is_telemetry(ev):    # device telemetry is not a feed
+            # RA-CL4 N29: a feed is a receiver producing contacts or decodes. Alerts (a pass
+            # prediction, RADIO BUSY) and device telemetry are not evidence anything is watched.
+            if src is not None and t in ("contact", "decode") and not is_telemetry(ev):
                 self._last_by_source[src] = ev.get("ts", time.time())
             if t == "contact":
                 cid = (ev.get("payload") or {}).get("id")

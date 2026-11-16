@@ -19,7 +19,7 @@ from PySide6 import QtCore, QtWidgets
 from .app import PalisadeApp
 from . import theme, eventbus
 from .kit import card, micro, PpiScope
-from .kit.components import note
+from .kit.components import note, Cover
 from .worker import Worker
 
 # The eight page keys, in key order (1-8), each with the function label shown beside the callsign
@@ -219,6 +219,9 @@ class OpsHome(PalisadeApp):
         stat.addStretch(1)
         hv.addLayout(stat)
         self.ppi = PpiScope(span_nm=80, mode=self.mode)
+        self._home_cover = Cover(self.ppi, "offline", "HOME NOT SET",
+                                 "Range rings need your position — set HOME in SYSTEM › SETTINGS")
+        self._home_cover.show(not self.demo and not eventbus.home_set())
         hv.addWidget(self.ppi, 1)
         row.addWidget(hero, 1)
         # the scope is round: keep its column only as wide as it is tall, and give the rest of
@@ -307,7 +310,9 @@ class OpsHome(PalisadeApp):
         self._contacts = {c["id"]: c for c in live}
         if self._selected not in self._contacts:
             self._selected = None
-        self.ppi.set_contacts(live, selected=self._selected)
+        no_home = not self.demo and not eventbus.home_set()
+        self._home_cover.show(no_home)               # N26: no rings from a guessed origin
+        self.ppi.set_contacts([] if no_home else live, selected=self._selected)
         n = len(live)
         if n:
             self.big.setText(str(n))

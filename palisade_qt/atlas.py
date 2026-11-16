@@ -23,6 +23,7 @@ from PySide6 import QtCore, QtWidgets
 from .app import PalisadeApp
 from . import theme, eventbus, radio_arbiter
 from .kit import MapPanel, FeedTable, DetailCard
+from .kit.components import Cover
 from .worker import Worker
 
 # kind -> (legend label, theme colour token). Severity "alert" overrides the colour to red.
@@ -733,9 +734,15 @@ class AtlasApp(PalisadeApp):
         split.setContentsMargins(0, 0, 0, 0)
         split.setSpacing(10)
 
-        home = eventbus.home() or (self.demo and eventbus.DEMO_HOME) or (0.0, 0.0)
+        home = eventbus.home() or (self.demo and eventbus.DEMO_HOME) or (None, None)
         self.map = MapPanel(span_nm=80, mode=self.mode, home_lat=home[0], home_lon=home[1])
         self.map.set_home(None, None, known=eventbus.home_set())
+        # N26: no HOME (live) -> no range picture at all: rings, basemap and positions would be
+        # measured from a guessed origin. The list still shows what is heard.
+        self._home_cover = Cover(self.map, "offline", "HOME NOT SET",
+                                 "Range rings and the map need your position. "
+                                 "Set HOME in SYSTEM › SETTINGS. Contacts are listed at right.")
+        self._home_cover.show(not self.demo and not eventbus.home_set())
         self._adsb_health = None                     # E1 / H10: the ADS-B feed's own state
         split.addWidget(self.map, 3)
 
@@ -877,9 +884,12 @@ class AtlasApp(PalisadeApp):
         now = time.time()
         self._contacts = {c["id"]: c for c in self._contacts.values() if now - c["_ts"] < STALE_S}
         shown = [c for c in self._contacts.values() if c["kind"] in self._layers]
-        self.map.set_contacts([(c["x"], c["y"]) for c in shown],
-                              labels=[c["label"] for c in shown],
-                              colors=[self._color(c["kind"], c["severity"]) for c in shown])
+        no_home = not self.demo and not eventbus.home_set()
+        self._home_cover.show(no_home)
+        plotted = [] if no_home else shown
+        self.map.set_contacts([(c["x"], c["y"]) for c in plotted],
+                              labels=[c["label"] for c in plotted],
+                              colors=[self._color(c["kind"], c["severity"]) for c in plotted])
         rows = []
         for c in sorted(shown, key=lambda c: (c["rng"] is None, c["rng"] or 0, c["label"])):
             rows.append({"_id": c["id"], "label": c["label"],

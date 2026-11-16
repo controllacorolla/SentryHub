@@ -546,6 +546,28 @@ def _ticket_events(records, tid):
     return [r.get("event") for r in records if r.get("ticket") == tid]
 
 
+def _protected_pids():
+    """The hub, its process group and session leaders, and every ancestor (RA-CL4 N32): END never
+    signals one of these, whatever a keyed record names."""
+    out = {os.getpid(), os.getppid(), os.getpgrp()}
+    try:
+        out.add(os.getsid(0))
+    except OSError:
+        pass
+    pid = os.getppid()
+    for _ in range(64):                   # walk up via /proc (Linux); stop at init or on error
+        try:
+            with open("/proc/%d/stat" % pid) as f:
+                ppid = int(f.read().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+        if ppid <= 1 or ppid in out:
+            break
+        out.add(ppid)
+        pid = ppid
+    return out
+
+
 def _identity(pid, pstart):
     """Is `pid` still the process logged at launch (gatestate.proc_start identity check — a
     recycled pid never matches; unknown is no)? One of:
@@ -553,11 +575,11 @@ def _identity(pid, pstart):
       "zombie"   — it IS that process, but it has exited and only its reap is pending (N22/N25)
       "gone"     — no such process any more
       "mismatch" — another process holds the pid now, or identity cannot be proven
-    RA-CL3d N23: never the hub itself, its parent, or the leader of the hub's own process group,
-    whatever a (keyed, forged) record says."""
+    RA-CL3d N23 / RA-CL4 N32: never the hub itself, an ancestor, or the leader of the hub's own
+    process group or session, whatever a (keyed, forged) record says."""
     if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1 or not pstart:
         return "mismatch"
-    if pid in (os.getpid(), os.getppid(), os.getpgrp()):
+    if pid in _protected_pids():
         return "mismatch"
     import gatestate
     start = gatestate.proc_start(pid)
@@ -617,7 +639,7 @@ def _kill_orphans(orphans, grace=1.0, kill_wait=1.0):
     launched process, or the group when the leader exited but a member did not — N20), wait once.
     `orphans` = {key: (pid, pstart)}. Returns {key: (verified_gone, why)}; why is "" when gone,
     "leader" when the launched process is still alive, "group" when it exited but a process in its
-    group survived. A signal is only ever sent while the pid still proves to be the launched
+    group survived, "exited" when it was gone before anything was sent (no kill to record). A signal is only ever sent while the pid still proves to be the launched
     process, or to a group that still has live members."""
     import signal
     import gatestate
@@ -667,7 +689,9 @@ def _kill_orphans(orphans, grace=1.0, kill_wait=1.0):
             wait(kill_wait)
     out = {}
     for key, (pid, pstart, pg, sig) in state.items():
-        if _identity(pid, pstart) == "match":
+        if not sig:                       # RA-CL4 N31: it went before END sent anything
+            out[key] = (False, "exited")
+        elif _identity(pid, pstart) == "match":
             out[key] = (False, "leader")
         elif pg is not None and gatestate.group_alive(pg, grace_s=0.2):
             out[key] = (False, "group")
@@ -678,7 +702,8 @@ def _kill_orphans(orphans, grace=1.0, kill_wait=1.0):
 
 def _kill_orphan(pid, pstart, grace=1.0):
     """One orphan (kept for callers of the old API). True when verified gone."""
-    return _kill_orphans({0: (pid, pstart)}, grace=grace)[0][0]
+    gone, why = _kill_orphans({0: (pid, pstart)}, grace=grace)[0]
+    return gone or why == "exited"
 
 
 _UNSEEN_REASON = {
@@ -695,6 +720,7 @@ _ORPHAN_FAIL = {
     "leader": "orphan at END: signalled, still alive",
     "group": ("orphan at END: the launched process exited, but a process in its group survived "
               "SIGKILL"),
+    "exited": "exited on its own before END signalled it; exit status not observed",
 }
 
 
@@ -943,6 +969,20 @@ def chain_states():
     except Exception:
         return []
     return ch.states()
+
+
+def chain_unreadable():
+    """RA-CL4 N28: why the open engagement's chain cannot be opened, or None (no engagement, or
+    it opens). Lets the UI tell "no engagement" from "engagement active, trail unreadable"."""
+    cid = current_chain_id()
+    if not cid:
+        return None
+    import chain as _chain
+    try:
+        _chain.for_id(cid)
+    except Exception as e:
+        return str(e)[:120] or type(e).__name__
+    return None
 
 
 def chain_info():
