@@ -48,3 +48,17 @@ Full run, `fix/ui-polish` @ e314abf, container venv (Python 3.13, PySide6 6.8.2.
 - `test_cl1_screen::test_up_down_drive_the_list_and_the_detail_follows`: fails the same way on `fix/cl8-ship` head d8149b6 when run alone (3/3; demo PROWL rows reorder between key presses). Passed in the previous full run here. Pre-existing timing flake, not this branch.
 - `test_cl5_fix2::test_nh_panic_banner_counts_what_the_pages_stopped`: order-dependent; passes alone on this branch (2/2). Passed in the previous full run.
 - `pyflakes palisade_qt`: clean.
+
+## RA-UIP fix-up (commit 90ff886)
+RA-UIP: DO NOT MERGE (H1 + M1–M5). Fixed: H1 imagery resampled per pixel into `eventbus.to_xy`'s
+AEQD frame (`tiles.aeqd_inverse` / `reproject`), pixel-coded registration test at 60–400 nm, Denver /
+Fairbanks / Sydney; M1 `tiles._placeholder` (never drawn, cache file removed); M2 `emergency` flag →
+red on MIL; M3/L5 only USE GPS arms the sign check, second SAVE confirms, 2° band, bools refused;
+M4/L10 hidden background ATLAS prunes only, draws on show, BUSY alerts once ATLAS was opened; M5
+event-filter guard (fit test 0/10 failures, was 2/8; root cause not pinned: `ops.clear_body` takeAt
+ruled out); L1/L2 OPS captions shortened; L6 test; L8 `course` drawn, AIS 360/511 ignored; L9 key
+map. Open: L3, L4, L7.
+
+Full suite at 90ff886: **1687 passed, 3 failed, 7 skipped, 7 errors** (30 min). Failures: the
+container baseline (`test_audit_tiles` undecodable tile, `test_hwlab` doctor, `test_shell` ×7 errors)
+and the known `test_cl1_fix2` ack-all flake (flaky on main).
