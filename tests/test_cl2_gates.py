@@ -1054,6 +1054,9 @@ SPAWN_ALLOWLIST = {
     ("radio.py", "_run", "subprocess.run"): "SDR enumeration (hackrf_info / SoapySDRUtil --find)",
     ("palisade_qt/recon.py", "_run_scan", "subprocess.run"):
         "passive survey commands (iw scan / bluetoothctl) — no target contact",
+    ("palisade_qt/recon.py", "_scan_bluetoothctl", "subprocess.Popen"):
+        "SCAN-2 live BLE survey: fixed argv `bluetoothctl --timeout N scan on` (listen only, "
+        "no connect/pair); no target contact, killed on stop",
     ("devterm.py", "ssh_open", "subprocess.Popen"):
         "opens an interactive terminal; the host passed devterm.authorize_ssh_host first",
 }

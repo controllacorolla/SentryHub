@@ -46,7 +46,13 @@ Recommended next cluster: SWEEP gnss (gpsd) + SCOUT (no SDR, small), then SDR-ba
 ## Suite / lint
 - `pyflakes palisade_qt/recon.py palisade_qt/atlas.py blescan.py wifisurvey.py tests/test_scan_live.py`: clean (doctor.py: 4 pre-existing unused-import warnings, unchanged).
 - Targeted: `tests/test_scan_live.py tests/test_cl4_honest.py tests/test_wifisurvey.py tests/test_blescan.py` pass.
-- Full suite: see "Full suite" below.
+- Full suite (8bc2dad, py3.13, PySide6 6.8.2.1): `4 failed, 1677 passed, 6 skipped, 7 errors`.
+  Baseline: `test_audit_tiles::test_undecodable_tile_is_marked_failed`, `test_hwlab::test_doctor_hwbench_check`,
+  7 `test_shell` errors (no tkinter). `test_cl1_screen::test_up_down_drive_the_list_and_the_detail_follows`
+  is flaky on `fix/cl8-ship` too (1 of 3 runs failed there, 3/3 passed here: PROWL demo rows reorder
+  between keypresses). New and fixed: `test_cl2_gates::test_one_gate_no_spawn_or_device_write_outside_the_executor`
+  flagged the bluetoothctl `Popen`; added a justified SPAWN_ALLOWLIST entry (fixed argv, listen only,
+  killed on stop) — `test_cl2_gates -k one_gate` 2 passed.
 
 ## Renders (1280×720, live, dark + sun)
 `plan/briefs/SCAN-evidence/recon-wifi-nmcli-{dark,sun}.png`, `recon-ble-live-{dark,sun}.png` (script `render.py` beside them). ReconApp minimum width 969 px (was 1139 with the first label draft).
