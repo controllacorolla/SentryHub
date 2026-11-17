@@ -282,8 +282,8 @@ class TopBar(QtWidgets.QFrame):
         self.setFixedHeight(STRIP_H)
         self._tok = theme.tokens(mode)
         lay = QtWidgets.QHBoxLayout(self)
-        lay.setContentsMargins(2, 0, 3, 0)
-        lay.setSpacing(1)
+        lay.setContentsMargins(2, 0, 6, 0)
+        lay.setSpacing(12)              # slots are separated by space, not divider lines (2026-11-17)
 
         # the page keys live in a vertical rail the shell puts down the left edge (NavRail); the
         # strip keeps only the wordmark and the shell-owned status. nav_keys keeps its name.

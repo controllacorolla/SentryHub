@@ -748,3 +748,25 @@ def test_u10_atlas_and_ops_draw_tracks_with_leaders_trails_and_a_legend():
     finally:
         eventbus.set_home(None)
         _close(hub)
+
+
+@pytest.mark.parametrize("mode", THEMES)
+def test_u11_status_slots_have_no_divider_lines_only_space(mode):
+    """Owner 2026-11-17: 'get rid of vertical lines on top bar between functions'. Painted check:
+    the strip column just left of every slot is the strip's own background, top to bottom."""
+    import re
+    from palisade_qt import theme
+    rule = re.search(r"QFrame\.slot \{[^}]*\}", theme.qss(mode)).group(0)
+    assert "border-left" not in rule and "hairline" not in rule
+    hub = _big_hub(mode)
+    try:
+        bar = hub.topbar
+        img = bar.grab().toImage()
+        bg = img.pixelColor(bar.width() // 2, 4).name()
+        for s in list(bar.slots.values()) + [bar.alerts, bar.net]:
+            x = s.geometry().left() - 2
+            col = {img.pixelColor(x, y).name() for y in range(4, bar.height() - 4)}
+            assert col == {bg}, (mode, s.caption, col)
+        assert bar.layout().spacing() >= 8
+    finally:
+        _close(hub)
