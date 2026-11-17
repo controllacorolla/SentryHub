@@ -62,3 +62,23 @@ map. Open: L3, L4, L7.
 Full suite at 90ff886: **1687 passed, 3 failed, 7 skipped, 7 errors** (30 min). Failures: the
 container baseline (`test_audit_tiles` undecodable tile, `test_hwlab` doctor, `test_shell` ×7 errors)
 and the known `test_cl1_fix2` ack-all flake (flaky on main).
+
+## Round 2 (owner 2026-11-17: "If I asked for it, then do it.") — e07de17, 3b6abe9
+Backcheck against `device-notes.md` found 6 partials; all are now in, plus three owner calls:
+- **U12 HOME follows GPS** (`gpshome.py`): default ON, SETTINGS checkbox + live status; confirmed
+  fixes only (two agreeing fixes for a new run or a > 5 nm jump; 0/0, bools, NaN, mode < 2,
+  epx/epy > 250 m refused); re-home at ≥ 0.25 nm; lost fix holds HOME; typed HOME is the fallback;
+  GPS HOME never persisted. ATLAS/OPS re-project contacts on a move (no blink); OVERWATCH
+  re-predicts passes only after 5 nm.
+- **U13 ATLAS views** ALL / AIR / SEA / APRS / DRONES / DF / SONDE: display filter only (no layer,
+  lease, BLE or radio change), per-view columns and layer switch, `V` cycles, honest "LAYER OFF".
+- **U14 Remote-ID BLE:** setup problems (adapter off, rfkill, no adapter, bluetoothd down, bleak
+  missing) are a WARN chip + full text in the DRONES view + session-log warn, never a MODE fault;
+  PASSIVE scan reported once `bluetoothd --experimental` is on (device command posted to the owner);
+  fault text kept whole (tooltip). Contact card clears when its layer goes off (LOST only when the
+  contact is gone). Balloon icon. OPS legend; aircraft data block "CALL FL120 450KT"; ADS-B B6 = drone.
+
+Full suite at e07de17: **1786 passed, 2 failed, 7 skipped, 7 errors** (36 min) — container baseline
+only (`test_audit_tiles` undecodable tile, `test_hwlab` doctor, `test_shell` ×7 without tkinter).
+3b6abe9 (pass re-predict throttle) adds one test; overwatch tests 23 passed.
+Renders: `UIP-renders/views_*_dark_after.png`, `settings_location_dark_after.png`.
