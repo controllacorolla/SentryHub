@@ -32,7 +32,8 @@ ham callsign, head signing automation, session-chain prune policy, the v0.1 laun
 | CL5 radio/threads | **merged (PR #22, 04a76ab)** | RA-CL5d MERGE (via RA-CL5 → CL5-fix → RA-CL5b → CL5-fix2 → RA-CL5c → CL5-fix3). Owner decision: NWR LIVE requires the decoder to be continuously reading audio (multimon-ng rchar heartbeat). Follow-ups: **N-m Med** (late SSTV refinement after a ≥1 s decode counted as a 2nd frame: `_stop_rec` each second resets `_stale_frame`), **N-r Med** (NWR no minimum audio rate), N-s/N-t Low (switching chip lingers after a cancelled switch; PROWL resumes only on Enter after a revoke-cancelled switch), pre-existing N-o (granted while readsb restarts — needs RELEASING state), N-p, N13 (legacy Tk shell=True) — see RA-CL5d-report |
 | CL4 honest state | **merged (PR #23, 1bc8ad1)** | RA-CL4 DO NOT MERGE (N26 High: rings from guessed origin) → CL4-fix → RA-CL4b MERGE (faa6c54). Follow-ups: N33 Low (torn last line bricks chain, fails closed), N35 Med (OPS keeps pre-HOME contacts ≤12 s after HOME set — clear on home_changed like ATLAS), N36 Med pre-existing (leader gone at END → group survivor not signalled, recorded UNCONFIRMED), N37 Low (FORGE serial-connect counts as a feed), BABEL runners say LIVE before first decode (CL7), H5 GPS source (CL6) |
 | CL6, CL7 | not started | `plan/audit/AUDIT_INDEX.md` |
-| CL8 | draft PR #24, RA-CL8f conditional MERGE, owner decision pending | `fix/cl8-ship`, `plan/briefs/CL8-report.md` |
+| CL8 | **merged (PR #24, ed4e068)** on Dalton's "merge" 2026-11-17 | RA-CL8f MERGE; decoder-liveness class → CL5 follow-up |
+| SCAN | **merged (PR #25, 22941ba)** on the same OK | RA-SCAN → SCAN-fix → RA-SCANb MERGE; follow-ups in `plan/briefs/SCAN-report.md` |
 
 ## Owner decisions 2026-11-16
 - Keep the PERMITTED TX word for v0.1. CL3's 2 s END wait accepted (deliberate). CL3 B3 fix is in a separate thread.
@@ -121,3 +122,11 @@ Screenshot: Dalton's upload 2026-11-17 04:47 MT.
    (passive Remote-ID). Follow-ups in plan/briefs/SCAN-report.md (B1 Med rid note chip never
    clears, N5, N8, B2–B7). Still-placeholder scans: SWEEP bugsweep/jammer/gnss/imsicatch, FORGE
    SENSORS/CAN, RECON RF RFFINGER/SCOUT — next: SWEEP gnss (gpsd) + SCOUT.
+10. 2026-11-17 06:40Z: PR #24 (CL8) and PR #25 (SCAN) merged to main on Dalton's "merge". Device
+   moves from fix/cl8-ship to main: `cd ~/SentryHub && git fetch origin && git checkout main &&
+   git pull --ff-only && bash build_installer.sh ~/install-palisade.sh && bash ~/install-palisade.sh
+   && python3 plan/briefs/device_check_cl8.py` → expect `DEVICE CHECK CL8: PASS (10/10)`; the
+   PASS line from the device on main is still owed (pre-merge re-run line never posted here).
+   Open before the v0.1 tag: **N-op1 BLOCKER** (operator save → operator.json, gate-adjacent),
+   N-ui1 + device-notes UI cluster, SAT basemap (Esri key), CL5 decoder-liveness watchdog, SCAN
+   follow-ups (B1 Med). Next scan cluster: SWEEP gnss (gpsd) + SCOUT. CL6/CL7 = v0.2.
