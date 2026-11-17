@@ -44,7 +44,7 @@ class RunPane(QtWidgets.QFrame):
         top.addWidget(micro("%s · output" % title))
         top.addStretch(1)
         self.state = QtWidgets.QLabel("IDLE — nothing running")
-        self.state.setProperty("class", "value")
+        self.state.setProperty("class", "note")
         top.addWidget(self.state)
         self.stop_btn = QtWidgets.QPushButton("STOP")
         self.stop_btn.setEnabled(False)

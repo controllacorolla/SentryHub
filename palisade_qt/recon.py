@@ -155,7 +155,15 @@ class GatedTool(QtWidgets.QFrame):
         from . import chrome
         chrome.gate_signals().changed.connect(self.refresh)      # follows the engine (G12)
         if runner is not None:
-            runner.finished.connect(lambda _h: self.refresh())
+            runner.finished.connect(self._run_finished)
+        self.refresh()
+
+    def _run_finished(self, h):
+        """The card's last line follows the process: never 'RUNNING' after it has ended."""
+        txt = self.result.text()
+        if "RUNNING — output below" in txt:
+            self.result.setText(txt.replace("RUNNING — output below",
+                                            "ENDED — %s" % self._runner.state.text()))
         self.refresh()
 
     def refresh(self):
