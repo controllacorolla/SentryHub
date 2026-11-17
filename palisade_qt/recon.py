@@ -41,6 +41,15 @@ if HERE not in sys.path:
 
 SUBTABS = ("WIFI", "BLE", "NET", "RF")
 
+# SCAN-1/2: what each scan path really does (honest labels; nmcli and BlueZ discovery probe)
+WIFI_MODE = {
+    "iw": "WIFISURVEY · passive (iw, beacons only) · no deauth/inject",
+    "nmcli": "WIFISURVEY · ACTIVE scan via NetworkManager (probe requests; passive iw needs "
+             "CAP_NET_ADMIN) · no deauth/inject",
+    "demo": "WIFISURVEY · demo · no deauth/inject",
+}
+BLE_MODE = "BLESCAN · active discovery (scan requests) · listen only, no connect/pair"
+
 
 from .kit.seams import offscreen as _offscreen  # noqa: E402  (C5: one copy)
 
@@ -160,11 +169,17 @@ class GatedTool(QtWidgets.QFrame):
 # ======================= passive scan workers =======================
 
 class WifiScanWorker(Worker):
-    """wifisurvey: PASSIVE AP scan (`iw dev X scan passive` -> parse_iw_scan). No gate, no TX.
-    H3: the exit code is checked (a failed scan is SCAN FAILED, never "0 AP"), the scan is
-    passive (no probe requests), it runs every 15 s rather than 4 s, and RECON pauses it while
-    the WIFI sub-tab is not on screen."""
+    """wifisurvey AP scan. No gate, no TX beyond the scan itself.
+
+    PASSIVE first: `iw dev X scan passive` (listen for beacons, no probe requests). That needs
+    CAP_NET_ADMIN, so as the normal desktop user it is refused ("Operation not permitted").
+    SCAN-1: then fall back to NetworkManager (`nmcli dev wifi list`), which scans on the user's
+    behalf. NM's scan is ACTIVE (probe requests), so the row says path="nmcli" and the page says
+    "active" — never "passive". Both failing is SCAN FAILED with both reasons.
+    H3: the exit code is checked (a failed scan is SCAN FAILED, never "0 AP"), it runs every
+    15 s rather than 4 s, and RECON pauses it while the WIFI sub-tab is not on screen."""
     INTERVAL_MS = 15000
+    NMCLI_TIMEOUT_S = 25          # nmcli waits for NM's rescan to finish
 
     def __init__(self, demo=False, iface="wlan0", parent=None):
         super().__init__(demo=demo, interval_ms=self.INTERVAL_MS, parent=parent)
@@ -173,53 +188,261 @@ class WifiScanWorker(Worker):
     def step(self):
         import wifisurvey
         if self.demo:
-            self.row.emit({"aps": _demo_aps(), "demo": True})
+            self.row.emit({"aps": _demo_aps(), "demo": True, "path": "demo"})
             return
         out, why = _run_scan(wifisurvey.scan_argv(self.iface))
-        if out is None:
-            text = ("WIFI STANDBY — no adapter/iw" if why in ("offline", "iw not installed")
-                    else "WIFI SCAN FAILED — %s" % why)
-            self.status.emit({"standby": True, "scan_failed": why,
-                              "sdr": {"text": text, "ok": False}})
+        if out is not None:
+            self.row.emit({"aps": wifisurvey.parse_iw_scan(out), "path": "iw"})
             return
-        aps = wifisurvey.parse_iw_scan(out)
-        self.row.emit({"aps": aps})
+        if why == "offline":
+            self.status.emit({"standby": True, "scan_failed": why,
+                              "sdr": {"text": "WIFI STANDBY — offline", "ok": False}})
+            return
+        out2, why2 = _run_scan(wifisurvey.nmcli_scan_argv(self.iface),
+                               timeout=self.NMCLI_TIMEOUT_S)
+        if out2 is not None:
+            self.row.emit({"aps": wifisurvey.parse_nmcli(out2), "path": "nmcli",
+                           "iw_refused": why})
+            return
+        if why == "iw not installed" and why2 == "nmcli not installed":
+            text = "WIFI STANDBY — no iw or nmcli (sudo apt install iw network-manager)"
+        else:
+            text = "WIFI SCAN FAILED — iw: %s · nmcli: %s" % (why, why2)
+        self.status.emit({"standby": True, "scan_failed": "iw: %s; nmcli: %s" % (why, why2),
+                          "sdr": {"text": text, "ok": False}})
+
+
+def _ble_reason(err):
+    """A bleak / BlueZ exception -> a short reason a pentester can act on."""
+    s = str(err) or type(err).__name__
+    low = s.lower()
+    if "no bluetooth adapter" in low or "no default controller" in low or \
+            "org.bluez.error.notfound" in low:
+        return "no Bluetooth adapter"
+    if "notready" in low or "not ready" in low or "powered off" in low:
+        return "adapter is powered off (bluetoothctl power on)"
+    if "rfkill" in low or "blocked" in low:
+        return "adapter is rfkill-blocked (rfkill unblock bluetooth)"
+    if "accessdenied" in low or "notauthorized" in low or "not authorized" in low or \
+            "permission" in low:
+        return "not authorized by BlueZ (D-Bus policy)"
+    if "serviceunknown" in low or "bluetoothd is not running" in low:
+        return "bluetoothd is not running"
+    return s.splitlines()[0][:90] if s else "scan error"
 
 
 class BleScanWorker(Worker):
-    """blescan: passive BLE enumeration. No gate, no TX. Live needs bleak + an adapter; absent ->
-    honest standby. The bleak scan is behind a seam so tests never open a real adapter."""
+    """blescan: live BLE survey (SCAN-2). No gate, no connect, no pair, no GATT.
+
+    Backend: bleak (BlueZ over D-Bus, no root) when importable, else `bluetoothctl scan on`.
+    Both run BlueZ's normal discovery, which is an ACTIVE scan (the adapter sends scan requests to
+    get scan responses) — the page says so. A general survey cannot use BlueZ's passive mode: that
+    is an advertisement monitor that needs a byte pattern per advert (ATLAS uses it for Remote ID).
+
+    The worker scans in WINDOW_S windows and emits the whole table every EMIT_MS, so rows update
+    live. A device stays listed for STALE_S after it was last heard. A failure is SCAN FAILED
+    with the reason, and the scan retries every RETRY_MS (an adapter may be powered on later).
+    RECON pauses it while the BLE sub-tab is not on screen; a pause ends the window at once."""
+
+    WINDOW_S = 30
+    EMIT_MS = 1000
+    STALE_S = 60
+    RETRY_MS = 15000
 
     def __init__(self, demo=False, parent=None):
-        super().__init__(demo=demo, interval_ms=3000, parent=parent)
+        super().__init__(demo=demo, interval_ms=500, parent=parent)
+        import blescan
+        self._devs = blescan.Devices(stale_s=self.STALE_S)
+        self._seen = {}               # address -> merged advert (name/uuids/mfr stick)
+        self.backend = None
 
-    def _scan_adverts(self):
-        """-> list of adverts, or None when there is no live feed (see _no_feed_text)."""
-        return None            # live bleak scanning is NOT IMPLEMENTED in this UI (E4)
+    @staticmethod
+    def backend_available():
+        """'bleak' | 'bluetoothctl' | None."""
+        import importlib.util
+        if importlib.util.find_spec("bleak") is not None:
+            return "bleak"
+        if shutil.which("bluetoothctl"):
+            return "bluetoothctl"
+        return None
 
     @staticmethod
     def _no_feed_text():
-        """E4: never blame the hardware for a feature that is not wired."""
-        import importlib.util
-        if importlib.util.find_spec("bleak") is None:
-            return "BLE STANDBY — bleak is not installed"
-        return "BLE NOT IMPLEMENTED — bleak is installed; live scanning is not wired here"
+        return "BLE STANDBY — no bleak and no bluetoothctl (sudo apt install bluez)"
+
+    # ---- merge + emit (both backends) ----
+    def _merge(self, addr, name=None, rssi=None, uuids=(), mfr=()):
+        addr = (addr or "").upper()
+        if not addr:
+            return None
+        d = self._seen.setdefault(addr, {"address": addr, "name": "", "rssi": None,
+                                         "service_uuids": [], "manufacturer_data": {}})
+        if name and name.replace("-", ":").upper() != addr:
+            d["name"] = name
+        if rssi is not None:
+            d["rssi"] = rssi
+        for u in uuids or ():
+            u = str(u).lower()
+            if u not in d["service_uuids"]:
+                d["service_uuids"].append(u)
+        for k in mfr or ():
+            d["manufacturer_data"][k] = True
+        return addr
+
+    def _emit(self, touched, now=None):
+        for addr in touched:
+            self._devs.ingest(dict(self._seen[addr]), now=now)
+        rows = [_ble_row(d) for d in self._devs.active(now=now)]
+        rows.sort(key=lambda r: -(r["rssi"] if isinstance(r["rssi"], int) else -999))
+        self.row.emit({"devs": rows, "backend": self.backend, "ts": time.time()})
+        return rows
+
+    def _window_over(self, t0):
+        return self._stop or self._paused or time.monotonic() - t0 >= self.WINDOW_S
+
+    # ---- bleak backend ----
+    def _scan_bleak(self):
+        """One scan window via bleak. Returns None, or a failure reason."""
+        import asyncio
+        try:
+            from bleak import BleakScanner
+        except Exception as e:                     # broken install: fall through to bluetoothctl
+            return "bleak import failed: %s" % str(e)[:60]
+        batch = []
+
+        def cb(dev, adv):
+            batch.append((dev.address, getattr(adv, "local_name", None) or dev.name,
+                          getattr(adv, "rssi", None),
+                          list(getattr(adv, "service_uuids", None) or []),
+                          list((getattr(adv, "manufacturer_data", None) or {}).keys())))
+
+        async def run():
+            scanner = BleakScanner(detection_callback=cb, scanning_mode="active")
+            await scanner.start()
+            try:
+                t0 = time.monotonic()
+                while not self._window_over(t0):
+                    await asyncio.sleep(self.EMIT_MS / 1000.0)
+                    got, batch[:] = list(batch), []
+                    touched = {self._merge(a, n, r, u, m) for a, n, r, u, m in got}
+                    self._emit({t for t in touched if t})
+            finally:
+                await scanner.stop()
+
+        try:
+            asyncio.run(run())
+        except Exception as e:
+            return _ble_reason(e)
+        return None
+
+    # ---- bluetoothctl backend ----
+    def _scan_bluetoothctl(self):
+        """One scan window via `bluetoothctl --timeout N scan on`. Returns None or a reason."""
+        import blescan
+        import threading
+        out, _why = _run_scan(["bluetoothctl", "devices"], timeout=5)
+        names = blescan.parse_bluetoothctl_devices(out or "")
+        try:
+            proc = subprocess.Popen(blescan.bluetoothctl_scan_argv(self.WINDOW_S),
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    stdin=subprocess.DEVNULL, text=True, errors="replace",
+                                    start_new_session=True)
+        except OSError as e:
+            return "bluetoothctl: %s" % e
+        lines, lock = [], threading.Lock()
+
+        def reader():
+            for ln in proc.stdout:
+                with lock:
+                    lines.append(ln)
+        th = threading.Thread(target=reader, daemon=True)
+        th.start()
+        started, fail, heard = False, None, 0
+        t0 = time.monotonic()
+
+        def drain():
+            nonlocal started, fail, heard
+            with lock:
+                got, lines[:] = list(lines), []
+            touched = set()
+            for ln in got:
+                ev = blescan.parse_bluetoothctl_line(ln)
+                if ev is None:
+                    continue
+                if ev[0] == "+":
+                    started = True
+                    continue
+                if ev[0] == "!":
+                    fail = fail or ev[1]
+                    continue
+                addr, f = ev
+                if f.get("new") and not started:
+                    if f.get("name"):              # a cached device listed at start-up: a name,
+                        names[addr] = f["name"]    # not a sighting
+                    continue
+                if not (f.get("new") or "rssi" in f or "mfr" in f or "uuid" in f):
+                    if f.get("name"):
+                        names[addr] = f["name"]
+                    continue
+                touched.add(self._merge(addr, f.get("name") or names.get(addr), f.get("rssi"),
+                                        [f["uuid"]] if "uuid" in f else (),
+                                        [f["mfr"]] if "mfr" in f else ()))
+            heard += len(touched)
+            return touched
+        try:
+            while proc.poll() is None and not self._window_over(t0):
+                self.sleep(self.EMIT_MS)
+                self._emit(drain())
+                if fail:
+                    break
+        finally:
+            if proc.poll() is None:
+                try:
+                    os.killpg(proc.pid, 15)
+                except OSError:
+                    pass
+                try:
+                    proc.wait(2)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(proc.pid, 9)
+                    except OSError:
+                        pass
+                    proc.wait(1)
+            th.join(1)
+        self._emit(drain())
+        if fail:
+            return fail
+        if proc.returncode not in (0, -15, None) and not started and not heard:
+            return "bluetoothctl exit %d" % proc.returncode
+        return None
 
     def step(self):
         import blescan
         if self.demo:
-            self.row.emit({"devs": _demo_ble(blescan), "demo": True})
+            self.row.emit({"devs": _demo_ble(blescan), "demo": True, "backend": "demo"})
             return
-        adverts = self._scan_adverts()
-        if adverts is None:
+        if _offscreen():
+            self.status.emit({"standby": True, "sdr": {"text": "BLE STANDBY — offline",
+                                                       "ok": False}})
+            self._stop = True            # tests / PALISADE_OFFLINE never open an adapter
+            return
+        self.backend = self.backend_available()
+        if self.backend is None:
             self.status.emit({"standby": True, "sdr": {"text": self._no_feed_text(),
                                                        "ok": False}})
-            self._stop = True          # nothing will change until it is wired: stop polling
+            self.sleep(self.RETRY_MS)
             return
-        devs = blescan.Devices()
-        for adv in adverts:
-            devs.ingest(adv)
-        self.row.emit({"devs": [_ble_row(d) for d in devs.active()]})
+        why = self._scan_bleak() if self.backend == "bleak" else None
+        if why and why.startswith("bleak import failed") and shutil.which("bluetoothctl"):
+            self.backend = "bluetoothctl"
+            why = None
+        if self.backend == "bluetoothctl":
+            why = self._scan_bluetoothctl()
+        if why and not self._stop:
+            self.status.emit({"standby": True, "scan_failed": why,
+                              "sdr": {"text": "BLE SCAN FAILED — %s" % why, "ok": False}})
+            self.sleep(self.RETRY_MS)
 
 
 class DetectorWorker(Worker):
@@ -326,9 +549,12 @@ def _demo_ble(blescan):
 
 
 def _ble_row(d):
+    import blescan
+    rssi = d.get("rssi")
     return {"address": d.get("address", ""), "name": d.get("name") or "—",
-            "vendor": d.get("vendor") or "unknown", "kind": d.get("kind", ""),
-            "rssi": d.get("rssi", "")}
+            "vendor": d.get("vendor") or "unknown",
+            "kind": d.get("kind") or blescan.kind_of(d),
+            "rssi": rssi if isinstance(rssi, int) else None}
 
 
 # ======================= the app =======================
@@ -342,6 +568,8 @@ class ReconApp(PalisadeApp):
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._subtab = "WIFI"
         self._open_alerted = set()
+        self._ble_published = set()                      # BLE decodes go on the bus once each
+        self.wifi_path = None
         self._gated = []                                 # cards to refresh on gate change
         self.evidence = None      # CL3: the ONE chain lives with the engagement (engagement.chain_states)
         super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
@@ -396,9 +624,10 @@ class ReconApp(PalisadeApp):
         split = QtWidgets.QHBoxLayout()
         split.setSpacing(10)
         left = QtWidgets.QVBoxLayout()
-        left.addWidget(micro("WIFISURVEY · passive · no deauth/inject"))
+        self.wifi_mode = micro(WIFI_MODE["iw"])
+        left.addWidget(self.wifi_mode)
         self.wifi_feed = FeedTable([("ssid", "SSID"), ("bssid", "BSSID"),
-                                    ("ch", "CH"), ("sig", "dBm"), ("sec", "SEC")])
+                                    ("ch", "CH"), ("sig", "SIG"), ("sec", "SEC")])
         left.addWidget(self.wifi_feed, 1)
         split.addLayout(left, 3)
         import wifipent
@@ -418,7 +647,8 @@ class ReconApp(PalisadeApp):
         split = QtWidgets.QHBoxLayout()
         split.setSpacing(10)
         left = QtWidgets.QVBoxLayout()
-        left.addWidget(micro("BLESCAN · passive enumeration"))
+        self.ble_mode = micro(BLE_MODE)
+        left.addWidget(self.ble_mode)
         self.ble_feed = FeedTable([("name", "NAME"), ("address", "ADDRESS"),
                                    ("vendor", "VENDOR"), ("kind", "KIND"), ("rssi", "dBm")])
         left.addWidget(self.ble_feed, 1)
@@ -502,12 +732,17 @@ class ReconApp(PalisadeApp):
         super().set_active(active)
         self._sync_scan_pause()
 
+    def _scan_visible(self, worker):
+        tab = "WIFI" if isinstance(worker, WifiScanWorker) else \
+            "BLE" if isinstance(worker, BleScanWorker) else None
+        return bool(getattr(self, "_active", False)) and tab is not None and self._subtab == tab
+
     def _sync_scan_pause(self):
-        """H3: the Wi-Fi scan runs only while RECON › WIFI is on screen."""
-        visible = bool(getattr(self, "_active", False)) and self._subtab == "WIFI"
+        """H3: the Wi-Fi scan runs only while RECON › WIFI is on screen; SCAN-2: the BLE scan
+        only while RECON › BLE is (a pause ends the BLE scan window at once)."""
         for w in getattr(self, "_workers", []):
-            if isinstance(w, WifiScanWorker):
-                w.pause(not visible)
+            if isinstance(w, (WifiScanWorker, BleScanWorker)):
+                w.pause(not self._scan_visible(w))
 
     def _sync_tabs(self):
         self._sync_rail()
@@ -535,8 +770,8 @@ class ReconApp(PalisadeApp):
             worker.status.connect(lambda st, t=table: self._feed_standby(t, st))
         worker.status.connect(self.on_status)
         worker.error.connect(self.on_error)
-        if isinstance(worker, WifiScanWorker):     # RA-CL4 N30: paused BEFORE it can step
-            worker.pause(not (getattr(self, "_active", False) and self._subtab == "WIFI"))
+        if isinstance(worker, (WifiScanWorker, BleScanWorker)):   # RA-CL4 N30: paused BEFORE
+            worker.pause(not self._scan_visible(worker))           # it can step
         worker.start()
         return worker
 
@@ -562,11 +797,19 @@ class ReconApp(PalisadeApp):
     def _on_wifi(self, msg):
         aps = msg.get("aps", [])
         live = not msg.get("demo")                     # synthetic demo stays local, off the OPS bus
+        path = msg.get("path") or ("demo" if not live else "iw")
+        self.wifi_path = path
+        self.wifi_mode.setText(WIFI_MODE.get(path, WIFI_MODE["iw"]))
         rows = []
         for ap in aps:
+            if ap.get("signal") is not None:
+                sig = "%d dBm" % int(ap["signal"])
+            elif ap.get("quality") is not None:          # NetworkManager: 0-100 %, not dBm
+                sig = "%d%%" % int(ap["quality"])
+            else:
+                sig = "—"
             rows.append({"ssid": ap.get("ssid") or "<hidden>", "bssid": ap.get("bssid", ""),
-                         "ch": str(ap.get("channel") or "—"), "sig": str(int(ap["signal"]))
-                         if ap.get("signal") is not None else "—",
+                         "ch": str(ap.get("channel") or "—"), "sig": sig,
                          "sec": ap.get("security", "")})
             if live and ap.get("security") == "open" and \
                     ap.get("bssid") not in self._open_alerted:   # once per BSSID, not per scan
@@ -582,13 +825,22 @@ class ReconApp(PalisadeApp):
         if not rows:
             self.wifi_feed.set_empty("watching", "no access points heard",
                                      "last scan %s" % zulu())
-        self.header.set_chip("sdr", "%d AP" % len(rows), state="neutral")
+        self.header.set_chip("sdr", "%d AP%s" % (len(rows), " · NM ACTIVE" if path == "nmcli"
+                                                 else ""), state="neutral")
 
     def _on_ble(self, msg):
         devs = msg.get("devs", [])
         self.ble_feed.model.set_rows([{"name": d["name"], "address": d["address"],
                                        "vendor": d["vendor"], "kind": d["kind"],
-                                       "rssi": str(d["rssi"])} for d in devs])
-        if not msg.get("demo"):                        # real decodes only on the bus
+                                       "rssi": "—" if d.get("rssi") is None else str(d["rssi"])}
+                                      for d in devs])
+        if msg.get("backend") and not msg.get("demo"):
+            self.ble_mode.setText("%s · %s" % (BLE_MODE, msg["backend"]))
+        if not devs:
+            self.ble_feed.set_empty("watching", "no BLE devices heard yet",
+                                    "last update %s" % zulu())
+        if not msg.get("demo"):                        # real decodes only on the bus, once each
             for d in devs:
-                eventbus.bus.publish(eventbus.decode("RECON", "BLE", d["address"], d["name"]))
+                if d["address"] not in self._ble_published:
+                    self._ble_published.add(d["address"])
+                    eventbus.bus.publish(eventbus.decode("RECON", "BLE", d["address"], d["name"]))

@@ -559,13 +559,16 @@ def test_e1_stale_adsb_publishes_nothing():
 
 # ----------------------------------------------------------------- E4 NOT IMPLEMENTED, not hardware
 
-def test_e4_ble_with_bleak_says_not_implemented(monkeypatch):
+def test_e4_ble_no_backend_says_what_is_missing(monkeypatch):
+    """SCAN-2 superseded "BLE NOT IMPLEMENTED": live BLE is wired (tests/test_scan_live.py).
+    With neither bleak nor bluetoothctl the standby names both."""
     import importlib.util
+    import shutil
     from palisade_qt.recon import BleScanWorker
-    monkeypatch.setattr(importlib.util, "find_spec", lambda n, *a: object())
-    assert BleScanWorker._no_feed_text().startswith("BLE NOT IMPLEMENTED")
     monkeypatch.setattr(importlib.util, "find_spec", lambda n, *a: None)
-    assert "not installed" in BleScanWorker._no_feed_text()
+    monkeypatch.setattr(shutil, "which", lambda n, *a, **k: None)
+    assert BleScanWorker.backend_available() is None
+    assert "bleak" in BleScanWorker._no_feed_text() and "bluetoothctl" in BleScanWorker._no_feed_text()
 
 
 def test_e4_can_and_sensors_present_say_not_implemented(monkeypatch):

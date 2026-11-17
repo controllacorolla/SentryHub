@@ -210,6 +210,7 @@ class RidSource:
         self._fault = None             # E3: a scanner failure is surfaced, never swallowed
         self._on_fault = on_fault
         self.state = "off"             # off | scanning | fault | unavailable
+        self.mode = "passive"          # SCAN-3: "active" when BlueZ cannot do passive
 
     def start(self):
         if self._on:
@@ -228,6 +229,16 @@ class RidSource:
                 self._on_fault(msg)
             except Exception:
                 pass
+
+    ACTIVE_NOTE = ("Remote-ID: ACTIVE BLE scan (scan requests) — BlueZ passive scanning needs "
+                   "bluetoothd --experimental (owner decision)")
+
+    @staticmethod
+    def passive_unsupported(err):
+        """bleak's refusal when BlueZ has no advertisement monitor (no --experimental / old
+        kernel): 'passive scanning on Linux requires BlueZ >= 5.56 with --experimental ...'."""
+        s = str(err).lower()
+        return "passive scanning" in s and ("experimental" in s or "requires bluez" in s)
 
     @staticmethod
     def scanner_kwargs(platform=None):
@@ -270,7 +281,19 @@ class RidSource:
             except TypeError:           # backend without passive support: say so, stay off
                 self._set_fault("Remote-ID: BLE backend has no passive scan mode — not scanning")
                 return
-            await scanner.start()
+            try:
+                await scanner.start()
+            except Exception as e:
+                if not self.passive_unsupported(e):
+                    raise
+                # SCAN-3: Debian's bluetoothd runs without --experimental, so BlueZ has no
+                # advertisement monitor and bleak refuses passive mode. Remote-ID beacons are
+                # broadcast, so BlueZ's normal (active) discovery hears them too: use it, and
+                # say so. Enabling --experimental is a system change (owner decision).
+                scanner = BleakScanner(detection_callback=cb, scanning_mode="active")
+                await scanner.start()
+                self.mode = "active"
+                self._set_fault(self.ACTIVE_NOTE, state="scanning")
             self.state = "scanning"
             try:
                 while self._on:

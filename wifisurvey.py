@@ -136,6 +136,88 @@ def scan_argv(iface="wlan0"):
     return ["iw", "dev", iface, "scan", "passive"]
 
 
+# ---- NetworkManager fallback (SCAN-1) ----
+# `iw ... scan` needs CAP_NET_ADMIN, so as a normal user it fails with "Operation not permitted".
+# NetworkManager scans on the user's behalf (polkit allows the desktop user). Its scan is ACTIVE:
+# NM sends probe requests, so the UI must never call this path passive.
+NMCLI_FIELDS = "SSID,BSSID,CHAN,SIGNAL,SECURITY"
+
+
+def nmcli_scan_argv(iface="wlan0", rescan="auto"):
+    """Terse NetworkManager AP list for one interface. rescan=auto: NM scans again when its list
+    is older than ~30 s, else returns its current list."""
+    return ["nmcli", "-t", "-f", NMCLI_FIELDS, "device", "wifi", "list",
+            "--rescan", rescan, "ifname", iface]
+
+
+def _split_terse(line):
+    """nmcli -t joins fields with ':' and escapes a literal ':' or '\\' with a backslash."""
+    out, cur, esc = [], [], False
+    for ch in line:
+        if esc:
+            cur.append(ch)
+            esc = False
+        elif ch == "\\":
+            esc = True
+        elif ch == ":":
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    out.append("".join(cur))
+    return out
+
+
+def nm_security(sec):
+    """nmcli's SECURITY column ('', 'WPA2', 'WPA1 WPA2', 'WPA2 WPA3', 'WPA2 802.1X', 'WEP', 'OWE')
+    -> the same classes parse_iw_scan uses. Only an empty / '--' value is 'open'."""
+    toks = set((sec or "").replace("--", "").upper().split())
+    if not toks:
+        return "open"
+    if "802.1X" in toks:
+        return "WPA3-EAP" if "WPA3" in toks else ("WPA2-EAP" if "WPA2" in toks else "WPA-EAP")
+    if "WPA3" in toks and "WPA2" in toks:
+        return "WPA2/WPA3"
+    if "WPA3" in toks:
+        return "WPA3-SAE"
+    if "WPA2" in toks:
+        return "WPA2-PSK"
+    if "WPA1" in toks or "WPA" in toks:
+        return "WPA"
+    if "WEP" in toks:
+        return "WEP"
+    if any(t.startswith("OWE") for t in toks):
+        return "OWE"
+    return " ".join(sorted(toks))           # unknown: show what NM said, never call it open
+
+
+def parse_nmcli(text):
+    """`nmcli -t -f SSID,BSSID,CHAN,SIGNAL,SECURITY dev wifi list` -> AP dicts like parse_iw_scan,
+    except the signal is NetworkManager's 0-100 quality: 'signal' is None and 'quality' holds
+    the percentage (NM's percentage is not a dBm value and is not converted into one)."""
+    aps = []
+    for line in (text or "").splitlines():
+        if not line.strip():
+            continue
+        f = _split_terse(line)
+        if len(f) < 5:
+            continue
+        ssid, bssid, chan, sig, sec = f[:5]
+        if not re.fullmatch(r"[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5}", bssid.strip()):
+            continue
+        try:
+            ch = int(chan)
+        except ValueError:
+            ch = None
+        try:
+            q = int(sig)
+        except ValueError:
+            q = None
+        aps.append({"bssid": bssid.strip().lower(), "ssid": ssid, "freq": None, "channel": ch,
+                    "signal": None, "quality": q, "security": nm_security(sec)})
+    return aps
+
+
 def main(parent=None):
     import shutil
     import subprocess
