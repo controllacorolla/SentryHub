@@ -71,6 +71,105 @@ class Devices:
         return [d for d in self.active(now) if d["is_odid"]]
 
 
+def kind_of(d):
+    """A short device class for the table from classify_advert's tags."""
+    tags = d.get("tags") or []
+    if d.get("is_odid") or "drone-remoteid" in tags:
+        return "drone"
+    if "apple" in tags:
+        return "apple"
+    if "google-fastpair" in tags:
+        return "fastpair"
+    return ""
+
+
+# ---- bluetoothctl fallback (SCAN-2) ----
+# Used when bleak is not importable. `bluetoothctl --timeout N scan on` starts a BlueZ discovery
+# for N seconds and prints the devices it hears. Discovery is BlueZ's normal scan (scan requests,
+# no connection, no pairing).
+import re as _re
+
+_ANSI = _re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x01|\x02")
+_MAC = r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})"
+_DEV = _re.compile(r"\[(NEW|CHG|DEL)\]\s+Device\s+" + _MAC + r"\s*(.*)$")
+_RSSI = _re.compile(r"RSSI:\s*(?:0x[0-9a-fA-F]+\s*\()?(-?\d+)\)?")
+
+
+def bluetoothctl_scan_argv(seconds=8):
+    return ["bluetoothctl", "--timeout", str(int(seconds)), "scan", "on"]
+
+
+def clean_line(line):
+    """Strip colour codes, readline markers and a leading '[bluetooth]# ' prompt."""
+    s = _ANSI.sub("", line or "").replace("\r", "")
+    s = _re.sub(r"^\s*\[[^\]]*\]#\s*", "", s)
+    return s.strip()
+
+
+def parse_bluetoothctl_line(line):
+    """One bluetoothctl output line -> (address, fields) for a device event, ("!", reason) for a
+    scan failure, ("+", None) when discovery has started, or None. fields may hold: name, rssi, uuid, mfr (company id int), new (bool)."""
+    s = clean_line(line)
+    if not s:
+        return None
+    m = _DEV.search(s)
+    if not m:                      # device lines first: a device NAME never reads as a failure
+        low = s.lower()
+        if "discovery started" in low or ("controller" in low and "discovering: yes" in low):
+            return ("+", None)
+        for key, why in (("no default controller", "no Bluetooth adapter"),
+                         ("not authorized", "not authorized by BlueZ (D-Bus policy)"),
+                         ("notauthorized", "not authorized by BlueZ (D-Bus policy)"),
+                         ("accessdenied", "not authorized by BlueZ (D-Bus policy)"),
+                         ("access denied", "not authorized by BlueZ (D-Bus policy)"),
+                         ("notready", "adapter is powered off"),
+                         ("failed to start discovery", None),
+                         ("waiting to connect to bluetoothd", "bluetoothd is not running")):
+            if key in low:
+                return ("!", why or s)
+        return None
+    ev, addr, rest = m.group(1), m.group(2).upper(), m.group(3).strip()
+    if ev == "DEL":
+        return None
+    f = {}
+    if ev == "NEW":
+        f["new"] = True
+        if rest and rest.replace("-", ":").upper() != addr:
+            f["name"] = rest
+        return addr, f
+    r = _RSSI.match(rest)
+    if r:
+        f["rssi"] = int(r.group(1))
+    elif rest.startswith(("Name:", "Alias:")):
+        nm = rest.split(":", 1)[1].strip()
+        if nm and nm.replace("-", ":").upper() != addr:
+            f["name"] = nm
+    elif rest.startswith("UUIDs:"):
+        u = _re.search(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                       r"[0-9a-fA-F]{12})", rest)
+        if u:
+            f["uuid"] = u.group(1).lower()
+    elif rest.startswith("ManufacturerData Key:") or rest.startswith("ManufacturerData.Key:"):
+        k = _re.search(r"0x([0-9a-fA-F]+)", rest)
+        if k:
+            f["mfr"] = int(k.group(1), 16)
+    else:
+        return None
+    return addr, f
+
+
+def parse_bluetoothctl_devices(text):
+    """`bluetoothctl devices` ('Device AA:BB:.. Name') -> {address: name} for named devices."""
+    names = {}
+    for line in (text or "").splitlines():
+        m = _re.match(r"Device\s+" + _MAC + r"\s+(.*)$", clean_line(line))
+        if m:
+            addr, nm = m.group(1).upper(), m.group(2).strip()
+            if nm and nm.replace("-", ":").upper() != addr:
+                names[addr] = nm
+    return names
+
+
 def main(parent=None):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import suite as S

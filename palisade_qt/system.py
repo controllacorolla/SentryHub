@@ -335,6 +335,34 @@ class MoreApp(PalisadeApp):
         except Exception:
             return False
 
+    def _write_operator(self, text):
+        """N-op1: persist the operator identity to the operator profile (operator.json, read by
+        opprofile.load), the one store engagement._profile_operator() reads. The single Operator
+        field holds the callsign, else the name (opprofile.operator_identity), so:
+          * a valid ham callsign -> profile callsign (upper case); the name is kept;
+          * any other text      -> profile name, and the callsign is CLEARED, so the identity the
+                                   engagement records is exactly what was typed;
+          * empty               -> callsign and name both cleared (no operator; engagements refused).
+        Only 'callsign' and 'name' are written: tx_enabled and every other key are left untouched
+        (CL2 strict default: a callsign alone never enables TX).
+        Returns (persisted, kind) with kind in {"callsign", "name", "cleared"}; persisted is False
+        when there is no settings store. Seam: tests replace this to capture the write."""
+        text = str(text or "").strip()
+        try:
+            import opprofile
+            import suite
+            prof, path = suite.settings("operator", opprofile.DEFAULTS)
+            if not text:
+                prof["callsign"], prof["name"], kind = "", "", "cleared"
+            elif opprofile.valid_callsign(text):
+                prof["callsign"], kind = text.upper(), "callsign"
+            else:
+                prof["callsign"], prof["name"], kind = "", text, "name"
+            suite.save_json(path, prof)
+            return True, kind
+        except Exception:
+            return False, None
+
     def _save_settings(self):
         # HOME is NOT just persisted — it is the shared geo frame, so apply it live immediately
         # (ops/atlas to_xy read eventbus.HOME). Reject an invalid HOME rather than falsely report saved.
@@ -357,21 +385,36 @@ class MoreApp(PalisadeApp):
             live.append("event-bus retention")
         except Exception:
             pass
-        # persist ALL displayed fields (operator + HOME + theme + retention)
+        # persist ALL displayed fields. The operator goes to the operator profile (N-op1: the
+        # engagement gate reads operator.json, never palisade_ui.json); HOME/theme/retention to
+        # the UI store.
+        op_ok, op_kind = self._write_operator(self.set_operator.text())
         persisted = self._write_settings({
-            "callsign": self.set_operator.text().strip(),
             "home": list(home) if home else (list(eventbus.home()) if eventbus.HOME_SOURCE == "settings" else None),
             "theme": self.set_theme.currentText(),
             "retention": self.set_retention.value()})
         theme_changed = self.set_theme.currentText() != self.mode
         parts = ["applied now: " + ", ".join(live)] if live else []
-        if persisted:                               # operator + theme take effect via the store
-            parts.append("persisted: operator, theme" +
-                         (" (theme applies on restart)" if theme_changed else ""))
-            self.set_msg.setStyleSheet("color:%s;" % self._tok["text"])   # saved is not "receiving"
+        warn = False
+        if op_ok and op_kind == "callsign":
+            parts.append("operator saved: callsign %s" % self.set_operator.text().strip().upper())
+        elif op_ok and op_kind == "name":
+            parts.append("operator saved: name %s (not a valid ham callsign — engagements OK, "
+                         "TX needs a callsign)" % self.set_operator.text().strip())
+        elif op_ok:
+            parts.append("operator cleared — engagements will be refused until one is set")
+            warn = True
         else:                                       # honest: do NOT claim saved for discarded fields
-            parts.append("NOT persisted (no settings store on this host): operator, theme")
-            self.set_msg.setStyleSheet("color:%s;" % self._tok["warn"])
+            parts.append("operator NOT saved (no operator profile store on this host)")
+            warn = True
+        if persisted:                               # theme takes effect via the store
+            parts.append("persisted: theme" +
+                         (" (theme applies on restart)" if theme_changed else ""))
+        else:
+            parts.append("NOT persisted (no settings store on this host): theme")
+            warn = True
+        # saved is not "receiving": plain text colour on success, warn on any loss
+        self.set_msg.setStyleSheet("color:%s;" % self._tok["warn" if warn else "text"])
         self.set_msg.setText(" · ".join(parts))
 
     # ---- DOCTOR ----

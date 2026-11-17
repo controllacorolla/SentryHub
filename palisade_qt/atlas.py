@@ -209,7 +209,7 @@ class RidSource:
     BLE + Wi-Fi only (OpenDroneID) — NOT the SDR, so no lease is taken. The Wi-Fi-monitor path is
     device-only and left stubbed; BLE works on the dev Mac but sees zero without real beacons."""
 
-    def __init__(self, on_fault=None):
+    def __init__(self, on_fault=None, on_note=None):
         import dronewatch
         self._dw = dronewatch
         self._drones = dronewatch.Drones()
@@ -218,7 +218,10 @@ class RidSource:
         self._thread = None
         self._fault = None             # E3: a scanner failure is surfaced, never swallowed
         self._on_fault = on_fault
+        self._on_note = on_note        # RA-SCAN N4: an honest note, not a fault
         self.state = "off"             # off | scanning | fault | unavailable
+        self.mode = "passive"          # SCAN-3: "active" when BlueZ cannot do passive
+        self.note = None
 
     def start(self):
         if self._on:
@@ -237,6 +240,16 @@ class RidSource:
                 self._on_fault(msg)
             except Exception:
                 pass
+
+    ACTIVE_NOTE = ("Remote-ID: ACTIVE BLE scan (scan requests) — BlueZ passive scanning needs "
+                   "bluetoothd --experimental (owner decision)")
+
+    @staticmethod
+    def passive_unsupported(err):
+        """bleak's refusal when BlueZ has no advertisement monitor (no --experimental / old
+        kernel): 'passive scanning on Linux requires BlueZ >= 5.56 with --experimental ...'."""
+        s = str(err).lower()
+        return "passive scanning" in s and ("experimental" in s or "requires bluez" in s)
 
     @staticmethod
     def scanner_kwargs(platform=None):
@@ -279,7 +292,24 @@ class RidSource:
             except TypeError:           # backend without passive support: say so, stay off
                 self._set_fault("Remote-ID: BLE backend has no passive scan mode — not scanning")
                 return
-            await scanner.start()
+            try:
+                await scanner.start()
+            except Exception as e:
+                if not self.passive_unsupported(e):
+                    raise
+                # SCAN-3: Debian's bluetoothd runs without --experimental, so BlueZ has no
+                # advertisement monitor and bleak refuses passive mode. Remote-ID beacons are
+                # broadcast, so BlueZ's normal (active) discovery hears them too: use it, and
+                # say so. Enabling --experimental is a system change (owner decision).
+                scanner = BleakScanner(detection_callback=cb, scanning_mode="active")
+                await scanner.start()
+                self.mode = "active"
+                self.note = self.ACTIVE_NOTE
+                if self._on_note is not None:
+                    try:
+                        self._on_note(self.ACTIVE_NOTE)
+                    except Exception:
+                        pass
             self.state = "scanning"
             try:
                 while self._on:
@@ -668,7 +698,8 @@ class AtlasLiveWorker(Worker):
         want = "drone" in self._wanted
         if want and self._rid is None:
             try:
-                self._rid = RidSource(on_fault=lambda m: self.error.emit(m))
+                self._rid = RidSource(on_fault=lambda m: self.error.emit(m),
+                                      on_note=lambda m: self.status.emit({"rid_note": m}))
                 self._rid.start()
             except Exception as e:
                 self.error.emit("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
@@ -959,6 +990,8 @@ class AtlasApp(PalisadeApp):
             self._update_busy()
         if "adsb" in status:
             self._adsb_health = status["adsb"]
+        if status.get("rid_note"):               # RA-SCAN N4: a working scan, said plainly
+            self.set_chip("rid", str(status["rid_note"])[:90], state="warn")
 
     def _on_home_changed(self):
         """H5: HOME was set in SETTINGS: re-centre now; positions re-project as contacts refresh."""
