@@ -40,6 +40,9 @@ class PpiScope(QtWidgets.QFrame):
         self.plot.setXRange(-span_nm, span_nm, padding=0.02)
         self.plot.setYRange(-span_nm, span_nm, padding=0.02)
         lay.addWidget(self.plot)
+        # owner 2026-11-17: the OPS scope sits on dark-tinted satellite imagery (no HOME -> none)
+        from .mappanel import BaseMap
+        self._base = BaseMap(self.plot, None, None, span_nm, style="dark_sat", parent=self)
 
         for r in (span_nm / 3, span_nm * 2 / 3, span_nm):
             c = pg.QtWidgets.QGraphicsEllipseItem(-r, -r, 2 * r, 2 * r)
@@ -61,6 +64,10 @@ class PpiScope(QtWidgets.QFrame):
                                        pen=pg.mkPen(tok["accent"], width=2))
         self.plot.addItem(self.home)
         self._labels = []
+
+    def set_home(self, lat, lon):
+        """Centre the imagery on HOME (no-op when unchanged; None keeps it off)."""
+        self._base.set_home(lat, lon)
 
     def stop(self):
         pass                         # nothing animates any more (B5); kept for the page lifecycle

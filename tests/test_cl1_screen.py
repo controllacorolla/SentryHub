@@ -1010,14 +1010,16 @@ def test_navigation_leaves_focus_on_the_page_not_on_a_nav_key():
 
 
 def test_maps_are_dark_or_satellite_only():
-    """Owner rule (2026-11-15): every map is DARK or SAT, in every theme; no light / plain tiles."""
+    """Owner rule (2026-11-15, revised 2026-11-17): every map is satellite imagery under a DARK or
+    a LIGHT tint, in every theme, DARK by default; no plain / street tiles."""
     _app()
     from palisade_qt.kit import mappanel
-    assert set(mappanel.STYLES) == {"dark", "satellite"}
+    assert set(mappanel.STYLES) == {"dark_sat", "light_sat"}
+    assert mappanel.FETCH_STYLE == "satellite"
     for mode in ("dark", "light", "sun"):
         m = mappanel.MapPanel(mode=mode)
-        assert m.current_style() == "dark"
-        assert [m._combo.itemText(i) for i in range(m._combo.count())] == ["DARK", "SAT"]
+        assert m.current_style() == "dark_sat"
+        assert [m._combo.itemText(i) for i in range(m._combo.count())] == ["DARK SAT", "LIGHT SAT"]
 
 
 def test_strip_has_no_text_under_16px_at_all():

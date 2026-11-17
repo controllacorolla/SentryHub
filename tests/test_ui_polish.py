@@ -304,3 +304,252 @@ def test_u4_typing_f_in_a_text_field_never_collapses():
     finally:
         _close(hub)
 
+
+
+# ================================================================ U5 basemap orientation
+def _tile_png(r, g):
+    """A 256 px tile: flat R/G (they name the tile), noisy B (so it is not a 'blank' tile)."""
+    import numpy as np
+    from PySide6 import QtGui
+    rng = np.random.default_rng(r * 256 + g)
+    a = np.zeros((256, 256, 4), dtype=np.uint8)
+    a[..., 0], a[..., 1], a[..., 3] = r, g, 255
+    a[..., 2] = rng.integers(0, 255, (256, 256), dtype=np.uint8)
+    img = QtGui.QImage(a.data, 256, 256, 256 * 4, QtGui.QImage.Format.Format_RGBA8888).copy()
+    buf = QtCore.QBuffer()
+    buf.open(QtCore.QIODevice.WriteOnly)
+    img.save(buf, "PNG")
+    return bytes(buf.data())
+
+
+def _fake_tiles(monkeypatch, tmp_path):
+    from palisade_qt.kit import tiles
+    seen = []
+
+    def fetch(url_tpl, z, tx, ty, cache_dir):
+        seen.append((url_tpl, z, tx, ty))
+        return _tile_png(20 + 7 * (tx % 30), 20 + 7 * (ty % 30))
+    monkeypatch.setattr(tiles, "_fetch_one", fetch)
+    monkeypatch.setattr(tiles, "CACHE_ROOT", tmp_path)
+    return seen
+
+
+@pytest.mark.parametrize("global_order", ("col-major", "row-major"))
+def test_u5_basemap_is_north_up_east_right_whatever_pyqtgraph_global_order(
+        monkeypatch, tmp_path, global_order):
+    """Device 2026-11-17: the ATLAS map drew rotated 90 degrees (Front Range along the bottom)
+    whenever ATLAS opened before PRISM — only PRISM's scope set pyqtgraph's global
+    imageAxisOrder. With the global at either value, the pixel drawn at a point's map position
+    comes from that point's own tile."""
+    import math
+    import numpy as np
+    import pyqtgraph as pg
+    from palisade_qt.kit import tiles, mappanel
+    _fake_tiles(monkeypatch, tmp_path)
+    old = pg.getConfigOption("imageAxisOrder")
+    pg.setConfigOptions(imageAxisOrder=global_order)
+    try:
+        home = (39.7392, -104.9903)                  # Denver
+        m = mappanel.MapPanel(span_nm=80, home_lat=home[0], home_lon=home[1])
+        m.resize(900, 640)
+        layer = m._tiles
+        arr, x0, y0, x1, y1 = layer._build("satellite")
+        m._base._on_tiles(arr, x0, y0, x1, y1)
+        z = tiles.tile_span(home[0], home[1], layer.view or (-80, 80, -80, 80, 800))[0]
+        shown = m._tile_img.image
+        cos_lat = math.cos(math.radians(home[0]))
+        for dn, de in ((60, -60), (60, 60), (-60, -60), (-60, 60), (0, 0), (25, -70)):
+            lat, lon = home[0] + dn / 60.0, home[1] + de / (60.0 * cos_lat)
+            x, y = tiles._nm_from_home(home[0], home[1], lat, lon)
+            p = m._tile_img.mapFromView(QtCore.QPointF(x, y))
+            col, row = int(p.x()), int(p.y())
+            assert 0 <= row < shown.shape[0] and 0 <= col < shown.shape[1], (dn, de, row, col)
+            tx, ty = tiles._tile_xy(lat, lon, z)
+            want = np.array([[[20 + 7 * (tx % 30), 20 + 7 * (ty % 30), 0, 255]]], dtype=np.uint8)
+            want = mappanel.tint(want, "dark_sat")[0, 0]
+            assert tuple(shown[row, col, :2]) == tuple(want[:2]), (global_order, dn, de)
+    finally:
+        pg.setConfigOptions(imageAxisOrder=old)
+
+
+def test_u5_atlas_opened_first_has_a_row_major_map_image():
+    """The regression in situ: a fresh hub, ATLAS opened before PRISM was ever built."""
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        assert "PRISM" not in [k for k, v in hub.pages.items() if v is not None and
+                               type(v).__name__ == "PrismApp"]
+        assert atlas.map._tile_img.axisOrder == "row-major"
+        assert hub.ops.ppi._base.img.axisOrder == "row-major"
+    finally:
+        _close(hub)
+
+
+# ================================================================ U6 pan / zoom, tiles follow
+def test_u6_map_pans_and_zooms_and_tiles_follow_the_view(monkeypatch, tmp_path):
+    from palisade_qt.kit import tiles
+    seen = _fake_tiles(monkeypatch, tmp_path)
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        m = atlas.map
+        vb = m.plot.getViewBox()
+        assert vb.state["mouseEnabled"] == [True, True]
+        w0, h0 = m.view_span()
+        assert atlas.handle_key("+") is True
+        _pump(60)
+        w1, h1 = m.view_span()
+        assert w1 == pytest.approx(w0 / 2, rel=0.05) and h1 == pytest.approx(h0 / 2, rel=0.05)
+        atlas.handle_key("-")
+        atlas.handle_key("-")
+        _pump(60)
+        assert m.view_span()[0] == pytest.approx(w0 * 2, rel=0.05)
+        # buttons do the same; HOME puts the default range back
+        m._zoom_btns[1].click()
+        _pump(60)
+        assert m.view_span()[0] == pytest.approx(w0, rel=0.05)
+        vb.translateBy(x=40, y=-20)
+        _pump(60)
+        (x0, x1), _ = vb.viewRange()
+        assert (x0 + x1) / 2 == pytest.approx(40, abs=1)
+        m._zoom_btns[2].click()
+        _pump(60)
+        (x0, x1), (y0, y1) = vb.viewRange()
+        assert abs((x0 + x1) / 2) < 1 and abs((y0 + y1) / 2) < 1
+        # the tile range follows: zoomed in -> a higher zoom level over a smaller area
+        home = (39.7, -104.9)
+        z_wide = tiles.tile_span(home[0], home[1], (-160, 160, -160, 160, 1200))[0]
+        z_tight = tiles.tile_span(home[0], home[1], (-10, 10, -10, 10, 1200))[0]
+        assert z_tight > z_wide
+        for v in ((-600, 600, -600, 600, 1280), (-1, 1, -1, 1, 1280)):
+            z, a, b, c, d = tiles.tile_span(home[0], home[1], v)
+            assert (c - a + 1) * (d - b + 1) <= tiles.MAX_TILES and 3 <= z <= 16
+        # and the map hands its live view to the tile layer when it refreshes
+        m._base.can_fetch = True
+        m._base.tiles.fetch = lambda style: seen.append(("fetch", style))
+        m.zoom(0.5)
+        m._base.refresh()
+        assert m._tiles.view[:4] == pytest.approx(
+            tuple(vb.viewRange()[0]) + tuple(vb.viewRange()[1]))
+        assert ("fetch", "satellite") in seen
+    finally:
+        _close(hub)
+
+
+def test_u6_dark_and_light_tint_and_the_satellite_source_chain(monkeypatch, tmp_path):
+    import numpy as np
+    from palisade_qt.kit import tiles, mappanel
+    a = np.full((2, 2, 4), 200, dtype=np.uint8)
+    assert mappanel.tint(a, "dark_sat")[0, 0, 0] < 100
+    assert mappanel.tint(a, "light_sat")[0, 0, 0] > 200
+    assert [n for n, _ in tiles.TILE_SOURCES["satellite"]] == ["esri", "usgs", "eox"]
+    # a source that answers blank (no coverage) falls through to the next
+    calls = []
+
+
+    def fetch(url_tpl, z, tx, ty, cache_dir):
+        calls.append(url_tpl)
+        if "arcgisonline" in url_tpl:
+            return None                                  # Esri down
+        if "nationalmap" in url_tpl:
+            from PySide6 import QtGui
+            img = QtGui.QImage(256, 256, QtGui.QImage.Format.Format_RGBA8888)
+            img.fill(QtGui.QColor(0, 0, 0, 0))           # USGS: transparent = no coverage
+            buf = QtCore.QBuffer()
+            buf.open(QtCore.QIODevice.WriteOnly)
+            img.save(buf, "PNG")
+            return bytes(buf.data())
+        return _tile_png(90, 140)
+    monkeypatch.setattr(tiles, "_fetch_one", fetch)
+    monkeypatch.setattr(tiles, "CACHE_ROOT", tmp_path)
+    layer = tiles.TileLayer(home_lat=51.5, home_lon=-0.1, span_nm=20)
+    arr = layer._build("satellite")[0]
+    assert (arr[..., 0] == 90).any() and (arr[..., 1] == 140).any()
+    assert any("eox" in c for c in calls)
+    # cache is per source, so a cached Esri placeholder from before is never read again
+    assert all(p.name in ("esri", "usgs", "eox") for p in (tmp_path / "satellite").iterdir())
+
+
+# ================================================================ U7 GPS -> HOME (minimal)
+def _settings(hub):
+    hub.open_callsign("SYSTEM")
+    _pump(150)
+    page = hub.pages["SYSTEM"]
+    page.switch_subtab("SETTINGS")
+    _pump(100)
+    return page.current_child()
+
+
+def _wait(pred, ms=3000):
+    import time
+    t = time.time()
+    while time.time() - t < ms / 1000:
+        _pump(20)
+        if pred():
+            return True
+    return False
+
+
+def test_u7_use_gps_fills_home_but_never_saves_it(monkeypatch):
+    from palisade_qt import eventbus
+    eventbus.set_home(None)
+    hub = _big_hub()
+    try:
+        more = _settings(hub)
+        more.set_home.setText("")
+        more._gps_reader = lambda: {"class": "TPV", "mode": 3, "lat": 39.7392, "lon": -104.9903}
+        more.gps_btn.click()
+        assert _wait(lambda: more.set_home.text() == "39.7392, -104.9903")
+        assert "press SAVE" in more.set_msg.text()
+        assert not eventbus.home_set(), "offering a fix must not set HOME"
+        more._save_settings()
+        assert eventbus.home() == pytest.approx((39.7392, -104.9903))
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_u7_no_fix_says_so_and_keeps_manual_entry():
+    from palisade_qt import eventbus
+    eventbus.set_home(None)
+    hub = _big_hub()
+    try:
+        more = _settings(hub)
+        more.set_home.setText("39.7, -104.9")
+        more._gps_reader = lambda: None
+        more.gps_btn.click()
+        assert _wait(lambda: "NO GPS FIX" in more.set_msg.text())
+        assert more.set_home.text() == "39.7, -104.9" and more.gps_btn.isEnabled()
+        # an automatic read never overwrites what was typed, even with a fix
+        more._gps_reader = lambda: {"mode": 2, "lat": 10.0, "lon": 20.0}
+        more.read_gps(auto=True)
+        assert _wait(lambda: more._gps_last == (10.0, 20.0))
+        assert more.set_home.text() == "39.7, -104.9"
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_u7_typed_home_in_the_other_hemisphere_from_gps_is_rejected():
+    """39.7, 104.9 (minus sign dropped) is in China; with a GPS fix at -104.9 it is refused."""
+    from palisade_qt import eventbus
+    eventbus.set_home(None)
+    hub = _big_hub()
+    try:
+        more = _settings(hub)
+        more._gps_reader = lambda: {"mode": 3, "lat": 39.74, "lon": -104.99}
+        more.read_gps()
+        assert _wait(lambda: more._gps_last is not None)
+        more.set_home.setText("39.74, 104.99")
+        more._save_settings()
+        assert not eventbus.home_set()
+        assert "other hemisphere" in more.set_msg.text() and "west is negative" in more.set_msg.text()
+        more.set_home.setText("-39.74, -104.99")
+        more._save_settings()
+        assert not eventbus.home_set() and "south is negative" in more.set_msg.text()
+        more.set_home.setText("39.74, -104.99")
+        more._save_settings()
+        assert eventbus.home() == pytest.approx((39.74, -104.99))
+    finally:
+        eventbus.set_home(None)
+        _close(hub)

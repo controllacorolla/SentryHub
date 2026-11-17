@@ -333,6 +333,9 @@ class OpsHome(PalisadeApp):
             self._selected = None
         no_home = not self.demo and not eventbus.home_set()
         self._home_cover.show(no_home)               # N26: no rings from a guessed origin
+        h = eventbus.home() or (self.demo and eventbus.DEMO_HOME) or None
+        if h and not no_home:
+            self.ppi.set_home(h[0], h[1])            # imagery under the scope (no-op if unchanged)
         self.ppi.set_contacts([] if no_home else live, selected=self._selected)
         n = len(live)
         if n:

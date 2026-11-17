@@ -868,6 +868,16 @@ class AtlasApp(PalisadeApp):
             self._worker.set_layer(kind, on)     # SDR layers via the arbiter; DRONES = BLE scan
         self._render()
 
+    def handle_key(self, text):
+        """+ / - zoom the map (as PRISM's span keys); F hides the side panels."""
+        if text in ("+", "="):
+            self.map.zoom(0.5)
+            return True
+        if text in ("-", "_"):
+            self.map.zoom(2.0)
+            return True
+        return super().handle_key(text)
+
     def make_worker(self):
         if self.demo:
             return AtlasDemoWorker()

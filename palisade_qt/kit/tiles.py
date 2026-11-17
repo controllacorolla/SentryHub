@@ -21,7 +21,26 @@ TILE_URLS = {
     "satellite": ("https://server.arcgisonline.com/ArcGIS/rest/services/"
                   "World_Imagery/MapServer/tile/{z}/{y}/{x}"),
 }
+# SAT: tried in order, per tile. Esri World Imagery first (it served "API KEY REQUIRED"
+# placeholders to the device once, 2026-11-17, then recovered). Where a source has no tile or a
+# blank one, the next is used: USGS National Map imagery (keyless, public domain, US only), then
+# EOX Sentinel-2 cloudless (keyless, world, CC BY-NC-SA 4.0).
+SAT_SOURCES = (
+    ("esri", TILE_URLS["satellite"]),
+    ("usgs", "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/"
+             "tile/{z}/{y}/{x}"),
+    ("eox", "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/"
+            "GoogleMapsCompatible/{z}/{y}/{x}.jpg"),
+)
+TILE_SOURCES = {"dark": (("carto", TILE_URLS["dark"]),),
+                "light": (("carto", TILE_URLS["light"]),),
+                "satellite": SAT_SOURCES}
+ATTRIBUTION = {"dark": "© OpenStreetMap contributors © CARTO",
+               "satellite": "Imagery: Esri World Imagery · USGS The National Map · "
+                            "Sentinel-2 cloudless by EOX (CC BY-NC-SA 4.0)"}
 TILE_SIZE = 256
+MAX_TILES = 48          # per view: a zoomed-out view drops a zoom level instead of fetching more
+MIN_ZOOM, MAX_ZOOM = 3, 16
 CACHE_ROOT = Path.home() / ".cache" / "palisade" / "tiles"
 
 
@@ -55,6 +74,52 @@ def _pick_zoom(span_nm):
         if deg_span / tile_deg >= 3:
             return z
     return 8
+
+
+def _pick_zoom_view(deg_w, px_w):
+    """The zoom whose tiles show about one tile pixel per screen pixel across deg_w degrees."""
+    deg_w = max(1e-6, float(deg_w))
+    z = round(math.log2(max(1e-9, 360.0 * max(64, px_w) / (TILE_SIZE * deg_w))))
+    return max(MIN_ZOOM, min(MAX_ZOOM, int(z)))
+
+
+def tile_span(home_lat, home_lon, view, zoom=None):
+    """The tile range covering a view. view = (x0, x1, y0, y1, px_w): nm east/north of HOME and
+    the map's width in pixels. Returns (zoom, tx0, ty0, tx1, ty1) with a 1-tile margin, at most
+    MAX_TILES tiles. x is the tile column (west -> east), y the tile row (north -> south)."""
+    x0, x1, y0, y1, px_w = view
+    cos_lat = max(0.05, math.cos(math.radians(home_lat)))
+    north = max(-85.0, min(85.0, home_lat + y1 / 60.0))
+    south = max(-85.0, min(85.0, home_lat + y0 / 60.0))
+    west = max(-180.0, min(179.999, home_lon + x0 / (60.0 * cos_lat)))
+    east = max(-180.0, min(179.999, home_lon + x1 / (60.0 * cos_lat)))
+    z = _pick_zoom_view(east - west, px_w) if zoom is None else zoom
+    while True:
+        n = 2 ** z
+        tx0, ty0 = _tile_xy(north, west, z)
+        tx1, ty1 = _tile_xy(south, east, z)
+        tx0, tx1 = sorted((tx0, tx1))
+        ty0, ty1 = sorted((ty0, ty1))
+        tx0, ty0 = max(0, tx0 - 1), max(0, ty0 - 1)
+        tx1, ty1 = min(n - 1, tx1 + 1), min(n - 1, ty1 + 1)
+        if (tx1 - tx0 + 1) * (ty1 - ty0 + 1) <= MAX_TILES or z <= MIN_ZOOM:
+            return z, tx0, ty0, tx1, ty1
+        z -= 1
+
+
+def _mercator_rows(n_lat, s_lat, ty0, zoom, height):
+    """For each output row (north first, evenly spaced in latitude) the canvas row to copy."""
+    top = ty0 * TILE_SIZE
+    lats = n_lat - (np.arange(height) + 0.5) / height * (n_lat - s_lat)
+    lat_r = np.radians(np.clip(lats, -85.05, 85.05))
+    y = (1 - np.log(np.tan(lat_r) + 1 / np.cos(lat_r)) / math.pi) / 2 * (2 ** zoom) * TILE_SIZE
+    return np.clip(np.floor(y - top).astype(int), 0, height - 1)
+
+
+def _blank(tile):
+    """A tile with (almost) no detail: a source's 'no coverage here' answer. Try the next one."""
+    rgb = tile[..., :3]
+    return tile.size == 0 or float(rgb.std()) < 2.0 or int(tile[..., 3].max()) == 0
 
 
 def _netpolicy():
@@ -104,6 +169,7 @@ class TileLayer(QtCore.QObject):
         self._lock = threading.Lock()
         self._busy = False
         self._pending = None
+        self.view = None            # (x0, x1, y0, y1, px_w) in nm from HOME; None = +-span_nm
 
     def fetch(self, style):
         # Never hit the network under the offscreen test platform or when asked to stay offline;
@@ -134,29 +200,12 @@ class TileLayer(QtCore.QObject):
                 self.fetch(nxt)
 
     def _build(self, style):
-        url_tpl = TILE_URLS.get(style)
-        if url_tpl is None:
+        sources = TILE_SOURCES.get(style)
+        if not sources:
             return None, 0, 0, 0, 0
-        zoom = _pick_zoom(self.span_nm)
-        cos_lat = math.cos(math.radians(self.home_lat))
-        north = self.home_lat + self.span_nm / 60
-        south = self.home_lat - self.span_nm / 60
-        west = self.home_lon - self.span_nm / (60 * cos_lat)
-        east = self.home_lon + self.span_nm / (60 * cos_lat)
-
-        tx0, ty0 = _tile_xy(north, west, zoom)
-        tx1, ty1 = _tile_xy(south, east, zoom)
-        if tx0 > tx1:
-            tx0, tx1 = tx1, tx0
-        if ty0 > ty1:
-            ty0, ty1 = ty1, ty0
-        tx0 -= 1
-        ty0 -= 1
-        tx1 += 1
-        ty1 += 1
-
-        cache_dir = CACHE_ROOT / style / str(zoom)
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        span = self.span_nm
+        view = self.view or (-span, span, -span, span, 800)
+        zoom, tx0, ty0, tx1, ty1 = tile_span(self.home_lat, self.home_lon, view)
 
         nx = tx1 - tx0 + 1
         ny = ty1 - ty0 + 1
@@ -164,23 +213,36 @@ class TileLayer(QtCore.QObject):
 
         for tx in range(tx0, tx1 + 1):
             for ty in range(ty0, ty1 + 1):
-                data = _fetch_one(url_tpl, zoom, tx, ty, cache_dir)
-                if data is None:
-                    continue
-                tile = _qimg_to_rgb(data)
-                if tile is None:
-                    continue
-                ix = tx - tx0
-                iy = ty - ty0
-                y_px = iy * TILE_SIZE
-                x_px = ix * TILE_SIZE
-                th, tw = tile.shape[:2]
-                canvas[y_px:y_px + th, x_px:x_px + tw] = tile
+                fallback = None
+                for name, url_tpl in sources:
+                    # per-source cache dir: an old cached placeholder (satellite/<z>/, before
+                    # 2026-11-17) is never read again
+                    cache_dir = CACHE_ROOT / style / name / str(zoom)
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    data = _fetch_one(url_tpl, zoom, tx, ty, cache_dir)
+                    tile = _qimg_to_rgb(data) if data is not None else None
+                    if tile is None:
+                        continue
+                    if _blank(tile):            # e.g. open sea, or no coverage: try the next,
+                        fallback = fallback if fallback is not None else tile   # else keep it
+                        continue
+                    fallback = tile
+                    break
+                if fallback is not None:
+                    y_px = (ty - ty0) * TILE_SIZE
+                    x_px = (tx - tx0) * TILE_SIZE
+                    th, tw = fallback[:TILE_SIZE, :TILE_SIZE].shape[:2]
+                    canvas[y_px:y_px + th, x_px:x_px + tw] = fallback[:TILE_SIZE, :TILE_SIZE]
 
         n_lat, _, w_lon, _ = _tile_bounds(tx0, ty0, zoom)
         _, s_lat, _, e_lon = _tile_bounds(tx1, ty1, zoom)
         nm_x0, nm_y0 = _nm_from_home(self.home_lat, self.home_lon, s_lat, w_lon)
         nm_x1, nm_y1 = _nm_from_home(self.home_lat, self.home_lon, n_lat, e_lon)
 
-        canvas = canvas[::-1]
+        # tiles are Web-Mercator rows; the plot is flat nm (lat * 60). Resample the rows so every
+        # row sits at its own latitude — else a point near the view's edge drew a tile off.
+        canvas = canvas[_mercator_rows(n_lat, s_lat, ty0, zoom, canvas.shape[0])]
+        # row 0 of the canvas is the NORTH edge; the plot's y grows north, and the image item is
+        # row-major with row 0 at the rect's bottom (y0 = south), so flip the rows once here.
+        canvas = np.ascontiguousarray(canvas[::-1])
         return canvas, nm_x0, nm_y0, nm_x1, nm_y1

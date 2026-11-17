@@ -5,15 +5,103 @@ Map styles are DARK (CartoDB dark_nolabels) or SAT (Esri World Imagery) only —
 The plain black "scope" background is only the offline fallback until tiles arrive. Tiles are fetched in a background thread and
 cached locally under ~/.cache/palisade/tiles/.
 """
+import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtWidgets, QtCore, QtGui
 
 from .. import theme
-from .tiles import TileLayer
+from .tiles import TileLayer, ATTRIBUTION
 
-STYLES = ["dark", "satellite"]          # owner rule: satellite or dark, nothing else
+# owner decision 2026-11-17 (device notes): every map is satellite imagery under a DARK or a LIGHT
+# tint, DARK by default (replaces the 2026-11-15 DARK / SAT pair).
+STYLES = ["dark_sat", "light_sat"]
 STYLES_DARK = STYLES
 STYLES_LIGHT = STYLES
+STYLE_LABEL = {"dark_sat": "DARK SAT", "light_sat": "LIGHT SAT"}
+FETCH_STYLE = "satellite"               # both tints are drawn from the same imagery
+MAX_NM = 600                            # pan / zoom-out limit, nm from HOME
+MIN_SPAN_NM = 1.0                       # zoom-in limit (view width)
+
+
+def tint(arr, style):
+    """The imagery under its tint: DARK = 45 % brightness, LIGHT = 25 % wash toward white."""
+    out = arr.copy()
+    rgb = arr[..., :3].astype(np.float32)
+    if style == "light_sat":
+        rgb = rgb * 0.75 + 255 * 0.25
+    else:
+        rgb = rgb * 0.45
+    out[..., :3] = np.clip(rgb, 0, 255).astype(np.uint8)
+    return out
+
+
+class BaseMap(QtCore.QObject):
+    """The tinted satellite basemap behind a plot (ATLAS map, OPS scope). The image item is
+    row-major by construction (device 2026-11-17: the map drew rotated 90 degrees whenever ATLAS
+    was opened before PRISM, because only PRISM's scope set pyqtgraph's global imageAxisOrder).
+    The tiles follow the plot's view: pan / zoom / resize re-fetches what is on screen."""
+
+    def __init__(self, plot, home_lat, home_lon, span_nm, style="dark_sat", parent=None):
+        super().__init__(parent)
+        self.plot = plot
+        self.img = pg.ImageItem(axisOrder="row-major")
+        self.img.setZValue(-10)
+        plot.addItem(self.img)
+        # N26: no HOME -> no basemap. Tiles are never requested for a placeholder origin.
+        self.can_fetch = home_lat is not None and home_lon is not None
+        self.tiles = TileLayer(home_lat=home_lat if self.can_fetch else 0.0,
+                               home_lon=home_lon if self.can_fetch else 0.0,
+                               span_nm=span_nm, parent=self)
+        self.tiles.ready.connect(self._on_tiles)
+        self.style = style
+        self._raw = None
+        self.shown_rect = None
+        self._timer = QtCore.QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(350)
+        self._timer.timeout.connect(self.refresh)
+        plot.getViewBox().sigRangeChanged.connect(lambda *_: self._timer.start())
+        self.on_shown = None
+
+    def view(self):
+        vb = self.plot.getViewBox()
+        (x0, x1), (y0, y1) = vb.viewRange()
+        return (x0, x1, y0, y1, max(64, int(vb.width() or self.plot.width())))
+
+    def refresh(self):
+        if not self.can_fetch:
+            return
+        self.tiles.view = self.view()
+        self.tiles.fetch(FETCH_STYLE)
+
+    def set_style(self, style):
+        self.style = style
+        if self._raw is not None:
+            self._show()
+        else:
+            self.refresh()
+
+    def set_home(self, lat, lon):
+        if lat is None or lon is None:
+            return
+        if not self.can_fetch or (self.tiles.home_lat, self.tiles.home_lon) != (lat, lon):
+            self.can_fetch = True
+            self.tiles.home_lat, self.tiles.home_lon = lat, lon
+            self._raw = None
+            self.img.clear()
+            self.refresh()
+
+    def _on_tiles(self, arr, x0, y0, x1, y1):
+        self._raw = (arr, QtCore.QRectF(x0, y0, x1 - x0, y1 - y0))
+        self._show()
+
+    def _show(self):
+        arr, rect = self._raw
+        self.img.setImage(tint(arr, self.style), autoLevels=False, levels=(0, 255))
+        self.img.setRect(rect)
+        self.shown_rect = rect
+        if self.on_shown is not None:
+            self.on_shown()
 
 
 class MapPanel(QtWidgets.QFrame):
@@ -31,15 +119,14 @@ class MapPanel(QtWidgets.QFrame):
         self.plot.setBackground(tok["well"])
         self.plot.setMenuEnabled(False)
         self.plot.setAspectLocked(True)
-        self.plot.setMouseEnabled(False, False)
+        # device notes 2026-11-17: the map pans (drag) and zooms (wheel, + / -, the corner buttons)
+        self.plot.setMouseEnabled(True, True)
         self.plot.hideAxis("left")
         self.plot.hideAxis("bottom")
+        self.plot.getViewBox().setLimits(xMin=-MAX_NM, xMax=MAX_NM, yMin=-MAX_NM, yMax=MAX_NM,
+                                         minXRange=MIN_SPAN_NM, minYRange=MIN_SPAN_NM)
         self.plot.setXRange(-span_nm, span_nm)
         self.plot.setYRange(-span_nm, span_nm)
-
-        self._tile_img = pg.ImageItem()
-        self._tile_img.setZValue(-10)
-        self.plot.addItem(self._tile_img)
 
         self._rings = []
         self._ring_labels = []
@@ -80,9 +167,10 @@ class MapPanel(QtWidgets.QFrame):
 
         self._styles = STYLES
         self._combo = QtWidgets.QComboBox(self)
-        self._combo.addItems(["DARK", "SAT"])
-        self._combo.setFixedWidth(104)
-        self._combo.setToolTip("map tiles: dark or satellite (owner rule)")
+        self._combo.addItems([STYLE_LABEL[k] for k in STYLES])
+        self._combo.setFixedWidth(138)
+        self._combo.setToolTip("map: satellite imagery, dark or light tint. "
+                               + ATTRIBUTION["satellite"])
         self._combo.setStyleSheet(
             "QComboBox { background: rgba(0,0,0,170); color: #DDD; "
             "border: 1px solid #555; font-size: 16px; padding: 2px 4px; }"
@@ -94,52 +182,89 @@ class MapPanel(QtWidgets.QFrame):
         self._combo.currentIndexChanged.connect(self._style_changed)
         self._combo.raise_()
 
-        # N26: no HOME -> no basemap. Tiles are never requested for a placeholder origin.
-        self._can_fetch = home_lat is not None and home_lon is not None
-        self._tiles = TileLayer(home_lat=home_lat if self._can_fetch else 0.0,
-                                home_lon=home_lon if self._can_fetch else 0.0,
-                                span_nm=span_nm, parent=self)
-        self._tiles.ready.connect(self._on_tiles)
-        self._current_style = "dark"
+        self._base = BaseMap(self.plot, home_lat, home_lon, span_nm, parent=self)
+        self._base.on_shown = self._on_tiles
+        self._tiles = self._base.tiles           # kept names: tests and callers read these
+        self._tile_img = self._base.img
+        self._current_style = "dark_sat"
         # black until tiles land: the offline fallback is dark in every theme, never light
         self.plot.setBackground("#000000")
         self._set_overlay_colors((255, 255, 255, 50), "#888")
+        self._zoom_btns = self._make_zoom_buttons()
         self._combo.setCurrentIndex(0)
         self._style_changed(0)
+
+    @property
+    def _can_fetch(self):
+        return self._base.can_fetch
+
+    def _make_zoom_buttons(self):
+        css = ("QPushButton { background: rgba(0,0,0,170); color: #DDD; border: 1px solid #555;"
+               " font-size: 16px; padding: 2px 6px; min-height: 0; }"
+               "QPushButton:focus { border: 3px solid #FFFFFF; }")
+        out = []
+        for text, tip, fn in (("−", "zoom out (−)", lambda: self.zoom(2.0)),
+                              ("+", "zoom in (+)", lambda: self.zoom(0.5)),
+                              ("HOME", "re-centre on HOME at the default range", self.recentre)):
+            b = QtWidgets.QPushButton(text, self)
+            b.setStyleSheet(css)
+            b.setToolTip(tip)
+            b.setFocusPolicy(QtCore.Qt.TabFocus)
+            b.setMinimumWidth(34)
+            b.clicked.connect(lambda _=False, f=fn: f())
+            b.adjustSize()
+            out.append(b)
+        return out
+
+    def zoom(self, factor):
+        """factor < 1 zooms in. Centred on the middle of the view."""
+        vb = self.plot.getViewBox()
+        vb.scaleBy((factor, factor), center=vb.viewRect().center())
+
+    def recentre(self):
+        self.plot.setXRange(-self._span, self._span)
+        self.plot.setYRange(-self._span, self._span)
+
+    def view_span(self):
+        """Visible (width, height) in nm."""
+        (x0, x1), (y0, y1) = self.plot.getViewBox().viewRange()
+        return x1 - x0, y1 - y0
 
     def set_home(self, lat, lon, known=True):
         """H5: re-centre the basemap on a new HOME (it was fixed at construction). known=False hides
         the HOME marker: the map is then relative to a provisional origin, not the operator."""
         self.home.setVisible(bool(known))
-        if lat is None or lon is None:
-            return
-        if not self._can_fetch or (self._tiles.home_lat, self._tiles.home_lon) != (lat, lon):
-            self._can_fetch = True
-            self._tiles.home_lat, self._tiles.home_lon = lat, lon
-            self._tile_img.clear()
-            self._tiles.fetch(self._current_style)
+        self._base.set_home(lat, lon)
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
         self._combo.move(self.width() - self._combo.width() - 10, 10)
+        x = self.width() - 10
+        for b in reversed(self._zoom_btns):
+            x -= b.width()
+            b.move(x, 18 + self._combo.height())
+            x -= 6
 
     def _style_changed(self, idx):
         style = self._styles[idx]
         self._current_style = style
-        if self._can_fetch:
-            self._tiles.fetch(style)
+        self._base.set_style(style)
+        self._on_tiles()
 
     def current_style(self):
         return self._current_style
 
-    def _on_tiles(self, arr, x0, y0, x1, y1):
-        self._tile_img.setImage(arr)
-        self._tile_img.setRect(QtCore.QRectF(x0, y0, x1 - x0, y1 - y0))
+    def _on_tiles(self):
+        """Overlay colours follow the tint once imagery is up: light rings / text on DARK SAT,
+        dark ones on LIGHT SAT. Before any imagery the map is black (light overlays)."""
         self.plot.setBackground("#000000")
-        bright = self._current_style == "satellite"
-        ring_color = (255, 255, 255, 90) if bright else (255, 255, 255, 50)
-        text_color = "#DDD" if bright else "#888"
-        self._set_overlay_colors(ring_color, text_color)
+        light = self._current_style == "light_sat" and self._base.shown_rect is not None
+        if light:
+            self._set_overlay_colors((0, 0, 0, 120), "#222")
+            self._label_color = "#111111"
+        else:
+            self._set_overlay_colors((255, 255, 255, 90), "#DDD")
+            self._label_color = "#EEEEEE"
 
     def _set_overlay_colors(self, ring_color, text_color):
         pen = pg.mkPen(ring_color, width=1)

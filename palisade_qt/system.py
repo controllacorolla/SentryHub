@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from .app import PalisadeApp, _retain
 from . import theme, eventbus, panels
@@ -192,7 +192,17 @@ class MoreApp(PalisadeApp):
         self.set_retention.setValue(eventbus.bus.retention())
         self._prefill_settings()
         fl.addRow(micro("Operator"), self.set_operator)
-        fl.addRow(micro("HOME (lat, lon)"), self.set_home)
+        home_row = QtWidgets.QHBoxLayout()
+        home_row.setSpacing(8)
+        home_row.addWidget(self.set_home, 1)
+        # owner 2026-11-17: location should be automatic. Minimal GPS path (the rest of GPS-fed
+        # HOME is CL6): read one gpsd fix and OFFER it in the field; SAVE still applies it, and
+        # typing a HOME by hand stays the fallback.
+        self.gps_btn = QtWidgets.QPushButton("USE GPS")
+        self.gps_btn.setToolTip("read one fix from gpsd and put it in HOME (press SAVE to use it)")
+        self.gps_btn.clicked.connect(lambda _=False: self.read_gps())
+        home_row.addWidget(self.gps_btn)
+        fl.addRow(micro("HOME (lat, lon)"), home_row)
         fl.addRow(micro("Theme"), self.set_theme)
         fl.addRow(micro("Event-bus retention"), self.set_retention)
         self.set_msg = QtWidgets.QLabel("")
@@ -204,7 +214,76 @@ class MoreApp(PalisadeApp):
         fl.addRow(save)
         pl.addWidget(c)
         pl.addStretch(1)
+        if not eventbus.home_set() and not self.demo:
+            from .kit.seams import offscreen
+            if not offscreen():          # tests never touch a real gpsd
+                QtCore.QTimer.singleShot(0, lambda: self.read_gps(auto=True))
         return page
+
+    # ---- GPS -> HOME (minimal; device notes 2026-11-17) ----
+    _gps_done = QtCore.Signal(object, bool)      # (fix dict or None, auto) -> GUI thread
+    _gps_last = None                             # (lat, lon) of the last fix read this session
+
+    @staticmethod
+    def _gps_reader():
+        """Seam: one gpsd TPV with a 2D/3D fix, or None. Tests replace it."""
+        import suite
+        return suite.gps_fix(timeout=3.0)
+
+    def read_gps(self, auto=False):
+        """Read one fix off the GUI thread; the result fills the HOME field (never saves it)."""
+        if getattr(self, "_gps_busy", False):
+            return
+        self._gps_busy = True
+        self.gps_btn.setEnabled(False)
+        self.gps_btn.setText("GPS …")
+        if not getattr(self, "_gps_wired", False):
+            self._gps_done.connect(self._on_gps)
+            self._gps_wired = True
+        reader = self._gps_reader
+
+        def run():
+            try:
+                fix = reader()
+            except Exception:
+                fix = None
+            self._gps_done.emit(fix, auto)
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_gps(self, fix, auto):
+        self._gps_busy = False
+        self.gps_btn.setEnabled(True)
+        self.gps_btn.setText("USE GPS")
+        lat = lon = None
+        if isinstance(fix, dict):
+            lat, lon = fix.get("lat"), fix.get("lon")
+        ok = (isinstance(lat, (int, float)) and isinstance(lon, (int, float))
+              and -90 <= lat <= 90 and -180 <= lon <= 180)
+        if not ok:
+            if not auto:                 # the automatic read stays quiet when there is no fix
+                self.set_msg.setStyleSheet("color:%s;" % self._tok["warn"])
+                self.set_msg.setText("NO GPS FIX — gpsd is not running or has no 2D/3D fix. "
+                                     "Enter HOME by hand (west longitudes are negative).")
+            return
+        self._gps_last = (float(lat), float(lon))
+        if auto and self.set_home.text().strip():
+            return                       # never overwrite what the operator typed
+        self.set_home.setText("%.4f, %.4f" % self._gps_last)
+        self.set_msg.setStyleSheet("color:%s;" % self._tok["text"])
+        self.set_msg.setText("HOME filled from GPS (%dD fix) — press SAVE SETTINGS to use it"
+                             % (fix.get("mode") if fix.get("mode") in (2, 3) else 2))
+
+    def _hemisphere_mismatch(self, home):
+        """A typed HOME on the other side of the equator / prime meridian from this session's GPS
+        fix: almost always a dropped minus sign (39.7, 104.9 is in China, not Denver)."""
+        g = self._gps_last
+        if g is None or home is None:
+            return None
+        for i, axis, neg in ((1, "longitude", "west"), (0, "latitude", "south")):
+            if abs(g[i]) > 0.5 and abs(home[i]) > 0.5 and (g[i] < 0) != (home[i] < 0):
+                return ("HOME %s %+.4f is in the other hemisphere from your GPS fix (%+.4f); "
+                        "%s is negative — nothing saved" % (axis, home[i], g[i], neg))
+        return None
 
     def _prefill_settings(self):
         try:
@@ -242,6 +321,11 @@ class MoreApp(PalisadeApp):
         if home is None and self.set_home.text().strip():
             self.set_msg.setStyleSheet("color:%s;" % self._tok["warn"])
             self.set_msg.setText("HOME must be 'lat, lon' (e.g. 47.6, -122.3) — nothing saved")
+            return
+        why = self._hemisphere_mismatch(home)
+        if why:
+            self.set_msg.setStyleSheet("color:%s;" % self._tok["warn"])
+            self.set_msg.setText(why)
             return
         live = []
         if home is not None:
