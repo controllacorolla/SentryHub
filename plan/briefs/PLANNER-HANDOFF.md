@@ -127,6 +127,9 @@ Screenshot: Dalton's upload 2026-11-17 04:47 MT.
    git pull --ff-only && bash build_installer.sh ~/install-palisade.sh && bash ~/install-palisade.sh
    && python3 plan/briefs/device_check_cl8.py` → expect `DEVICE CHECK CL8: PASS (10/10)`; the
    PASS line from the device on main is still owed (pre-merge re-run line never posted here).
-   Open before the v0.1 tag: **N-op1 BLOCKER** (operator save → operator.json, gate-adjacent),
-   N-ui1 + device-notes UI cluster, SAT basemap (Esri key), CL5 decoder-liveness watchdog, SCAN
-   follow-ups (B1 Med). Next scan cluster: SWEEP gnss (gpsd) + SCOUT. CL6/CL7 = v0.2.
+   N-op1 (operator save) is CLOSED: merged as PR #26 (01afe7b, RA-N-op1 MERGE) before #24/#25.
+   Open clusters, in order: (1) UI reorganisation (`fix/ui-polish`, in progress: N-ui1 + device-
+   notes UI items); (2) RECON execution (PR #27, in audit); (3) radio cluster: preset banks +
+   SDR++-style PRISM tuning, aviation first, then ham. Also open: SAT basemap (Esri key), CL5
+   decoder-liveness watchdog, SCAN follow-ups (B1 Med), SWEEP gnss (gpsd) + SCOUT scans.
+   CL6/CL7 = v0.2.
