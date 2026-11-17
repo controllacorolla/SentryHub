@@ -156,3 +156,9 @@ fixed 713a8ac).
 **Owner decisions still open (flagged, not blocking):** (1) capped aireplay-ng --deauth vs CLAUDE.md
 no-deauth; (2) Responder poisoning (broadcast/un-targetable) — catalogued analyze-only, no poison builder.
 Next per device order: UI reorganisation (fix/ui-polish), RECON execution (PR #27), radio preset banks.
+11. 2026-11-17 RX after Dalton asked for a backcheck: main merged into the branch, real-nmap backcheck
+   found 4 gaps (results not saved, IPv6, name refusal text, nothing-scanned shown as DONE) → RX-fix2
+   → RA-RXc MERGE (N4-N6) → RX-fix3 → **RA-RXd MERGE** (8ff7504). Dalton is device-testing PR #27
+   before any merge (device steps in the RX thread). Follow-ups (Low): wifipent `out` not confined
+   to captures (no UI path), captures-dir symlink not re-checked at spawn, `RunPane.saved` reset
+   untested, N3 END reason "expired", catalog_prepare passes non-literal targets (no UI path).
