@@ -108,6 +108,7 @@ class RunPane(QtWidgets.QFrame):
             return False, "%s is not installed" % prog
         self.out.clear()
         self._pending.clear()
+        self.saved = None
         self._append("$ " + ticket.display())
         try:
             h = executor.start(ticket, spawner=spawner, on_line=self._on_line)
@@ -131,6 +132,10 @@ class RunPane(QtWidgets.QFrame):
             h.stop(reason)
         self._check()
 
+    @staticmethod
+    def _scanned_nothing(h):
+        return h.exit_code == 0 and any("No targets were specified" in ln for ln in h.lines[-50:])
+
     def _check(self):
         self._drain()
         h = self._handle
@@ -141,7 +146,7 @@ class RunPane(QtWidgets.QFrame):
         code = h.exit_code
         if h.stopped:
             self._set_state("STOPPED (%s) · exit %s" % (h.stopped, code), "muted")
-        elif code == 0 and any("No targets were specified" in ln for ln in h.lines[-50:]):
+        elif code == 0 and self._scanned_nothing(h):
             # nmap exits 0 when it scanned nothing (no route, unresolvable target): never "DONE"
             self._set_state("NOTHING SCANNED · exit 0", "alert")
         elif code == 0:
@@ -153,7 +158,11 @@ class RunPane(QtWidgets.QFrame):
         if "-oN" in argv[:-1]:                # RX-fix2: where the results were kept, honestly
             import os
             path = argv[argv.index("-oN") + 1]
-            self.saved = path if os.path.isfile(path) else None
-            self._append("[results saved: %s]" % path if self.saved else
-                         "[results file NOT written: %s]" % path)
+            if self._scanned_nothing(h):         # RA-RXc N6: a header-only file is no result
+                self.saved = None
+                self._append("[nothing scanned — no results in %s]" % path)
+            else:
+                self.saved = path if os.path.isfile(path) else None
+                self._append("[results saved: %s]" % path if self.saved else
+                             "[results file NOT written: %s]" % path)
         self.finished.emit(h)

@@ -110,3 +110,13 @@ services DONE · exit 0, chain `authorize → issue → spawn → exit` for each
 
 RX-fix2 full suite at e3d9545 (+ NOTHING SCANNED test): `2 failed, 1829 passed, 7 skipped, 7 errors
 in 919.70s` — test_audit_tiles, test_hwlab doctor, 7 test_shell errors (no tkinter): all baseline.
+
+## RX-fix3 (after RA-RXc: MERGE with N4-N6)
+
+| ID | Fix | Test |
+|---|---|---|
+| N4 Med | Results / capture paths get UTC time + 6-hex random suffix (`recon._unique`) — two runs in one second never share a file | `test_rx_n4_two_scans_in_one_second_never_share_a_results_file` |
+| N5 Low | `netpent.prepare(out=)` accepts only a file directly in `<DATA>/captures` (realpath) | `test_rx_n5_results_path_must_be_in_the_captures_folder` |
+| N6 Low | NOTHING SCANNED prints `[nothing scanned — no results in …]`, never "results saved"; `RunPane.saved` reset per run | `test_rx_n6_nothing_scanned_never_claims_results_saved` |
+| RXb N2 Low | `_literal_targets` comment corrected (literals stop forward lookups; -n stops reverse) | — |
+| N3 | Open (wording in engagement.py, a gate file) — follow-up | — |

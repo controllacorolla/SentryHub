@@ -44,6 +44,14 @@ SUBTABS = ("WIFI", "BLE", "NET", "RF")
 SYS_NET = "/sys/class/net"
 
 
+def _unique(d, stem, ext):
+    """RA-RXc N4: a results path no earlier run used — UTC time plus a random suffix, so two runs
+    in the same second never share (and overwrite) one evidence file."""
+    import uuid
+    return os.path.join(d, "%s-%s-%s%s" % (stem, time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
+                                           uuid.uuid4().hex[:6], ext))
+
+
 def monitor_iface():
     """The first interface already in monitor mode (ARPHRD_IEEE80211_RADIOTAP = 803), or None."""
     try:
@@ -839,8 +847,8 @@ class ReconApp(PalisadeApp):
         """RX-fix2: every scan writes its results (nmap -oN) under the suite data dir, so they
         survive the pane; the directory is created only once the gate passed (prepare_run)."""
         import suite
-        return {"out": os.path.join(suite.DATA, "captures", "nmap-%s-%s.txt" % (
-            action, time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())))}, None
+        return {"out": _unique(os.path.join(suite.DATA, "captures"), "nmap-%s" % action,
+                               ".txt")}, None
 
     def _wifi_pick(self, row):
         """A survey row fills the target BSSID and channel (the operator still presses the
@@ -865,8 +873,7 @@ class ReconApp(PalisadeApp):
         else:
             import suite
             d = os.path.join(suite.DATA, "captures")       # created only once authorized (L4)
-            kw["out"] = os.path.join(d, "wifi-%s-%s" % (action, time.strftime(
-                "%Y%m%dT%H%M%SZ", time.gmtime())))
+            kw["out"] = _unique(d, "wifi-%s" % action, "")
         return kw, None
 
     def _ble_page(self):
