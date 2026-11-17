@@ -133,3 +133,11 @@ Screenshot: Dalton's upload 2026-11-17 04:47 MT.
    SDR++-style PRISM tuning, aviation first, then ham. Also open: SAT basemap (Esri key), CL5
    decoder-liveness watchdog, SCAN follow-ups (B1 Med), SWEEP gnss (gpsd) + SCOUT scans.
    CL6/CL7 = v0.2.
+10. 2026-11-17 **RX (RECON NET nmap + Wi-Fi execution, owner pulled into v0.1)**: draft PR #27,
+   branch `claude/project-thread-st3z1x`. RA-RX DO NOT MERGE (H1 nmap resolved range targets) →
+   RX-fix → **RA-RXb MERGE** (da8cdd4). Merge only on Dalton's OK; if PR #24 lands first, merge main
+   in (no shared hunks expected). executor.py changed only in the bounded output reader (M1).
+   Follow-ups: N1 Med IPv6 targets need `-6` (scan 0 hosts, DONE exit 0); N2 Low comment; N3 Low
+   END kill reason says "expired"; L3 CLIENT placeholder elided. Wi-Fi active tools stay dead on
+   the device (no monitor-mode radio; tools need root/caps — owner decision). Owner decision
+   pending: DEAUTH conflicts with the no-deauth rule.
