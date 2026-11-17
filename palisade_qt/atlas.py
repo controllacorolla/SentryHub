@@ -762,6 +762,8 @@ class AtlasLiveWorker(Worker):
 # ------------------------------------------------------------------ app
 class AtlasApp(PalisadeApp):
     TITLE = "ATLAS"
+    SIDE_W = 360          # the list + detail column; the map gets the rest
+    LEGEND_COLS = 3       # layer chips per row, so the chips fit SIDE_W
     # ADS-B reads readsb's aircraft.json (readsb owns its radio); no 2nd radio, no lease.
     # A dongle-using layer (AIS on 162 MHz) will take the lease when it is wired.
     LEASE = None
@@ -792,9 +794,15 @@ class AtlasApp(PalisadeApp):
                                  "Set HOME in SYSTEM › SETTINGS. Contacts are listed at right.")
         self._home_cover.show(not self.demo and not eventbus.home_set())
         self._adsb_health = None                     # E1 / H10: the ADS-B feed's own state
-        split.addWidget(self.map, 3)
+        # device notes 2026-11-17: the map was too small. It takes all the width the side column
+        # does not need (the column is held to SIDE_W), and F / the corner toggle hides the column
+        # and the sub-tab rail so the map runs the full width of the screen.
+        split.addWidget(self.map, 1)
 
-        right = QtWidgets.QVBoxLayout()
+        self._side = QtWidgets.QWidget()
+        self._side.setFixedWidth(self.SIDE_W)
+        right = QtWidgets.QVBoxLayout(self._side)
+        right.setContentsMargins(0, 0, 0, 0)
         right.setSpacing(10)
         right.addWidget(self._legend())
         self._busy_label = QtWidgets.QLabel("")       # "RADIO BUSY — held by X" (live only)
@@ -813,7 +821,8 @@ class AtlasApp(PalisadeApp):
         self.detail = DetailCard("CONTACT")
         self.detail.set_hero("—", "select a contact")
         right.addWidget(self.detail, 2)
-        split.addLayout(right, 2)
+        split.addWidget(self._side)
+        self.make_collapsible(self.map, [self._side])
 
         eventbus.bus.published.connect(self._on_event)
         eventbus.bus.home_changed.connect(self._on_home_changed)
@@ -846,7 +855,7 @@ class AtlasApp(PalisadeApp):
                                self._tok["disabled"], self._tok["focus_w"], self._tok["focus"]))
             b.setFocusPolicy(QtCore.Qt.TabFocus)
             b.clicked.connect(lambda on, kk=k: self._toggle(kk, on))
-            lay.addWidget(b, i // 4, i % 4)
+            lay.addWidget(b, i // self.LEGEND_COLS, i % self.LEGEND_COLS)
             self._layer_btns[k] = b
         return f
 

@@ -535,6 +535,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
         if low == "m":
             self.topbar.toggle_mute()
             return True
+        if low == "f":                           # full map: hide / show the side panels
+            return bool(page is not None and page.handle_key("f"))
         return False
 
     # ------------------------------------------------------------------ geometry + lifecycle

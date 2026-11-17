@@ -145,11 +145,18 @@ class NavKey(QtWidgets.QPushButton):
 
     Two 16 px lines are 2 × 20 px line boxes, more than the key's 36 px. But the callsign line is
     caps and digits (no descender) and the label line is lower case, so the INK of both is about
-    12 + 17 rows. The two labels are therefore placed by their measured ink (tightBoundingRect),
-    overlapping only in empty line-box space, with a 2 px gap between the glyphs. Nothing is shrunk
-    and nothing is clipped (the test compares painted pixels with the text drawn unclipped)."""
+    12 + 17 rows. The two lines are therefore placed by ink, overlapping only in empty line-box
+    space, with a 2 px gap between the glyphs. Nothing is shrunk and nothing is clipped (the test
+    compares painted pixels with the text drawn unclipped).
+
+    N-ui1 (device, 2026-11-17): the ink is measured on REFERENCE strings (every caps letter and
+    digit; every lower-case letter), not on each key's own text, so all keys share one callsign
+    baseline and one label baseline ('map' and 'spectrum' sit on the same line), and each key has
+    SIDE px of air left and right, so adjacent callsigns never run together ('4 PROWL5 RECON')."""
     GAP = 2            # px between the callsign's baseline ink and the label's tallest ascender
-    SIDE = 1           # px left/right inside the key
+    SIDE = 5           # px left/right inside the key: the visible gap between two keys' text
+    REF_CALL = "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    REF_LABEL = "abcdefghijklmnopqrstuvwxyz"
 
     def __init__(self, number, callsign, label, parent=None):
         super().__init__(parent)
@@ -165,14 +172,20 @@ class NavKey(QtWidgets.QPushButton):
             w.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
             w.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop)
         self.function = label
+        self._bases = (None, None)
         self.setToolTip("%d — %s: %s" % (number, callsign, label))
         self.setAccessibleName("%s %s" % (callsign, label))
 
-    def _ink(self, w):
-        """(top, bottom) of the text's painted pixels relative to its baseline, at the polished font."""
+    def _ink(self, w, ref):
+        """(top, bottom) of the painted pixels of the reference string relative to the baseline, at
+        the label's polished font. The same for every key, so every key's baselines line up."""
         w.ensurePolished()
-        r = w.fontMetrics().tightBoundingRect(w.text())
+        r = w.fontMetrics().tightBoundingRect(ref)
         return r.top(), r.bottom()
+
+    def baselines(self):
+        """(callsign baseline, label baseline) in key coordinates — the row tests compare."""
+        return self._bases
 
     def _text_w(self):
         return max(w.fontMetrics().horizontalAdvance(w.text()) for w in (self.call, self.label))
@@ -186,8 +199,8 @@ class NavKey(QtWidgets.QPushButton):
         return self.sizeHint()
 
     def _place(self):
-        c_top, c_bot = self._ink(self.call)
-        l_top, l_bot = self._ink(self.label)
+        c_top, c_bot = self._ink(self.call, self.REF_CALL)
+        l_top, l_bot = self._ink(self.label, self.REF_LABEL)
         ink_h = (c_bot - c_top + 1) + self.GAP + (l_bot - l_top + 1)
         y0 = (self.height() - ink_h) // 2              # top row of the callsign's ink
         fm_c, fm_l = self.call.fontMetrics(), self.label.fontMetrics()
@@ -197,6 +210,7 @@ class NavKey(QtWidgets.QPushButton):
         self.call.setGeometry(self.SIDE, c_base - fm_c.ascent(), w, fm_c.height())
         self.label.setGeometry(self.SIDE, l_base - fm_l.ascent(), w, fm_l.height())
         self.label.raise_()
+        self._bases = (c_base, l_base)
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
@@ -403,7 +417,9 @@ class TopBar(QtWidgets.QFrame):
         word, owner = radio
         if word == "HELD":
             # the owner IS the state word (8 chars max: OWNER_LABELS); HELD is in the tooltip
-            self.slots["radio"].set(owner or "HELD", "dot", t["accent"])
+            # owner request (device notes 2026-11-17): an SDR in use reads green ("on"), like
+            # every other live/OK state in the theme; FREE stays a muted ring.
+            self.slots["radio"].set(owner or "HELD", "dot", t["live"])
             self.slots["radio"].setToolTip("SDR: HELD by %s" % owner)
         elif word == "ACQUIRING":
             self.slots["radio"].set("ACQUIR…", "half", t["warn"])
@@ -425,9 +441,11 @@ class TopBar(QtWidgets.QFrame):
         name = engagement[2] if len(engagement) > 2 else ""
         if eword == "ACTIVE":
             # the scope IS the state word (as the owner is for SDR): "ENG ◆ 10.0.0.*" / "ENG ◆ 6
-            # targets", amber diamond = active. "ACTIVE · <scope>" did not fit the strip, and the
+            # targets", diamond = active. "ACTIVE · <scope>" did not fit the strip, and the
             # scope is the part an operator needs to read (RA-CL1). Full detail: tooltip + panel.
-            self.slots["engagement"].set(scope or "ACTIVE", "diamond", t["warn"])
+            # Green, not amber: owner decision 2026-11-17 (device notes) — an open engagement is
+            # the authorised "on" state; amber/red stay for EXPIRED/UNKNOWN and for TX.
+            self.slots["engagement"].set(scope or "ACTIVE", "diamond", t["live"])
             self.slots["engagement"].setToolTip("ENGAGEMENT: ACTIVE · %s · scope %s" % (name, scope))
         elif eword == "EXPIRED":
             self.slots["engagement"].set("EXPIRED", "tri", t["alert"])

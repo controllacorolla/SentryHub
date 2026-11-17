@@ -205,10 +205,8 @@ class OpsHome(PalisadeApp):
         hv = QtWidgets.QVBoxLayout(hero)
         hv.setContentsMargins(0, 0, 0, 0)
         hv.setSpacing(8)
-        hhead = QtWidgets.QHBoxLayout()
-        hhead.addWidget(micro("Situation · all feeds"))
-        hhead.addStretch(1)
-        hv.addLayout(hhead)
+        # device notes 2026-11-17 (maps too small): the caption sits on the count's row instead of
+        # a row of its own, so the scope gets that height back
         stat = QtWidgets.QHBoxLayout()
         self.big = QtWidgets.QLabel("—")
         self.big.setProperty("class", "hero")
@@ -221,6 +219,7 @@ class OpsHome(PalisadeApp):
         col.addWidget(self.sub)
         stat.addLayout(col)
         stat.addStretch(1)
+        stat.addWidget(micro("Situation · all feeds"), 0, QtCore.Qt.AlignTop)
         hv.addLayout(stat)
         self.ppi = PpiScope(span_nm=80, mode=self.mode)
         self._home_cover = Cover(self.ppi, "offline", "HOME NOT SET",
@@ -256,6 +255,10 @@ class OpsHome(PalisadeApp):
         two.addWidget(self.mini_pwr[0])
         rv.addLayout(two)
         row.addWidget(rail)
+        self._rail_w = rail
+        # F / the corner toggle hides the rail: the scope then runs the full width (more of the
+        # picture east-west; the rings are sized by height)
+        self.make_collapsible(self.ppi, [rail])
 
         eventbus.bus.published.connect(self._on_event)
         from . import panels
@@ -304,7 +307,15 @@ class OpsHome(PalisadeApp):
         if batt is not None:
             self.mini_pwr[1].setText("%d%%" % batt)
 
+    def side_changed(self, hidden):
+        if hidden:
+            self._hero.setMaximumWidth(16777215)
+        else:
+            self._fit_scope()
+
     def _fit_scope(self):
+        if self.side_hidden():
+            return
         side = self.ppi.height()
         if side > 0 and self._hero.maximumWidth() != max(360, side):
             self._hero.setMaximumWidth(max(360, side))

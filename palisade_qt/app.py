@@ -283,8 +283,45 @@ class PalisadeApp(QtWidgets.QWidget):
         return False
 
     def handle_key(self, text):
-        """Page-specific keys ('[' ']' '+' '-' ' '). Return True if handled."""
+        """Page-specific keys ('[' ']' '+' '-' ' ' 'f'). Return True if handled."""
+        if text == "f":
+            return self.toggle_side()
         return False
+
+    # ---- collapsible side panels on map pages (device notes 2026-11-17) ----
+    # Layout only: hiding a panel never stops a worker, a feed or a radio; the widgets keep
+    # updating while hidden and reappear as they are.
+    _side_widgets = ()
+    _side_toggle = None
+    _side_hidden = False
+
+    def make_collapsible(self, target, widgets):
+        """target: the map / scope the F toggle sits on. widgets: what F hides so it gets the width.
+        The page's sub-tab rail (or its host's) is hidden with them."""
+        from .kit.components import SideToggle
+        self._side_widgets = tuple(widgets)
+        self._side_toggle = SideToggle(target)
+        self._side_toggle.clicked.connect(lambda _=False: self.toggle_side())
+
+    def side_hidden(self):
+        return bool(self._side_hidden)
+
+    def toggle_side(self, hide=None):
+        """F: hide / show the side panels. Returns False on a page without a map."""
+        if not self._side_widgets:
+            return False
+        self._side_hidden = (not self._side_hidden) if hide is None else bool(hide)
+        for w in self._side_widgets:
+            w.setVisible(not self._side_hidden)
+        for rail in (self._rail, getattr(self._host, "_rail", None)):
+            if rail is not None:
+                rail.setVisible(not self._side_hidden)
+        self._side_toggle.set_hidden_state(self._side_hidden)
+        self.side_changed(self._side_hidden)
+        return True
+
+    def side_changed(self, hidden):
+        """Hook for pages that size their map themselves (OPS's round scope)."""
 
     def on_gate_changed(self):
         """The shell calls this when the engagement / TX state changes."""
@@ -612,6 +649,8 @@ class CompositeApp(PalisadeApp):
         self.stack.setCurrentWidget(c)
         if sub is not None and c.current_subtab() != sub:
             c.switch_subtab(sub)
+        if self._rail is not None:          # a tab without a map always shows the rail
+            self._rail.setVisible(not c.side_hidden())
         self._push_active()
         self._sync_rail()
         self._render_status(c._last_status)

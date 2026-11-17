@@ -790,6 +790,7 @@ KEYMAP = [
     ("E", "ENGAGEMENT panel"),
     ("A", "alerts drawer"),
     ("M", "mute"),
+    ("F", "full map: hide / show the side panels (OPS, ATLAS)"),
     ("?", "this key map"),
     ("Shift+Esc  (or F12)", "PANIC — disarm TX, end the engagement, kill child processes"),
     ("Tab", "move focus between controls"),
