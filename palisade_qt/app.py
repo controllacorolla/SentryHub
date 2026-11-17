@@ -283,8 +283,48 @@ class PalisadeApp(QtWidgets.QWidget):
         return False
 
     def handle_key(self, text):
-        """Page-specific keys ('[' ']' '+' '-' ' '). Return True if handled."""
+        """Page-specific keys ('[' ']' '+' '-' ' ' 'f'). Return True if handled."""
+        if text == "f":
+            return self.toggle_side()
         return False
+
+    # ---- collapsible side panels on map pages (device notes 2026-11-17) ----
+    # Layout only: hiding a panel never stops a worker, a feed or a radio; the widgets keep
+    # updating while hidden and reappear as they are.
+    _side_widgets = ()
+    _side_toggle = None
+    _side_hidden = False
+
+    def make_collapsible(self, target, widgets):
+        """target: the map / scope the F toggle sits on. widgets: what F hides so it gets the width.
+        The page's sub-tab rail (or its host's) is hidden with them."""
+        from .kit.components import SideToggle
+        self._side_widgets = tuple(widgets)
+        self._side_toggle = SideToggle(target)
+        self._side_toggle.clicked.connect(lambda _=False: self.toggle_side())
+
+    def side_hidden(self):
+        return bool(self._side_hidden)
+
+    def toggle_side(self, hide=None):
+        """F: hide / show the side panels. Returns False on a page without a map."""
+        if not self._side_widgets:
+            return False
+        self._side_hidden = (not self._side_hidden) if hide is None else bool(hide)
+        for w in self._side_widgets:
+            w.setVisible(not self._side_hidden)
+        for rail in (self._rail, getattr(self._host, "_rail", None)):
+            if rail is not None:
+                rail.setVisible(not self._side_hidden)
+        self._side_toggle.set_hidden_state(self._side_hidden)
+        self.side_changed(self._side_hidden)
+        win = self.window()
+        if hasattr(win, "set_nav_hidden"):
+            win.set_nav_hidden(self._side_hidden)    # the page rail goes too: map near full width
+        return True
+
+    def side_changed(self, hidden):
+        """Hook for pages that size their map themselves (OPS's round scope)."""
 
     def on_gate_changed(self):
         """The shell calls this when the engagement / TX state changes."""
@@ -295,10 +335,10 @@ class PalisadeApp(QtWidgets.QWidget):
         return []
 
     # ---- page-owned status (never the top strip) ----
-    def set_chip(self, key, text=None, state=None, ok=None):
+    def set_chip(self, key, text=None, state=None, ok=None, tip=None):
         if state is None:
             state = "ok" if ok else "neutral"
-        self._last_status[key] = {"text": text, "state": state, "ok": ok}
+        self._last_status[key] = {"text": text, "state": state, "ok": ok, "tip": tip}
         if self._host is not None:
             self._host._child_status(self)
         else:
@@ -322,6 +362,7 @@ class PalisadeApp(QtWidgets.QWidget):
                 self._status_labels[key] = lbl
                 self._status_lay.insertWidget(self._status_lay.count() - 1, lbl)
             lbl.setText(v.get("text") or "")
+            lbl.setToolTip(v.get("tip") or v.get("text") or "")
             lbl.setVisible(bool(v.get("text")))
             cls = _STATE_CLASS.get(v.get("state") or "neutral", "pstat")
             if lbl.property("class") != cls:
@@ -612,9 +653,18 @@ class CompositeApp(PalisadeApp):
         self.stack.setCurrentWidget(c)
         if sub is not None and c.current_subtab() != sub:
             c.switch_subtab(sub)
+        if self._rail is not None:          # a tab without a map always shows the rail
+            self._rail.setVisible(not c.side_hidden() and self._active)
+        win = self.window()
+        if hasattr(win, "set_nav_hidden") and win is not self:
+            win.set_nav_hidden(c.side_hidden())
         self._push_active()
         self._sync_rail()
         self._render_status(c._last_status)
+
+    def side_hidden(self):
+        c = self.current_child()
+        return c.side_hidden() if c is not None else False
 
     def _child_switched(self, child):
         """A child changed its own view (a test, the palette): follow it on the rail."""

@@ -20,6 +20,7 @@ from .app import PalisadeApp
 from . import theme, eventbus
 from .kit import card, micro, PpiScope
 from .kit.components import note, Cover
+from .kit import tracksym
 from .worker import Worker
 
 # The eight page keys, in key order (1-8), each with the function label shown beside the callsign
@@ -28,7 +29,7 @@ from .worker import Worker
 ALL_CALLSIGNS = [
     ("OPS", "home"), ("ATLAS", "map"), ("PRISM", "spectrum"), ("PROWL", "listen"),
     ("SWEEP", "sweep"), ("RECON", "survey"), ("FORGE", "hardware"),
-    ("SYSTEM", "settings"),
+    ("SYSTEM", "settings"), ("ASSISTANT", "ask"), ("MESH", "lora"),
 ]
 # v0.1 launch line (owner, 2026-11-16): SWEEP is hidden until CL7 validates its detectors.
 # Its code stays; the strip, the keys and the palette do not offer it.
@@ -193,6 +194,7 @@ class OpsHome(PalisadeApp):
         self._contacts = {}
         self._selected = None
         self._decodes = []
+        self._trails = {}
         self._decode_times = deque()          # H14: real decode timestamps, last 60 s
 
         body = QtWidgets.QWidget()
@@ -205,10 +207,8 @@ class OpsHome(PalisadeApp):
         hv = QtWidgets.QVBoxLayout(hero)
         hv.setContentsMargins(0, 0, 0, 0)
         hv.setSpacing(8)
-        hhead = QtWidgets.QHBoxLayout()
-        hhead.addWidget(micro("Situation · all feeds"))
-        hhead.addStretch(1)
-        hv.addLayout(hhead)
+        # device notes 2026-11-17 (maps too small): the caption sits on the count's row instead of
+        # a row of its own, so the scope gets that height back
         stat = QtWidgets.QHBoxLayout()
         self.big = QtWidgets.QLabel("—")
         self.big.setProperty("class", "hero")
@@ -221,6 +221,8 @@ class OpsHome(PalisadeApp):
         col.addWidget(self.sub)
         stat.addLayout(col)
         stat.addStretch(1)
+        # short: the sub-line beside it needs the room (RA-UIP L1)
+        stat.addWidget(micro("All feeds"), 0, QtCore.Qt.AlignTop)
         hv.addLayout(stat)
         self.ppi = PpiScope(span_nm=80, mode=self.mode)
         self._home_cover = Cover(self.ppi, "offline", "HOME NOT SET",
@@ -246,7 +248,7 @@ class OpsHome(PalisadeApp):
         rv.addWidget(self.card_prism)
         self.card_babel = RailCard("DECODES · latest", self.mode)
         rv.addWidget(self.card_babel, 1)
-        self.card_alert = RailCard("ALERTS · press A for history + acknowledge", self.mode)
+        self.card_alert = RailCard("ALERTS · A = history + ack", self.mode)
         rv.addWidget(self.card_alert, 1)
         two = QtWidgets.QHBoxLayout()
         two.setSpacing(9)
@@ -256,6 +258,10 @@ class OpsHome(PalisadeApp):
         two.addWidget(self.mini_pwr[0])
         rv.addLayout(two)
         row.addWidget(rail)
+        self._rail_w = rail
+        # F / the corner toggle hides the rail: the scope then runs the full width (more of the
+        # picture east-west; the rings are sized by height)
+        self.make_collapsible(self.ppi, [rail])
 
         eventbus.bus.published.connect(self._on_event)
         from . import panels
@@ -288,9 +294,14 @@ class OpsHome(PalisadeApp):
             # geo-native contact -> local nm frame shared with ATLAS's map
             x, y = eventbus.to_xy(pl["lat"], pl["lon"])
             self._contacts[pl["id"]] = {
-                "id": pl["id"], "x": x, "y": y, "label": pl.get("label", pl["id"]),
+                "id": pl["id"], "x": x, "y": y, "lat": pl["lat"], "lon": pl["lon"],
+                "label": pl.get("label", pl["id"]),
                 "severity": ev["severity"], "_ts": ev["ts"], "rng": math.hypot(x, y),
-                "mil": pl.get("mil", False)}
+                "mil": pl.get("mil", False), "kind": pl.get("kind"), "track": pl.get("track"),
+                "spd": pl.get("spd"), "alt": pl.get("alt"), "category": pl.get("category"),
+                "dbflags": pl.get("dbflags"), "trust": pl.get("trust"),
+                "course": pl.get("course"), "emergency": pl.get("emergency")}
+            tracksym.push_trail(self._trails, pl["id"], x, y)
         elif et == "decode" and pl.get("kind") == "telemetry":
             self._telemetry(pl)
         elif et == "decode":
@@ -304,7 +315,15 @@ class OpsHome(PalisadeApp):
         if batt is not None:
             self.mini_pwr[1].setText("%d%%" % batt)
 
+    def side_changed(self, hidden):
+        if hidden:
+            self._hero.setMaximumWidth(16777215)
+        else:
+            self._fit_scope()
+
     def _fit_scope(self):
+        if self.side_hidden():
+            return
         side = self.ppi.height()
         if side > 0 and self._hero.maximumWidth() != max(360, side):
             self._hero.setMaximumWidth(max(360, side))
@@ -318,11 +337,25 @@ class OpsHome(PalisadeApp):
         now = time.time()
         live = [c for c in self._contacts.values() if now - c.get("_ts", 0) < STALE_S]
         self._contacts = {c["id"]: c for c in live}
+        self._trails = {k: v for k, v in self._trails.items() if k in self._contacts}
         if self._selected not in self._contacts:
             self._selected = None
+        frame = eventbus.home()
+        if frame != getattr(self, "_frame", frame):
+            # HOME moved (GPS follow, or SETTINGS): re-project what is known, restart the trails
+            for c in live:
+                if c.get("lat") is not None:
+                    x, y = eventbus.to_xy(c["lat"], c["lon"])
+                    c.update(x=x, y=y, rng=math.hypot(x, y))
+            self._trails = {}
+        self._frame = frame
         no_home = not self.demo and not eventbus.home_set()
         self._home_cover.show(no_home)               # N26: no rings from a guessed origin
-        self.ppi.set_contacts([] if no_home else live, selected=self._selected)
+        h = eventbus.home() or (self.demo and eventbus.DEMO_HOME) or None
+        if h and not no_home:
+            self.ppi.set_home(h[0], h[1])            # imagery under the scope (no-op if unchanged)
+        self.ppi.set_contacts([] if no_home else live, selected=self._selected,
+                              trails=self._trails)
         n = len(live)
         if n:
             self.big.setText(str(n))
