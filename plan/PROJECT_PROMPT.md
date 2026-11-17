@@ -73,8 +73,9 @@ CONVENTIONS (match existing code — read overwatch.py, devterm.py, sky_app.py)
 
 CONSTRAINTS
   - Receive-first; any TX stays behind txguard (ham/ISM/conducted only, protected bands denied).
-    Do not route around it, do not add OTA attack/jam/deauth capability. jammer.py / imsicatch.py
-    are DETECTORS (keep).
+    Do not route around it. Targeted Wi-Fi deauth is a gated capability (active engagement,
+    in-scope AP + client, TX armed, chain record — owner 2026-11-17); broadband RF jamming is not
+    built. jammer.py / imsicatch.py are DETECTORS (keep).
   - No kernel-hold / firewall / SSH / sudoers changes; no full-system apt upgrades.
   - Data/config path name stays `uconsole-suite`.
 

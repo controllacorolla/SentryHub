@@ -151,10 +151,15 @@ class GatedTool(QtWidgets.QFrame):
     (runpane.RunPane) hands the ticket the gate produced to the executor through that pane, which
     starts the real tool and streams its output. A card without one (BLEPENT, PASSAUDIT — v0.2)
     still only shows the authorized command. `extra()` supplies the engine's further prepare()
-    arguments (Wi-Fi interface / channel / client) — the ENGINE still builds and gates the argv."""
+    arguments (Wi-Fi interface / channel / client) — the ENGINE still builds and gates the argv.
+
+    DEAUTH (owner decision 2026-11-17: targeted deauth is a gated capability): `runners` maps an
+    action to its own pane, so a short deauth can run while a handshake capture keeps running on
+    the card's main pane (the capture is what the deauth is for). Each pane runs one process; the
+    gate and the executor are the same for both."""
 
     def __init__(self, title, domain, prepare_fn, actions, app, tok, target_hint="target",
-                 parent=None, runner=None, extra=None, fields=None):
+                 parent=None, runner=None, extra=None, fields=None, runners=None):
         super().__init__(parent)
         self.setProperty("class", "card")
         self._prepare = prepare_fn
@@ -162,6 +167,8 @@ class GatedTool(QtWidgets.QFrame):
         self._tok = tok
         self._domain = domain
         self._runner = runner
+        self._runners = dict(runners or {})
+        self._last_pane = None
         self._extra = extra
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(12, 10, 12, 10)
@@ -183,6 +190,7 @@ class GatedTool(QtWidgets.QFrame):
                 frow.addWidget(w, 1)
             lay.addLayout(frow)
         self._btns = []
+        self._acts = list(actions)
         brow = QtWidgets.QHBoxLayout()
         for act in actions:
             b = QtWidgets.QPushButton(act.upper())
@@ -198,24 +206,35 @@ class GatedTool(QtWidgets.QFrame):
         lay.addWidget(self.result)
         from . import chrome
         chrome.gate_signals().changed.connect(self.refresh)      # follows the engine (G12)
-        if runner is not None:
-            runner.finished.connect(self._run_finished)
+        for pane in self._panes():
+            pane.finished.connect(lambda h, pane=pane: self._run_finished(pane))
         self.refresh()
 
-    def _run_finished(self, h):
+    def _runner_for(self, action):
+        return self._runners.get(action, self._runner)
+
+    def _panes(self):
+        out = []
+        for pane in [self._runner] + list(self._runners.values()):
+            if pane is not None and pane not in out:
+                out.append(pane)
+        return out
+
+    def _run_finished(self, pane):
         """The card's last line follows the process: never 'RUNNING' after it has ended."""
         txt = self.result.text()
-        if "RUNNING — output below" in txt:
+        if "RUNNING — output below" in txt and self._last_pane is pane:
             self.result.setText(txt.replace("RUNNING — output below",
-                                            "ENDED — %s" % self._runner.state.text()))
+                                            "ENDED — %s" % pane.state.text()))
         self.refresh()
 
     def refresh(self):
         eng = _engagement()
         active = eng.is_active()
-        busy = self._runner is not None and self._runner.running()
-        for b in self._btns:
-            b.setEnabled(active and not busy)          # one process per card; STOP is on the pane
+        for b, act in zip(self._btns, self._acts):
+            pane = self._runner_for(act)
+            busy = pane is not None and pane.running()
+            b.setEnabled(active and not busy)          # one process per pane; STOP is on the pane
         self.target.setEnabled(active)
         for _label, w in self._fields:
             w.setEnabled(active)
@@ -237,7 +256,8 @@ class GatedTool(QtWidgets.QFrame):
         if not target:
             self.result.setText("enter a %s first" % self._domain)
             return
-        if self._runner is not None and self._runner.running():
+        runner = self._runner_for(action)
+        if runner is not None and runner.running():
             self.result.setText("a tool is already running — STOP it first")
             return
         kw = {}
@@ -255,14 +275,15 @@ class GatedTool(QtWidgets.QFrame):
             return
         self.result.setStyleSheet("color:%s;" % self._tok["warn"])        # AUTHORIZED is amber (D9)
         bind = " · LABEL-ONLY authorization" if ticket.binding == "label-only" else ""
-        if self._runner is None:
+        if runner is None:
             self.result.setText("AUTHORIZED: %s\n$ %s\n(single-use ticket%s — runs only through "
                                 "the executor; execution is v0.2)" % (why, ticket.display(), bind))
             self._app.on_authorized(self._domain, action, target, list(ticket.argv or ()))
             return
         self._app.on_authorized(self._domain, action, target, list(ticket.argv or ()))
         self._app.prepare_run(ticket)
-        started, msg = self._runner.run(ticket, spawner=self._app._spawner())
+        self._last_pane = runner
+        started, msg = runner.run(ticket, spawner=self._app._spawner())
         self.result.setText("AUTHORIZED: %s%s\n$ %s\n%s" % (
             why, bind, ticket.display(),
             "RUNNING — output below" if started else "NOT RUN: %s" % msg))
@@ -802,12 +823,17 @@ class ReconApp(PalisadeApp):
         self.wifi_client = QtWidgets.QLineEdit()
         self.wifi_client.setPlaceholderText("deauth only")
         self.wifi_run = RunPane("WIFIPENT", self._tok)
+        # DEAUTH: its own pane, so it can fire while the handshake capture keeps running
+        self.wifi_deauth_run = RunPane("DEAUTH", self._tok)
+        self.wifi_deauth_run.out.setPlaceholderText(
+            "deauth output — gated: engagement, AP + client in scope, TX armed")
         self.wifi_gated = GatedTool("WIFIPENT", "BSSID", wifipent.prepare,
                                     ["deauth", "pmkid", "handshake"], self, self._tok,
                                     "target BSSID (aa:bb:cc:dd:ee:ff)", runner=self.wifi_run,
                                     extra=self._wifi_extra,
                                     fields=[("IFACE", self.wifi_iface), ("CH", self.wifi_chan),
-                                            ("CLIENT", self.wifi_client)])
+                                            ("CLIENT", self.wifi_client)],
+                                    runners={"deauth": self.wifi_deauth_run})
         self._gated.append(self.wifi_gated)
         self.wifi_feed.selected.connect(self._wifi_pick)
         right = QtWidgets.QVBoxLayout()
@@ -821,7 +847,8 @@ class ReconApp(PalisadeApp):
         self.wifi_hw.setProperty("class", "note")
         self.wifi_hw.setWordWrap(True)
         right.addWidget(self.wifi_hw)
-        right.addWidget(self.wifi_run, 1)
+        right.addWidget(self.wifi_run, 2)
+        right.addWidget(self.wifi_deauth_run, 1)
         split.addLayout(right, 2)
         pl.addLayout(split, 1)
         return page
@@ -968,7 +995,7 @@ class ReconApp(PalisadeApp):
             os.makedirs(d, exist_ok=True)
 
     def run_panes(self):
-        return [self.wifi_run, self.net_run]
+        return [self.wifi_run, self.wifi_deauth_run, self.net_run]
 
     def on_authorized(self, domain, action, target, argv):
         """An active tool produced an authorized command. Announce it; the trail is in the
@@ -1061,7 +1088,8 @@ class ReconApp(PalisadeApp):
     def stop(self):
         if self._stopped:
             return
-        for pane in (getattr(self, "wifi_run", None), getattr(self, "net_run", None)):
+        for pane in (getattr(self, "wifi_run", None), getattr(self, "wifi_deauth_run", None),
+                     getattr(self, "net_run", None)):
             if pane is not None and pane.running():
                 pane.stop("RECON closed")          # recorded kill + exit, like BENCH
         for w in getattr(self, "_workers", []):

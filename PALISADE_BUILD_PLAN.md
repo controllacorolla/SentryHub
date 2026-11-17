@@ -105,8 +105,9 @@ missing `flask` in a bare env — install it in CI rather than ignoring.)
 **Detector check (resolves review C1):** confirm by reading that `jammer.py` and
 `imsicatch.py` have **no TX path** — they're detectors, and that's the acceptance criterion
 for keeping them. Everything that transmits stays behind `txguard` (ham/ISM/conducted, the
-"TX SAFE" chip in the chrome), protected bands denied. No OTA attack/jam/deauth built or
-extended.
+"TX SAFE" chip in the chrome), protected bands denied. Targeted Wi-Fi deauth is a gated
+capability (engagement + in-scope AP and client + TX armed + chain record; owner 2026-11-17).
+Broadband RF jamming is not built.
 
 ---
 
@@ -246,8 +247,9 @@ a pytest-qt open/close smoke test for the screen · scoped to its cluster, no dr
 
 ## 11. Standing guardrails
 Receive-first; TX only behind `txguard` (ham/ISM/conducted, protected bands denied; "TX SAFE"
-chip, never an "RX-only" badge). `jammer`/`imsicatch` are detectors — keep, verify no TX. No
-OTA attack/jam/deauth built or extended. No kernel-hold / firewall / SSH / sudoers changes; no
+chip, never an "RX-only" badge). `jammer`/`imsicatch` are detectors — keep, verify no TX.
+Targeted Wi-Fi deauth is gated, not banned (see CLAUDE.md); broadband RF jamming is not built.
+No kernel-hold / firewall / SSH / sudoers changes; no
 full-system apt upgrades. Data/config path stays `uconsole-suite`.
 
 ---
