@@ -112,3 +112,12 @@ Screenshot: Dalton's upload 2026-11-17 04:47 MT.
    lands first, merge main into the branch (system.py identical on both, expect no conflict).
    Low follow-ups: N1 wrong-typed profile values written back corrected; N2 field keeps lowercase
    after a callsign save; N3 corrupt operator.json reset not named in the save message.
+9. 2026-11-17 SCAN cluster (thread "Make Wi-Fi and Bluetooth scans work"): PR #25, branch
+   `claude/project-thread-08f65f`, **stacked on #24** (merge #24 first, then #25 shows only SCAN).
+   RA-SCAN DO NOT MERGE (11 findings) → SCAN-fix → **RA-SCANb MERGE** (47fa6ff). Live Wi-Fi via
+   nmcli fallback (labelled ACTIVE), live BLE (bleak / bluetoothctl), ATLAS Remote-ID active
+   fallback (bluetoothd lacks --experimental), rtl-sdr in installer, doctor Wi-Fi/BLE checks.
+   Owner decisions open: setcap cap_net_admin on iw (passive Wi-Fi); bluetoothd --experimental
+   (passive Remote-ID). Follow-ups in plan/briefs/SCAN-report.md (B1 Med rid note chip never
+   clears, N5, N8, B2–B7). Still-placeholder scans: SWEEP bugsweep/jammer/gnss/imsicatch, FORGE
+   SENSORS/CAN, RECON RF RFFINGER/SCOUT — next: SWEEP gnss (gpsd) + SCOUT.
