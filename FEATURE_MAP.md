@@ -428,3 +428,114 @@ All tools come in. Active assessment gated behind engagement.py (authorization),
 (operator identity), and txguard (TX safety on protected bands). Do not route around these
 gates. No kernel/firewall/SSH changes; keep the `uconsole-suite` data path; legacy Tk app
 stays as fallback until parity.
+
+---
+
+# Tool scope — the full pentest + SIGINT toolkit (authorized, gated)
+
+**Standing scope decision (owner, 2026-11-17): every tool below is IN SCOPE. Nothing is removed
+from scope without the owner's explicit authorization.** Active tools stay gated behind
+`engagement.py` (authorization + typed scope), `opprofile.py` (operator identity) and, for any RF
+emission, `txguard`. Adding a tool here is a *catalog* decision; wiring its execution into the Qt
+UI is a separate step (the executor cluster, PR #27+). A tool being installed never bypasses a
+gate — an active tool still returns no runnable ticket without an open, in-scope engagement.
+
+Columns: **Page** = the callsign/module that owns it · **P/A** = Passive (receive/read only) or
+Active (touches a target → engagement-gated) · **HW** = extra hardware beyond the uConsole + onboard
+RTL-SDR + onboard BT · **Install (arm64)** = how it lands on the uConsole (Debian 13 "trixie"
+arm64), verified against the trixie `Packages`/`Contents` index on 2026-11-17 unless marked.
+
+Verification key: ✓ = present in Debian trixie arm64 apt (name confirmed in the index) ·
+pip/go/cargo = confirmed on PyPI / proxy.golang.org / crates.io · src = upstream source build
+(no arm64 package) · ⚠ = not re-verified this pass, treat as a lead.
+
+## Network (RECON · NET) — module `netpent.py`
+| Tool | P/A | HW | Install (arm64) |
+|---|---|---|---|
+| nmap | A | — | apt `nmap` ✓ (installed) |
+| arp-scan | A | — | apt `arp-scan` ✓ |
+| tcpdump | P | — | apt `tcpdump` ✓ |
+| tshark | P | — | apt `tshark` ✓ — but its install asks a debconf question (wireshark group); **not** auto-installed unattended, documented manual step. `tcpdump` covers pcap. |
+| nbtscan | A | — | apt `nbtscan` ✓ |
+| netdiscover | A/P | — | apt `netdiscover` ✓ (ARP, has passive mode) |
+| masscan | A | — | apt `masscan` ✓ |
+| smbmap | A | — | apt `smbmap` ✓ |
+| impacket (secretsdump/wmiexec/… ) | A | — | apt `python3-impacket` ✓ (ships `impacket-*` in /usr/bin) |
+| enum4linux-ng | A | — | pip `enum4linux-ng` (not in apt) |
+| netexec (nxc) | A | — | pipx/pip `netexec` (not in apt) |
+| hydra | A | — | apt `hydra` ✓ |
+| Responder | P analyze / **A poison** | — | **src**: git `github.com/lgandx/Responder` (not in apt, no pip). Poisoning is broadcast-scope — see the guardrail note below. |
+| bettercap | A | USB Wi-Fi for Wi-Fi/360 features | apt `bettercap` ✓ |
+| mitmproxy | A | — | pip `mitmproxy` (12.x, py3-none-any; `mitmproxy_rs` has an aarch64 manylinux wheel) |
+
+## Web (RECON · NET/WEB) — module `netpent.py` (web catalog)
+| Tool | P/A | HW | Install (arm64) |
+|---|---|---|---|
+| nikto | A | — | apt `nikto` ✓ **(non-free component)** — skipped by the installer if non-free is not enabled |
+| sqlmap | A | — | apt `sqlmap` ✓ |
+| whatweb | A | — | apt `whatweb` ✓ |
+| gobuster | A | — | apt `gobuster` ✓ |
+| ffuf | A | — | apt `ffuf` ✓ |
+| feroxbuster | A | — | cargo `feroxbuster` 2.14 / GitHub release (not in apt) |
+| nuclei | A | — | go `github.com/projectdiscovery/nuclei/v3` 3.11 / GitHub release (not in apt) |
+| testssl.sh | A (TLS) | — | apt `testssl.sh` ✓ (binary `testssl`) |
+
+## Wireless Wi-Fi (RECON · WIFI) — module `wifipent.py`
+| Tool | P/A | HW | Install (arm64) |
+|---|---|---|---|
+| airodump-ng / aireplay-ng / airmon-ng | P capture / **A deauth** | USB monitor-mode Wi-Fi adapter (onboard radio can't monitor) | apt `aircrack-ng` ✓ (bins in /usr/sbin) |
+| hcxdumptool / hcxtools | A capture | USB monitor-mode adapter | apt `hcxdumptool` ✓ · `hcxtools` ✓ |
+| kismet | P | USB monitor-mode adapter | apt from the official Kismet repo (`kismetwireless.net/repos`, trixie arm64 present); not in Debian apt |
+
+## Wireless Bluetooth/BLE (RECON · BLE) — module `blepent.py`
+| Tool | P/A | HW | Install (arm64) |
+|---|---|---|---|
+| gatttool | A (GATT r/w) | onboard BT | apt `bluez` ✓ (deprecated in newer bluez — `bluetoothctl gatt` is the successor) |
+| hcitool / btmgmt / hciconfig / bluetoothctl | P/A | onboard BT | apt `bluez` ✓ |
+| bluing | P (BT fingerprint) | onboard BT (BLE/LE features may need a specific adapter) | pip `bluing` ⚠ (PyPI listing unconfirmed this pass) |
+| btlejack | A (BLE hijack/sniff) | one–three BBC micro:bit | pip `btlejack` 2.1 (needs micro:bit firmware) |
+
+## RF / SIGINT (PRISM · PROWL · BABEL) — radio modules
+| Tool | P/A | HW | Install (arm64) |
+|---|---|---|---|
+| rtl_433 | P | onboard RTL-SDR | apt `rtl-433` ✓ (installed) |
+| rtlamr (AMR/AMI meters) | P | onboard RTL-SDR (uses rtl_tcp) | go `github.com/bemasher/rtlamr` 0.9.7 (not in apt) |
+| gqrx | P | onboard RTL-SDR | apt `gqrx-sdr` ✓ |
+| inspectrum | P (IQ analysis) | — (file) | apt `inspectrum` ✓ |
+| URH (Universal Radio Hacker) | P/**A replay** | onboard RTL-SDR (TX needs a TX-capable SDR → txguard) | pip `urh` 2.10 (compiles; numpy/cython) — not in apt |
+| dsd-fme (DMR/P25 voice) | P | onboard RTL-SDR | **src**: git `lwvmobile/dsd-fme` (cmake). `dsdcc`/`dsdccx` is in apt ✓ as a lighter alternative. |
+| OP25 (P25 phase 1/2) | P | onboard RTL-SDR | **src**: git `boatbod/op25` (not in apt) |
+
+## NFC / RFID (FORGE · RFID) — module `proxmark.py` + libnfc catalog
+| Tool | P/A | HW | Install (arm64) |
+|---|---|---|---|
+| Proxmark3 client (pm3) | P read / **A write/clone/sim** | Proxmark3 device | **src**: git `RfidResearchGroup/proxmark3` (make; not in apt) |
+| libnfc (nfc-list/nfc-poll) | P | PN532 or libnfc-supported reader | apt `libnfc-bin` ✓ · `libnfc-examples` ✓ |
+| mfoc | A (MIFARE Classic key recovery) | PN532 | apt `mfoc` ✓ |
+| mfcuk | A (MIFARE Classic key recovery) | PN532 | apt `mfcuk` ✓ |
+
+## Hardware bus (FORGE · BUS / CAN) — modules `buslab.py` `canbus.py`
+| Tool | P/A | HW | Install (arm64) |
+|---|---|---|---|
+| sigrok-cli / PulseView | P (logic analysis) | logic analyzer | apt `sigrok-cli` ✓ · `pulseview` ✓ |
+| flashrom | P probe/read / **A write** | SPI programmer (CH341A etc.) | apt `flashrom` ✓ |
+| openocd | P scan / **A write** | JTAG/SWD adapter | apt `openocd` ✓ |
+| picocom (UART console) | P | USB-UART adapter | apt `picocom` ✓ (also `minicom`/`screen` ✓) |
+| can-utils (candump/cansend) | P dump / **A send** | SocketCAN adapter | apt `can-utils` ✓ |
+
+## OSINT / support (SYSTEM / cross-cutting)
+| Tool | P/A | HW | Install (arm64) |
+|---|---|---|---|
+| exiftool | P | — | apt `libimage-exiftool-perl` ✓ (binary `exiftool`) |
+| CeWL (wordlist from a site) | A (crawls target) | — | apt `cewl` ✓ |
+| hashcat | A (offline crack) | — (CM5 GPU too slow — crack off-device) | apt `hashcat` ✓ |
+| aircrack-ng (WPA crack) | A (offline) | — | apt `aircrack-ng` ✓ |
+
+## Guardrail conflicts flagged for the owner (not decided here)
+1. **Deauth** — `wifipent.ALLOWED_PROGRAMS` includes `aireplay-ng` and the module builds a capped,
+   targeted `--deauth` (never broadcast/flood). `CLAUDE.md` forbids "deauth/jamming." These
+   conflict. Left **as-is** per the cluster brief; **owner's call** to keep the capped deauth or drop it.
+2. **Responder poisoning** — analyze mode is passive and scope-safe. Poisoning answers *all* broadcast
+   LLMNR/NBT-NS/mDNS queries on the segment; it cannot be bound to a typed target, so under the
+   engagement model it is at best label-only and is broadcast-affecting (same class as deauth).
+   Catalogued as **analyze/passive** only; poisoning is **owner's call** before it gets a builder.

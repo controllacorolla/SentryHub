@@ -14,7 +14,21 @@ import engagement
 
 # CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
 # a bare name). engagement.issue refuses anything else.
-ALLOWED_PROGRAMS = frozenset(("nmap", "arp-scan"))
+# Scope catalogue (owner decision 2026-11-17, "all tools in scope"): active network + web
+# enumeration tools. Each is engagement-gated by catalog_prepare() exactly like nmap/arp-scan;
+# this is a GATE CATALOG, not execution wiring — no attack-specific flags are baked in here, and a
+# tool returns no runnable ticket without an open, in-scope engagement.
+_NET_CATALOG = frozenset((
+    "nbtscan", "netdiscover", "masscan", "smbmap", "enum4linux-ng", "netexec", "nxc",
+    "hydra", "bettercap", "mitmproxy",
+    "impacket-secretsdump", "impacket-wmiexec", "impacket-samrdump", "impacket-rpcdump",
+    "impacket-netview",
+))
+_WEB_CATALOG = frozenset((
+    "nikto", "sqlmap", "whatweb", "gobuster", "ffuf", "feroxbuster", "nuclei", "testssl", "cewl",
+))
+CATALOG_PROGRAMS = _NET_CATALOG | _WEB_CATALOG
+ALLOWED_PROGRAMS = frozenset(("nmap", "arp-scan")) | CATALOG_PROGRAMS
 
 
 def _ping_sweep_argv(cidr):
@@ -73,6 +87,33 @@ def prepare(action, target, evidence_chain=None, ports="1-1024"):
     argv = argv[:-1] + addrs                        # every builder ends with its target
     label = "net:" + action + ((":" + t) if pinned else "")
     return engagement.issue("net:" + action, addrs[0], argv=argv, kind="ip",
+                            evidence_chain=evidence_chain, label=label,
+                            also=tuple((a, "ip") for a in addrs[1:]))
+
+
+def catalog_prepare(tool, target, args=(), evidence_chain=None):
+    """Gate + build a catalogued active RECON tool (CATALOG_PROGRAMS) against an in-scope host/IP.
+    Returns (ok, reason, ticket). Same gate as prepare(): the target must sit inside the open
+    engagement's typed IP scope (a hostname is pinned to its resolved addresses, every one
+    re-checked at spawn). `args` are extra, already-plain tokens the caller supplies; no
+    attack-specific flags are baked in here. Out of scope — or with no engagement — the gate
+    returns (False, reason, None) and no ticket."""
+    if tool not in CATALOG_PROGRAMS:
+        return False, "%r is not a catalogued RECON tool" % (tool,), None
+    toks = [str(a) for a in (args or ())]
+    if any((not a) or a != a.strip() for a in toks):
+        return False, "extra arguments must be plain, non-empty tokens", None
+    t = str(target).strip()
+    if t.startswith("-"):
+        return False, "target %r looks like an option" % (target,), None
+    try:
+        pinned = engagement.pin_host(t)
+    except ValueError as e:
+        return False, "refused: %s" % e, None
+    addrs = pinned or [t]
+    argv = [tool] + toks + addrs
+    label = "recon:" + tool + ((":" + t) if pinned else "")
+    return engagement.issue("recon:" + tool, addrs[0], argv=argv, kind="ip",
                             evidence_chain=evidence_chain, label=label,
                             also=tuple((a, "ip") for a in addrs[1:]))
 
