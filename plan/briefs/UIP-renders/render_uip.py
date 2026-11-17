@@ -28,7 +28,8 @@ def contacts():
     for i, (cid, lab, x, y) in enumerate((("a1", "UAL123", 20, 30), ("a2", "N512SP", -35, 10),
                                           ("a3", "SWA88", 50, -40))):
         eventbus.bus.publish(eventbus.contact("ADS-B", cid, 39.7 + y / 60, -104.9 + x / 60 / 0.77,
-                                              alt=12000, kind="aircraft", label=lab))
+                                              alt=12000, kind="aircraft", label=lab,
+                                              track=(45, 300, 200)[i], spd=320))
 
 
 def strip_states(hub):
