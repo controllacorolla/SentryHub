@@ -14,6 +14,9 @@ misalign; CL8 device-check test failure.
 
 - **[bug]** SAT basemap shows only "API KEY REQUIRED" placeholder tiles. `palisade_qt/kit/tiles.py` uses Esri `server.arcgisonline.com/.../World_Imagery`, which now serves a key-required placeholder to keyless clients. The repo already uses a keyless alternative, USGS `basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}` (see `doctor.py:514`). That covers the US only, so it needs a world fallback or an honest "no imagery" state. Also purge the cached placeholder tiles under `~/.cache/palisade/tiles/satellite/`, or they will stick after the fix. Check too: the placeholder text renders upside-down/mirrored, so confirm the `canvas[::-1]` flip doesn't put real tiles upside down. Screenshot: Dalton 22:14. (2026-11-16 22:14)
 
+- **[bug]** Can't pan or zoom the map. `kit/mappanel.py` sets `setMouseEnabled(False, False)` and ATLAS fixes `span_nm=80`, so there's no drag, no wheel/pinch and no zoom keys. Wanted: touch/mouse pan + zoom, plus keys (e.g. +/− like PRISM) and a re-centre-on-HOME control. Tile fetching must follow the view. (2026-11-16 22:17)
+- **[bug]** The basemap shows the wrong place: Dalton set his HOME coords and the map shows "somewhere in a desert". Unconfirmed cause; candidates: (a) longitude entered without the minus sign (Denver area is about 39.7, -104.9; +104.9 lands in China/Mongolia desert); input validation accepts it silently; (b) `tiles.py` `canvas[::-1]` vertical flip, the same suspicion as the upside-down SAT placeholder text; (c) tile x/y vs. nm-extent mapping. Waiting on the exact coords he typed. (2026-11-16 22:17)
+
 ## PRISM
 
 ## PROWL
