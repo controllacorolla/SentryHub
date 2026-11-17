@@ -41,5 +41,10 @@ after-renders fetch real satellite tiles for a Denver HOME with NET=ONLINE).
 - Which other "lumped" apps to split: waiting on Dalton.
 - Device check of everything above on the uConsole (fonts, touch drag, tile speed on the CM5).
 
-## Suite
-See the "Suite result" section below (filled in after the full run).
+## Suite result
+Full run, `fix/ui-polish` @ e314abf, container venv (Python 3.13, PySide6 6.8.2.1, pyqtgraph 0.13.7, no tkinter):
+`QT_QPA_PLATFORM=offscreen xvfb-run -a python -m pytest -q tests` -> **1671 passed, 4 failed, 7 skipped, 7 errors** (27 min).
+- `test_shell.py` 7 errors, `test_audit_tiles::test_undecodable_tile_is_marked_failed`, `test_hwlab::test_doctor_hwbench_check`: container baseline (no tkinter / no hw), same on `fix/cl8-ship`.
+- `test_cl1_screen::test_up_down_drive_the_list_and_the_detail_follows`: fails the same way on `fix/cl8-ship` head d8149b6 when run alone (3/3; demo PROWL rows reorder between key presses). Passed in the previous full run here. Pre-existing timing flake, not this branch.
+- `test_cl5_fix2::test_nh_panic_banner_counts_what_the_pages_stopped`: order-dependent; passes alone on this branch (2/2). Passed in the previous full run.
+- `pyflakes palisade_qt`: clean.
