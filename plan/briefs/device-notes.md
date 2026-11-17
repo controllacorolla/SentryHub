@@ -28,6 +28,8 @@ misalign; CL8 device-check test failure.
 - **[UI]** "Layout is weird" (owner, 22:22 screenshot; specifics pending). Visible in the shot: the right column is a large mostly-empty "WATCHING — no contacts" box over a CONTACT card that still shows an APRS contact (KF0HEG-9, LOST) after the APRS layer was toggled off; layer chips sit in two cramped rows; the left rail (MAP/SKY DOME/PASSES) wastes width next to a too-small map; the Remote-ID error in the bottom status line is truncated ("…requires BlueZ >…"). (2026-11-16 22:22)
 - **[bug]** Confirmed Remote-ID BLE failure text: "Remote-ID BLE scan failed: passive scanning on Linux requires BlueZ >…" (cut off). This is bleak's version/experimental check. Debian 13's BlueZ is new enough, so likely `bluetoothd` lacks `--experimental`. See the earlier BLE entry. Also the error sets MODE to the red ▲ LIVE fault state. (2026-11-16 22:22)
 
+- **[idea]** Track symbology (owner, 22:31): aircraft and other contacts should look like a modern C2 / common-operating-picture display (he cited Anduril's Lattice as the reference look), not dots. Concretely: heading-rotated type icons (aircraft, vessel, drone, balloon, APRS station), a velocity leader line, a short history trail, a compact data block (callsign · alt · speed), and affiliation/threat colouring. Consider MIL-STD-2525/APP-6-style frames. Our own design, no copied branding or assets. Applies to ATLAS and OPS. (2026-11-16 22:31)
+
 ## PRISM
 
 ## PROWL
