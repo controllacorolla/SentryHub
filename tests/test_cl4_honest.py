@@ -719,7 +719,7 @@ def test_n26_no_home_no_range_picture_on_ops_or_atlas():
     o._contacts = {"A": {"id": "A", "_ts": time.time(), "rng": 4.0, "x": 1.0, "y": 1.0,
                          "severity": "info", "label": "A"}}
     plotted = []
-    o.ppi.set_contacts = lambda c, selected=None: plotted.append(list(c))
+    o.ppi.set_contacts = lambda c, selected=None, **_kw: plotted.append(list(c))
     o._refresh_ppi()
     assert o._home_cover.shown() and plotted[-1] == [], "no contact drawn on rings"
     assert "HOME NOT SET" in o._home_cover.empty.text()

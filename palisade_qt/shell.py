@@ -214,6 +214,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
                 self.pages["ATLAS:inner"] = self.pages["ATLAS"].child(inner)
         app = self.pages.get("ATLAS:inner", self.pages["ATLAS"])
         app.start()
+        if hasattr(app, "set_background"):
+            app.set_background(True)
         return True
 
     @staticmethod

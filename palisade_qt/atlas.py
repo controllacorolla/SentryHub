@@ -102,7 +102,6 @@ class _Track:
 
 class AtlasDemoWorker(Worker):
     """Synthetic multi-layer traffic, published to the bus (demo only)."""
-    PAUSE_WHEN_HIDDEN = False        # synthetic; keeps OPS fed while ATLAS is not in front
     _COUNT = {"aircraft": 6, "vessel": 4, "station": 3, "drone": 2, "df": 1, "balloon": 1}
 
     def __init__(self, parent=None):
@@ -633,6 +632,7 @@ class AtlasLiveWorker(Worker):
     def __init__(self, parent=None):
         super().__init__(demo=False, interval_ms=1000, parent=parent)
         self._hidden = False
+        self._background = False     # set by AtlasApp.set_background (the shell's OPS feed)
         self._adsb = None
         self._adsb_tried = False
         self._rid = None
@@ -700,11 +700,13 @@ class AtlasLiveWorker(Worker):
     def step(self):
         self._reconcile_leases()
         if self._hidden:
-            # hidden: the dongle owners, plus (device notes 2026-11-17: OPS stayed empty until
-            # ATLAS was opened) the PASSIVE feeds — files other programs write (readsb's json, the
-            # radiosonde cache, the KrakenSDR output). Nothing new is started: no BLE scan, no lease.
-            self._ensure_sources()
-            self._publish_passive()
+            # hidden: only the dongle owners — plus, when the shell runs ATLAS as OPS's background
+            # feed (device notes 2026-11-17: OPS stayed empty until ATLAS was opened), the PASSIVE
+            # feeds: files other programs write (readsb's json, the radiosonde cache, the KrakenSDR
+            # output). Nothing new is started either way: no BLE scan, no lease.
+            if self._background:
+                self._ensure_sources()
+                self._publish_passive()
             self._step_leases()
             return
         self._ensure_sources()
@@ -901,11 +903,26 @@ class AtlasApp(PalisadeApp):
             return AtlasDemoWorker()
         w = AtlasLiveWorker()
         w._hidden = not self._active             # started while hidden: run as hidden
+        w._background = self._background
         return w
+
+    _background = False          # the shell feeds OPS from this page (start_background_feeds)
+
+    def set_background(self, on=True):
+        """The shell's background feed: keep the DEMO worker running while ATLAS is hidden so OPS
+        has contacts (the live worker runs its passive feeds while hidden by itself). Only the
+        shell sets this; a standalone ATLAS still pauses its demo traffic when hidden."""
+        self._background = bool(on)
+        if self._worker is not None and hasattr(self._worker, "_background"):
+            self._worker._background = self._background
+        self.set_active(self._active)
 
     def set_active(self, active):
         super().set_active(active)
         w = self._worker
+        if self._background and w is not None and hasattr(w, "pause") and \
+                getattr(w, "PAUSE_WHEN_HIDDEN", False):
+            w.pause(False)
         if w is not None and hasattr(w, "set_hidden"):
             w.set_hidden(not active)
 

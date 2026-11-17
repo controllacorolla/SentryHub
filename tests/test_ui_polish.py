@@ -620,6 +620,13 @@ def test_u9_hidden_live_atlas_worker_runs_passive_feeds_only(monkeypatch):
     w = A.AtlasLiveWorker()
     w._hidden = True
     calls = []
+    # not the shell's background feed: hidden publishes nothing new (as before UIP)
+    w._publish_passive = lambda: calls.append("passive")
+    w._ensure_sources = lambda: calls.append("ensure")
+    w.step()
+    assert calls == []
+    del w._publish_passive
+    w._background = True
     monkeypatch.setattr(w, "_ensure_sources", lambda: calls.append("ensure"))
     monkeypatch.setattr(w, "_adsb_contacts", lambda: [eventbus.contact("ADS-B", "H1", 1.0, 2.0,
                                                                         kind="aircraft")])
@@ -733,6 +740,9 @@ def test_u10_atlas_and_ops_draw_tracks_with_leaders_trails_and_a_legend():
     try:
         _page, atlas = _atlas(hub)
         assert atlas.map.legend.isVisible() and "PLANE" in atlas.map.legend.text()
+        # only this test's track (fabrication by a leaked worker is pinned by the live-mode tests)
+        atlas._contacts.clear()
+        hub.ops._contacts.clear()
         for i, (lat, lon) in enumerate(((39.80, -104.80), (39.81, -104.79), (39.82, -104.78))):
             ev = eventbus.contact("ADS-B", "T1", lat, lon, alt=12000, kind="aircraft",
                                   track=45, spd=300, label="T1")
