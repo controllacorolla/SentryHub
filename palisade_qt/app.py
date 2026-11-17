@@ -335,10 +335,10 @@ class PalisadeApp(QtWidgets.QWidget):
         return []
 
     # ---- page-owned status (never the top strip) ----
-    def set_chip(self, key, text=None, state=None, ok=None):
+    def set_chip(self, key, text=None, state=None, ok=None, tip=None):
         if state is None:
             state = "ok" if ok else "neutral"
-        self._last_status[key] = {"text": text, "state": state, "ok": ok}
+        self._last_status[key] = {"text": text, "state": state, "ok": ok, "tip": tip}
         if self._host is not None:
             self._host._child_status(self)
         else:
@@ -362,6 +362,7 @@ class PalisadeApp(QtWidgets.QWidget):
                 self._status_labels[key] = lbl
                 self._status_lay.insertWidget(self._status_lay.count() - 1, lbl)
             lbl.setText(v.get("text") or "")
+            lbl.setToolTip(v.get("tip") or v.get("text") or "")
             lbl.setVisible(bool(v.get("text")))
             cls = _STATE_CLASS.get(v.get("state") or "neutral", "pstat")
             if lbl.property("class") != cls:

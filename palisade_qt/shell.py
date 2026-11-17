@@ -164,6 +164,11 @@ class PalisadeHub(QtWidgets.QMainWindow):
         from .kit.seams import offscreen
         if not offscreen():
             QtCore.QTimer.singleShot(0, self.start_background_feeds)
+        # owner 2026-11-17: HOME follows GPS when there is a trustworthy fix (gpshome.py); the typed
+        # HOME stays the fallback. Never in demo, never under the test seam (tests start it).
+        self.gpshome = None
+        if not demo and not offscreen():
+            self.start_gps_home()
 
         # keyboard: one filter for the whole window (D8)
         QtWidgets.QApplication.instance().installEventFilter(self)
@@ -615,7 +620,17 @@ class PalisadeHub(QtWidgets.QMainWindow):
             self.demo_border.show()
             self.demo_border.raise_()
 
+    def start_gps_home(self, reader=None, enabled=None):
+        from . import gpshome
+        if self.gpshome is None:
+            on = gpshome.follows_gps() if enabled is None else enabled
+            self.gpshome = gpshome.GpsHome(reader=reader, enabled=on, parent=self)
+        self.gpshome.start()
+        return self.gpshome
+
     def closeEvent(self, ev):
+        if getattr(self, "gpshome", None) is not None:
+            self.gpshome.stop()
         app = QtWidgets.QApplication.instance()
         if app is not None:
             app.removeEventFilter(self)

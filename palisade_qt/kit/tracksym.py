@@ -2,10 +2,11 @@
 [a C2 track display], not dots").
 
 Each contact is drawn as a heading-oriented glyph (aircraft = delta, vessel = hull, drone = quad
-cross, station = square, operator = small cross, DF / balloon / unknown = ring), a velocity leader
-along its heading (length = distance covered in LEADER_MIN minutes), a short history trail, and a
-data-block label (callsign + flight level). A contact with no reported heading gets the ring and no
-leader: the symbol never shows a direction the feed did not give.
+cross, station = square, operator = small cross, balloon = envelope over a payload, DF / unknown
+= ring), a velocity leader along its heading (length = distance covered in LEADER_MIN minutes), a
+short history trail, and a data-block label (callsign, flight level, speed). A contact with no
+reported heading gets the ring and no leader: the symbol never shows a direction the feed did not
+give.
 
 Glyph paths are cached per (kind, 10-degree heading bucket), so a full redraw on the CM5 is one
 ScatterPlotItem.setData plus two line items.
@@ -62,7 +63,13 @@ def _base(kind):
         p.addRect(-0.5, -0.09, 1.0, 0.18)
         p.addRect(-0.09, -0.5, 0.18, 1.0)
         return p
-    p = QtGui.QPainterPath()                     # DF, balloon, unknown heading: a ring
+    if kind == "balloon":                        # radiosonde: envelope over a payload (device notes)
+        p = QtGui.QPainterPath()
+        p.addEllipse(-0.3, -0.5, 0.6, 0.62)                  # envelope
+        p.addRect(-0.03, 0.1, 0.06, 0.24)                    # tether
+        p.addRect(-0.13, 0.32, 0.26, 0.18)                   # payload
+        return p
+    p = QtGui.QPainterPath()                     # DF, unknown heading: a ring
     p.addEllipse(-0.42, -0.42, 0.84, 0.84)
     p.addEllipse(-0.22, -0.22, 0.44, 0.44)
     return p
@@ -89,7 +96,8 @@ def symbol(kind, hdg):
         key = ("ring", None)
     else:
         b = None if kind not in ORIENTED else int(round(hdg / HEADING_BUCKET)) * HEADING_BUCKET % 360
-        key = (kind if kind in ORIENTED or kind in ("station", "operator") else "ring", b)
+        key = (kind if kind in ORIENTED or kind in ("station", "operator", "balloon") else "ring",
+               b)
         if kind not in ORIENTED:
             key = (key[0], None)
     p = _CACHE.get(key)

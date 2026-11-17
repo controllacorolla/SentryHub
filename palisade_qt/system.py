@@ -213,6 +213,17 @@ class MoreApp(PalisadeApp):
         self.gps_btn.clicked.connect(lambda _=False: self.read_gps())
         home_row.addWidget(self.gps_btn)
         fl.addRow(micro("HOME (lat, lon)"), home_row)
+        # owner 2026-11-17 ("location should be automatic", v0.1): HOME follows gpsd when it has a
+        # trustworthy fix; the typed HOME above is the fallback (palisade_qt/gpshome.py)
+        from . import gpshome
+        self.set_follow = QtWidgets.QCheckBox("HOME follows GPS (typed HOME is the fallback)")
+        self.set_follow.setChecked(gpshome.follows_gps())
+        fl.addRow(micro("Location"), self.set_follow)
+        self.gps_status = QtWidgets.QLabel("")
+        self.gps_status.setProperty("class", "note")
+        self.gps_status.setWordWrap(True)
+        fl.addRow(self.gps_status)
+        QtCore.QTimer.singleShot(0, self._wire_gps_status)
         fl.addRow(micro("Theme"), self.set_theme)
         fl.addRow(micro("Event-bus retention"), self.set_retention)
         self.set_msg = QtWidgets.QLabel("")
@@ -224,7 +235,8 @@ class MoreApp(PalisadeApp):
         fl.addRow(save)
         pl.addWidget(c)
         pl.addStretch(1)
-        if not eventbus.home_set() and not self.demo and "SETTINGS" in self.SUBTABS:
+        if not eventbus.home_set() and not self.demo and "SETTINGS" in self.SUBTABS \
+                and not self.set_follow.isChecked():     # following GPS sets HOME by itself
             from .kit.seams import offscreen
             if not offscreen():          # tests never touch a real gpsd
                 QtCore.QTimer.singleShot(0, lambda: self.read_gps(auto=True))
@@ -288,6 +300,24 @@ class MoreApp(PalisadeApp):
         self.set_msg.setStyleSheet("color:%s;" % self._tok["text"])
         self.set_msg.setText("HOME filled from GPS (%dD fix) — press SAVE SETTINGS to use it"
                              % (fix.get("mode") if fix.get("mode") in (2, 3) else 2))
+
+    def _gps_follower(self):
+        w = self.window()
+        return getattr(w, "gpshome", None)
+
+    def _wire_gps_status(self):
+        g = self._gps_follower()
+        if g is not None and not getattr(self, "_gps_status_wired", False):
+            g.status_changed.connect(self._show_gps_status)
+            self._gps_status_wired = True
+        self._show_gps_status(*(g.status if g is not None else
+                                (("GPS follow: not available in demo" if self.demo else
+                                  "GPS follow: not running"), "neutral")))
+
+    def _show_gps_status(self, text, state):
+        tok = {"live": "live", "warn": "warn"}.get(state, "muted")
+        self.gps_status.setStyleSheet("color:%s;" % self._tok.get(tok, self._tok["text"]))
+        self.gps_status.setText(text)
 
     def _hemisphere_mismatch(self, home):
         """A typed HOME on the other side of the equator / prime meridian from the GPS fix the
@@ -389,12 +419,23 @@ class MoreApp(PalisadeApp):
         # engagement gate reads operator.json, never palisade_ui.json); HOME/theme/retention to
         # the UI store.
         op_ok, op_kind = self._write_operator(self.set_operator.text())
+        follow = self.set_follow.isChecked()
+        g = self._gps_follower()
+        if g is not None and g.enabled != follow:
+            g.set_enabled(follow)
+        if follow and home is not None:
+            parts_note = "HOME follows GPS: a confirmed fix replaces the typed HOME"
+        else:
+            parts_note = None
         persisted = self._write_settings({
+            "home_follows_gps": follow,
             "home": list(home) if home else (list(eventbus.home()) if eventbus.HOME_SOURCE == "settings" else None),
             "theme": self.set_theme.currentText(),
             "retention": self.set_retention.value()})
         theme_changed = self.set_theme.currentText() != self.mode
         parts = ["applied now: " + ", ".join(live)] if live else []
+        if parts_note:
+            parts.append(parts_note)
         warn = False
         if op_ok and op_kind == "callsign":
             parts.append("operator saved: callsign %s" % self.set_operator.text().strip().upper())
@@ -408,10 +449,10 @@ class MoreApp(PalisadeApp):
             parts.append("operator NOT saved (no operator profile store on this host)")
             warn = True
         if persisted:                               # theme takes effect via the store
-            parts.append("persisted: theme" +
+            parts.append("persisted: theme, location source" +
                          (" (theme applies on restart)" if theme_changed else ""))
         else:
-            parts.append("NOT persisted (no settings store on this host): theme")
+            parts.append("NOT persisted (no settings store on this host): theme, location source")
             warn = True
         # saved is not "receiving": plain text colour on success, warn on any loss
         self.set_msg.setStyleSheet("color:%s;" % self._tok["warn" if warn else "text"])

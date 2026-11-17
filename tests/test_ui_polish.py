@@ -1066,3 +1066,278 @@ def test_u11_status_slots_have_no_divider_lines_only_space(mode):
         assert bar.layout().spacing() >= 8
     finally:
         _close(hub)
+
+
+# ================================================================ U12 HOME follows GPS (v0.1)
+def _fix(lat, lon, mode=3, **kw):
+    return dict({"class": "TPV", "mode": mode, "lat": lat, "lon": lon}, **kw)
+
+
+def test_u12_home_follows_a_confirmed_gps_fix_and_holds_it_when_the_fix_is_lost():
+    """Owner 2026-11-17 ("location should be automatic", pulled into v0.1): HOME follows gpsd.
+    One fix never moves HOME (confirmation); a lost fix keeps the last good HOME; tiny moves do
+    not re-home; the typed HOME stays HOME until a confirmed fix arrives."""
+    from palisade_qt import eventbus, gpshome
+    eventbus.set_home((39.70, -104.90), "settings")             # the typed fallback
+    fixes = []
+    g = gpshome.GpsHome(reader=lambda: fixes.pop(0) if fixes else None)
+    try:
+        fixes.append(_fix(39.6261, -104.968))
+        g.poll()
+        assert _wait(lambda: not g._busy)
+        assert eventbus.home() == (39.70, -104.90) and "confirming" in g.status[0]
+        fixes.append(_fix(39.6262, -104.9681))
+        g.poll()
+        assert _wait(lambda: eventbus.HOME_SOURCE == "gps")
+        assert eventbus.home() == pytest.approx((39.6262, -104.9681))
+        assert g.status[1] == "live" and "3D" in g.status[0]
+        fixes.append(_fix(39.6263, -104.9682))                   # ~10 m: below MOVE_NM
+        g.poll()
+        assert _wait(lambda: not g._busy)
+        assert eventbus.home() == pytest.approx((39.6262, -104.9681))
+        fixes.append(_fix(39.6500, -104.968))                     # ~1.4 nm: HOME follows
+        g.poll()
+        assert _wait(lambda: eventbus.home()[0] == pytest.approx(39.65))
+        g.poll()                                                  # no fix now
+        assert _wait(lambda: not g._busy)
+        assert eventbus.home()[0] == pytest.approx(39.65) and g.status[1] == "warn"
+        assert "held at the last fix" in g.status[0]
+    finally:
+        g.stop()
+        eventbus.set_home(None)
+
+
+@pytest.mark.parametrize("bad", [
+    _fix(0.0, 0.0), _fix(True, False), _fix(39.6, -104.9, mode=1), _fix(91.0, 0.5),
+    _fix(39.6, -104.9, epx=900.0, epy=40.0), {"class": "SKY"}, None, _fix(float("nan"), 1.0)])
+def test_u12_untrustworthy_fixes_never_set_home(bad):
+    from palisade_qt import gpshome
+    assert gpshome.usable(bad) is None
+
+
+def test_u12_a_single_jump_does_not_drag_a_following_home():
+    from palisade_qt import eventbus, gpshome
+    fixes = [_fix(39.6261, -104.968), _fix(39.6261, -104.968), _fix(10.0, 10.0),
+             _fix(39.6262, -104.968)]
+    g = gpshome.GpsHome(reader=lambda: fixes.pop(0) if fixes else None)
+    try:
+        for _ in range(4):
+            g.poll()
+            assert _wait(lambda: not g._busy)
+        assert eventbus.HOME_SOURCE == "gps" and eventbus.home()[0] == pytest.approx(39.6261,
+                                                                                    abs=1e-3)
+    finally:
+        g.stop()
+        eventbus.set_home(None)
+
+
+def test_u12_follow_off_never_touches_home_and_the_choice_is_saved():
+    from palisade_qt import eventbus, gpshome
+    eventbus.set_home((39.70, -104.90), "settings")
+    g = gpshome.GpsHome(reader=lambda: _fix(39.6261, -104.968), enabled=False)
+    try:
+        g.poll()
+        _pump(100)
+        assert eventbus.home() == (39.70, -104.90) and not g._busy
+        assert gpshome.follows_gps(loader=lambda: {}) is True           # default ON
+        assert gpshome.follows_gps(loader=lambda: {"home_follows_gps": False}) is False
+    finally:
+        eventbus.set_home(None)
+    hub = _big_hub()
+    try:
+        g = hub.start_gps_home(reader=lambda: None, enabled=True)
+        more = _settings(hub)
+        _pump(100)
+        assert more.set_follow.isChecked()
+        saved = {}
+        more._write_settings = lambda d: (saved.update(d), True)[1]
+        more.set_follow.setChecked(False)
+        more._save_settings()
+        assert saved.get("home_follows_gps") is False and g.enabled is False
+        assert "manual" in more.gps_status.text().lower()
+    finally:
+        _close(hub)
+
+
+def test_u12_atlas_and_ops_keep_their_contacts_when_home_moves():
+    """GPS re-homes every few hundred metres on the move: contacts are re-projected, not dropped."""
+    import time
+    from palisade_qt import eventbus
+    eventbus.set_home((39.70, -104.90), "settings")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        ev = eventbus.contact("ADS-B", "T1", 39.80, -104.90, alt=12000, kind="aircraft", label="T1")
+        ev["ts"] = time.time()
+        atlas._on_event(ev)
+        hub.ops._on_event(ev)
+        atlas._render()
+        hub.ops._refresh_ppi()
+        r0 = atlas._contacts["T1"]["rng"]
+        eventbus.set_home((39.75, -104.90), "gps")
+        _pump(50)
+        hub.ops._refresh_ppi()
+        assert "T1" in atlas._contacts and atlas._contacts["T1"]["rng"] == pytest.approx(r0 / 2,
+                                                                                         rel=0.02)
+        assert hub.ops._contacts["T1"]["rng"] == pytest.approx(r0 / 2, rel=0.02)
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+# ================================================================ U13 ATLAS views
+def test_u13_atlas_views_split_the_layers_without_touching_layers_or_radios():
+    """Owner 2026-11-17: 'some applications are clumped with others' (ATLAS mixed aircraft,
+    vessels, APRS, drones, DF, balloons). Each view shows its own kind(s), its own columns and its
+    own layer switch; a view never turns a layer (radio, lease, BLE scan) on or off."""
+    import time
+    from palisade_qt import atlas as A, eventbus
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        sets = []
+        if atlas._worker is not None and hasattr(atlas._worker, "set_layer"):
+            atlas._worker.set_layer = lambda *a: sets.append(a)
+        for k in ("aircraft", "vessel", "station", "drone", "df", "balloon"):
+            atlas._layers.add(k)
+        now = time.time()
+        for cid, kind, extra in (("A1", "aircraft", {"alt": 12000, "spd": 450}),
+                                 ("V1", "vessel", {"spd": 12, "course": 90}),
+                                 ("S1", "station", {}), ("D1", "drone", {"alt": 300}),
+                                 ("F1", "df", {}), ("B1", "balloon", {"alt": 60000})):
+            ev = eventbus.contact("X", cid, 39.8, -104.8, kind=kind, label=cid, **extra)
+            ev["ts"] = now
+            atlas._on_event(ev)
+        layers_before = set(atlas._layers)
+        want = {"ALL": {"A1", "V1", "S1", "D1", "F1", "B1"}, "AIR": {"A1"}, "SEA": {"V1"},
+                "APRS": {"S1"}, "DRONES": {"D1"}, "DF": {"F1"}, "SONDE": {"B1"}}
+        for name, ids in want.items():
+            atlas.set_view(name)
+            got = {r["_id"] for r in atlas.feed.model.rows}
+            assert got == ids, (name, got)
+            assert {s["data"] for s in atlas.map.track_spots} == ids, name
+            heads = [h for _k, h in atlas.feed.model.columns]
+            assert heads == [h for _k, h in A.VIEW_COLS[name]]
+            vis = {k for k, b in atlas._layer_btns.items() if not b.isHidden()}
+            assert vis == (set(atlas._layer_btns) if name == "ALL" else set(A.VIEW_KINDS[name]))
+        atlas.set_view("AIR")
+        row = atlas.feed.model.rows[0]
+        assert (row["fl"], row["kt"]) == ("120", "450")
+        atlas.set_view("SEA")
+        assert atlas.feed.model.rows[0]["cog"] == "090°"
+        assert atlas._layers == layers_before and sets == [], "a view never switches a layer"
+        atlas.handle_key("v")
+        assert atlas._view == "APRS"
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_u13_a_view_with_its_layer_off_says_so():
+    from palisade_qt import eventbus
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        atlas._layers.discard("vessel")
+        atlas.set_view("SEA")
+        assert atlas.feed.showing_empty()
+        assert "LAYER OFF" in atlas.feed.empty.big.text().upper()
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_u13_contact_card_clears_when_its_layer_goes_off_and_says_lost_only_when_gone():
+    """Device notes: the CONTACT card still showed an APRS contact as LOST after the APRS layer was
+    switched off. Hidden -> the card clears; really gone (stale) -> LOST, as before (RA-CL1c F4)."""
+    import time
+    from palisade_qt import eventbus
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        atlas._layers.add("station")
+        ev = eventbus.contact("APRS", "S1", 39.8, -104.8, kind="station", label="KF0HEG-9")
+        ev["ts"] = time.time()
+        atlas._on_event(ev)
+        atlas._render()
+        row = next(r for r in atlas.feed.model.rows if r["_id"] == "S1")
+        atlas._show(row)
+        assert atlas.detail.hero.text() == "KF0HEG-9"
+        atlas._toggle("station", False)
+        assert "LOST" not in atlas.detail.sub.text() and atlas.detail.hero.text() == "—"
+        assert atlas._selected is None
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+# ================================================================ U14 Remote-ID BLE setup
+@pytest.mark.parametrize("err,needle", [
+    ("[org.bluez.Error.NotReady] Resource Not Ready", "bluetoothctl power on"),
+    ("No Bluetooth adapters found.", "no Bluetooth adapter"),
+    ("org.freedesktop.DBus.Error.ServiceUnknown: The name org.bluez was not provided",
+     "systemctl start bluetooth"),
+    ("rfkill: Bluetooth is soft blocked", "rfkill unblock bluetooth")])
+def test_u14_bluetooth_setup_problems_are_named_with_their_fix(err, needle):
+    from palisade_qt import atlas as A
+    assert needle in A.RidSource.setup_problem(Exception(err))
+    assert A.RidSource.setup_problem(Exception("segfault in libfoo")) is None
+
+
+def test_u14_a_setup_problem_is_a_warning_in_full_never_the_strips_mode_fault():
+    """Device notes: 'Remote-ID BLE scan failed: passive scanning on Linux requires BlueZ >…' was
+    cut off and turned MODE into a red fault. A setup step now: short chip, the whole text with its
+    fix in the DRONES view, a session-log WARN (not an error)."""
+    from palisade_qt import eventbus, sessionlog
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        atlas._layers.add("drone")
+        before = [i for i in sessionlog.log().items if i["level"] in ("error", "fault")]
+        long = ("Remote-ID: bluetoothd is not running — run: sudo systemctl start bluetooth")
+        atlas.on_status({"rid_note": {"text": long, "detail": "org.bluez was not provided",
+                                      "setup": True}})
+        after = [i for i in sessionlog.log().items if i["level"] in ("error", "fault")]
+        assert len(after) == len(before), "no error/fault record"
+        st = atlas._last_status["rid"]
+        assert st["state"] == "warn" and "DRONES" in st["text"] and long in st["tip"]
+        atlas.set_view("DRONES")
+        assert not atlas._notice.isHidden() and atlas._notice.text() == long
+        assert atlas._notice.wordWrap()
+        # an unknown fault still is one, and its whole text survives (tooltip)
+        msg = "Remote-ID BLE scan failed: " + "x" * 150
+        atlas.on_error(msg)
+        f = atlas._last_status["fault"]
+        assert f["state"] == "alert" and f["tip"] == msg and len(f["text"]) <= 90
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_u14_balloon_has_its_own_icon():
+    from palisade_qt.kit import tracksym as T
+    g = T.glyph({"kind": "balloon"})
+    assert g is T.symbol("balloon", None) and g is not T.symbol("ring", None)
+
+
+def test_u14_a_passive_scan_is_reported_as_passive_without_a_warning():
+    """After bluetoothd --experimental, the operator sees PASSIVE (that is how he checks it took)."""
+    from palisade_qt import eventbus
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        atlas._layers.add("drone")
+        atlas.on_status({"rid_note": "Remote-ID: ACTIVE BLE scan — passive needs bluetoothd"})
+        atlas.on_status({"rid_note": {"text": "Remote-ID: PASSIVE BLE scan", "ok": True}})
+        st = atlas._last_status["rid"]
+        assert st["state"] == "ok" and "PASSIVE" in st["text"]
+        atlas.set_view("DRONES")
+        assert atlas._notice.isHidden()
+    finally:
+        eventbus.set_home(None)
+        _close(hub)

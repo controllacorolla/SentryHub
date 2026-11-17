@@ -35,6 +35,19 @@ KINDS = [("aircraft", "AIRCRAFT", "accent"), ("vessel", "VESSELS", "cyan"),
          ("operator", "OPERATOR", "accent"),
          ("df", "DF", "text"), ("balloon", "BALLOONS", "muted")]
 KIND_LABEL = {k: lbl for k, lbl, _ in KINDS}
+# device notes 2026-11-17 ("some applications are clumped with others"; ATLAS mixes aircraft,
+# vessels, APRS, drones, DF and balloons). One feed, separate VIEWS: each shows its own layer(s),
+# its own list columns and its own layer switch. ALL keeps the combined picture. A view is a
+# display filter only: it never turns a layer (and so never a radio, lease or BLE scan) on or off.
+VIEWS = [("ALL", None, [("label", "CONTACT"), ("rng", "NM"), ("alt", "ALT")]),
+         ("AIR", ("aircraft",), [("label", "FLIGHT"), ("rng", "NM"), ("fl", "FL"), ("kt", "KT")]),
+         ("SEA", ("vessel",), [("label", "VESSEL"), ("rng", "NM"), ("kt", "KT"), ("cog", "COG")]),
+         ("APRS", ("station",), [("label", "STATION"), ("rng", "NM"), ("brgs", "BRG")]),
+         ("DRONES", ("drone", "operator"), [("label", "REMOTE-ID"), ("rng", "NM"), ("alt", "ALT")]),
+         ("DF", ("df",), [("label", "EMITTER"), ("brgs", "BRG"), ("rng", "NM")]),
+         ("SONDE", ("balloon",), [("label", "SONDE"), ("rng", "NM"), ("alt", "ALT")])]
+VIEW_KINDS = {name: kinds for name, kinds, _c in VIEWS}
+VIEW_COLS = {name: cols for name, _k, cols in VIEWS}
 KIND_TOKEN = {k: tok for k, _, tok in KINDS}
 STALE_S = 12.0
 
@@ -241,8 +254,47 @@ class RidSource:
             except Exception:
                 pass
 
-    ACTIVE_NOTE = ("Remote-ID: ACTIVE BLE scan (scan requests) — BlueZ passive scanning needs "
-                   "bluetoothd --experimental (owner decision)")
+    PASSIVE_NOTE = "Remote-ID: PASSIVE BLE scan (listening to broadcasts only)"
+    ACTIVE_NOTE = ("Remote-ID: ACTIVE BLE scan — passive needs bluetoothd --experimental "
+                   "(see SYSTEM › DOCTOR)")
+
+    # device notes 2026-11-17: "Remote-ID BLE scan failed: passive scanning on Linux requires
+    # BlueZ >…" (cut off) turned the strip's MODE into a red fault. A Bluetooth stack that is not
+    # set up (adapter off or blocked, bluetoothd not running, bleak missing) is a setup step for the
+    # operator, said in full with the fix, not an application fault. Unknown errors stay faults.
+    SETUP_PROBLEMS = (
+        (("notready", "not ready", "not powered", "powered off"),
+         "Remote-ID: Bluetooth adapter is off — run: bluetoothctl power on"),
+        (("rfkill", "blocked"),
+         "Remote-ID: Bluetooth is blocked — run: rfkill unblock bluetooth"),
+        (("no bluetooth adapters", "adapter not found", "hci0 not found", "no adapter"),
+         "Remote-ID: no Bluetooth adapter found"),
+        (("serviceunknown", "org.bluez was not provided", "name org.bluez", "bluez not running"),
+         "Remote-ID: bluetoothd is not running — run: sudo systemctl start bluetooth"),
+        (("passive scanning",),
+         "Remote-ID: BlueZ refused passive and active scans — check SYSTEM › DOCTOR"),
+    )
+
+    @classmethod
+    def setup_problem(cls, err):
+        """The operator-fixable reason a BLE scan cannot start, or None (a real fault)."""
+        s = str(err).lower().replace(" ", " ")
+        for needles, msg in cls.SETUP_PROBLEMS:
+            if any(n in s for n in needles):
+                return msg
+        return None
+
+    def _set_setup(self, msg, detail=""):
+        """A setup step, not a fault: the page shows it in full (warn), the session log gets a
+        note, and the strip's MODE does not go to fault."""
+        self.state = "unavailable"
+        self.note = msg
+        self.setup_detail = str(detail)
+        if self._on_note is not None:
+            try:
+                self._on_note({"text": msg, "detail": str(detail), "setup": True})
+            except Exception:
+                pass
 
     @staticmethod
     def passive_unsupported(err):
@@ -277,7 +329,8 @@ class RidSource:
             import asyncio
             from bleak import BleakScanner
         except Exception as e:
-            self._set_fault("Remote-ID: bleak not installed (%s)" % str(e)[:60], "unavailable")
+            self._set_setup("Remote-ID: the bleak BLE library is not installed — "
+                            "run: python3 -m pip install --user --break-system-packages bleak", e)
             return
 
         async def run():
@@ -310,6 +363,11 @@ class RidSource:
                         self._on_note(self.ACTIVE_NOTE)
                     except Exception:
                         pass
+            if self.mode == "passive" and self._on_note is not None:
+                try:                     # say so: it is how the operator sees --experimental took
+                    self._on_note({"text": self.PASSIVE_NOTE, "ok": True})
+                except Exception:
+                    pass
             self.state = "scanning"
             try:
                 while self._on:
@@ -321,7 +379,12 @@ class RidSource:
         try:
             asyncio.run(run())
         except Exception as e:
-            self._set_fault("Remote-ID BLE scan failed: %s" % str(e)[:100])
+            why = self.setup_problem(e)
+            if why:
+                self._set_setup(why, e)
+            else:
+                self._set_fault("Remote-ID BLE scan failed: %s" % (" ".join(str(e).split())
+                                                                   or type(e).__name__))
 
     def ingest_payload(self, addr, payload, rssi=None):
         """Decode one BLE ODID service-data payload and fold it into the aggregator (dronewatch's
@@ -856,7 +919,15 @@ class AtlasApp(PalisadeApp):
         right = QtWidgets.QVBoxLayout(self._side)
         right.setContentsMargins(0, 0, 0, 0)
         right.setSpacing(10)
+        self._view = "ALL"
+        right.addWidget(self._view_bar())
         right.addWidget(self._legend())
+        self._notice = QtWidgets.QLabel("")           # a view's setup note (Remote-ID), in full
+        self._notice.setProperty("class", "note")
+        self._notice.setStyleSheet("color:%s;" % self._tok["warn"])
+        self._notice.setWordWrap(True)
+        self._notice.hide()
+        right.addWidget(self._notice)
         self._busy_label = QtWidgets.QLabel("")       # "RADIO BUSY — held by X" (live only)
         self._busy_label.setProperty("class", "note")
         self._busy_label.setStyleSheet("color:%s;" % self._tok["warn"])
@@ -882,6 +953,50 @@ class AtlasApp(PalisadeApp):
         self._timer.timeout.connect(self._render)
         self._timer.start(700)
         return body
+
+    VIEW_COLS_ROW = 4
+
+    def _view_bar(self):
+        f = QtWidgets.QFrame()
+        f.setObjectName("atlas_views")
+        lay = QtWidgets.QGridLayout(f)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setHorizontalSpacing(6)
+        lay.setVerticalSpacing(6)
+        self._view_btns = {}
+        grp = QtWidgets.QButtonGroup(f)
+        grp.setExclusive(True)
+        for i, (name, _k, _c) in enumerate(VIEWS):
+            b = QtWidgets.QPushButton(name)
+            b.setCheckable(True)
+            b.setProperty("class", "subtab")
+            b.setChecked(name == self._view)
+            b.setFocusPolicy(QtCore.Qt.TabFocus)
+            b.setToolTip("ATLAS view: %s (V cycles the views)" % name)
+            b.clicked.connect(lambda _=False, n=name: self.set_view(n))
+            grp.addButton(b)
+            lay.addWidget(b, i // self.VIEW_COLS_ROW, i % self.VIEW_COLS_ROW)
+            self._view_btns[name] = b
+        self._view_grp = grp
+        return f
+
+    def set_view(self, name):
+        """Show one group of contacts (a display filter: layers, radios and scans are untouched)."""
+        if name not in VIEW_KINDS:
+            return
+        self._view = name
+        b = self._view_btns.get(name)
+        if b is not None and not b.isChecked():
+            b.setChecked(True)
+        kinds = VIEW_KINDS[name]
+        for k, btn in self._layer_btns.items():      # this view's layer switch(es) only
+            btn.setVisible(kinds is None or k in kinds)
+        self.feed.set_columns(VIEW_COLS[name])
+        self._render()
+
+    def _in_view(self, c):
+        kinds = VIEW_KINDS.get(self._view)
+        return kinds is None or c["kind"] in kinds
 
     def _legend(self):
         f = QtWidgets.QFrame()
@@ -921,7 +1036,11 @@ class AtlasApp(PalisadeApp):
         self._render()
 
     def handle_key(self, text):
-        """+ / - zoom the map (as PRISM's span keys); F hides the side panels."""
+        """+ / - zoom the map (as PRISM's span keys); F hides the side panels; V cycles views."""
+        if text in ("v", "V"):
+            names = [n for n, _k, _c in VIEWS]
+            self.set_view(names[(names.index(self._view) + 1) % len(names)])
+            return True
         if text in ("+", "="):
             self.map.zoom(0.5)
             return True
@@ -969,7 +1088,9 @@ class AtlasApp(PalisadeApp):
         """CL5-fix 10: a source fault (the BLE Remote-ID scanner, an engine that is missing) is
         shown on the page, not only printed to stderr."""
         super().on_error(msg)
-        self.set_chip("fault", str(msg)[:70], state="alert")
+        text = " ".join(str(msg).split())
+        short = text if len(text) <= 90 else text[:88].rstrip() + "…"
+        self.set_chip("fault", short, state="alert", tip=text)       # the whole message on hover
 
     def on_status(self, status):
         super().on_status(status)
@@ -990,15 +1111,43 @@ class AtlasApp(PalisadeApp):
             self._update_busy()
         if "adsb" in status:
             self._adsb_health = status["adsb"]
-        if status.get("rid_note"):               # RA-SCAN N4: a working scan, said plainly
-            self.set_chip("rid", str(status["rid_note"])[:90], state="warn")
+        note = status.get("rid_note")
+        if isinstance(note, dict) and note.get("ok"):  # passive scan running: no warning at all
+            self._rid_note = None
+            self.set_chip("rid", "REMOTE-ID: PASSIVE BLE SCAN", state="ok", tip=note.get("text"))
+            self._render()
+            note = None
+        if note:                                 # RA-SCAN N4: a working scan, said plainly; a
+            if isinstance(note, dict):           # setup step in full, with its fix (no fault)
+                text = str(note.get("text") or "")
+                tip = text + ("\n\n" + note["detail"] if note.get("detail") else "")
+                short = "REMOTE-ID: SETUP NEEDED — see the DRONES view"
+                if note.get("setup"):
+                    from . import sessionlog
+                    sessionlog.record("warn", "ATLAS", text)
+            else:
+                text = tip = str(note)
+                short = "REMOTE-ID: ACTIVE BLE SCAN — see the DRONES view"
+            # the status row is one line: a short chip there, the whole text (with its fix) in the
+            # DRONES view, where it wraps (device notes: "…requires BlueZ >…" was cut off)
+            self._rid_note = text
+            self.set_chip("rid", short, state="warn", tip=tip)
+            self._render()
 
     def _on_home_changed(self):
         """H5: HOME was set in SETTINGS: re-centre now; positions re-project as contacts refresh."""
         h = eventbus.home()
-        self._contacts = {}
+        # HOME now moves with GPS (gpshome.py): re-project what is known instead of dropping it,
+        # so contacts do not blink out on every GPS re-home. Trails are frame-relative: restart.
+        known = h is not None
+        for c in self._contacts.values():
+            if c.get("lat") is None:
+                continue
+            x, y = eventbus.to_xy(c["lat"], c["lon"])
+            c.update(x=x, y=y, rng=math.hypot(x, y) if known else None,
+                     brg=(math.degrees(math.atan2(x, y)) % 360) if known else None)
         self._trails = {}
-        self.map.set_home(h[0] if h else None, h[1] if h else None, known=h is not None)
+        self.map.set_home(h[0] if h else None, h[1] if h else None, known=known)
         self._render()
 
     def on_panic(self):
@@ -1021,7 +1170,8 @@ class AtlasApp(PalisadeApp):
         known = eventbus.home_set()                  # H5: no range/bearing from a guessed HOME
         self._contacts[pl["id"]] = {
             "id": pl["id"], "label": pl.get("label", pl["id"]), "kind": pl.get("kind", "air"),
-            "x": x, "y": y, "alt": pl.get("alt"), "spd": pl.get("spd"),
+            "x": x, "y": y, "lat": pl["lat"], "lon": pl["lon"],
+            "alt": pl.get("alt"), "spd": pl.get("spd"),
             "track": pl.get("track"), "course": pl.get("course"), "mil": pl.get("mil"),
             "dbflags": pl.get("dbflags"), "emergency": pl.get("emergency"),
             "category": pl.get("category"),
@@ -1042,28 +1192,52 @@ class AtlasApp(PalisadeApp):
             if self._ever_shown:
                 self._update_busy()
             return
-        shown = [c for c in self._contacts.values() if c["kind"] in self._layers]
+        on = [c for c in self._contacts.values() if c["kind"] in self._layers]
+        shown = [c for c in on if self._in_view(c)]
         no_home = not self.demo and not eventbus.home_set()
         self._home_cover.show(no_home)
         plotted = [] if no_home else shown
         self.map.set_tracks(plotted, self._trails)       # C2 track symbols (2026-11-17)
         rows = []
         for c in sorted(shown, key=lambda c: (c["rng"] is None, c["rng"] or 0, c["label"])):
+            hdg = tracksym.heading(c)
             rows.append({"_id": c["id"], "label": c["label"],
                          "kind": KIND_LABEL.get(c["kind"], c["kind"]),
                          "rng": "%.0f" % c["rng"] if c["rng"] is not None else "—",
                          "alt": "%d" % c["alt"] if c["alt"] else "—",
+                         "fl": "%03d" % round(c["alt"] / 100.0) if c.get("alt") else "—",
+                         "kt": "%d" % round(c["spd"]) if isinstance(c.get("spd"), (int, float))
+                         and not isinstance(c.get("spd"), bool) else "—",
+                         "cog": "%03d°" % round(hdg) if hdg is not None else "—",
+                         "brgs": "%03d°" % round(c["brg"]) if c.get("brg") is not None else "—",
                          "_src": c, "_colors": {"rng": self._color(c["kind"], c["severity"],
                                                                    c.get("trust"))}})
         self.feed.model.set_rows(rows)
         if self._selected is not None and self._selected not in {c["id"] for c in shown}:
-            self._show_lost()
-        text, state = self._layer_summary(shown)
+            if self._selected in self._contacts:
+                # still reported, only hidden (its layer turned off, or another view): the card
+                # clears instead of claiming LOST (device notes 2026-11-17: an APRS contact read
+                # LOST after the APRS layer was switched off)
+                self._clear_detail()
+            else:
+                self._show_lost()
+        text, state = self._layer_summary(on)
         self.set_chip("sdr", text, state=state)
+        kinds = VIEW_KINDS.get(self._view)
         if not rows:                                   # D4: the list says why it is empty
+            off = kinds is not None and not any(k in self._layers for k in kinds)
             live = self.demo or (self._adsb_health or {}).get("state") == "live"
-            self.feed.set_empty("watching" if live else "offline",
-                                "no contacts" if live else "NO LIVE LAYER", text)
+            if off:
+                self.feed.set_empty("offline", "%s LAYER OFF" % KIND_LABEL[kinds[0]],
+                                    "switch it on above to listen for it")
+            else:
+                self.feed.set_empty("watching" if live else "offline",
+                                    "no contacts" if live else "NO LIVE LAYER", text)
+        rid = getattr(self, "_rid_note", None)
+        show_notice = bool(rid) and self._view in ("DRONES",) and "drone" in self._layers
+        if show_notice:
+            self._notice.setText(rid)
+        self._notice.setVisible(show_notice)
         if not eventbus.home_set():
             self.set_chip("home", "HOME NOT SET — range/bearing hidden (SYSTEM › SETTINGS)",
                           state="warn")
@@ -1145,6 +1319,12 @@ class AtlasApp(PalisadeApp):
                 c.get("adverts") or 0, "" if c.get("adverts") == 1 else "s"))]
             if c.get("trust") == "unconfirmed"
             else []))
+
+    def _clear_detail(self):
+        self._selected = None
+        self.feed.view.clearSelection()
+        self.detail.set_hero("—", "select a contact")
+        self.detail.set_rows([])
 
     def _show_lost(self):
         """The selected contact is gone (stale or its layer hidden): say so, and drop its last fix

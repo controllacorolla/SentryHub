@@ -294,7 +294,8 @@ class OpsHome(PalisadeApp):
             # geo-native contact -> local nm frame shared with ATLAS's map
             x, y = eventbus.to_xy(pl["lat"], pl["lon"])
             self._contacts[pl["id"]] = {
-                "id": pl["id"], "x": x, "y": y, "label": pl.get("label", pl["id"]),
+                "id": pl["id"], "x": x, "y": y, "lat": pl["lat"], "lon": pl["lon"],
+                "label": pl.get("label", pl["id"]),
                 "severity": ev["severity"], "_ts": ev["ts"], "rng": math.hypot(x, y),
                 "mil": pl.get("mil", False), "kind": pl.get("kind"), "track": pl.get("track"),
                 "spd": pl.get("spd"), "alt": pl.get("alt"), "category": pl.get("category"),
@@ -339,6 +340,15 @@ class OpsHome(PalisadeApp):
         self._trails = {k: v for k, v in self._trails.items() if k in self._contacts}
         if self._selected not in self._contacts:
             self._selected = None
+        frame = eventbus.home()
+        if frame != getattr(self, "_frame", frame):
+            # HOME moved (GPS follow, or SETTINGS): re-project what is known, restart the trails
+            for c in live:
+                if c.get("lat") is not None:
+                    x, y = eventbus.to_xy(c["lat"], c["lon"])
+                    c.update(x=x, y=y, rng=math.hypot(x, y))
+            self._trails = {}
+        self._frame = frame
         no_home = not self.demo and not eventbus.home_set()
         self._home_cover.show(no_home)               # N26: no rings from a guessed origin
         h = eventbus.home() or (self.demo and eventbus.DEMO_HOME) or None
