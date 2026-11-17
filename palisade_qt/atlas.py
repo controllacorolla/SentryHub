@@ -136,10 +136,11 @@ def adsb_to_contact(a):
     spd = a.get("gs")
     sq = str(a.get("squawk") or "")
     emerg = a.get("emergency")
-    sev = "alert" if (emerg and emerg not in ("", "none")) or sq in _EMERG_SQ else "live"
+    is_emerg = bool(emerg and emerg not in ("", "none")) or sq in _EMERG_SQ
+    sev = "alert" if is_emerg else "live"
     return eventbus.contact("ADS-B", cid, lat, lon,
                             alt=int(alt) if isinstance(alt, (int, float)) else None,
-                            kind="aircraft", severity=sev,
+                            kind="aircraft", severity=sev, emergency=is_emerg,
                             spd=int(spd) if isinstance(spd, (int, float)) else None,
                             track=a.get("track"), hexid=a.get("hex"),
                             # readsb: emitter category (A7 = rotorcraft) and the aircraft-database
@@ -917,8 +918,15 @@ class AtlasApp(PalisadeApp):
             self._worker._background = self._background
         self.set_active(self._active)
 
+    _ever_shown = False
+
     def set_active(self, active):
+        was = self._active
         super().set_active(active)
+        if active:
+            self._ever_shown = True
+            if not was and self._background and hasattr(self, "map"):
+                QtCore.QTimer.singleShot(0, self._render)   # redraw at once on show (M4)
         w = self._worker
         if self._background and w is not None and hasattr(w, "pause") and \
                 getattr(w, "PAUSE_WHEN_HIDDEN", False):
@@ -981,7 +989,8 @@ class AtlasApp(PalisadeApp):
         self._contacts[pl["id"]] = {
             "id": pl["id"], "label": pl.get("label", pl["id"]), "kind": pl.get("kind", "air"),
             "x": x, "y": y, "alt": pl.get("alt"), "spd": pl.get("spd"),
-            "track": pl.get("track"), "mil": pl.get("mil"), "dbflags": pl.get("dbflags"),
+            "track": pl.get("track"), "course": pl.get("course"), "mil": pl.get("mil"),
+            "dbflags": pl.get("dbflags"), "emergency": pl.get("emergency"),
             "category": pl.get("category"),
             "severity": ev["severity"], "_ts": ev["ts"],
             "source": ev.get("source"), "trust": pl.get("trust"), "adverts": pl.get("adverts"),
@@ -993,6 +1002,13 @@ class AtlasApp(PalisadeApp):
         now = time.time()
         self._contacts = {c["id"]: c for c in self._contacts.values() if now - c["_ts"] < STALE_S}
         self._trails = {k: v for k, v in self._trails.items() if k in self._contacts}
+        if self._background and not self._active:
+            # OPS's background feed, page not on screen: skip the map and list redraw (RA-UIP M4:
+            # ~230 ms a tick on the CM5 for a page nobody is looking at). Once the operator has
+            # opened ATLAS, its BUSY edge alerts keep running while hidden, as before UIP.
+            if self._ever_shown:
+                self._update_busy()
+            return
         shown = [c for c in self._contacts.values() if c["kind"] in self._layers]
         no_home = not self.demo and not eventbus.home_set()
         self._home_cover.show(no_home)

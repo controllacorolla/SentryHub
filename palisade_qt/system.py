@@ -232,7 +232,8 @@ class MoreApp(PalisadeApp):
 
     # ---- GPS -> HOME (minimal; device notes 2026-11-17) ----
     _gps_done = QtCore.Signal(object, bool)      # (fix dict or None, auto) -> GUI thread
-    _gps_last = None                             # (lat, lon) of the last fix read this session
+    _gps_last = None                             # (lat, lon) of the last USE GPS fix
+    HEMI_MARGIN = 2.0                            # degrees: no sign check closer than this
 
     @staticmethod
     def _gps_reader():
@@ -268,6 +269,7 @@ class MoreApp(PalisadeApp):
         if isinstance(fix, dict):
             lat, lon = fix.get("lat"), fix.get("lon")
         ok = (isinstance(lat, (int, float)) and isinstance(lon, (int, float))
+              and not isinstance(lat, bool) and not isinstance(lon, bool)
               and -90 <= lat <= 90 and -180 <= lon <= 180)
         if not ok:
             if not auto:                 # the automatic read stays quiet when there is no fix
@@ -275,24 +277,33 @@ class MoreApp(PalisadeApp):
                 self.set_msg.setText("NO GPS FIX — gpsd is not running or has no 2D/3D fix. "
                                      "Enter HOME by hand (west longitudes are negative).")
             return
-        self._gps_last = (float(lat), float(lon))
+        fix_ll = (float(lat), float(lon))
         if auto and self.set_home.text().strip():
             return                       # never overwrite what the operator typed
-        self.set_home.setText("%.4f, %.4f" % self._gps_last)
+        if not auto:
+            # only a fix the operator asked for (USE GPS) arms the hemisphere check: the silent read
+            # at launch could be a cold-start junk fix nobody saw (RA-UIP M3)
+            self._gps_last = fix_ll
+        self.set_home.setText("%.4f, %.4f" % fix_ll)
         self.set_msg.setStyleSheet("color:%s;" % self._tok["text"])
         self.set_msg.setText("HOME filled from GPS (%dD fix) — press SAVE SETTINGS to use it"
                              % (fix.get("mode") if fix.get("mode") in (2, 3) else 2))
 
     def _hemisphere_mismatch(self, home):
-        """A typed HOME on the other side of the equator / prime meridian from this session's GPS
-        fix: almost always a dropped minus sign (39.7, 104.9 is in China, not Denver)."""
+        """A typed HOME on the other side of the equator / prime meridian from the GPS fix the
+        operator read with USE GPS: almost always a dropped minus sign (39.7, 104.9 is in China,
+        not Denver). Only well clear of the equator / prime meridian (HEMI_MARGIN degrees on both
+        sides), and a warning, not a lock: SAVE again with the same HOME saves it (RA-UIP M3/L5)."""
         g = self._gps_last
-        if g is None or home is None:
+        if g is None or home is None or home == getattr(self, "_hemi_confirm", None):
             return None
+        m = self.HEMI_MARGIN
         for i, axis, neg in ((1, "longitude", "west"), (0, "latitude", "south")):
-            if abs(g[i]) > 0.5 and abs(home[i]) > 0.5 and (g[i] < 0) != (home[i] < 0):
+            if abs(g[i]) > m and abs(home[i]) > m and (g[i] < 0) != (home[i] < 0):
+                self._hemi_confirm = home
                 return ("HOME %s %+.4f is in the other hemisphere from your GPS fix (%+.4f); "
-                        "%s is negative — nothing saved" % (axis, home[i], g[i], neg))
+                        "%s is negative — nothing saved. SAVE again to keep it as typed"
+                        % (axis, home[i], g[i], neg))
         return None
 
     def _prefill_settings(self):

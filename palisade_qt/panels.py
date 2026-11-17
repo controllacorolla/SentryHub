@@ -783,7 +783,7 @@ KEYMAP = [
     ("Enter", "primary action of the page"),
     ("Esc", "back: close a panel, else home (OPS)"),
     ("[  ]", "step band / channel down, up (PRISM, PROWL)"),
-    ("+  −", "span wider / narrower (PRISM)"),
+    ("+  −", "zoom in / out (ATLAS) · span (PRISM)"),
     ("Space", "hold / resume the scan (PROWL)"),
     ("/", "command palette: page, action, or a bare frequency"),
     ("R", "RADIOS panel"),

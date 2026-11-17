@@ -221,7 +221,8 @@ class OpsHome(PalisadeApp):
         col.addWidget(self.sub)
         stat.addLayout(col)
         stat.addStretch(1)
-        stat.addWidget(micro("Situation · all feeds"), 0, QtCore.Qt.AlignTop)
+        # short: the sub-line beside it needs the room (RA-UIP L1)
+        stat.addWidget(micro("All feeds"), 0, QtCore.Qt.AlignTop)
         hv.addLayout(stat)
         self.ppi = PpiScope(span_nm=80, mode=self.mode)
         self._home_cover = Cover(self.ppi, "offline", "HOME NOT SET",
@@ -247,7 +248,7 @@ class OpsHome(PalisadeApp):
         rv.addWidget(self.card_prism)
         self.card_babel = RailCard("DECODES · latest", self.mode)
         rv.addWidget(self.card_babel, 1)
-        self.card_alert = RailCard("ALERTS · press A for history + acknowledge", self.mode)
+        self.card_alert = RailCard("ALERTS · A = history + ack", self.mode)
         rv.addWidget(self.card_alert, 1)
         two = QtWidgets.QHBoxLayout()
         two.setSpacing(9)
@@ -297,7 +298,8 @@ class OpsHome(PalisadeApp):
                 "severity": ev["severity"], "_ts": ev["ts"], "rng": math.hypot(x, y),
                 "mil": pl.get("mil", False), "kind": pl.get("kind"), "track": pl.get("track"),
                 "spd": pl.get("spd"), "alt": pl.get("alt"), "category": pl.get("category"),
-                "dbflags": pl.get("dbflags"), "trust": pl.get("trust")}
+                "dbflags": pl.get("dbflags"), "trust": pl.get("trust"),
+                "course": pl.get("course"), "emergency": pl.get("emergency")}
             tracksym.push_trail(self._trails, pl["id"], x, y)
         elif et == "decode" and pl.get("kind") == "telemetry":
             self._telemetry(pl)

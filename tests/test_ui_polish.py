@@ -20,7 +20,7 @@ for p in (SUITE_DIR, HERE):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from PySide6 import QtCore, QtTest  # noqa: E402
+from PySide6 import QtCore, QtTest, QtWidgets  # noqa: E402
 
 from test_cl1_screen import _pump, _hub, _isolate, THEMES  # noqa: E402
 from test_cl1_fix3 import _text_rects  # noqa: E402
@@ -333,6 +333,7 @@ def test_u5_basemap_is_north_up_east_right_whatever_pyqtgraph_global_order(
     import math
     import numpy as np
     import pyqtgraph as pg
+    from palisade_qt import eventbus
     from palisade_qt.kit import tiles, mappanel
     _fake_tiles(monkeypatch, tmp_path)
     old = pg.getConfigOption("imageAxisOrder")
@@ -349,7 +350,7 @@ def test_u5_basemap_is_north_up_east_right_whatever_pyqtgraph_global_order(
         cos_lat = math.cos(math.radians(home[0]))
         for dn, de in ((60, -60), (60, 60), (-60, -60), (-60, 60), (0, 0), (25, -70)):
             lat, lon = home[0] + dn / 60.0, home[1] + de / (60.0 * cos_lat)
-            x, y = tiles._nm_from_home(home[0], home[1], lat, lon)
+            x, y = eventbus.to_xy(lat, lon, home=home)
             p = m._tile_img.mapFromView(QtCore.QPointF(x, y))
             col, row = int(p.x()), int(p.y())
             assert 0 <= row < shown.shape[0] and 0 <= col < shown.shape[1], (dn, de, row, col)
@@ -359,6 +360,75 @@ def test_u5_basemap_is_north_up_east_right_whatever_pyqtgraph_global_order(
             assert tuple(shown[row, col, :2]) == tuple(want[:2]), (global_order, dn, de)
     finally:
         pg.setConfigOptions(imageAxisOrder=old)
+
+
+def _coded_tile_png(tx, ty):
+    """A 256 px tile whose every pixel names itself: R = column, G = row, B = tile id."""
+    import numpy as np
+    from PySide6 import QtGui
+    a = np.zeros((256, 256, 4), dtype=np.uint8)
+    a[..., 0] = np.arange(256)[None, :]
+    a[..., 1] = np.arange(256)[:, None]
+    a[..., 2] = (tx * 7 + ty * 13) % 251
+    a[..., 3] = 255
+    img = QtGui.QImage(a.data, 256, 256, 256 * 4, QtGui.QImage.Format.Format_RGBA8888).copy()
+    buf = QtCore.QBuffer()
+    buf.open(QtCore.QIODevice.WriteOnly)
+    img.save(buf, "PNG")
+    return bytes(buf.data())
+
+
+@pytest.mark.parametrize("home,rng,brg,view_nm", [
+    ((39.6, -104.9), 60, 45, 2), ((39.6, -104.9), 80, 315, 4), ((39.6, -104.9), 200, 300, 10),
+    ((39.6, -104.9), 400, 315, 40), ((64.8, -147.7), 80, 315, 4), ((64.8, -147.7), 200, 300, 10),
+    ((-33.9, 151.2), 150, 120, 6)])
+def test_u5_imagery_under_a_contact_is_the_contacts_own_ground(monkeypatch, tmp_path, home, rng,
+                                                               brg, view_nm):
+    """RA-UIP H1: contacts and rings use eventbus.to_xy (true range/bearing); the imagery was
+    equirectangular, so zoomed onto a contact 200 nm out the ground under it was 5-14 nm off.
+    Pixel-coded tiles: at the contact's map position the image shows the contact's own Web-Mercator
+    pixel, to within 2 tile pixels, at any range and latitude."""
+    import math
+    from palisade_qt import eventbus
+    from palisade_qt.kit import tiles, mappanel
+    monkeypatch.setattr(tiles, "_fetch_one", lambda u, z, tx, ty, d: _coded_tile_png(tx, ty))
+    monkeypatch.setattr(tiles, "CACHE_ROOT", tmp_path)
+    # the contact at true range / bearing from HOME (great circle)
+    p1, b, d = math.radians(home[0]), math.radians(brg), rng / tiles.EARTH_NM
+    lat = math.asin(math.sin(p1) * math.cos(d) + math.cos(p1) * math.sin(d) * math.cos(b))
+    lon = math.radians(home[1]) + math.atan2(math.sin(b) * math.sin(d) * math.cos(p1),
+                                             math.cos(d) - math.sin(p1) * math.sin(lat))
+    lat, lon = math.degrees(lat), math.degrees(lon)
+    x, y = eventbus.to_xy(lat, lon, home=home)
+    assert abs(math.hypot(x, y) - rng) < 0.01
+    m = mappanel.MapPanel(span_nm=80, home_lat=home[0], home_lon=home[1])
+    m.resize(900, 640)
+    layer = m._tiles
+    h = view_nm / 2.0                                # the operator zoomed onto the contact
+    layer.view = (x - h, x + h, y - h, y + h, 800)
+    arr, x0, y0, x1, y1 = layer._build("satellite")
+    m._base._on_tiles(arr, x0, y0, x1, y1)
+    raw = m._base._raw[0]
+    for dx, dy in ((0, 0), (0.4 * h, 0.3 * h), (-0.45 * h, -0.4 * h)):  # contact + two view points
+        px, py = x + dx, y + dy
+        plat, plon = (float(v) for v in tiles.aeqd_inverse(home[0], home[1], px, py))
+        p = m._tile_img.mapFromView(QtCore.QPointF(px, py))
+        col, row = int(p.x()), int(p.y())
+        assert 0 <= row < raw.shape[0] and 0 <= col < raw.shape[1]
+        z = tiles.tile_span(home[0], home[1], layer.view)[0]
+        n = 2 ** z
+        gx = (plon + 180.0) / 360.0 * n * 256
+        lr = math.radians(plat)
+        gy = (1 - math.log(math.tan(lr) + 1 / math.cos(lr)) / math.pi) / 2 * n * 256
+        tx, ty = int(gx // 256), int(gy // 256)
+        got = raw[row, col]
+        assert int(got[3]) == 255, "no imagery under the point"
+        # decode the shown pixel back to a global Web-Mercator pixel (B names the tile; it may be
+        # a neighbour when the point is within 2 px of a tile edge)
+        best = min(abs((tx + ddx) * 256 + int(got[0]) - gx) + abs((ty + ddy) * 256 + int(got[1]) - gy)
+                   for ddx in (-1, 0, 1) for ddy in (-1, 0, 1)
+                   if int(got[2]) == ((tx + ddx) * 7 + (ty + ddy) * 13) % 251)
+        assert best <= 3, (home, rng, brg, view_nm, dx, dy, best)
 
 
 def test_u5_atlas_opened_first_has_a_row_major_map_image():
@@ -512,8 +582,9 @@ def test_u7_no_fix_says_so_and_keeps_manual_entry():
         # an automatic read never overwrites what was typed, even with a fix
         more._gps_reader = lambda: {"mode": 2, "lat": 10.0, "lon": 20.0}
         more.read_gps(auto=True)
-        assert _wait(lambda: more._gps_last == (10.0, 20.0))
+        assert _wait(lambda: not more._gps_busy)
         assert more.set_home.text() == "39.7, -104.9"
+        assert more._gps_last is None, "a silent read never arms the hemisphere check (M3)"
     finally:
         eventbus.set_home(None)
         _close(hub)
@@ -539,6 +610,58 @@ def test_u7_typed_home_in_the_other_hemisphere_from_gps_is_rejected():
         more.set_home.setText("39.74, -104.99")
         more._save_settings()
         assert eventbus.home() == pytest.approx((39.74, -104.99))
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_u7_a_silent_junk_fix_never_blocks_the_right_home():
+    """RA-UIP M3: the launch read stored a cold-start (0.9, 0.9) fix nobody saw, and a correct
+    Denver HOME was then unsaveable for the session."""
+    from palisade_qt import eventbus
+    eventbus.set_home(None)
+    hub = _big_hub()
+    try:
+        more = _settings(hub)
+        more._gps_reader = lambda: {"mode": 2, "lat": 3.9, "lon": 3.9}
+        more.read_gps(auto=True)
+        assert _wait(lambda: not more._gps_busy)
+        more.set_home.setText("39.74, -104.99")
+        more._save_settings()
+        assert eventbus.home() == pytest.approx((39.74, -104.99))
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_u7_hemisphere_warning_is_confirmable_and_ignores_the_equator_band():
+    """RA-UIP M3/L5: SAVE again keeps a HOME the operator really means; fixes within 2 degrees of
+    the equator / prime meridian never trip the sign check; true/false are not coordinates."""
+    from palisade_qt import eventbus
+    eventbus.set_home(None)
+    hub = _big_hub()
+    try:
+        more = _settings(hub)
+        more._gps_reader = lambda: {"mode": 3, "lat": 39.74, "lon": -104.99}
+        more.read_gps()
+        assert _wait(lambda: more._gps_last is not None)
+        more.set_home.setText("39.74, 104.99")
+        more._save_settings()
+        assert not eventbus.home_set() and "SAVE again" in more.set_msg.text()
+        more._save_settings()                         # the operator means it
+        assert eventbus.home() == pytest.approx((39.74, 104.99))
+        eventbus.set_home(None)
+        more._gps_last = (0.8, -0.7)                   # Gulf of Guinea, legitimately near 0/0
+        more.set_home.setText("-0.9, 0.9")
+        more._save_settings()
+        assert eventbus.home() == pytest.approx((-0.9, 0.9))
+        eventbus.set_home(None)
+        more._gps_last = None
+        more._gps_reader = lambda: {"mode": 3, "lat": True, "lon": False}
+        more.set_home.setText("")
+        more.read_gps()
+        assert _wait(lambda: not more._gps_busy)
+        assert more._gps_last is None and more.set_home.text() == ""
     finally:
         eventbus.set_home(None)
         _close(hub)
@@ -730,6 +853,157 @@ def test_u10_adsb_military_and_rotorcraft_flags_reach_the_contact():
     assert T.classify(dict(pl, x=0, y=0)) == "mil"
     ev2 = A.adsb_to_contact({"hex": "a1", "lat": 39.0, "lon": -104.0, "dbFlags": "junk"})
     assert ev2["payload"]["dbflags"] is None
+
+
+def test_u9_hidden_background_worker_publishes_no_adsb_while_the_radio_is_held(monkeypatch):
+    """RA-UIP L6: readsb is paused while another page holds the radio; the hidden background feed
+    must not republish stale aircraft then (sonde / DF files still flow)."""
+    from palisade_qt import atlas as A, eventbus, radio_arbiter
+    w = A.AtlasLiveWorker()
+    w._hidden, w._background = True, True
+    monkeypatch.setattr(w, "_ensure_sources", lambda: None)
+    monkeypatch.setattr(w, "_adsb_contacts", lambda: [eventbus.contact("ADS-B", "H1", 1.0, 2.0,
+                                                                        kind="aircraft")])
+    monkeypatch.setattr(A, "balloon_contacts",
+                        lambda: [eventbus.contact("SONDE", "S1", 1.0, 2.0, kind="balloon")])
+    monkeypatch.setattr(A, "df_contacts", lambda: [])
+    monkeypatch.setattr(radio_arbiter.arbiter, "owner", lambda: "PRISM")
+    got = []
+    eventbus.bus.published.connect(got.append)
+    try:
+        w.step()
+    finally:
+        eventbus.bus.published.disconnect(got.append)
+    ids = [e["payload"]["id"] for e in got]
+    assert "H1" not in ids and "S1" in ids
+    assert not w._lease_srcs
+
+
+def test_u9_hidden_background_atlas_skips_the_map_redraw_until_shown():
+    """RA-UIP M4: OPS's background ATLAS redrew its map every 700 ms on a page nobody had open
+    (~230 ms a tick on the CM5). Hidden it only prunes; shown it draws at once."""
+    from palisade_qt import eventbus
+    import time
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        hub.start_background_feeds()
+        app = hub.pages.get("ATLAS:inner") or hub.pages["ATLAS"]
+        assert app._background and not app._active
+        drawn = []
+        real = app.map.set_tracks
+        app.map.set_tracks = lambda *a, **k: (drawn.append(1), real(*a, **k))
+        ev = eventbus.contact("ADS-B", "T9", 39.8, -104.8, kind="aircraft", label="T9")
+        ev["ts"] = time.time()
+        app._on_event(ev)
+        app._render()
+        assert drawn == [], "no map redraw while hidden"
+        assert "T9" in app._contacts, "contacts still kept for when it is shown"
+        hub.open_callsign("ATLAS")
+        _pump(150)
+        assert drawn, "drawn on show"
+        assert any(s.get("data") == "T9" for s in app.map.track_spots)
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_u10_emergency_squawk_is_red_on_military_aircraft_too():
+    """RA-UIP M2: a MIL aircraft squawking 7700 was drawn MIL orange; the emergency cue wins."""
+    from palisade_qt import atlas as A
+    from palisade_qt.kit import tracksym
+    a = {"hex": "ae1234", "lat": 39.8, "lon": -104.8, "alt_baro": 9000, "squawk": "7700",
+         "dbFlags": 1, "flight": "RCH123"}
+    ev = A.adsb_to_contact(a)
+    assert ev["payload"]["emergency"] is True and ev["severity"] == "alert"
+    c = dict(ev["payload"], severity=ev["severity"])
+    assert tracksym.classify(c) == "mil"
+    assert tracksym.color(c) == tracksym.EMERGENCY
+    quiet = A.adsb_to_contact(dict(a, squawk="4521"))
+    c2 = dict(quiet["payload"], severity=quiet["severity"])
+    assert c2["emergency"] is False and tracksym.color(c2) == tracksym.CLASS_COLOR["mil"]
+
+
+def test_u10_ship_and_aprs_course_draws_a_heading_and_not_available_does_not():
+    """RA-UIP L8: live AIS / APRS publish `course`, never `track`; AIS 'not available' is 360 / 511."""
+    from palisade_qt.kit import tracksym
+    assert tracksym.heading({"track": None, "course": 270}) == 270.0
+    assert tracksym.leader({"x": 0, "y": 0, "course": 90, "spd": 12, "kind": "vessel"}) is not None
+    for na in (360, 511, -1, float("nan")):
+        assert tracksym.heading({"course": na}) is None
+    from palisade_qt import atlas as A, eventbus
+    import time
+    app = A.AtlasApp(demo=False)
+    try:
+        ev = eventbus.contact("AIS", "V1", 39.8, -104.8, kind="vessel", course=135, spd=10)
+        ev["ts"] = time.time()
+        app._on_event(ev)
+        assert tracksym.heading(app._contacts["V1"]) == 135.0
+    finally:
+        app.close()
+
+
+def test_u6_placeholder_tile_is_never_shown_or_kept(monkeypatch, tmp_path):
+    """RA-UIP M1: Esri's grey 'API KEY REQUIRED' tile (text on grey, std ~10, so not 'blank') was
+    shown and cached ahead of the next source. Colourless tiles fall through and leave the cache."""
+    import numpy as np
+    from palisade_qt.kit import tiles
+    rng = np.random.default_rng(1)
+    grey = np.full((256, 256, 4), 200, dtype=np.uint8)
+    grey[..., 3] = 255
+    txt = rng.random((256, 256)) < 0.08                    # dark "text" pixels, still colourless
+    grey[txt, :3] = 60
+    assert not tiles._blank(grey) and tiles._placeholder(grey)
+    sat = rng.integers(0, 255, (256, 256, 4), dtype=np.uint8)
+    sat[..., 3] = 255
+    assert not tiles._placeholder(sat)
+
+    def png(a):
+        from PySide6 import QtGui
+        img = QtGui.QImage(a.data, 256, 256, 256 * 4, QtGui.QImage.Format.Format_RGBA8888).copy()
+        buf = QtCore.QBuffer()
+        buf.open(QtCore.QIODevice.WriteOnly)
+        img.save(buf, "PNG")
+        return bytes(buf.data())
+    calls = []
+
+    def fetch(url_tpl, z, tx, ty, cache_dir):
+        name = cache_dir.parent.name
+        calls.append(name)
+        data = png(grey) if name == "esri" else png(sat)
+        (cache_dir / ("%d_%d.png" % (tx, ty))).write_bytes(data)    # as _fetch_one caches
+        return data
+    monkeypatch.setattr(tiles, "_fetch_one", fetch)
+    monkeypatch.setattr(tiles, "CACHE_ROOT", tmp_path)
+    layer = tiles.TileLayer(home_lat=39.7, home_lon=-104.9)
+    layer.view = (-5, 5, -5, 5, 400)
+    arr = layer._build("satellite")[0]
+    assert "usgs" in calls, "fell through to the next source"
+    assert not list((tmp_path / "satellite" / "esri").rglob("*.png")), "placeholder not kept"
+    inside = arr[arr[..., 3] == 255]
+    spread = inside[:, :3].max(axis=1).astype(int) - inside[:, :3].min(axis=1)
+    assert float((spread <= 4).mean()) < 0.5, "the grey placeholder is not what is drawn"
+
+
+def test_ops_captions_fit_beside_the_page_rail_in_every_theme():
+    """RA-UIP L1/L2: the OPS 'nearest N NM' sub-line lost its unit and the alerts header ran into
+    the count once the rail took 128 px."""
+    for mode in THEMES:
+        hub = _big_hub(mode, demo=True)
+        try:
+            ops = hub.ops
+            ops.sub.setText("1 military (demo) · nearest 66 NM")
+            _pump(80)
+            assert ops.sub.width() >= ops.sub.sizeHint().width(), (mode, "sub-line clipped")
+            card = ops.card_alert
+            card.set_note("5 unacknowledged")
+            _pump(80)
+            head = [w for w in card.findChildren(QtWidgets.QLabel) if w.text().startswith("ALERTS")
+                    or w.text().upper().startswith("ALERTS")]
+            assert head, "alerts header"
+            assert head[0].geometry().right() < card.note.geometry().left(), (mode, "header overlap")
+        finally:
+            _close(hub)
 
 
 def test_u10_atlas_and_ops_draw_tracks_with_leaders_trails_and_a_legend():

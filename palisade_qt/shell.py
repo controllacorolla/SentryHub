@@ -460,6 +460,10 @@ class PalisadeHub(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------------ keyboard (D8)
     def eventFilter(self, obj, ev):
+        if not isinstance(obj, QtCore.QObject) or not isinstance(ev, QtCore.QEvent):
+            # RA-UIP M5: PySide can hand an app-wide filter a stale wrapper (a QWidgetItem whose
+            # address Qt reused) for obj or ev; such a pair is never a key press of ours
+            return False
         if ev.type() == QtCore.QEvent.KeyPress:
             if self._is_panic(ev) and self._ours(obj):
                 # PANIC first, before any focus/target test: an open combo dropdown or context
@@ -472,7 +476,10 @@ class PalisadeHub(QtWidgets.QMainWindow):
                 return True
             if self._is_key_target(obj) and self.handle_key(ev):
                 return True
-        return super().eventFilter(obj, ev)
+        try:
+            return super().eventFilter(obj, ev)
+        except (TypeError, AttributeError, RuntimeError):
+            return False         # same stale-wrapper case, caught by type in the base call
 
     @staticmethod
     def _is_panic(ev):

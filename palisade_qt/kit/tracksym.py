@@ -75,8 +75,11 @@ def heading(c):
     """The contact's reported course in degrees true, or None."""
     for k in ("track", "hdg", "heading", "course"):
         v = c.get(k)
-        if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v):
-            return float(v) % 360
+        # 0 <= v < 360 only: AIS reports "not available" as 360 (COG) / 511 (heading), which
+        # must never be drawn as a direction
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) \
+                and 0 <= v < 360:
+            return float(v)
     return None
 
 
@@ -180,8 +183,14 @@ def classify(c):
 def color(c):
     if c.get("trust") == "unconfirmed":
         return UNCONFIRMED
-    if c.get("severity") == "alert" and c.get("kind") == "aircraft" and not is_military(c):
-        return EMERGENCY
+    if c.get("kind") == "aircraft":
+        # a declared emergency (7500/7600/7700 or readsb's emergency field) is red on every
+        # aircraft, military included (RA-UIP M2); the bare severity rule stays for feeds that do
+        # not carry the flag (demo marks every MIL track "alert", so MIL is excluded there)
+        if c.get("emergency") is True:
+            return EMERGENCY
+        if c.get("severity") == "alert" and not is_military(c):
+            return EMERGENCY
     return CLASS_COLOR[classify(c)]
 
 
