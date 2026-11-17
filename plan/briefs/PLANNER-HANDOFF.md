@@ -84,10 +84,12 @@ ham callsign, head signing automation, session-chain prune policy, the v0.1 laun
    those exact pinned versions + skyfield passes 152/152 in the container, so the failure is
    device-environment specific (real ~, readsb/iw present, real display) — failing test name pending.
    **Follow-up N-ui1 (Med, v0.1 polish): top-strip nav keys overlap on the device.** First launch
-   at 1280x720 (window, not fullscreen): callsigns run into each other ("4 PROWL5 RECON") and
-   function labels sit under the wrong key ("survey" under PROWL/RECON boundary); OPS (selected)
-   renders right. hub_builds reports width 1075 px, so it is not total overflow: each NavKey is
-   laid out narrower than its painted text. Hypothesis: NavKey.sizeHint is measured before the
-   window stylesheet's navcall font (600 weight, status px) applies on the real platform and
-   nothing calls updateGeometry() after polish (set_on re-polishes only the selected key).
-   Offscreen tests don't reproduce it. Screenshot: Dalton's upload 2026-11-17 04:47 MT.
+   at 1280x720: callsigns run together ("4 PROWL5 RECON") and function labels sit at different
+   heights, so "survey" reads as belonging to the wrong key. Reproduced in the container under
+   xvfb with the device's pinned versions (not platform-specific). Causes: (a) keys are packed at
+   their minimum text width with 1 px layout spacing and SIDE=1, so adjacent callsigns have no gap
+   (CL8 took the strip slack for NET); (b) NavKey._place centres each key's own ink box, so a label
+   with descenders (spectrum, listen, hardware) sits lower than one without (map, survey) and the
+   row has no common baseline. Fix: shared baseline for all keys + visible gap/separator between
+   keys, within the 1270 px worst-case budget (test_cl1 strip-width tests).
+Screenshot: Dalton's upload 2026-11-17 04:47 MT.
