@@ -88,3 +88,8 @@ pyflakes: clean on every touched file.
 | L3 | Low | Pane title/state spacing; CLIENT placeholder shortened. | `runpane.py`, `recon.py` | render |
 | L4 | Low | Captures dir created only after the gate passed (`prepare_run`). | `recon.py` | `test_rx_l4_a_refused_capture_creates_no_directory` |
 | Flag | Owner | DEAUTH: unchanged, still flagged for Dalton. | — | — |
+
+RX-fix full suite at 2ffb2da: `3 failed, 1520 passed, 7 skipped, 7 errors in 674.75s` —
+test_audit_tiles, test_hwlab doctor, 7 test_shell errors (baseline), and
+test_cl1_screen::test_up_down_drive_the_list_and_the_detail_follows (order-dependent; passes in
+its own file; RA-RX also saw it and attributed it to PROWL, untouched by RX).
