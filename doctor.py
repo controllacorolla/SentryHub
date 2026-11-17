@@ -495,6 +495,78 @@ def chk_dronewatch():
     return False, "bleak not installed - DroneWatch runs in demo only", "pip install bleak"
 
 
+def chk_wifi_scan(run=None, which=None, euid=None):
+    """SCAN-1: which Wi-Fi scan path RECON will use. A passive `iw scan` needs CAP_NET_ADMIN (root
+    or a capability on iw); without it RECON falls back to NetworkManager, which probes (active).
+    Reports the path; never changes the system — the setcap line is the owner's decision."""
+    run = run or core.run
+    which = which or shutil.which
+    # RA-SCAN N9: the app runs as the desktop user, so root running the doctor proves nothing;
+    # only a capability on iw makes the app's scan passive. (euid kept for callers/tests.)
+    iw = which("iw")
+    passive = False
+    if iw and which("getcap"):
+        rc, out = run(["getcap", os.path.realpath(iw)], timeout=3)
+        passive = rc == 0 and "cap_net_admin" in (out or "").lower()
+    if passive:
+        return True, "passive scan (iw, beacons only)", ""
+    nm = False
+    if which("nmcli"):
+        rc, out = run(["nmcli", "-t", "-f", "RUNNING", "general"], timeout=3)
+        nm = rc == 0 and (out or "").strip().splitlines()[:1] == ["running"]
+    why = "iw scan needs CAP_NET_ADMIN" if iw else "iw not installed"
+    if nm:
+        return None, "ACTIVE scan via NetworkManager (%s)" % why, \
+            "optional, owner decision: passive scans need `sudo setcap cap_net_admin+ep %s` " \
+            "(lets every local user reconfigure Wi-Fi through iw)" % os.path.realpath(iw or "/usr/sbin/iw")
+    return False, "no Wi-Fi scan path (%s; NetworkManager not running)" % why, \
+        "start NetworkManager (sudo systemctl enable --now NetworkManager)"
+
+
+def chk_ble_scan(run=None, which=None, find=None, sysfs="/sys/class/bluetooth"):
+    """SCAN-2: can RECON's BLE survey run? Backend (bleak, else bluetoothctl), an adapter, and
+    whether it is powered. Reports only; powering the adapter on is the operator's call."""
+    run = run or core.run
+    which = which or shutil.which
+    find = find or _py
+    backend = "bleak" if find("bleak") else ("bluetoothctl" if which("bluetoothctl") else None)
+    if backend is None:
+        return False, "no BLE scan backend (no bleak, no bluetoothctl)", \
+            "sudo apt install bluez  (or pip install bleak)"
+    try:
+        adapters = sorted(os.listdir(sysfs)) if os.path.isdir(sysfs) else []
+    except OSError:
+        adapters = []
+    adapters = [a for a in adapters if a.startswith("hci")]
+    if not adapters:
+        return False, "no Bluetooth adapter (%s ready)" % backend, "enable/plug in a Bluetooth adapter"
+    if which("bluetoothctl"):
+        rc, out = run(["bluetoothctl", "show"], timeout=4)
+        low = (out or "").lower()
+        if "not authorized" in low or "access denied" in low:
+            return False, "BlueZ refused this user (D-Bus policy)", \
+                "owner decision: add the user to the bluetooth group"
+        if rc != 0 and ("timed out" in low or "timeout" in low):          # RA-SCAN N8
+            return False, "bluetoothd is not answering", "sudo systemctl start bluetooth"
+        if "no default controller" in low or "controller" not in low:
+            return False, "BlueZ reports no controller (%s)" % ((out or "").strip()[:50] or
+                                                              "no output"), \
+                "sudo systemctl start bluetooth; check the adapter"
+        if "powered: no" in low:
+            return None, "%s: adapter %s is powered off" % (backend, adapters[0]), \
+                "bluetoothctl power on   (or rfkill unblock bluetooth)"
+    note, fix = "", ""
+    if which("pgrep"):
+        rc, out = run(["pgrep", "-a", "bluetoothd"], timeout=3)
+        args = (out or "").split()
+        if rc == 0 and args and not ({"-E", "--experimental"} & set(args)):
+            # SCAN-3: ATLAS Remote-ID falls back to an active scan without BlueZ's monitor API
+            note = "; Remote-ID uses an ACTIVE scan (bluetoothd has no --experimental)"
+            fix = "optional, owner decision: run bluetoothd with --experimental (systemd " \
+                  "override) for passive Remote-ID"
+    return True, "%s on %s (active discovery, no connect/pair)%s" % (backend, adapters[0], note), fix
+
+
 CHECKS = [
     ("Software", [("Python packages", chk_python), ("Fonts", chk_fonts), ("rtl_airband", chk_airband),
                   ("rtl_fm", chk_rtl_fm), ("Whisper model", chk_whisper), ("Optional tools", chk_tools)]),
@@ -508,7 +580,8 @@ CHECKS = [
                 ("DroneWatch (Remote ID)", chk_dronewatch)]),
     ("Device", [("GPS", chk_gpsd), ("Meshtastic", chk_mesh), ("Audio", chk_audio), ("Power", chk_power),
                 ("SD card", chk_sdcard), ("Disk", chk_disk), ("System updates", chk_updates),
-                ("Boot files", chk_bootfiles)]),
+                ("Boot files", chk_bootfiles), ("Wi-Fi scan", chk_wifi_scan),
+                ("BLE scan", chk_ble_scan)]),
     ("Network", [("Connection", chk_net),
                  ("Dark basemap (USGS)", _server("USGS", "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/6/24/13")),
                  ("Satellite (USGS)", _server("USGS", "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/6/24/13")),
