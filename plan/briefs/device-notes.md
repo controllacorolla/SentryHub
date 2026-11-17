@@ -22,6 +22,8 @@ misalign; CL8 device-check test failure.
 
 - **[UI]** Map style choices should be just two: **dark satellite** and **light satellite** (imagery with a dark or light treatment), replacing today's dark / light / SAT set. Applies to ATLAS and the OPS home map. (2026-11-16 22:21)
 
+- **[bug]** A BLE passive scan reports needing "bluez" (owner's words, 22:21; exact text and screen not yet confirmed, probably ATLAS › DRONES Remote-ID). `atlas.py` `scanner_kwargs` already passes `bluez.or_patterns`; on Linux, bleak's passive mode uses BlueZ's AdvertisementMonitor API, which on many BlueZ builds only exists when `bluetoothd` runs with experimental features (`-E`). Turning that on is a system change, so it's the owner's call. Fix options: detect the missing monitor API and say so plainly, or fall back to an active scan, labelled as active, under the passive-only rule (owner decision). Asked owner for the exact message plus `bluetoothctl --version`. (2026-11-16 22:21)
+
 ## PRISM
 
 ## PROWL
