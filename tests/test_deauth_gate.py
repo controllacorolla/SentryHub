@@ -188,7 +188,9 @@ def test_deauth_out_of_scope_client_is_refused_and_nothing_spawns(monkeypatch):
 
 @pytest.mark.parametrize("client", ["", "FF:FF:FF:FF:FF:FF", "not-a-mac"])
 def test_deauth_has_no_broadcast_or_clientless_form(client):
-    _start([AP, CL])
+    # RA-DEAUTH N1: the broadcast address is in scope here, so this proves the refusal is on the
+    # address being a group address, not merely on it being out of scope.
+    _start([AP, CL, "FF:FF:FF:FF:FF:FF"])
     G.arm(True)
     ok, why, t = W.prepare("deauth", AP, client=client)
     assert not ok and t is None, why

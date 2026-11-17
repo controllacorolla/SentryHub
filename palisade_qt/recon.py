@@ -191,9 +191,11 @@ class GatedTool(QtWidgets.QFrame):
         row.addWidget(self.target, 1)
         lay.addLayout(row)
         self._fields = list(fields or ())
-        if self._fields:
+        # RA-DEAUTH N4: at most two label/field pairs per row, so a long value (the CLIENT MAC) is
+        # not squeezed into a third of the card and stays fully readable before a deauth.
+        for i in range(0, len(self._fields), 2):
             frow = QtWidgets.QHBoxLayout()
-            for label, w in self._fields:
+            for label, w in self._fields[i:i + 2]:
                 frow.addWidget(micro(label))
                 frow.addWidget(w, 1)
             lay.addLayout(frow)

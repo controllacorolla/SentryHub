@@ -393,14 +393,14 @@ def test_g5_pmkid_command_carries_the_bssid_filter_poc():
 
 def test_g5_deauth_requires_and_scope_checks_the_client_poc():
     import wifipent
-    E.start("job", "ROE-1", ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"], OP)
+    E.start("job", "ROE-1", ["AA:BB:CC:DD:EE:FF", "12:22:33:44:55:66"], OP)
     G.arm(True)                      # CL2-fix N2: an RF emitter also needs the kill switch armed
     ok, why, t = wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF")
     assert not ok and t is None and "client" in why.lower()            # no broadcast
     ok, why, t = wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF", client="99:99:99:99:99:99")
     assert not ok and t is None
-    ok, why, t = wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF", client="11:22:33:44:55:66")
-    assert ok and "-c" in t.argv and "11:22:33:44:55:66" in t.argv
+    ok, why, t = wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF", client="12:22:33:44:55:66")
+    assert ok and "-c" in t.argv and "12:22:33:44:55:66" in t.argv
 
 
 def test_g5_can_scope_is_interface_plus_id_range():

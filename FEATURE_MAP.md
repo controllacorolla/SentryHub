@@ -532,9 +532,11 @@ pip/go/cargo = confirmed on PyPI / proxy.golang.org / crates.io · src = upstrea
 | aircrack-ng (WPA crack) | A (offline) | — | apt `aircrack-ng` ✓ |
 
 ## Guardrail conflicts flagged for the owner (not decided here)
-1. **Deauth** — `wifipent.ALLOWED_PROGRAMS` includes `aireplay-ng` and the module builds a capped,
-   targeted `--deauth` (never broadcast/flood). `CLAUDE.md` forbids "deauth/jamming." These
-   conflict. Left **as-is** per the cluster brief; **owner's call** to keep the capped deauth or drop it.
+1. **Deauth** — DECIDED (owner, 2026-11-17): targeted `aireplay-ng --deauth` is a **gated
+   capability**, not banned. `wifipent` builds a capped, targeted `--deauth` bound to an in-scope
+   AP and a single in-scope unicast client (group/broadcast addresses refused); it runs only under
+   an active engagement with TX armed, and issue/spawn/exit are logged. See `CLAUDE.md`. Broadband
+   RF jamming is still not built.
 2. **Responder poisoning** — analyze mode is passive and scope-safe. Poisoning answers *all* broadcast
    LLMNR/NBT-NS/mDNS queries on the segment; it cannot be bound to a typed target, so under the
    engagement model it is at best label-only and is broadcast-affecting (same class as deauth).

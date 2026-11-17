@@ -22,7 +22,7 @@ because RX is what makes RECON Wi-Fi actions execute. Merge #27 first.
 | Concurrency | `GatedTool(runners={action: pane})`; Wi-Fi gets a DEAUTH pane. Each pane still runs one process; same `prepare()` gate, same `executor.start`. `run_panes()` and `stop()` include it. | `palisade_qt/recon.py` |
 | Gate code | **Unchanged** — engagement.py, chain.py, txguard.py, rfemit.py, opprofile.py, executor.py, wifipent.py byte-identical to the RX head. | — |
 
-## Regression tests (`tests/test_deauth_gate.py`, 13)
+## Regression tests (`tests/test_deauth_gate.py`, 13; plus wifipent + cl2 gate tests)
 | Requirement | Test |
 |---|---|
 | Refuses with no engagement, nothing spawned | `test_deauth_with_no_engagement_is_refused_and_nothing_spawns` |
@@ -32,6 +32,8 @@ because RX is what makes RECON Wi-Fi actions execute. Merge #27 first.
 | Refuses with TX kill switch off | `test_deauth_with_the_tx_kill_switch_off_is_refused` |
 | In scope: runs exact argv; issue → spawn → exit in chain, state EXECUTED | `test_in_scope_deauth_runs_and_issue_spawn_exit_are_in_the_engagement_chain` |
 | Count capped | `test_deauth_count_is_capped_in_the_issued_argv` |
+| Broadcast/multicast client refused even in scope (RA-DEAUTH N1) | `test_wifipent::test_deauth_refuses_a_broadcast_or_multicast_client_even_in_scope`; `test_deauth_gate::test_deauth_has_no_broadcast_or_clientless_form` (now scopes the address) |
+| Client == AP refused (RA-DEAUTH N3) | `test_wifipent::test_deauth_refuses_a_client_equal_to_the_ap` |
 | Runs while the handshake capture keeps running | `test_deauth_runs_while_the_handshake_capture_keeps_running` |
 | Closing RECON kills it, kill recorded | `test_closing_recon_kills_a_running_deauth_and_records_the_kill` |
 | END kills it; spawn < kill < exit < engagement.close | `test_end_kills_a_running_deauth_and_records_kill_before_close` |
@@ -39,7 +41,8 @@ because RX is what makes RECON Wi-Fi actions execute. Merge #27 first.
 
 ## Renders (RECON WIFI, 1280×720, capture running + deauth fired)
 `DEAUTH-renders/before-recon-wifi-{dark,sun}.png` (RX head: DEAUTH disabled while capturing) ·
-`DEAUTH-renders/after-recon-wifi-{dark,sun}.png` (capture RUNNING, DEAUTH DONE · exit 0 on its own pane).
+`DEAUTH-renders/after-recon-wifi-{dark,sun}.png` (capture RUNNING, DEAUTH DONE · exit 0 on its own
+pane; IFACE/CH on one row, the CLIENT MAC on its own full-width row — RA-DEAUTH N4).
 
 ## On the uConsole
 Still needs a USB monitor-mode Wi-Fi adapter (the onboard CM5 radio has no monitor mode) and
@@ -56,5 +59,21 @@ PALISADE. The gate, UI and tests here are independent of that.
 - The survey label still ends "· no deauth/inject" (true of the survey path, reads oddly beside a
   DEAUTH button).
 
+## Cold audit RA-DEAUTH and the fix
+RA-DEAUTH (`plan/briefs/RA-DEAUTH-report.md`): **DO NOT MERGE** on N1 — a deauth aimed at a
+broadcast/group client was authorized if that address sat in the engagement scope, which would
+detach every client on the AP. Fixed in `wifipent.prepare`: a client whose I/G bit is set
+(`ff:ff:ff:ff:ff:ff`, any `01:…` multicast) or equal to the AP is refused before issue (N1, N3).
+This tightens the gate (narrower, never wider); the module always claimed "no broadcast form".
+N2 (FEATURE_MAP still called it an open conflict) rewritten. N4 field widths fixed (CLIENT on its
+own row) and renders committed. Re-audit: RA-DEAUTHb.
+
+Note: two long-standing test fixtures used `11:22:33:44:55:66` / `99:99:99:99:99:99` as deauth
+*clients* — both are multicast MACs (I/G bit set). They are corrected to unicast station MACs in
+`test_cl2_fix.py` and `test_cl2_gates.py`; no assertion weakened.
+
 ## Suite
-SUITE_RESULT
+Full suite on the pre-fix head: 4 failed, 1838 passed, 9 skipped, 7 errors — all on the known
+baseline (test_shell ×7 no-tkinter, test_audit_tiles, test_hwlab doctor, test_sstvdec iss;
+test_cl1_screen up/down is flaky and fails on the RX head too). Re-run after the fix pending (see
+RA-DEAUTHb).
