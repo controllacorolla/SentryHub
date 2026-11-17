@@ -419,3 +419,121 @@ def test_rx_offscreen_default_never_spawns(monkeypatch):
         assert executor.running() == []
     finally:
         _close(p)
+
+
+# ============================================================ RA-RX fixes
+
+def _targets(argv):
+    """The non-option tokens after the last option value: what nmap is asked to scan."""
+    toks = list(argv[1:])
+    out, skip = [], False
+    for tok in toks:
+        if skip:
+            skip = False
+            continue
+        if tok in ("-p", "-oG"):
+            skip = True
+            continue
+        if tok.startswith("-"):
+            continue
+        out.append(tok)
+    return out
+
+
+@pytest.mark.parametrize("target", ["10.0.0.250-10.0.0.255", "ip:10.0.0.5", "IP:10.0.0.0/28",
+                                    "host:10.0.0.7", "10.0.0.5", "10.0.0.0/24",
+                                    "10.0.0.1-10.0.0.200"])
+def test_rx_h1_nmap_only_ever_gets_address_literals_and_never_resolves(target):
+    import ipaddress
+    import netpent
+    _start(["10.0.0.0/24"])
+    for action in ("discover", "portscan", "services"):
+        ok, why, t = netpent.prepare(action, target)
+        assert ok, (target, why)
+        assert "-n" in t.argv, "nmap must never resolve a name itself"
+        tg = _targets(t.argv)
+        assert tg, t.argv
+        for tok in tg:
+            net = ipaddress.ip_network(tok, strict=False)        # raises if not a literal
+            assert net.subnet_of(ipaddress.ip_network("10.0.0.0/24")), (target, tok)
+
+
+def test_rx_h1_a_range_becomes_exactly_its_cidr_cover():
+    import ipaddress
+    import netpent
+    _start(["10.0.0.0/24"])
+    ok, _w, t = netpent.prepare("discover", "10.0.0.250-10.0.0.255")
+    nets = [ipaddress.ip_network(x) for x in _targets(t.argv)]
+    covered = {int(a) for n in nets for a in n}
+    want = set(range(int(ipaddress.ip_address("10.0.0.250")),
+                     int(ipaddress.ip_address("10.0.0.255")) + 1))
+    assert covered == want
+
+
+def test_rx_h1_out_of_scope_range_and_prefixed_targets_are_still_refused():
+    import netpent
+    _start(["10.0.0.0/24"])
+    for target in ("10.0.0.250-10.0.1.5", "ip:192.168.1.5", "host:192.168.1.5", "IP:8.8.8.0/24"):
+        ok, _w, t = netpent.prepare("portscan", target)
+        assert not ok and t is None, target
+
+
+def test_rx_m1_an_endless_line_is_read_in_bounded_pieces(monkeypatch):
+    import executor
+    import netpent
+    _start(["10.0.0.0/24"])
+    ok, _w, t = netpent.prepare("discover", "10.0.0.5")
+    code = "import sys\nfor _ in range(200): sys.stdout.write('x' * 10000); sys.stdout.flush()"
+    got = []
+    h = executor.start(t, spawner=Spawns(code), on_line=got.append)
+    h.wait(20)
+    assert h.exit_code == 0
+    assert got and max(len(x) for x in got) <= executor.LINE_MAX
+    assert sum(len(x) for x in got) == 200 * 10000
+
+
+def test_rx_m1_the_pane_batches_and_truncates_a_flood(monkeypatch):
+    from palisade_qt import runpane
+    sp = Spawns("import sys\nfor i in range(20000): print('line %d ' % i + 'y' * 3000)")
+    _start(["10.0.0.0/24"])
+    p = _recon(monkeypatch, sp)
+    try:
+        p.net_gated.target.setText("10.0.0.5")
+        _press(p.net_gated, "discover")
+        assert _wait(lambda: not p.net_run.state.text().startswith("RUNNING"), 30)
+        doc = p.net_run.out.document()
+        assert doc.blockCount() <= runpane.MAX_LINES
+        longest = max(len(doc.findBlockByNumber(i).text()) for i in range(doc.blockCount()))
+        assert longest <= runpane.LINE_SHOWN + 10
+    finally:
+        _close(p)
+
+
+def test_rx_l4_a_refused_capture_creates_no_directory(monkeypatch):
+    import suite
+    sp = Spawns()
+    _start(["AA:BB:CC:*"])
+    p = _recon(monkeypatch, sp)
+    try:
+        p.wifi_gated.target.setText("99:99:99:99:99:99")
+        _press(p.wifi_gated, "pmkid")
+        assert "DENIED" in p.wifi_gated.result.text()
+        assert not os.path.exists(os.path.join(suite.DATA, "captures"))
+    finally:
+        _close(p)
+
+
+def test_rx_l2_the_monitor_note_follows_the_adapter(monkeypatch):
+    from palisade_qt import recon
+    p = _recon(monkeypatch, Spawns())
+    try:
+        monkeypatch.setattr(recon, "monitor_iface", lambda: None)
+        p._switch("BLE")
+        p._switch("WIFI")
+        assert "NO MONITOR-MODE" in p.wifi_hw.text()
+        monkeypatch.setattr(recon, "monitor_iface", lambda: "wlan1")
+        p._switch("BLE")
+        p._switch("WIFI")
+        assert p.wifi_hw.text() == "monitor-mode interface: wlan1"
+    finally:
+        _close(p)

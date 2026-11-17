@@ -76,3 +76,15 @@ Full suite at 6ac1b89 (PySide6 6.8.2.1, Python 3.13, xvfb offscreen):
   above RUNNING / NOT RUN, so the G5 assertion holds unchanged. Re-run: `tests/test_palisade_qt.py`
   + `tests/test_rx_recon_exec.py` 139 passed.
 pyflakes: clean on every touched file.
+
+## RX-fix (after RA-RX: DO NOT MERGE)
+
+| ID | Sev | Fix | File | Test |
+|---|---|---|---|---|
+| H1 | High | nmap is only ever given address / network literals: `ip:`/`host:` prefixes stripped, an a-b range becomes its exact CIDR cover (each block re-checked in scope via `also=`), anything else refused; `-n` on every nmap command so nmap never resolves. | `netpent.py` `_literal_targets`, builders | `test_rx_h1_nmap_only_ever_gets_address_literals_and_never_resolves` (7 targets × 3 actions), `test_rx_h1_a_range_becomes_exactly_its_cidr_cover`, `test_rx_h1_out_of_scope_range_and_prefixed_targets_are_still_refused`; `test_netpent` exact argv now includes `-n` |
+| M1 | Med | **Gate-adjacent (executor.py):** the reader takes at most `LINE_MAX` = 4096 chars per piece (`_lines()`), so a never-ending line cannot grow unbounded. Recording, kill and redeem logic untouched. RunPane: reader thread only appends to a bounded deque; the GUI drains it on the 200 ms poll; each line shown truncated to 1000 chars. | `executor.py`, `palisade_qt/runpane.py` | `test_rx_m1_an_endless_line_is_read_in_bounded_pieces`, `test_rx_m1_the_pane_batches_and_truncates_a_flood` |
+| L1 | Low | Accepted: STOP/END block ~1 s on a SIGTERM-ignoring child (executor's existing grace; the 2 s END wait is an owner-accepted decision). | — | — |
+| L2 | Low | Monitor-mode note re-read on WIFI tab show and before each action. | `recon.py` | `test_rx_l2_the_monitor_note_follows_the_adapter` |
+| L3 | Low | Pane title/state spacing; CLIENT placeholder shortened. | `runpane.py`, `recon.py` | render |
+| L4 | Low | Captures dir created only after the gate passed (`prepare_run`). | `recon.py` | `test_rx_l4_a_refused_capture_creates_no_directory` |
+| Flag | Owner | DEAUTH: unchanged, still flagged for Dalton. | — | — |

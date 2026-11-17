@@ -217,6 +217,7 @@ class GatedTool(QtWidgets.QFrame):
             self._app.on_authorized(self._domain, action, target, list(ticket.argv or ()))
             return
         self._app.on_authorized(self._domain, action, target, list(ticket.argv or ()))
+        self._app.prepare_run(ticket)
         started, msg = self._runner.run(ticket, spawner=self._app._spawner())
         self.result.setText("AUTHORIZED: %s%s\n$ %s\n%s" % (
             why, bind, ticket.display(),
@@ -479,7 +480,7 @@ class ReconApp(PalisadeApp):
         self.wifi_chan.setRange(1, 196)
         self.wifi_chan.setValue(1)
         self.wifi_client = QtWidgets.QLineEdit()
-        self.wifi_client.setPlaceholderText("client MAC (deauth)")
+        self.wifi_client.setPlaceholderText("deauth only")
         self.wifi_run = RunPane("WIFIPENT", self._tok)
         self.wifi_gated = GatedTool("WIFIPENT", "BSSID", wifipent.prepare,
                                     ["deauth", "pmkid", "handshake"], self, self._tok,
@@ -492,13 +493,11 @@ class ReconApp(PalisadeApp):
         right = QtWidgets.QVBoxLayout()
         right.setSpacing(10)
         right.addWidget(self.wifi_gated)
-        mon = monitor_iface()
         # honest hardware state: the onboard CM5 radio has no monitor mode, so capture tools need
-        # a USB adapter already in monitor mode (set up outside PALISADE: root, a system step)
-        self.wifi_hw = QtWidgets.QLabel(
-            ("monitor-mode interface: %s" % mon) if mon else
-            "NO MONITOR-MODE INTERFACE — capture/deauth need a USB adapter in monitor mode "
-            "(the onboard radio has none) and root or capabilities on the capture tools")
+        # a USB adapter already in monitor mode (set up outside PALISADE: root, a system step).
+        # Re-read when the WIFI tab is shown and before each action (RA-RX L2).
+        self.wifi_hw = QtWidgets.QLabel("")
+        self._sync_monitor_note()
         self.wifi_hw.setProperty("class", "note")
         self.wifi_hw.setWordWrap(True)
         right.addWidget(self.wifi_hw)
@@ -506,6 +505,15 @@ class ReconApp(PalisadeApp):
         split.addLayout(right, 2)
         pl.addLayout(split, 1)
         return page
+
+    def _sync_monitor_note(self):
+        mon = monitor_iface()
+        self.wifi_hw.setText(
+            ("monitor-mode interface: %s" % mon) if mon else
+            "NO MONITOR-MODE INTERFACE — capture/deauth need a USB adapter in monitor mode "
+            "(the onboard radio has none) and root or capabilities on the capture tools")
+        if mon and not self.wifi_iface.text().strip():
+            self.wifi_iface.setText(mon)
 
     def _wifi_pick(self, row):
         """A survey row fills the target BSSID and channel (the operator still presses the
@@ -519,6 +527,7 @@ class ReconApp(PalisadeApp):
 
     def _wifi_extra(self, action):
         """-> (kwargs for wifipent.prepare, error). Captures go under the suite data dir."""
+        self._sync_monitor_note()
         iface = self.wifi_iface.text().strip()
         if self._spawner() is None and not os.path.isdir(os.path.join(SYS_NET, iface)):
             return None, ("interface %s is not present — put an adapter in monitor mode first "
@@ -528,8 +537,7 @@ class ReconApp(PalisadeApp):
             kw["client"] = self.wifi_client.text().strip()
         else:
             import suite
-            d = os.path.join(suite.DATA, "captures")
-            os.makedirs(d, exist_ok=True)
+            d = os.path.join(suite.DATA, "captures")       # created only once authorized (L4)
             kw["out"] = os.path.join(d, "wifi-%s-%s" % (action, time.strftime(
                 "%Y%m%dT%H%M%SZ", time.gmtime())))
         return kw, None
@@ -621,6 +629,15 @@ class ReconApp(PalisadeApp):
             return refuse
         return None
 
+    def prepare_run(self, ticket):
+        """After the gate passed, before the spawn: the capture directory a Wi-Fi capture writes
+        into (RA-RX L4: never created for a refused action)."""
+        import suite
+        d = os.path.join(suite.DATA, "captures")
+        argv = list(ticket.argv or ())
+        if any(str(a).startswith(d + os.sep) for a in argv):
+            os.makedirs(d, exist_ok=True)
+
     def run_panes(self):
         return [self.wifi_run, self.net_run]
 
@@ -636,6 +653,8 @@ class ReconApp(PalisadeApp):
     # ---- sub-tab switching ----
     def _switch(self, tab):
         self._subtab = tab
+        if tab == "WIFI" and hasattr(self, "wifi_hw"):
+            self._sync_monitor_note()
         self.stack.setCurrentWidget(self._pages[tab])
         self._sync_tabs()
         self._sync_scan_pause()

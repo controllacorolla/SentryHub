@@ -18,24 +18,24 @@ ALLOWED_PROGRAMS = frozenset(("nmap", "arp-scan"))
 
 
 def _ping_sweep_argv(cidr):
-    return ["nmap", "-sn", cidr]
+    return ["nmap", "-n", "-sn", cidr]
 
 
 def _port_scan_argv(target, ports="1-1024", syn=True):
-    return ["nmap", "-sS" if syn else "-sT", "-p", str(ports), target]
+    return ["nmap", "-n", "-sS" if syn else "-sT", "-p", str(ports), target]
 
 
 def _service_enum_argv(target, ports="1-1024"):
-    return ["nmap", "-sV", "-p", str(ports), target]
+    return ["nmap", "-n", "-sV", "-p", str(ports), target]
 
 
 def _os_fingerprint_argv(target):
-    return ["nmap", "-O", target]
+    return ["nmap", "-n", "-O", target]
 
 
 def _survey_argv(target):
     """Scout's "Scan my network": connect scan with light version detection, greppable output."""
-    return ["nmap", "-sV", "--version-light", "-T4", "--open", "-oG", "-", target]
+    return ["nmap", "-n", "-sV", "--version-light", "-T4", "--open", "-oG", "-", target]
 
 
 def _arp_scan_argv(iface):
@@ -47,6 +47,29 @@ _ACTIONS = {"discover": _ping_sweep_argv, "portscan": _port_scan_argv,
             "services": _service_enum_argv, "osfp": _os_fingerprint_argv,
             "survey": _survey_argv}
 _PORTS_RE = __import__("re").compile(r"^[0-9]{1,5}(-[0-9]{1,5})?(,[0-9]{1,5}(-[0-9]{1,5})?)*$")
+
+
+def _literal_targets(t):
+    """RA-RX H1: what nmap is given for a non-hostname target — address / network literals only.
+    A scope prefix (ip: / host:) is stripped and an a-b range becomes the CIDR blocks that cover
+    exactly it, because nmap reads neither form as an address and would hand the text to the
+    system resolver (a search domain or hostile DNS would then choose the scanned host). With
+    -n on every nmap command, nmap itself never resolves anything. None if t is no literal."""
+    import ipaddress
+    s = t
+    for pre in ("ip:", "host:"):
+        if s.lower().startswith(pre):
+            s = s[len(pre):]
+    try:
+        if "-" in s and "/" not in s:
+            a, _, b = s.partition("-")
+            lo, hi = ipaddress.ip_address(a), ipaddress.ip_address(b)
+            return [str(n) for n in ipaddress.summarize_address_range(lo, hi)]
+        if "/" in s:
+            return [str(ipaddress.ip_network(s, strict=True))]
+        return [str(ipaddress.ip_address(s))]
+    except (ValueError, TypeError):
+        return None
 
 
 def _is_root():
@@ -75,7 +98,13 @@ def prepare(action, target, evidence_chain=None, ports="1-1024", syn=None):
         pinned = engagement.pin_host(t)
     except ValueError as e:
         return False, "refused: %s" % e, None
-    addrs = pinned or [t]
+    if pinned:
+        addrs = pinned
+    else:
+        addrs = _literal_targets(t)
+        if addrs is None:
+            return False, ("refused: %r is not an IP address, network, range or hostname"
+                           % (target,)), None
     if action == "portscan":
         argv = _port_scan_argv(addrs[0], ports, syn=_is_root() if syn is None else bool(syn))
     elif action == "services":

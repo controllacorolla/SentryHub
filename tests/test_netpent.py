@@ -21,7 +21,7 @@ def test_all_scans_gated():
 def test_in_scope_scans_build_argv():
     E.start("home-net audit", "self-owned", ["192.168.1.0/24"], "KD0ABC")
     ok, _, t = N.prepare("discover", "192.168.1.0/24")
-    assert ok and t.argv == ("nmap", "-sn", "192.168.1.0/24")
+    assert ok and t.argv == ("nmap", "-n", "-sn", "192.168.1.0/24")
     ok, _, t = N.prepare("portscan", "192.168.1.10", ports="1-1000", syn=True)
     argv = t.argv
     assert ok and "-sS" in argv and "1-1000" in argv and "192.168.1.10" in argv

@@ -12,6 +12,7 @@ the tool's output and exit, and offers STOP (which is executor Handle.stop, reco
 Output arrives on the executor's reader thread; it is handed to the GUI thread through a Qt signal
 (queued), so no widget is touched off the GUI thread.
 """
+import collections
 import re
 import shutil
 
@@ -20,6 +21,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .kit import micro
 
 MAX_LINES = 2000
+LINE_SHOWN = 1000                  # characters of one output line the pane shows
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]|[\x00-\x08\x0b-\x1f\x7f]")
 
 
@@ -29,7 +31,6 @@ def clean(line):
 
 
 class RunPane(QtWidgets.QFrame):
-    _line = QtCore.Signal(str)          # executor reader thread -> GUI thread (queued)
     finished = QtCore.Signal(object)    # the Handle, once its exit is recorded
 
     def __init__(self, title, tok, parent=None):
@@ -41,6 +42,7 @@ class RunPane(QtWidgets.QFrame):
         lay.setContentsMargins(12, 10, 12, 10)
         lay.setSpacing(6)
         top = QtWidgets.QHBoxLayout()
+        top.setSpacing(12)
         top.addWidget(micro("%s · output" % title))
         top.addStretch(1)
         self.state = QtWidgets.QLabel("IDLE — nothing running")
@@ -59,7 +61,9 @@ class RunPane(QtWidgets.QFrame):
         self.out.setFont(f)
         self.out.setPlaceholderText("authorized tool output appears here")
         lay.addWidget(self.out, 1)
-        self._line.connect(self._append)
+        # RA-RX M1: the reader thread only queues lines (bounded); the GUI drains them in batches on
+        # the poll timer, so a flood of output never floods the event loop
+        self._pending = collections.deque(maxlen=MAX_LINES)
         self._poll = QtCore.QTimer(self)
         self._poll.setInterval(200)
         self._poll.timeout.connect(self._check)
@@ -79,10 +83,14 @@ class RunPane(QtWidgets.QFrame):
         self.out.appendPlainText(text)
 
     def _on_line(self, line):              # executor reader thread: never touch widgets here
-        try:
-            self._line.emit(clean(line))
-        except RuntimeError:               # pane already destroyed; the executor keeps the lines
-            pass
+        self._pending.append(clean(line)[:LINE_SHOWN])
+
+    def _drain(self):
+        lines = []
+        while self._pending:
+            lines.append(self._pending.popleft())
+        if lines:
+            self._append("\n".join(lines))
 
     # ---- run ----
     def run(self, ticket, spawner=None):
@@ -98,6 +106,7 @@ class RunPane(QtWidgets.QFrame):
             self._append("! %s is not installed — nothing was run" % prog)
             return False, "%s is not installed" % prog
         self.out.clear()
+        self._pending.clear()
         self._append("$ " + ticket.display())
         try:
             h = executor.start(ticket, spawner=spawner, on_line=self._on_line)
@@ -122,6 +131,7 @@ class RunPane(QtWidgets.QFrame):
         self._check()
 
     def _check(self):
+        self._drain()
         h = self._handle
         if h is None or h.running():
             return
