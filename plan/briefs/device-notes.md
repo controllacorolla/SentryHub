@@ -7,6 +7,7 @@ Already logged elsewhere (not repeated here): top key-strip labels overlap and s
 misalign; CL8 device-check test failure.
 
 ## OPS
+- **[bug]** OPS map is empty even in `--demo` (22:30). From the code: OPS's `DemoFeedWorker` deliberately fabricates no contacts ("contacts are ATLAS's domain now"); OPS only plots `contact` events that ATLAS's workers publish on the bus. So if ATLAS hasn't been opened, or its feed is paused while backgrounded, the OPS scope stays empty, in demo and live. Also the OPS hero is a bare `PpiScope` (rings only, no basemap), so there's no map imagery on OPS at all; see the dark-satellite note. Fix direction: run the contact feeds independently of which page is open (shell-owned), and give OPS the same tile basemap as ATLAS. Unverified on device which of the two he means. (2026-11-16 22:30)
 - **[UI]** OPS home map should default to a dark satellite basemap (satellite imagery, darkened to fit the theme), not the current style. Depends on the SAT tile source fix under ATLAS (Esri now needs a key). (2026-11-16 22:19)
 
 ## ATLAS
