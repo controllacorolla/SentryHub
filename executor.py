@@ -33,6 +33,7 @@ import uuid
 
 TICKET_TTL_S = 120.0              # a ticket must be used within two minutes of the gate passing
 MONITOR_INTERVAL_S = 0.25
+LINE_MAX = 4096                   # longest piece of one output line handed on at a time
 SERIAL_LOG = os.path.join(os.path.expanduser("~"), ".local", "share", "uconsole-suite",
                           "serial_tx.jsonl")
 
@@ -282,6 +283,19 @@ def _kill_group(proc, grace=1.0):
     return proc.poll() is not None and not (own and gatestate.group_alive(pg, grace_s=0.2))
 
 
+def _lines(out):
+    """Iterate a process's output in pieces of at most LINE_MAX characters (RA-RX M1)."""
+    rl = getattr(out, "readline", None)
+    if rl is None:
+        yield from out
+        return
+    while True:
+        piece = rl(LINE_MAX)
+        if not piece:
+            return
+        yield piece
+
+
 class Handle:
     """A registered, running (or finished) gated process."""
 
@@ -307,7 +321,9 @@ class Handle:
         try:
             out = getattr(self.proc, "stdout", None)
             if out is not None:
-                for line in out:
+                # RA-RX M1: read at most LINE_MAX characters at a time, so a tool that never ends
+                # a line (a progress redraw) cannot grow one unbounded line in memory
+                for line in _lines(out):
                     line = line.rstrip("\r\n") if isinstance(line, str) else \
                         line.decode("utf-8", "replace").rstrip("\r\n")
                     self.lines.append(line)

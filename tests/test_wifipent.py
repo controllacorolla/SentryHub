@@ -38,6 +38,25 @@ def test_out_of_scope_blocked():
     assert ok, why                                    # same gate state, in scope: issued
 
 
+def test_deauth_refuses_a_broadcast_or_multicast_client_even_in_scope():
+    # RA-DEAUTH N1: a group address (ff:ff:ff:ff:ff:ff, 01:00:5e:…) in scope must still be refused —
+    # a deauth names one station, never "every client on the AP".
+    assert E.start("j", "roe", ["AA:BB:CC:DD:EE:01", "FF:FF:FF:FF:FF:FF", "01:00:5E:00:00:FB"],
+                   "KD0ABC")[0]
+    txguard.arm(True)
+    for group in ("FF:FF:FF:FF:FF:FF", "01:00:5E:00:00:FB"):
+        ok, why, t = W.prepare("deauth", "AA:BB:CC:DD:EE:01", client=group)
+        assert not ok and t is None and "broadcast/multicast" in why, (group, why)
+
+
+def test_deauth_refuses_a_client_equal_to_the_ap():
+    # RA-DEAUTH N3: -a AP -c AP is not a client station.
+    assert E.start("j", "roe", ["AA:BB:CC:DD:EE:01"], "KD0ABC")[0]
+    txguard.arm(True)
+    ok, why, t = W.prepare("deauth", "AA:BB:CC:DD:EE:01", client="AA:BB:CC:DD:EE:01")
+    assert not ok and t is None and "cannot be the AP" in why, why
+
+
 def test_deauth_is_capped_not_a_flood():
     E.start("j", "roe", ["AA:BB:CC:DD:EE:01", "CC:DD:EE:FF:00:02"], "KD0ABC")
     txguard.arm(True)    # CL2-fix N2: an RF emitter also needs the TX kill switch armed

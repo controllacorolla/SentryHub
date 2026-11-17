@@ -34,12 +34,38 @@ from . import theme, eventbus
 from .kit import ControlBar, FeedTable, micro, card
 from .worker import Worker
 from .timebase import zulu
+from .runpane import RunPane
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 SUBTABS = ("WIFI", "BLE", "NET", "RF")
+SYS_NET = "/sys/class/net"
+
+
+def _unique(d, stem, ext):
+    """RA-RXc N4: a results path no earlier run used — UTC time plus a random suffix, so two runs
+    in the same second never share (and overwrite) one evidence file."""
+    import uuid
+    return os.path.join(d, "%s-%s-%s%s" % (stem, time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
+                                           uuid.uuid4().hex[:6], ext))
+
+
+def monitor_iface():
+    """The first interface already in monitor mode (ARPHRD_IEEE80211_RADIOTAP = 803), or None."""
+    try:
+        names = sorted(os.listdir(SYS_NET))
+    except OSError:
+        return None
+    for n in names:
+        try:
+            with open(os.path.join(SYS_NET, n, "type")) as fh:
+                if fh.read().strip() == "803":
+                    return n
+        except OSError:
+            continue
+    return None
 
 # SCAN-1/2: what each scan path really does (honest labels; nmcli and BlueZ discovery probe)
 WIFI_MODE = {
@@ -127,15 +153,31 @@ def _engagement():
 class GatedTool(QtWidgets.QFrame):
     """A card for one ACTIVE tool. It calls the engine's prepare() (which enforces
     engagement.authorize_action); it never bypasses the gate. With no engagement it shows
-    'REQUIRES ENGAGEMENT'. Execution of any produced argv is device-only, behind a hermetic seam."""
+    'REQUIRES ENGAGEMENT'.
 
-    def __init__(self, title, domain, prepare_fn, actions, app, tok, target_hint="target", parent=None):
+    RX (owner decision 2026-11-17: NET + Wi-Fi execution in v0.1): a card built with a `runner`
+    (runpane.RunPane) hands the ticket the gate produced to the executor through that pane, which
+    starts the real tool and streams its output. A card without one (BLEPENT, PASSAUDIT — v0.2)
+    still only shows the authorized command. `extra()` supplies the engine's further prepare()
+    arguments (Wi-Fi interface / channel / client) — the ENGINE still builds and gates the argv.
+
+    DEAUTH (owner decision 2026-11-17: targeted deauth is a gated capability): `runners` maps an
+    action to its own pane, so a short deauth can run while a handshake capture keeps running on
+    the card's main pane (the capture is what the deauth is for). Each pane runs one process; the
+    gate and the executor are the same for both."""
+
+    def __init__(self, title, domain, prepare_fn, actions, app, tok, target_hint="target",
+                 parent=None, runner=None, extra=None, fields=None, runners=None):
         super().__init__(parent)
         self.setProperty("class", "card")
         self._prepare = prepare_fn
         self._app = app
         self._tok = tok
         self._domain = domain
+        self._runner = runner
+        self._runners = dict(runners or {})
+        self._last_pane = None
+        self._extra = extra
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(12, 10, 12, 10)
         lay.setSpacing(6)
@@ -148,7 +190,17 @@ class GatedTool(QtWidgets.QFrame):
         self.target.setPlaceholderText(target_hint)
         row.addWidget(self.target, 1)
         lay.addLayout(row)
+        self._fields = list(fields or ())
+        # RA-DEAUTH N4: at most two label/field pairs per row, so a long value (the CLIENT MAC) is
+        # not squeezed into a third of the card and stays fully readable before a deauth.
+        for i in range(0, len(self._fields), 2):
+            frow = QtWidgets.QHBoxLayout()
+            for label, w in self._fields[i:i + 2]:
+                frow.addWidget(micro(label))
+                frow.addWidget(w, 1)
+            lay.addLayout(frow)
         self._btns = []
+        self._acts = list(actions)
         brow = QtWidgets.QHBoxLayout()
         for act in actions:
             b = QtWidgets.QPushButton(act.upper())
@@ -164,14 +216,38 @@ class GatedTool(QtWidgets.QFrame):
         lay.addWidget(self.result)
         from . import chrome
         chrome.gate_signals().changed.connect(self.refresh)      # follows the engine (G12)
+        for pane in self._panes():
+            pane.finished.connect(lambda h, pane=pane: self._run_finished(pane))
+        self.refresh()
+
+    def _runner_for(self, action):
+        return self._runners.get(action, self._runner)
+
+    def _panes(self):
+        out = []
+        for pane in [self._runner] + list(self._runners.values()):
+            if pane is not None and pane not in out:
+                out.append(pane)
+        return out
+
+    def _run_finished(self, pane):
+        """The card's last line follows the process: never 'RUNNING' after it has ended."""
+        txt = self.result.text()
+        if "RUNNING — output below" in txt and self._last_pane is pane:
+            self.result.setText(txt.replace("RUNNING — output below",
+                                            "ENDED — %s" % pane.state.text()))
         self.refresh()
 
     def refresh(self):
         eng = _engagement()
         active = eng.is_active()
-        for b in self._btns:
-            b.setEnabled(active)
+        for b, act in zip(self._btns, self._acts):
+            pane = self._runner_for(act)
+            busy = pane is not None and pane.running()
+            b.setEnabled(active and not busy)          # one process per pane; STOP is on the pane
         self.target.setEnabled(active)
+        for _label, w in self._fields:
+            w.setEnabled(active)
         if active:
             info = eng.info()
             self.state.setStyleSheet("color:%s;" % self._tok["warn"])     # amber: armed, not healthy
@@ -190,17 +266,40 @@ class GatedTool(QtWidgets.QFrame):
         if not target:
             self.result.setText("enter a %s first" % self._domain)
             return
+        runner = self._runner_for(action)
+        if runner is not None and runner.running():
+            self.result.setText("a tool is already running — STOP it first")
+            return
+        kw = {}
+        if self._extra is not None:
+            kw, err = self._extra(action)
+            if err:
+                self.result.setStyleSheet("color:%s;" % self._tok["muted"])
+                self.result.setText("NOT RUN: %s" % err)
+                return
         # the ENGINE gates this (engagement.authorize_action); we pass the shared evidence chain
-        ok, why, ticket = self._prepare(action, target, evidence_chain=self._app.evidence)
+        ok, why, ticket = self._prepare(action, target, evidence_chain=self._app.evidence, **kw)
         if not ok:
             self.result.setStyleSheet("color:%s;" % self._tok["muted"])
             self.result.setText("DENIED: %s" % why)
             return
         self.result.setStyleSheet("color:%s;" % self._tok["warn"])        # AUTHORIZED is amber (D9)
         bind = " · LABEL-ONLY authorization" if ticket.binding == "label-only" else ""
-        self.result.setText("AUTHORIZED: %s\n$ %s\n(single-use ticket%s — runs only through the "
-                            "executor)" % (why, ticket.display(), bind))
+        if runner is None:
+            self.result.setText("AUTHORIZED: %s\n$ %s\n(single-use ticket%s — runs only through "
+                                "the executor; execution is v0.2)" % (why, ticket.display(), bind))
+            self._app.on_authorized(self._domain, action, target, list(ticket.argv or ()))
+            return
         self._app.on_authorized(self._domain, action, target, list(ticket.argv or ()))
+        self._app.prepare_run(ticket)
+        self._last_pane = runner
+        started, msg = runner.run(ticket, spawner=self._app._spawner())
+        self.result.setText("AUTHORIZED: %s%s\n$ %s\n%s" % (
+            why, bind, ticket.display(),
+            "RUNNING — output below" if started else "NOT RUN: %s" % msg))
+        if not started:
+            self.result.setStyleSheet("color:%s;" % self._tok["alert"])
+        self.refresh()
 
 
 # ======================= passive scan workers =======================
@@ -724,13 +823,87 @@ class ReconApp(PalisadeApp):
         left.addWidget(self.wifi_feed, 1)
         split.addLayout(left, 3)
         import wifipent
+        # RX: the engine's further inputs. The interface defaults to one already in monitor mode
+        # (PALISADE never switches an adapter into monitor mode: that needs root — a system step)
+        self.wifi_iface = QtWidgets.QLineEdit(monitor_iface() or "wlan0mon")
+        self.wifi_iface.setMaximumWidth(110)
+        self.wifi_chan = QtWidgets.QSpinBox()
+        self.wifi_chan.setRange(1, 196)
+        self.wifi_chan.setValue(1)
+        self.wifi_client = QtWidgets.QLineEdit()
+        self.wifi_client.setPlaceholderText("deauth only")
+        self.wifi_run = RunPane("WIFIPENT", self._tok)
+        # DEAUTH: its own pane, so it can fire while the handshake capture keeps running
+        self.wifi_deauth_run = RunPane("DEAUTH", self._tok)
+        self.wifi_deauth_run.out.setPlaceholderText(
+            "deauth output — gated: engagement, AP + client in scope, TX armed")
         self.wifi_gated = GatedTool("WIFIPENT", "BSSID", wifipent.prepare,
                                     ["deauth", "pmkid", "handshake"], self, self._tok,
-                                    "target BSSID (aa:bb:cc:dd:ee:ff)")
+                                    "target BSSID (aa:bb:cc:dd:ee:ff)", runner=self.wifi_run,
+                                    extra=self._wifi_extra,
+                                    fields=[("IFACE", self.wifi_iface), ("CH", self.wifi_chan),
+                                            ("CLIENT", self.wifi_client)],
+                                    runners={"deauth": self.wifi_deauth_run})
         self._gated.append(self.wifi_gated)
-        split.addWidget(self.wifi_gated, 2)
+        self.wifi_feed.selected.connect(self._wifi_pick)
+        right = QtWidgets.QVBoxLayout()
+        right.setSpacing(10)
+        right.addWidget(self.wifi_gated)
+        # honest hardware state: the onboard CM5 radio has no monitor mode, so capture tools need
+        # a USB adapter already in monitor mode (set up outside PALISADE: root, a system step).
+        # Re-read when the WIFI tab is shown and before each action (RA-RX L2).
+        self.wifi_hw = QtWidgets.QLabel("")
+        self._sync_monitor_note()
+        self.wifi_hw.setProperty("class", "note")
+        self.wifi_hw.setWordWrap(True)
+        right.addWidget(self.wifi_hw)
+        right.addWidget(self.wifi_run, 1)
+        right.addWidget(self.wifi_deauth_run, 1)
+        split.addLayout(right, 2)
         pl.addLayout(split, 1)
         return page
+
+    def _sync_monitor_note(self):
+        mon = monitor_iface()
+        self.wifi_hw.setText(
+            ("monitor-mode interface: %s" % mon) if mon else
+            "NO MONITOR-MODE INTERFACE — capture/deauth need a USB adapter in monitor mode "
+            "(the onboard radio has none) and root or capabilities on the capture tools")
+        if mon and not self.wifi_iface.text().strip():
+            self.wifi_iface.setText(mon)
+
+    def _net_extra(self, action):
+        """RX-fix2: every scan writes its results (nmap -oN) under the suite data dir, so they
+        survive the pane; the directory is created only once the gate passed (prepare_run)."""
+        import suite
+        return {"out": _unique(os.path.join(suite.DATA, "captures"), "nmap-%s" % action,
+                               ".txt")}, None
+
+    def _wifi_pick(self, row):
+        """A survey row fills the target BSSID and channel (the operator still presses the
+        action; the engine still checks the BSSID against the engagement scope)."""
+        if row.get("bssid"):
+            self.wifi_gated.target.setText(row["bssid"])
+        try:
+            self.wifi_chan.setValue(int(row.get("ch")))
+        except (TypeError, ValueError):
+            pass
+
+    def _wifi_extra(self, action):
+        """-> (kwargs for wifipent.prepare, error). Captures go under the suite data dir."""
+        self._sync_monitor_note()
+        iface = self.wifi_iface.text().strip()
+        if self._spawner() is None and not os.path.isdir(os.path.join(SYS_NET, iface)):
+            return None, ("interface %s is not present — put an adapter in monitor mode first "
+                          "(outside PALISADE; needs root)" % (iface or "?"))
+        kw = {"iface": iface, "channel": self.wifi_chan.value()}
+        if action == "deauth":
+            kw["client"] = self.wifi_client.text().strip()
+        else:
+            import suite
+            d = os.path.join(suite.DATA, "captures")       # created only once authorized (L4)
+            kw["out"] = _unique(d, "wifi-%s" % action, "")
+        return kw, None
 
     def _ble_page(self):
         page = QtWidgets.QWidget()
@@ -764,16 +937,22 @@ class ReconApp(PalisadeApp):
         pl.setSpacing(10)
         import netpent
         import passaudit
+        self.net_run = RunPane("NETPENT", self._tok)
         self.net_gated = GatedTool("NETPENT", "target", netpent.prepare,
                                    ["discover", "portscan", "services"], self, self._tok,
-                                   "target IP / host / CIDR")
+                                   "target IP / host / CIDR", runner=self.net_run,
+                                   extra=self._net_extra)
         self.pass_gated = GatedTool("PASSAUDIT", "target", passaudit.prepare,
                                     ["convert", "hashcat", "aircrack"], self, self._tok,
                                     "capture / hash target")
         self._gated += [self.net_gated, self.pass_gated]
-        pl.addWidget(self.net_gated)
-        pl.addWidget(self.pass_gated)
-        pl.addStretch(1)
+        # RX: NETPENT runs (nmap through the executor); PASSAUDIT stays authorize-only (v0.2)
+        top = QtWidgets.QHBoxLayout()
+        top.setSpacing(10)
+        top.addWidget(self.net_gated, 1)
+        top.addWidget(self.pass_gated, 1)
+        pl.addLayout(top)
+        pl.addWidget(self.net_run, 1)
         return page
 
     def _rf_page(self):
@@ -806,9 +985,31 @@ class ReconApp(PalisadeApp):
         for g in self._gated:
             g.refresh()
 
+    def _spawner(self):
+        """None = the executor's real spawner. Offscreen (tests / CI) an authorized tool is never
+        spawned — same seam as BENCH; tests substitute a harmless process."""
+        if _offscreen():
+            def refuse(argv, **kw):
+                raise OSError("offscreen: tool not spawned")
+            return refuse
+        return None
+
+    def prepare_run(self, ticket):
+        """After the gate passed, before the spawn: the capture directory a Wi-Fi capture writes
+        into (RA-RX L4: never created for a refused action)."""
+        import suite
+        d = os.path.join(suite.DATA, "captures")
+        argv = list(ticket.argv or ())
+        if any(str(a).startswith(d + os.sep) for a in argv):
+            os.makedirs(d, exist_ok=True)
+
+    def run_panes(self):
+        return [self.wifi_run, self.wifi_deauth_run, self.net_run]
+
     def on_authorized(self, domain, action, target, argv):
         """An active tool produced an authorized command. Announce it; the trail is in the
-        ENGAGEMENT panel. Execution of the argv is device-only; nothing is spawned here."""
+        ENGAGEMENT panel. NET and Wi-Fi then run it through their RunPane (executor); the other
+        cards only show it."""
         eventbus.bus.publish(eventbus.alert(
             "RECON", "authorized %s:%s on %s" % (domain, action, target), severity="warn",
             action=action, target=target))
@@ -817,6 +1018,8 @@ class ReconApp(PalisadeApp):
     # ---- sub-tab switching ----
     def _switch(self, tab):
         self._subtab = tab
+        if tab == "WIFI" and hasattr(self, "wifi_hw"):
+            self._sync_monitor_note()
         self.stack.setCurrentWidget(self._pages[tab])
         self._sync_tabs()
         self._sync_scan_pause()
@@ -894,6 +1097,10 @@ class ReconApp(PalisadeApp):
     def stop(self):
         if self._stopped:
             return
+        for pane in (getattr(self, "wifi_run", None), getattr(self, "wifi_deauth_run", None),
+                     getattr(self, "net_run", None)):
+            if pane is not None and pane.running():
+                pane.stop("RECON closed")          # recorded kill + exit, like BENCH
         for w in getattr(self, "_workers", []):
             w.stop()                       # all first: every scan is told at once
         for w in getattr(self, "_workers", []):
