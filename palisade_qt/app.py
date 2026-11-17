@@ -318,6 +318,9 @@ class PalisadeApp(QtWidgets.QWidget):
                 rail.setVisible(not self._side_hidden)
         self._side_toggle.set_hidden_state(self._side_hidden)
         self.side_changed(self._side_hidden)
+        win = self.window()
+        if hasattr(win, "set_nav_hidden"):
+            win.set_nav_hidden(self._side_hidden)    # the page rail goes too: map near full width
         return True
 
     def side_changed(self, hidden):
@@ -650,10 +653,17 @@ class CompositeApp(PalisadeApp):
         if sub is not None and c.current_subtab() != sub:
             c.switch_subtab(sub)
         if self._rail is not None:          # a tab without a map always shows the rail
-            self._rail.setVisible(not c.side_hidden())
+            self._rail.setVisible(not c.side_hidden() and self._active)
+        win = self.window()
+        if hasattr(win, "set_nav_hidden") and win is not self:
+            win.set_nav_hidden(c.side_hidden())
         self._push_active()
         self._sync_rail()
         self._render_status(c._last_status)
+
+    def side_hidden(self):
+        c = self.current_child()
+        return c.side_hidden() if c is not None else False
 
     def _child_switched(self, child):
         """A child changed its own view (a test, the palette): follow it on the rail."""

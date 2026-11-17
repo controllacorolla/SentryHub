@@ -168,6 +168,8 @@ QProgressBar::chunk {{ background: {accent}; border-radius: 3px; }}
 
 /* ---- the one top strip: nav keys + shell-owned status slots ---- */
 QFrame#top_bar {{ background: {p1}; border: none; border-bottom: {bw} solid {hairline}; }}
+QFrame#nav_rail {{ background: {p1}; border: none; border-right: {bw} solid {hairline}; }}
+QLabel#strip_title {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QPushButton.navkey {{ background: transparent; border: {bw} solid transparent; border-radius: 5px;
                       padding: 0; min-height: 0; text-align: left; }}
 QPushButton.navkey:hover {{ background: {row_hover}; }}

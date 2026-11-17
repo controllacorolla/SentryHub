@@ -777,7 +777,7 @@ class AlertsDrawer(Overlay):
 # ======================= key map =======================
 
 KEYMAP = [
-    ("1 – 7", "open a page"),
+    ("1 – 9", "open a page (keys down the left edge)"),
     ("← →", "previous / next sub-tab"),
     ("↑ ↓", "move in the list; the detail follows"),
     ("Enter", "primary action of the page"),

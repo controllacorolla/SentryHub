@@ -24,6 +24,7 @@ from .app import PalisadeApp
 from . import theme, eventbus, radio_arbiter
 from .kit import MapPanel, FeedTable, DetailCard
 from .kit.components import Cover
+from .kit import tracksym
 from .worker import Worker
 from .kit.seams import offscreen as _seam_offscreen
 
@@ -60,6 +61,7 @@ class _Track:
         self.alt = random.randint(*self._ALT[kind]) if kind in self._ALT else None
         self.id = self._mkid(kind)
         self.mil = kind == "aircraft" and random.random() < 0.18
+        self.cat = "A7" if kind == "aircraft" and not self.mil and random.random() < 0.25 else None
         if kind == "drone":          # a Remote-ID drone broadcasts its operator too
             self.op_lat, self.op_lon = _offset(self.lat, self.lon, random.uniform(0.2, 1.4),
                                                random.uniform(0, 360))
@@ -88,7 +90,9 @@ class _Track:
         sev = "alert" if (self.mil or self.kind == "drone") else "live"
         return eventbus.contact("ATLAS", self.id, self.lat, self.lon, alt=self.alt,
                                 kind=self.kind, severity=sev, spd=round(self.spd), mil=self.mil,
-                                demo=True)
+                                track=round(self.hdg) if self.kind in ("aircraft", "vessel",
+                                                                       "drone") else None,
+                                category=self.cat, demo=True)
 
     def operator_event(self):
         return eventbus.contact("RID", self.id + "-OP", self.op_lat, self.op_lon,
@@ -98,6 +102,7 @@ class _Track:
 
 class AtlasDemoWorker(Worker):
     """Synthetic multi-layer traffic, published to the bus (demo only)."""
+    PAUSE_WHEN_HIDDEN = False        # synthetic; keeps OPS fed while ATLAS is not in front
     _COUNT = {"aircraft": 6, "vessel": 4, "station": 3, "drone": 2, "df": 1, "balloon": 1}
 
     def __init__(self, parent=None):
@@ -137,7 +142,11 @@ def adsb_to_contact(a):
                             alt=int(alt) if isinstance(alt, (int, float)) else None,
                             kind="aircraft", severity=sev,
                             spd=int(spd) if isinstance(spd, (int, float)) else None,
-                            track=a.get("track"), hexid=a.get("hex"))
+                            track=a.get("track"), hexid=a.get("hex"),
+                            # readsb: emitter category (A7 = rotorcraft) and the aircraft-database
+                            # flags (bit 0 = military), passed through for the map's colour by type
+                            category=a.get("category"),
+                            dbflags=a.get("dbFlags") if isinstance(a.get("dbFlags"), int) else None)
 
 
 def adsb_contacts(aircraft):
@@ -691,23 +700,31 @@ class AtlasLiveWorker(Worker):
     def step(self):
         self._reconcile_leases()
         if self._hidden:
-            self._step_leases()                  # hidden: only the dongle owners, nothing new
+            # hidden: the dongle owners, plus (device notes 2026-11-17: OPS stayed empty until
+            # ATLAS was opened) the PASSIVE feeds — files other programs write (readsb's json, the
+            # radiosonde cache, the KrakenSDR output). Nothing new is started: no BLE scan, no lease.
+            self._ensure_sources()
+            self._publish_passive()
+            self._step_leases()
             return
         self._ensure_sources()
         self._reconcile_rid()
+        self._publish_passive()
+        if self._rid is not None:
+            for ev in self._rid.contacts():
+                eventbus.bus.publish(ev)
+        self._step_leases()
+
+    def _publish_passive(self):
         # ADS-B is the baseline (reads readsb's json). If a lease-layer holds the radio, readsb is
         # paused -> ADS-B is BUSY (the app shows it) and we publish no stale aircraft.
         if radio_arbiter.arbiter.owner() is None:
             for ev in self._adsb_contacts():
                 eventbus.bus.publish(ev)
-        if self._rid is not None:
-            for ev in self._rid.contacts():
-                eventbus.bus.publish(ev)
         for ev in balloon_contacts():        # radiosonde cache file; no lease (auto_rx service)
             eventbus.bus.publish(ev)
         for ev in df_contacts():             # KrakenSDR array (separate device); no lease
             eventbus.bus.publish(ev)
-        self._step_leases()
 
     def _step_leases(self):
         for kind, src in list(self._lease_srcs.items()):
@@ -772,6 +789,7 @@ class AtlasApp(PalisadeApp):
         self._tok = theme.tokens(self.mode)
         self._contacts = {}
         self._selected = None
+        self._trails = {}
         self._layers = {k for k, _, _ in KINDS}      # all layers on by default
         self._busy_shown = set()
         if not self.demo:
@@ -921,6 +939,7 @@ class AtlasApp(PalisadeApp):
         """H5: HOME was set in SETTINGS: re-centre now; positions re-project as contacts refresh."""
         h = eventbus.home()
         self._contacts = {}
+        self._trails = {}
         self.map.set_home(h[0] if h else None, h[1] if h else None, known=h is not None)
         self._render()
 
@@ -945,22 +964,23 @@ class AtlasApp(PalisadeApp):
         self._contacts[pl["id"]] = {
             "id": pl["id"], "label": pl.get("label", pl["id"]), "kind": pl.get("kind", "air"),
             "x": x, "y": y, "alt": pl.get("alt"), "spd": pl.get("spd"),
+            "track": pl.get("track"), "mil": pl.get("mil"), "dbflags": pl.get("dbflags"),
+            "category": pl.get("category"),
             "severity": ev["severity"], "_ts": ev["ts"],
             "source": ev.get("source"), "trust": pl.get("trust"), "adverts": pl.get("adverts"),
             "rng": math.hypot(x, y) if known else None,
             "brg": (math.degrees(math.atan2(x, y)) % 360) if known else None}
+        tracksym.push_trail(self._trails, pl["id"], x, y)
 
     def _render(self):
         now = time.time()
         self._contacts = {c["id"]: c for c in self._contacts.values() if now - c["_ts"] < STALE_S}
+        self._trails = {k: v for k, v in self._trails.items() if k in self._contacts}
         shown = [c for c in self._contacts.values() if c["kind"] in self._layers]
         no_home = not self.demo and not eventbus.home_set()
         self._home_cover.show(no_home)
         plotted = [] if no_home else shown
-        self.map.set_contacts([(c["x"], c["y"]) for c in plotted],
-                              labels=[c["label"] for c in plotted],
-                              colors=[self._color(c["kind"], c["severity"], c.get("trust"))
-                                      for c in plotted])
+        self.map.set_tracks(plotted, self._trails)       # C2 track symbols (2026-11-17)
         rows = []
         for c in sorted(shown, key=lambda c: (c["rng"] is None, c["rng"] or 0, c["label"])):
             rows.append({"_id": c["id"], "label": c["label"],

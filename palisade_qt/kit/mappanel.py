@@ -158,6 +158,12 @@ class MapPanel(QtWidgets.QFrame):
         self.scatter = pg.ScatterPlotItem(size=7, pen=None,
                                           brush=pg.mkBrush(tok["live"]))
         self.plot.addItem(self.scatter)
+        self._trails = pg.PlotDataItem([], [], pen=pg.mkPen((230, 230, 230, 110), width=1.5))
+        self._leaders = pg.PlotDataItem([], [], pen=pg.mkPen((255, 255, 255, 220), width=1.5))
+        self.plot.addItem(self._trails)
+        self.plot.addItem(self._leaders)
+        self.leader_count = self.trail_count = 0
+        self.track_spots = []
         self.home = pg.ScatterPlotItem([0], [0], size=9, symbol="+",
                                        pen=pg.mkPen(tok["accent"], width=2))
         self.plot.addItem(self.home)
@@ -191,6 +197,13 @@ class MapPanel(QtWidgets.QFrame):
         self.plot.setBackground("#000000")
         self._set_overlay_colors((255, 255, 255, 50), "#888")
         self._zoom_btns = self._make_zoom_buttons()
+        from . import tracksym
+        self.legend = QtWidgets.QLabel(tracksym.legend_html(), self)
+        self.legend.setObjectName("track_legend")
+        self.legend.setTextFormat(QtCore.Qt.RichText)
+        self.legend.setStyleSheet("QLabel#track_legend { background: rgba(0,0,0,170); "
+                                  "border: 1px solid #555; font-size: 16px; padding: 2px 6px; }")
+        self.legend.adjustSize()
         self._combo.setCurrentIndex(0)
         self._style_changed(0)
 
@@ -239,6 +252,8 @@ class MapPanel(QtWidgets.QFrame):
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
         self._combo.move(self.width() - self._combo.width() - 10, 10)
+        self.legend.move(10, self.height() - self.legend.height() - 10)
+        self.legend.raise_()
         x = self.width() - 10
         for b in reversed(self._zoom_btns):
             x -= b.width()
@@ -275,6 +290,29 @@ class MapPanel(QtWidgets.QFrame):
         for lbl in self._cardinal_labels:
             lbl.setColor(text_color)
 
+    def set_tracks(self, contacts, trails=None):
+        """C2-style tracks (owner 2026-11-17): heading-oriented glyph coloured by type, velocity
+        leader, history trail, data-block label. contacts: dicts with x, y, kind, id and optional
+        track/spd/alt/label/mil/category/severity/trust; trails: {id: [(x, y), ...]}."""
+        from . import tracksym
+        spots = []
+        for c in contacts:
+            spots.append({"pos": (c["x"], c["y"]), "symbol": tracksym.glyph(c),
+                          "size": tracksym.AIR_SIZE if c.get("kind") == "aircraft" else tracksym.OTHER_SIZE,
+                          "brush": pg.mkBrush(tracksym.color(c)),
+                          "pen": pg.mkPen("#000000", width=1.2), "data": c.get("id")})
+        self.scatter.setData(spots)
+        self.track_spots = spots
+        lead = [ln for ln in (tracksym.leader(c) for c in contacts) if ln is not None]
+        xs, ys = tracksym.segments(lead)
+        self._leaders.setData(xs, ys, connect="pairs")
+        tr = tracksym.trail_segments(trails or {}, [c.get("id") for c in contacts])
+        xs, ys = tracksym.segments(tr)
+        self._trails.setData(xs, ys, connect="pairs")
+        self.leader_count, self.trail_count = len(lead), len(tr)
+        self._place_labels([(c["x"], c["y"]) for c in contacts],
+                           [tracksym.data_block(c) for c in contacts])
+
     def set_contacts(self, points, labels=None, colors=None):
         """points: iterable of (x_nm, y_nm). labels/colors: optional per-point lists."""
         pts = list(points)
@@ -284,6 +322,9 @@ class MapPanel(QtWidgets.QFrame):
             self.scatter.setData(spots)
         else:
             self.scatter.setData([p[0] for p in pts], [p[1] for p in pts])
+        self._place_labels(pts, labels)
+
+    def _place_labels(self, pts, labels):
         for lbl in self._contact_labels:
             self.plot.removeItem(lbl)
         self._contact_labels.clear()

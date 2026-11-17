@@ -134,13 +134,19 @@ class MeshWorker(Worker):
 # ======================= the app =======================
 
 class MoreApp(PalisadeApp):
+    """SYSTEM's settings / diagnostics (SETTINGS, DOCTOR, SITREP). ASSISTANT and MESH were tabs here
+    until the owner promoted them to pages of their own (2026-11-17): AssistantApp and MeshApp
+    below are this class showing one view each, so the code behind every view is unchanged."""
     TITLE = "MORE"
     LEASE = None
-    SUBTABS = SUBTABS
+    SUBTABS = ("SETTINGS", "DOCTOR", "SITREP")
 
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
-        self._subtab = "SETTINGS"
+        self._subtab = self.SUBTABS[0]
         super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
+
+    def subtabs(self):
+        return list(self.SUBTABS) if len(self.SUBTABS) > 1 else []     # one view: no sub-tabs
 
     def current_subtab(self):
         return self._subtab
@@ -154,6 +160,9 @@ class MoreApp(PalisadeApp):
         actions[self._subtab]()
         return True
 
+    def current_view(self):
+        return self._subtab
+
     def build_body(self):
         self._tok = theme.tokens(self.mode)
         body = QtWidgets.QWidget()
@@ -166,6 +175,7 @@ class MoreApp(PalisadeApp):
                        "SITREP": self._sitrep_page()}
         for t in SUBTABS:
             self.stack.addWidget(self._pages[t])
+        self.stack.setCurrentWidget(self._pages[self._subtab])
         lay.addWidget(self.stack, 1)
         self._sync_tabs()
         return body
@@ -214,7 +224,7 @@ class MoreApp(PalisadeApp):
         fl.addRow(save)
         pl.addWidget(c)
         pl.addStretch(1)
-        if not eventbus.home_set() and not self.demo:
+        if not eventbus.home_set() and not self.demo and "SETTINGS" in self.SUBTABS:
             from .kit.seams import offscreen
             if not offscreen():          # tests never touch a real gpsd
                 QtCore.QTimer.singleShot(0, lambda: self.read_gps(auto=True))
@@ -569,6 +579,8 @@ class MoreApp(PalisadeApp):
 
     # ---- switching + lifecycle ----
     def _switch(self, tab):
+        if tab not in self.SUBTABS:
+            return                      # a view this page does not show (ASSISTANT/MESH: own pages)
         self._subtab = tab
         self.stack.setCurrentWidget(self._pages[tab])
         self._sync_tabs()
@@ -581,11 +593,12 @@ class MoreApp(PalisadeApp):
             return
         super().start()
         self._workers = []
-        self._meshw = MeshWorker(demo=self.demo)
-        self._meshw.row.connect(self._on_mesh)
-        self._meshw.status.connect(self.on_status)
-        self._meshw.start()
-        self._workers.append(self._meshw)
+        if "MESH" in self.SUBTABS:          # only the MESH page runs the mesh worker
+            self._meshw = MeshWorker(demo=self.demo)
+            self._meshw.row.connect(self._on_mesh)
+            self._meshw.status.connect(self.on_status)
+            self._meshw.start()
+            self._workers.append(self._meshw)
 
     def stop(self):
         if self._stopped:
@@ -624,3 +637,15 @@ class MoreApp(PalisadeApp):
             m = msg["msg"]
             txt = m.get("decoded", {}).get("text", "")
             self.mesh_log.appendPlainText("%s: %s" % (m.get("fromId", "?"), txt))
+
+
+class AssistantApp(MoreApp):
+    """ASSISTANT as its own page (owner 2026-11-17: "assistant should be own tab")."""
+    TITLE = "ASSISTANT"
+    SUBTABS = ("ASSISTANT",)
+
+
+class MeshApp(MoreApp):
+    """MESH as its own page (owner 2026-11-17: "why is mesh buried in system settings")."""
+    TITLE = "MESH"
+    SUBTABS = ("MESH",)

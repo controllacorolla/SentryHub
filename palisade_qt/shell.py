@@ -32,7 +32,7 @@ from .atlas import AtlasApp
 from .overwatch import OverwatchApp
 from .prowl import ProwlApp
 from .babel import BabelApp
-from .system import MoreApp
+from .system import MoreApp, AssistantApp, MeshApp
 from .bench_app import BenchApp
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,6 +40,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 QT_PAGES = {
     "ATLAS": AtlasPage, "PRISM": PrismApp, "PROWL": ProwlPage, "SWEEP": SweepApp,
     "RECON": ReconApp, "FORGE": ForgeApp, "SYSTEM": SystemPage,
+    "ASSISTANT": AssistantApp, "MESH": MeshApp,         # own pages since 2026-11-17 (owner)
 }
 # Callsigns that used to be pages and are now sub-tabs: old name -> (page, sub-tab, child class).
 FOLDED = {
@@ -110,8 +111,14 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.topbar.nav_requested.connect(self.open_callsign)
         self.topbar.slot_clicked.connect(self._slot_clicked)
         vbox.addWidget(self.topbar)
+        body = QtWidgets.QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        self.nav_rail = self.topbar.nav_rail           # page keys down the left edge (2026-11-17)
+        body.addWidget(self.nav_rail)
         self.stack = QtWidgets.QStackedWidget()
-        vbox.addWidget(self.stack, 1)
+        body.addWidget(self.stack, 1)
+        vbox.addLayout(body, 1)
 
         # shell-owned state -> the four fixed slots (a page can never write these)
         self.state = chrome.ChromeState(demo=demo, parent=self)
@@ -151,6 +158,13 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self._on_net()
         self._on_log()
 
+        # device notes 2026-11-17: OPS showed nothing until ATLAS had been opened, because ATLAS's
+        # worker is the contact source. Start it in the background at launch (passive feeds only
+        # while hidden: AtlasLiveWorker.step). Tests open this seam explicitly.
+        from .kit.seams import offscreen
+        if not offscreen():
+            QtCore.QTimer.singleShot(0, self.start_background_feeds)
+
         # keyboard: one filter for the whole window (D8)
         QtWidgets.QApplication.instance().installEventFilter(self)
         # test / automation seams for PANIC's process stop
@@ -171,10 +185,40 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self._current = name
         self.stack.setCurrentWidget(w)
         self.topbar.set_active_page(name)
+        self.set_nav_hidden(bool(getattr(w, "side_hidden", lambda: False)()))
         self.setFocus()        # keys go to the page, not to whichever nav key was last focused
         for n, page in self.pages.items():
             if self.stack.indexOf(page) >= 0 and hasattr(page, "set_active"):
                 page.set_active(n == name)
+        self._sync_nested_tabs()
+
+    def _sync_nested_tabs(self):
+        """Each page's sub-tab list sits under its key in the left rail; only the current page's
+        is shown (and not while F has the map full width)."""
+        cur = self.pages.get(self._current)
+        for n, page in self.pages.items():
+            rail = getattr(page, "_rail", None)
+            if rail is None or n not in self.topbar.nav_keys:
+                continue
+            self.nav_rail.attach_sub(n, rail)
+            rail.setVisible(page is cur and not page.side_hidden())
+
+    def start_background_feeds(self):
+        """Build ATLAS (not shown) and start its worker, so OPS gets contacts from launch."""
+        if self.release_hidden("ATLAS"):
+            return False
+        if "ATLAS" not in self.pages:
+            self._add_page("ATLAS", QT_PAGES["ATLAS"](demo=self.demo, mode=self.mode))
+            inner = _INNER.get("ATLAS")
+            if inner is not None:
+                self.pages["ATLAS:inner"] = self.pages["ATLAS"].child(inner)
+        app = self.pages.get("ATLAS:inner", self.pages["ATLAS"])
+        app.start()
+        return True
+
+    @staticmethod
+    def release_hidden(name):
+        return name not in QT_PAGES or release.page_hidden(name)
 
     def current_page(self):
         return self.pages.get(self._current)
@@ -205,6 +249,10 @@ class PalisadeHub(QtWidgets.QMainWindow):
             return self.pages[name]
         self.open_callsign(name)
         return self.pages.get(name + ":inner", self.pages.get(name))
+
+    def set_nav_hidden(self, hidden):
+        """F on a map page: the page rail goes with the side panels (1-7 still switch pages)."""
+        self.nav_rail.setVisible(not hidden)
 
     # ------------------------------------------------------------------ shell-owned chrome
     def _on_state(self):

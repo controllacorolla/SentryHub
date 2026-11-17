@@ -3,8 +3,10 @@ usage: python render_uip.py <repo> <outdir> <tag>   (tag = before | after)
 Screens: OPS, ATLAS (with HOME set + demo contacts), the strip with SDR held + engagement active,
 and (after only) ATLAS and OPS with the side panel collapsed."""
 import os, sys, time, tempfile
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["PALISADE_OFFLINE"] = "1"
+NET = os.environ.get("RENDER_NET") == "1"      # after-renders: real satellite tiles (xvfb, NET ON)
+if not NET:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ["PALISADE_OFFLINE"] = "1"
 os.environ["HOME"] = tempfile.mkdtemp()
 repo, out, tag = sys.argv[1], sys.argv[2], sys.argv[3]
 sys.path.insert(0, repo); os.chdir(repo)
@@ -35,6 +37,14 @@ def strip_states(hub):
     hub.topbar.set_alerts(3)
 
 
+def settings_gps(hub):
+    hub.open_callsign("SYSTEM"); pump(200)
+    page = hub.pages["SYSTEM"]; page.switch_subtab("SETTINGS"); pump(200)
+    more = page.current_child()
+    more._gps_reader = lambda: None
+    more.read_gps()
+
+
 def collapse(hub, cs):
     hub.open_callsign(cs); pump(200)
     hub.page_app(cs).handle_key("f")
@@ -44,6 +54,9 @@ for mode in ("dark", "sun"):
     theme.load_fonts(); theme.set_app_font(app); theme.set_palette(app, mode)
     app.setStyleSheet(theme.qss(mode))
     eventbus.set_home((39.7, -104.9), "render")
+    if NET:
+        import netpolicy
+        netpolicy.set_mode("ONLINE")
     hub = PalisadeHub(demo=False, mode=mode); hub.resize(1280, 720); hub.show(); pump(500)
     contacts()
     shots = [("ops", lambda: hub.open_callsign("OPS")),
@@ -51,10 +64,15 @@ for mode in ("dark", "sun"):
              ("strip_held_active", lambda: (strip_states(hub), hub.open_callsign("OPS")))]
     if after:
         shots += [("atlas_collapsed", lambda: collapse(hub, "ATLAS")),
-                  ("ops_collapsed", lambda: collapse(hub, "OPS"))]
+                  ("ops_collapsed", lambda: collapse(hub, "OPS")),
+                  ("atlas_zoomed", lambda: (hub.open_callsign("ATLAS"),
+                                            hub.page_app("ATLAS").handle_key("+"),
+                                            hub.page_app("ATLAS").handle_key("+"))),
+                  ("atlas_light_sat", lambda: hub.page_app("ATLAS").map._combo.setCurrentIndex(1)),
+                  ("settings_gps", lambda: settings_gps(hub))]
     for name, act in shots:
         try:
-            act(); pump(1200)
+            act(); pump(6000 if NET else 1200)
             pm = hub.grab(); p = "%s/%s_%s_live_%s.png" % (out, name, mode, tag); pm.save(p)
             print(p, pm.width(), pm.height(), "strip", hub.topbar.minimumSizeHint().width())
         except Exception as e:

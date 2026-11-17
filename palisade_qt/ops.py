@@ -20,6 +20,7 @@ from .app import PalisadeApp
 from . import theme, eventbus
 from .kit import card, micro, PpiScope
 from .kit.components import note, Cover
+from .kit import tracksym
 from .worker import Worker
 
 # The eight page keys, in key order (1-8), each with the function label shown beside the callsign
@@ -28,7 +29,7 @@ from .worker import Worker
 ALL_CALLSIGNS = [
     ("OPS", "home"), ("ATLAS", "map"), ("PRISM", "spectrum"), ("PROWL", "listen"),
     ("SWEEP", "sweep"), ("RECON", "survey"), ("FORGE", "hardware"),
-    ("SYSTEM", "settings"),
+    ("SYSTEM", "settings"), ("ASSISTANT", "ask"), ("MESH", "lora"),
 ]
 # v0.1 launch line (owner, 2026-11-16): SWEEP is hidden until CL7 validates its detectors.
 # Its code stays; the strip, the keys and the palette do not offer it.
@@ -193,6 +194,7 @@ class OpsHome(PalisadeApp):
         self._contacts = {}
         self._selected = None
         self._decodes = []
+        self._trails = {}
         self._decode_times = deque()          # H14: real decode timestamps, last 60 s
 
         body = QtWidgets.QWidget()
@@ -293,7 +295,10 @@ class OpsHome(PalisadeApp):
             self._contacts[pl["id"]] = {
                 "id": pl["id"], "x": x, "y": y, "label": pl.get("label", pl["id"]),
                 "severity": ev["severity"], "_ts": ev["ts"], "rng": math.hypot(x, y),
-                "mil": pl.get("mil", False)}
+                "mil": pl.get("mil", False), "kind": pl.get("kind"), "track": pl.get("track"),
+                "spd": pl.get("spd"), "alt": pl.get("alt"), "category": pl.get("category"),
+                "dbflags": pl.get("dbflags"), "trust": pl.get("trust")}
+            tracksym.push_trail(self._trails, pl["id"], x, y)
         elif et == "decode" and pl.get("kind") == "telemetry":
             self._telemetry(pl)
         elif et == "decode":
@@ -329,6 +334,7 @@ class OpsHome(PalisadeApp):
         now = time.time()
         live = [c for c in self._contacts.values() if now - c.get("_ts", 0) < STALE_S]
         self._contacts = {c["id"]: c for c in live}
+        self._trails = {k: v for k, v in self._trails.items() if k in self._contacts}
         if self._selected not in self._contacts:
             self._selected = None
         no_home = not self.demo and not eventbus.home_set()
@@ -336,7 +342,8 @@ class OpsHome(PalisadeApp):
         h = eventbus.home() or (self.demo and eventbus.DEMO_HOME) or None
         if h and not no_home:
             self.ppi.set_home(h[0], h[1])            # imagery under the scope (no-op if unchanged)
-        self.ppi.set_contacts([] if no_home else live, selected=self._selected)
+        self.ppi.set_contacts([] if no_home else live, selected=self._selected,
+                              trails=self._trails)
         n = len(live)
         if n:
             self.big.setText(str(n))

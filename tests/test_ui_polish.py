@@ -41,24 +41,15 @@ def _close(hub):
     _pump(150)
 
 
-MIN_KEY_GAP = 8      # px of bare strip between two keys' text (was ~2 on the device)
-
-
-def _ink_cols(hub, key):
-    """Leftmost / rightmost painted text column of a key, in strip coordinates."""
-    xs = []
-    for r in _text_rects(key):
-        xs += [key.mapTo(hub.topbar, QtCore.QPoint(r.left(), 0)).x(),
-               key.mapTo(hub.topbar, QtCore.QPoint(r.right(), 0)).x()]
-    return min(xs), max(xs)
+MIN_KEY_GAP = 8      # px of bare rail between two keys' text (was ~2 across the old strip)
 
 
 # ================================================================ U1 nav keys
 @pytest.mark.parametrize("mode", THEMES)
-def test_u1_every_nav_key_shares_one_callsign_and_one_label_baseline(mode):
+def test_u1_every_nav_key_places_its_two_lines_on_the_same_baselines(mode):
     """'spectrum' (descender) and 'map' / 'survey' sat at different heights, so a label read as
-    belonging to the neighbouring key. Every key now places both lines on common baselines, current
-    page or not."""
+    belonging to the neighbouring key. Every key now places both lines on the same baselines,
+    current page or not, and each key's ink stays inside it."""
     from palisade_qt.ops import CALLSIGNS
     hub = _big_hub(mode)
     try:
@@ -68,31 +59,29 @@ def test_u1_every_nav_key_shares_one_callsign_and_one_label_baseline(mode):
             keys = hub.topbar.nav_keys
             bases = {n: keys[n].baselines() for n, _ in CALLSIGNS if n in keys}
             assert None not in [b for pair in bases.values() for b in pair], bases
-            tops = {n: keys[n].mapTo(hub.topbar, QtCore.QPoint(0, 0)).y() for n in bases}
-            assert len({bases[n][0] + tops[n] for n in bases}) == 1, (mode, current, bases)
-            assert len({bases[n][1] + tops[n] for n in bases}) == 1, (mode, current, bases)
-            # and the ink of each line still sits on its line: callsign above label, inside the key
+            assert len(set(bases.values())) == 1, (mode, current, bases)
             for n in bases:
                 call, label = _text_rects(keys[n])
                 assert call.bottom() < label.top(), (n, call, label)
                 assert call.top() >= 0 and label.bottom() < keys[n].height(), n
+                assert call.left() >= 0 and call.right() < keys[n].width(), n
+                assert label.left() >= 0 and label.right() < keys[n].width(), n
     finally:
         _close(hub)
 
 
 @pytest.mark.parametrize("mode", THEMES)
-def test_u1_adjacent_nav_keys_have_a_visible_gap_between_their_text(mode):
-    """'4 PROWL5 RECON': keys were packed at text width with 1 px each side. Now there are at least
-    2 x SIDE px of empty strip between the painted text of two neighbouring keys."""
-    from palisade_qt.kit.topbar import NavKey
+def test_u1_neighbouring_nav_keys_never_run_together(mode):
+    """'4 PROWL5 RECON': text of two keys touched. In the left rail there are at least
+    MIN_KEY_GAP px of bare rail between one key's label ink and the next key's callsign ink."""
     hub = _big_hub(mode)
     try:
-        keys = sorted(hub.topbar.nav_keys.values(), key=lambda k: k.x())
-        assert len(keys) >= 6
+        keys = sorted(hub.topbar.nav_keys.values(), key=lambda k: k.y())
+        assert len(keys) >= 7
         for a, b in zip(keys, keys[1:]):
-            gap = _ink_cols(hub, b)[0] - _ink_cols(hub, a)[1] - 1
-            assert gap >= MIN_KEY_GAP, (mode, a.callsign, b.callsign, gap)
-        assert NavKey.SIDE >= MIN_KEY_GAP // 2
+            a_bot = a.mapTo(hub, QtCore.QPoint(0, _text_rects(a)[1].bottom())).y()
+            b_top = b.mapTo(hub, QtCore.QPoint(0, _text_rects(b)[0].top())).y()
+            assert b_top - a_bot - 1 >= MIN_KEY_GAP, (mode, a.callsign, b.callsign)
     finally:
         _close(hub)
 
@@ -550,6 +539,212 @@ def test_u7_typed_home_in_the_other_hemisphere_from_gps_is_rejected():
         more.set_home.setText("39.74, -104.99")
         more._save_settings()
         assert eventbus.home() == pytest.approx((39.74, -104.99))
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+# ================================================================ U8 left page rail
+def test_u8_page_keys_are_stacked_down_the_left_and_1_to_7_still_work():
+    """Owner 2026-11-17: 'I would rather have OPS, RECON etc. vertically stacked on the left'."""
+    from palisade_qt.ops import CALLSIGNS
+    hub = _big_hub()
+    try:
+        rail = hub.nav_rail
+        assert rail is not None and rail.isVisible()
+        assert hub.topbar.nav_keys and all(k.parentWidget() is rail
+                                           for k in hub.topbar.nav_keys.values())
+        keys = [hub.topbar.nav_keys[n] for n, _ in CALLSIGNS if n in hub.topbar.nav_keys]
+        xs = {k.mapTo(hub, QtCore.QPoint(0, 0)).x() for k in keys}
+        ys = [k.mapTo(hub, QtCore.QPoint(0, 0)).y() for k in keys]
+        assert len(xs) == 1 and ys == sorted(ys) and len(set(ys)) == len(ys)
+        assert rail.mapTo(hub, QtCore.QPoint(0, 0)).x() <= 8          # the left edge
+        assert hub.stack.mapTo(hub, QtCore.QPoint(0, 0)).x() >= rail.width()
+        assert keys[-1].geometry().bottom() < rail.height()          # all seven fit 720 px
+        for k in keys:                                               # text inside the key
+            for r in _text_rects(k):
+                assert r.left() >= 0 and r.right() < k.width(), k.callsign
+        # number keys still switch pages; the strip title follows
+        _press(hub, "2")
+        assert hub._current == "ATLAS" and "ATLAS" in hub.topbar.page_title.text()
+        _press(hub, "1")
+        assert hub._current == "OPS"
+        # a click on a rail key opens its page
+        hub.topbar.nav_keys["ATLAS"].click()
+        _pump(80)
+        assert hub._current == "ATLAS"
+    finally:
+        _close(hub)
+
+
+def test_u8_f_takes_the_page_rail_with_the_side_panels_and_page_switch_restores_it():
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        _press(hub, "f")
+        assert hub.nav_rail.isHidden()
+        assert atlas.map.width() >= 1240
+        _press(hub, "3")                                 # PRISM: no map -> the rail is back
+        assert hub._current == "PRISM" and hub.nav_rail.isVisible()
+        _press(hub, "2")                                 # ATLAS remembers it was full-map
+        assert hub.nav_rail.isHidden() and atlas.side_hidden()
+        _press(hub, "f")
+        assert hub.nav_rail.isVisible()
+    finally:
+        _close(hub)
+
+
+# ================================================================ U9 OPS fed from launch
+def test_u9_demo_ops_draws_contacts_without_atlas_ever_being_opened():
+    """Device 2026-11-17 (--demo): the OPS map stayed empty — ATLAS's worker is the contact
+    source and it only started when ATLAS was opened."""
+    import time
+    hub = _big_hub(demo=True)
+    try:
+        assert hub._current == "OPS"
+        assert hub.start_background_feeds() is True
+        t = time.time()
+        while time.time() - t < 6 and not hub.ops.ppi.track_spots:
+            _pump(100)
+            hub.ops._refresh_ppi()
+        assert hub._current == "OPS", "starting the feed must not switch page"
+        assert len(hub.ops.ppi.track_spots) >= 3
+    finally:
+        _close(hub)
+
+
+def test_u9_hidden_live_atlas_worker_runs_passive_feeds_only(monkeypatch):
+    """Hidden, the live worker publishes the passive (file) feeds; it never starts the BLE scan
+    and never takes a lease."""
+    from palisade_qt import atlas as A, eventbus
+    w = A.AtlasLiveWorker()
+    w._hidden = True
+    calls = []
+    monkeypatch.setattr(w, "_ensure_sources", lambda: calls.append("ensure"))
+    monkeypatch.setattr(w, "_adsb_contacts", lambda: [eventbus.contact("ADS-B", "H1", 1.0, 2.0,
+                                                                        kind="aircraft")])
+    monkeypatch.setattr(w, "_reconcile_rid", lambda: calls.append("rid"))
+    monkeypatch.setattr(A, "balloon_contacts", lambda: [])
+    monkeypatch.setattr(A, "df_contacts", lambda: [])
+    got = []
+    eventbus.bus.published.connect(got.append)
+    try:
+        w.step()
+    finally:
+        eventbus.bus.published.disconnect(got.append)
+    assert "rid" not in calls and "ensure" in calls
+    assert any(e["payload"]["id"] == "H1" for e in got)
+    assert not w._lease_srcs
+
+
+# ================================================================ U10 track symbols
+def _render_one(c, mode="dark"):
+    from palisade_qt.kit import mappanel, tracksym
+    tracksym.AIR_SIZE = 80                       # big enough to measure its shape
+    m = mappanel.MapPanel(span_nm=20, mode=mode, home_lat=None, home_lon=None)
+    m.resize(400, 400)
+    m.show()
+    _pump(80)
+    m.set_tracks([c])
+    m._place_labels([], [])
+    _pump(80)
+    img = m.plot.grab().toImage()
+    m.close()
+    tracksym.AIR_SIZE = 20
+    return img
+
+
+def _ink(img, rgb, tol=40):
+    pts = []
+    for y in range(img.height()):
+        for x in range(img.width()):
+            q = img.pixelColor(x, y)
+            if abs(q.red() - rgb[0]) + abs(q.green() - rgb[1]) + abs(q.blue() - rgb[2]) < tol:
+                pts.append((x, y))
+    return pts
+
+
+@pytest.mark.parametrize("hdg,axis,sign", ((0, 1, -1), (90, 0, 1), (180, 1, 1), (270, 0, -1)))
+def test_u10_aircraft_glyph_points_along_its_course_and_its_leader(hdg, axis, sign):
+    """The nose (the glyph's narrow end) and the leader both point along the reported course."""
+    from palisade_qt.kit import tracksym
+    c = {"id": "A", "x": 0.0, "y": 0.0, "kind": "aircraft", "track": hdg, "spd": 0}
+    pts = _ink(_render_one(c), (0x5A, 0xB8, 0xFF))
+    assert len(pts) > 30
+    lo = min(p[axis] for p in pts)
+    hi = max(p[axis] for p in pts)
+    mid = (lo + hi) / 2.0
+    cen = sum(p[axis] for p in pts) / len(pts)
+    # the delta's mass sits toward its tail, so the centroid is on the side away from the nose
+    assert (cen - mid) * sign < 0, (hdg, cen, mid)
+    # and the leader goes the same way (nm frame: north = +y)
+    ld = tracksym.leader(dict(c, spd=300))
+    dx, dy = ld[2] - ld[0], ld[3] - ld[1]
+    screen = (dx, -dy)                                # screen y grows downward
+    assert screen[axis] * sign > 0
+
+
+def test_u10_colour_by_type_and_no_heading_means_no_direction():
+    from palisade_qt.kit import tracksym as T
+    base = {"id": "x", "x": 0, "y": 0}
+    assert T.classify(dict(base, kind="aircraft")) == "plane"
+    assert T.classify(dict(base, kind="aircraft", category="A7")) == "helo"
+    assert T.classify(dict(base, kind="aircraft", dbflags=1)) == "mil"
+    assert T.classify(dict(base, kind="aircraft", mil=True, category="A7")) == "mil"
+    assert T.classify(dict(base, kind="drone")) == "drone"
+    assert T.classify(dict(base, kind="vessel")) == "vessel"
+    assert T.classify(dict(base, kind="station")) == "station"
+    cols = {T.CLASS_COLOR[k] for k in ("plane", "helo", "mil", "drone", "vessel", "station",
+                                       "balloon", "df")}
+    assert len(cols) == 8, "every legend class has its own colour"
+    assert T.color(dict(base, kind="aircraft", severity="alert")) == T.EMERGENCY
+    assert T.color(dict(base, kind="drone", trust="unconfirmed")) == T.UNCONFIRMED
+    # no heading -> the ring (no direction drawn), and no leader
+    assert T.glyph(dict(base, kind="aircraft")) is T.symbol("ring", None)
+    assert T.leader(dict(base, kind="aircraft", spd=400)) is None
+    assert T.leader(dict(base, kind="aircraft", track=45, spd=0)) is None
+    # data block: callsign + flight level
+    assert T.data_block(dict(base, kind="aircraft", label="UAL1", alt=12049)) == "UAL1 FL120"
+    assert T.data_block(dict(base, kind="vessel", label="MMSI")) == "MMSI"
+    # every class in the legend
+    html = T.legend_html()
+    for _k, name in T.LEGEND:
+        assert name in html
+
+
+def test_u10_adsb_military_and_rotorcraft_flags_reach_the_contact():
+    from palisade_qt import atlas as A
+    ev = A.adsb_to_contact({"hex": "ae1234", "flight": "RCH1 ", "lat": 39.0, "lon": -104.0,
+                            "alt_baro": 20000, "track": 270.5, "gs": 300, "category": "A7",
+                            "dbFlags": 1})
+    pl = ev["payload"]
+    assert pl["category"] == "A7" and pl["dbflags"] == 1 and pl["track"] == 270.5
+    from palisade_qt.kit import tracksym as T
+    assert T.classify(dict(pl, x=0, y=0)) == "mil"
+    ev2 = A.adsb_to_contact({"hex": "a1", "lat": 39.0, "lon": -104.0, "dbFlags": "junk"})
+    assert ev2["payload"]["dbflags"] is None
+
+
+def test_u10_atlas_and_ops_draw_tracks_with_leaders_trails_and_a_legend():
+    import time
+    from palisade_qt import eventbus
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        assert atlas.map.legend.isVisible() and "PLANE" in atlas.map.legend.text()
+        for i, (lat, lon) in enumerate(((39.80, -104.80), (39.81, -104.79), (39.82, -104.78))):
+            ev = eventbus.contact("ADS-B", "T1", lat, lon, alt=12000, kind="aircraft",
+                                  track=45, spd=300, label="T1")
+            ev["ts"] = time.time()
+            atlas._on_event(ev)
+            hub.ops._on_event(ev)
+        atlas._render()
+        hub.ops._refresh_ppi()
+        assert len(atlas.map.track_spots) == 1 and atlas.map.leader_count == 1
+        assert atlas.map.trail_count == 2
+        assert len(hub.ops.ppi.track_spots) == 1
+        assert any("FL120" in lbl.textItem.toPlainText() for lbl in atlas.map._contact_labels)
     finally:
         eventbus.set_home(None)
         _close(hub)

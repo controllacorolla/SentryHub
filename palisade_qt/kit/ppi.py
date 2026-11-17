@@ -54,6 +54,11 @@ class PpiScope(QtWidgets.QFrame):
                                  pen=pg.mkPen(tok["hairline"], width=1))
             self.plot.addItem(ln)
 
+        self._trails = pg.PlotDataItem([], [], pen=pg.mkPen((230, 230, 230, 110), width=1.5))
+        self._leaders = pg.PlotDataItem([], [], pen=pg.mkPen((255, 255, 255, 220), width=1.5))
+        self.plot.addItem(self._trails)
+        self.plot.addItem(self._leaders)
+        self.track_spots = []
         self.scatter = pg.ScatterPlotItem(size=10, pen=None, hoverable=False)
         self.scatter.sigClicked.connect(self._clicked)
         self.plot.addItem(self.scatter)
@@ -79,27 +84,37 @@ class PpiScope(QtWidgets.QFrame):
                 self.contact_clicked.emit(str(cid))
                 return
 
-    def set_contacts(self, contacts, selected=None):
-        """contacts: list of dicts with x, y, severity, label; selected: an id to ring."""
+    def set_contacts(self, contacts, selected=None, trails=None):
+        """contacts: list of dicts with x, y, kind, label, id (+ track/spd/alt/mil/category/
+        severity); selected: an id to ring. Drawn as C2 track symbols coloured by type
+        (owner 2026-11-17), with velocity leaders and history trails."""
+        from . import tracksym
         tok = theme.tokens(self._mode)
-        col = {"live": tok["live"], "warn": tok["warn"], "alert": tok["alert"], "info": tok["muted"]}
         spots, sel = [], []
         for lbl in self._labels:
             self.plot.removeItem(lbl)
         self._labels = []
         for c in contacts:
             x, y = c["x"], c["y"]
-            spots.append({"pos": (x, y), "brush": pg.mkBrush(col.get(c.get("severity", "live"),
-                                                                     tok["live"])), "size": 10,
-                          "data": c.get("id")})
+            spots.append({"pos": (x, y), "symbol": tracksym.glyph(c),
+                          "size": tracksym.AIR_SIZE if c.get("kind") == "aircraft" else tracksym.OTHER_SIZE,
+                          "brush": pg.mkBrush(tracksym.color(c)),
+                          "pen": pg.mkPen("#000000", width=1.2), "data": c.get("id")})
             if selected is not None and c.get("id") == selected:
                 sel.append((x, y))
-                t = pg.TextItem(c.get("label", ""), color=tok["accent"], anchor=(0, 1))
+                t = pg.TextItem(tracksym.data_block(c), color=tok["accent"], anchor=(0, 1))
                 _f = t.textItem.font()
                 _f.setPixelSize(16)
                 t.setFont(_f)
                 t.setPos(x + 1.5, y + 1.5)
                 self.plot.addItem(t)
                 self._labels.append(t)
+        lead = [ln for ln in (tracksym.leader(c) for c in contacts) if ln is not None]
+        xs, ys = tracksym.segments(lead)
+        self._leaders.setData(xs, ys, connect="pairs")
+        tr = tracksym.trail_segments(trails or {}, [c.get("id") for c in contacts])
+        xs, ys = tracksym.segments(tr)
+        self._trails.setData(xs, ys, connect="pairs")
+        self.track_spots = spots
         self.scatter.setData(spots)
         self.sel_ring.setData([p[0] for p in sel], [p[1] for p in sel])

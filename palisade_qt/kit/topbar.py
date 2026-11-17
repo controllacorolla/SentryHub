@@ -158,12 +158,12 @@ class NavKey(QtWidgets.QPushButton):
     REF_CALL = "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     REF_LABEL = "abcdefghijklmnopqrstuvwxyz"
 
-    def __init__(self, number, callsign, label, parent=None):
+    def __init__(self, number, callsign, label, parent=None, height=STRIP_H - 4):
         super().__init__(parent)
         self.callsign = callsign
         self.setProperty("class", "navkey")
         self.setFocusPolicy(QtCore.Qt.TabFocus)
-        self.setFixedHeight(STRIP_H - 4)
+        self.setFixedHeight(height)
         self.call = QtWidgets.QLabel("%d %s" % (number, callsign), self)
         self.call.setProperty("class", "navcall")
         self.label = QtWidgets.QLabel(label, self)
@@ -193,7 +193,7 @@ class NavKey(QtWidgets.QPushButton):
     def sizeHint(self):
         for w in (self.call, self.label):
             w.ensurePolished()
-        return QtCore.QSize(self._text_w() + 2 * self.SIDE, STRIP_H - 4)
+        return QtCore.QSize(self._text_w() + 2 * self.SIDE, self.height())
 
     def minimumSizeHint(self):
         return self.sizeHint()
@@ -231,6 +231,47 @@ class NavKey(QtWidgets.QPushButton):
         self._place()
 
 
+class NavRail(QtWidgets.QFrame):
+    """The page keys, stacked down the left edge (owner decision 2026-11-17, device run: "I would
+    rather have OPS, RECON etc. vertically stacked on the left side"). Replaces the keys across the
+    top strip, which ran together at 1280 px. Same NavKey widgets, same 1-7 shortcuts; each key is
+    a tall, touch-sized target. F on a map page hides it with the page's side panels."""
+    KEY_H = 48
+    WIDTH = 128          # fits '8 ASSISTANT' and a nested 'SKY DOME' at 16 px
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("nav_rail")
+        self.setFixedWidth(self.WIDTH)
+        self.lay = QtWidgets.QVBoxLayout(self)
+        self.lay.setContentsMargins(4, 6, 4, 6)
+        self.lay.setSpacing(4)
+
+    def add_key(self, key):
+        self.lay.addWidget(key)
+        self._keys = getattr(self, "_keys", []) + [key]
+        self.subs = getattr(self, "subs", {})
+
+    def finish(self):
+        self.lay.addStretch(1)
+
+    def attach_sub(self, callsign, widget):
+        """Nest a page's sub-tab list under its key (owner 2026-11-17: one navigation column
+        instead of a page rail beside a sub-tab rail beside the content)."""
+        if self.subs.get(callsign) is widget:
+            return
+        key = next(k for k in self._keys if k.callsign == callsign)
+        widget.setParent(self)
+        widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum)
+        widget.setProperty("nested", True)
+        if widget.layout() is not None:
+            widget.layout().setContentsMargins(8, 0, 0, 6)        # indented under its page key
+            widget.layout().setSpacing(4)
+        widget.setStyleSheet("QPushButton.subtab { padding: 4px 6px; min-height: 26px; }")
+        self.lay.insertWidget(self.lay.indexOf(key) + 1, widget)
+        self.subs[callsign] = widget
+
+
 class TopBar(QtWidgets.QFrame):
     nav_requested = QtCore.Signal(str)
     slot_clicked = QtCore.Signal(str)        # "mode" | "radio" | "tx" | "engagement" | "alerts" | "net"
@@ -244,12 +285,21 @@ class TopBar(QtWidgets.QFrame):
         lay.setContentsMargins(2, 0, 3, 0)
         lay.setSpacing(1)
 
+        # the page keys live in a vertical rail the shell puts down the left edge (NavRail); the
+        # strip keeps only the wordmark and the shell-owned status. nav_keys keeps its name.
+        self.nav_rail = NavRail() if nav else None
         self.nav_keys = {}
         for i, (callsign, label) in enumerate(nav, start=1):
-            k = NavKey(i, callsign, label)
+            k = NavKey(i, callsign, label, height=NavRail.KEY_H)
             k.clicked.connect(lambda _=False, c=callsign: self.nav_requested.emit(c))
             self.nav_keys[callsign] = k
-            lay.addWidget(k)
+            self.nav_rail.add_key(k)
+        if self.nav_rail is not None:
+            self.nav_rail.finish()
+        self.page_title = QtWidgets.QLabel("PALISADE")
+        self.page_title.setObjectName("strip_title")
+        self.page_title.setContentsMargins(8, 0, 0, 0)
+        lay.addWidget(self.page_title)
         lay.addStretch(1)
 
         # the four fixed, shell-owned status slots
@@ -399,6 +449,8 @@ class TopBar(QtWidgets.QFrame):
     def set_active_page(self, callsign):
         for name, key in self.nav_keys.items():
             key.set_on(name == callsign)
+        key = self.nav_keys.get(callsign)
+        self.page_title.setText("PALISADE · %s" % callsign if key is not None else "PALISADE")
 
     def set_state(self, mode, radio, tx, engagement):
         self._last_state = (mode, radio, tx, engagement)
