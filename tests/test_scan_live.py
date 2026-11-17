@@ -78,7 +78,7 @@ def _fake_scans(monkeypatch, results):
     from palisade_qt import recon
     calls = []
 
-    def fake(argv, timeout=12):
+    def fake(argv, timeout=12, worker=None):
         calls.append(argv[0])
         return results[argv[0]]
     monkeypatch.setattr(recon, "_run_scan", fake)
@@ -212,12 +212,20 @@ log = os.environ["FAKE_BTCTL_LOG"]
 with open(log, "a") as f:
     f.write(" ".join(sys.argv[1:]) + "\n")
 mode = os.environ.get("FAKE_BTCTL_MODE", "ok")
+if sys.argv[1:] == ["show"]:
+    if mode == "nobtd":
+        time.sleep(30)                 # bluetoothd down: bluetoothctl waits silently
+    print("Controller 00:11:22:33:44:55 (public)")
+    print("\tPowered: " + ("no" if mode == "off" else "yes"))
+    sys.exit(0)
 if sys.argv[1:] == ["devices"]:
     print("Device AA:BB:CC:00:00:01 Fitbit Charge")
     print("Device AA:BB:CC:00:00:09 Old Headphones")
     sys.exit(0)
 def out(s):
     print(s, flush=True)
+if mode == "instant":
+    sys.exit(0)
 if mode == "notready":
     out("Failed to start discovery: org.bluez.Error.NotReady")
     sys.exit(1)
@@ -466,8 +474,10 @@ def test_scan1_doctor_wifi_paths():
     ok, detail, _ = doctor.chk_wifi_scan(run=_run({"nmcli": (8, "not running")}), which=which,
                                          euid=1000)
     assert ok is False
-    ok, _d, _f = doctor.chk_wifi_scan(run=_run({}), which=which, euid=0)
-    assert ok is True
+    # RA-SCAN N9: root running the doctor is not the app's user: no cap on iw -> not passive
+    ok, detail, _f = doctor.chk_wifi_scan(run=_run({"getcap": (0, ""), "nmcli": (0, "running")}),
+                                          which=which, euid=0)
+    assert ok is None and "ACTIVE" in detail
 
 
 def test_scan2_doctor_ble(tmp_path):
@@ -477,10 +487,10 @@ def test_scan2_doctor_ble(tmp_path):
     ok, d, _ = doctor.chk_ble_scan(run=_run({}), which=which, find=lambda m: False, sysfs=str(sysfs))
     assert ok is False and "adapter" in d
     (sysfs / "hci0").mkdir()
-    ok, d, fix = doctor.chk_ble_scan(run=_run({"bluetoothctl": (0, "Powered: no")}), which=which,
+    ok, d, fix = doctor.chk_ble_scan(run=_run({"bluetoothctl": (0, "Controller 00:11:22:33:44:55 (public)\n\tPowered: no")}), which=which,
                                      find=lambda m: False, sysfs=str(sysfs))
     assert ok is None and "powered off" in d and "power on" in fix
-    ok, d, _ = doctor.chk_ble_scan(run=_run({"bluetoothctl": (0, "Powered: yes")}), which=which,
+    ok, d, _ = doctor.chk_ble_scan(run=_run({"bluetoothctl": (0, "Controller 00:11:22:33:44:55 (public)\n\tPowered: yes")}), which=which,
                                    find=lambda m: m == "bleak", sysfs=str(sysfs))
     assert ok is True and d.startswith("bleak")
     ok, d, _ = doctor.chk_ble_scan(run=_run({}), which=lambda n: None, find=lambda m: False,
@@ -515,8 +525,8 @@ def test_scan3_remote_id_falls_back_to_active_when_bluez_has_no_monitor(monkeypa
     fake.BleakScanner = FakeScanner
     monkeypatch.setitem(sys.modules, "bleak", fake)
     monkeypatch.setattr(atlas, "_seam_offscreen", lambda: False)
-    faults = []
-    src = atlas.RidSource(on_fault=faults.append)
+    faults, notes = [], []
+    src = atlas.RidSource(on_fault=faults.append, on_note=notes.append)
     src._on = True
     import threading
     th = threading.Thread(target=src._scan_ble, daemon=True)
@@ -527,7 +537,8 @@ def test_scan3_remote_id_falls_back_to_active_when_bluez_has_no_monitor(monkeypa
     src.stop()
     th.join(3)
     assert [k.get("scanning_mode") for k in made] == ["passive", "active"]
-    assert src.mode == "active" and faults and "ACTIVE" in faults[0] and "experimental" in faults[0]
+    assert src.mode == "active" and notes and "ACTIVE" in notes[0] and "experimental" in notes[0]
+    assert faults == []                    # RA-SCAN N4: a working scan is a note, not a fault
 
 
 def test_scan3_other_bleak_errors_still_fault():
@@ -542,12 +553,12 @@ def test_scan3_doctor_names_the_experimental_flag(tmp_path):
     (sysfs / "hci0").mkdir(parents=True)
     which = {"bluetoothctl": "/usr/bin/bluetoothctl", "pgrep": "/usr/bin/pgrep"}.get
     ok, d, fix = doctor.chk_ble_scan(
-        run=_run({"bluetoothctl": (0, "Powered: yes"),
+        run=_run({"bluetoothctl": (0, "Controller 00:11:22:33:44:55 (public)\n\tPowered: yes"),
                   "pgrep": (0, "612 /usr/libexec/bluetooth/bluetoothd")}),
         which=which, find=lambda m: True, sysfs=str(sysfs))
     assert ok is True and "ACTIVE" in d and "--experimental" in fix and "owner decision" in fix
     ok, d, fix = doctor.chk_ble_scan(
-        run=_run({"bluetoothctl": (0, "Powered: yes"),
+        run=_run({"bluetoothctl": (0, "Controller 00:11:22:33:44:55 (public)\n\tPowered: yes"),
                   "pgrep": (0, "612 /usr/libexec/bluetooth/bluetoothd --experimental")}),
         which=which, find=lambda m: True, sysfs=str(sysfs))
     assert ok is True and fix == ""
@@ -565,3 +576,230 @@ def test_scan4_installer_installs_the_scan_tools():
         pkgs = ln.split(" in ", 1)[1].split(";")[0].split()
         assert {"rtl-sdr", "bluez", "iw"} <= set(pkgs)
     assert "$PIP bleak" in src
+
+
+# ============================================================ RA-SCAN round 1 findings
+
+def _fake_exe(tmp_path, name, body):
+    d = tmp_path / "fbin"
+    d.mkdir(exist_ok=True)
+    exe = d / name
+    exe.write_text("#!%s\n%s" % (sys.executable, body))
+    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    return d
+
+
+def test_ra_n1_wifi_label_is_neutral_until_a_path_reports():
+    _app()
+    from palisade_qt.recon import ReconApp
+    p = ReconApp(demo=False)
+    t = p.wifi_mode.text().lower()
+    assert "passive" not in t and "active" not in t and "not known" in t
+    p._tab_status("WIFI", {"standby": True, "wifi_path": None,
+                           "sdr": {"text": "WIFI SCAN FAILED — x", "ok": False}})
+    assert "passive" not in p.wifi_mode.text().lower()
+    _close(p)
+
+
+def test_ra_n2_run_scan_is_killed_on_stop(tmp_path, monkeypatch):
+    from palisade_qt import recon
+    monkeypatch.setattr(recon, "_offscreen", lambda: False)
+    d = _fake_exe(tmp_path, "nmcli", "import os,time\nopen(%r,'w').write(str(os.getpid()))\n"
+                  "time.sleep(30)\n" % str(tmp_path / "pid"))
+    monkeypatch.setenv("PATH", str(d) + os.pathsep + os.environ["PATH"])
+    w = recon.Worker()
+    import threading
+    threading.Timer(0.8, w.stop).start()
+    t0 = time.monotonic()
+    out, why = recon._run_scan(["nmcli", "x"], timeout=25, worker=w)
+    assert out is None and why == "stopped" and time.monotonic() - t0 < 3
+    pid = int((tmp_path / "pid").read_text())
+    time.sleep(0.2)
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+def test_ra_n2_closing_recon_mid_nmcli_scan_joins_and_kills(tmp_path, monkeypatch):
+    _app()
+    from palisade_qt import recon, app as appmod
+    monkeypatch.setattr(recon, "_offscreen", lambda: False)
+    d = _fake_exe(tmp_path, "nmcli", "import os,time\nopen(%r,'w').write(str(os.getpid()))\n"
+                  "time.sleep(8)\n" % str(tmp_path / "pid"))
+    _fake_exe(tmp_path, "iw", "import sys\nsys.stderr.write('Operation not permitted')\n"
+              "sys.exit(255)\n")
+    monkeypatch.setenv("PATH", str(d) + os.pathsep + os.environ["PATH"])
+    monkeypatch.setattr(recon.BleScanWorker, "backend_available", staticmethod(lambda: None))
+    p = recon.ReconApp(demo=False)
+    p.set_active(True)
+    p.start()
+    t = time.time()
+    while not (tmp_path / "pid").exists() and time.time() - t < 5:
+        _app().processEvents()
+        time.sleep(0.05)
+    assert (tmp_path / "pid").exists()
+    parked0 = len(appmod.parked())
+    t0 = time.monotonic()
+    ws = list(p._workers)
+    p.stop()
+    assert time.monotonic() - t0 < 3.5
+    assert all(not w.isRunning() for w in ws) and len(appmod.parked()) == parked0
+    pid = int((tmp_path / "pid").read_text())
+    time.sleep(0.2)
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+    p.deleteLater()
+
+
+def test_ra_n2_a_worker_that_will_not_join_is_parked_not_dropped(monkeypatch):
+    _app()
+    from palisade_qt import recon
+    seen = []
+    monkeypatch.setattr(recon, "stop_worker", lambda w, title="": seen.append((w, title)))
+    p = recon.ReconApp(demo=True)
+    p.start()
+    ws = list(p._workers)
+    p.stop()
+    assert [w for w, _t in seen] == ws and all(t == "RECON" for _w, t in seen)
+    for w in ws:
+        w.stop()
+        w.wait(3000)
+    p.deleteLater()
+
+
+def test_ra_n2b_n7_bluetoothd_down_is_named_and_stop_is_prompt(fake_btctl, monkeypatch):
+    monkeypatch.setenv("FAKE_BTCTL_MODE", "nobtd")
+    from palisade_qt import recon
+    monkeypatch.setattr(recon.BleScanWorker, "PREFLIGHT_S", 1)
+    w = recon.BleScanWorker(demo=False)
+    st = []
+    w.status.connect(st.append)
+    w.step()
+    assert st[-1]["sdr"]["text"] == "BLE SCAN FAILED — bluetoothd is not answering"
+    monkeypatch.setattr(recon.BleScanWorker, "PREFLIGHT_S", 20)
+    w2 = recon.BleScanWorker(demo=False)
+    w2.start()
+    time.sleep(0.8)
+    t0 = time.monotonic()
+    w2.stop()
+    assert w2.wait(3000) and time.monotonic() - t0 < 2.5
+
+
+def test_ra_n2b_powered_off_from_show(fake_btctl, monkeypatch):
+    monkeypatch.setenv("FAKE_BTCTL_MODE", "off")
+    from palisade_qt.recon import BleScanWorker
+    w = BleScanWorker(demo=False)
+    st = []
+    w.status.connect(st.append)
+    w.step()
+    assert "powered off" in st[-1]["sdr"]["text"]
+
+
+def _hanging_bleak(monkeypatch, hang_in="start"):
+    import asyncio
+    from palisade_qt import recon
+
+    class FakeScanner:
+        def __init__(self, **kw):
+            pass
+
+        async def start(self):
+            if hang_in == "start":
+                await asyncio.sleep(3600)
+
+        async def stop(self):
+            if hang_in == "stop":
+                await asyncio.sleep(3600)
+    fake = types.ModuleType("bleak")
+    fake.BleakScanner = FakeScanner
+    monkeypatch.setitem(sys.modules, "bleak", fake)
+    import importlib.util
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec",
+                        lambda n, *a: object() if n == "bleak" else real(n, *a))
+    monkeypatch.setattr(recon, "_offscreen", lambda: False)
+    return recon
+
+
+def test_ra_n3_bleak_start_hang_times_out_with_a_reason(monkeypatch):
+    recon = _hanging_bleak(monkeypatch)
+    monkeypatch.setattr(recon.BleScanWorker, "BLEAK_START_S", 0.5)
+    monkeypatch.setattr(recon.BleScanWorker, "RETRY_MS", 10)
+    w = recon.BleScanWorker(demo=False)
+    st = []
+    w.status.connect(st.append)
+    t0 = time.monotonic()
+    w.step()
+    assert time.monotonic() - t0 < 3 and "did not answer start" in st[-1]["sdr"]["text"]
+
+
+def test_ra_n3_bleak_hang_never_blocks_stop(monkeypatch):
+    recon = _hanging_bleak(monkeypatch)
+    w = recon.BleScanWorker(demo=False)
+    w.start()
+    time.sleep(0.6)
+    t0 = time.monotonic()
+    w.stop()
+    assert w.wait(3000) and time.monotonic() - t0 < 1.5
+    recon2 = _hanging_bleak(monkeypatch, hang_in="stop")
+    monkeypatch.setattr(recon2.BleScanWorker, "BLEAK_STOP_S", 0.3)
+    w2 = recon2.BleScanWorker(demo=False)
+    w2.start()
+    time.sleep(0.6)
+    t0 = time.monotonic()
+    w2.stop()
+    assert w2.wait(3000) and time.monotonic() - t0 < 2
+
+
+def test_ra_n5_unreadable_nmcli_output_is_a_failure(monkeypatch):
+    _fake_scans(monkeypatch, {"iw": (None, "exit 255 — Operation not permitted"),
+                              "nmcli": ("this is not nmcli terse output\n", None)})
+    rows, st = _run_wifi_step()
+    assert rows == [] and "not understood" in st[-1]["sdr"]["text"]
+    _fake_scans(monkeypatch, {"iw": (None, "exit 255 — Operation not permitted"),
+                              "nmcli": ("", None)})
+    rows, st = _run_wifi_step()
+    assert rows[-1]["aps"] == [] and rows[-1]["path"] == "nmcli"     # genuinely nothing heard
+
+
+def test_ra_n6_instant_exit_never_storms(tmp_path, monkeypatch, fake_btctl):
+    monkeypatch.setenv("FAKE_BTCTL_MODE", "instant")
+    from palisade_qt import recon
+    monkeypatch.setattr(recon.BleScanWorker, "RETRY_MS", 1000)
+    w = recon.BleScanWorker(demo=False)
+    w.start()
+    time.sleep(3.0)
+    w.stop()
+    assert w.wait(3000)
+    scans = [ln for ln in fake_btctl.read_text().splitlines() if ln.endswith("scan on")]
+    assert 1 <= len(scans) <= 3, scans
+
+
+def test_ra_n8_doctor_bluetoothd_down_is_not_all_clear(tmp_path):
+    sysfs = tmp_path / "bt"
+    (sysfs / "hci0").mkdir(parents=True)
+    which = {"bluetoothctl": "/usr/bin/bluetoothctl"}.get
+    ok, d, fix = doctor.chk_ble_scan(run=_run({"bluetoothctl": (1, "Command '...' timed out")}),
+                                     which=which, find=lambda m: True, sysfs=str(sysfs))
+    assert ok is False and "not answering" in d
+    ok, d, _ = doctor.chk_ble_scan(run=_run({"bluetoothctl": (0, "")}), which=which,
+                                   find=lambda m: True, sysfs=str(sysfs))
+    assert ok is False and "no controller" in d
+
+
+def test_ra_n10_chip_belongs_to_the_tab_on_screen_and_labels_are_honest():
+    _app()
+    from palisade_qt.recon import ReconApp, BLE_MODE
+    p = ReconApp(demo=False)
+    p._on_wifi({"aps": [{"bssid": "a", "ssid": "N", "channel": 1, "signal": -50,
+                         "security": "open"}], "path": "iw"})
+    p._on_ble({"devs": [{"address": "AA", "name": "—", "vendor": "unknown", "kind": "",
+                         "rssi": -70}], "backend": "bleak"})
+    assert p.page_status().get("sdr") == "1 AP"
+    p._switch("BLE")
+    assert p.page_status().get("sdr") == "1 BLE"
+    p._switch("NET")
+    assert not p.page_status().get("sdr")
+    assert "listen only" not in BLE_MODE.lower() and "scan requests" in BLE_MODE.lower()
+    _close(p)
+    src = open(os.path.join(SUITE_DIR, "tests", "test_cl2_gates.py")).read()
+    assert "passive survey commands (iw scan / bluetoothctl)" not in src

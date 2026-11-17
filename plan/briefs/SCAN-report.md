@@ -59,3 +59,18 @@ Recommended next cluster: SWEEP gnss (gpsd) + SCOUT (no SDR, small), then SDR-ba
 
 ## Models
 Implementation, tests, report: Opus (this thread). Cold audit: Opus subagent (RA-SCAN).
+
+## SCAN-fix (RA-SCAN: DO NOT MERGE → fixes)
+| RA-SCAN | Sev | Fix | Regression test |
+|---|---|---|---|
+| N1 | High | Wi-Fi label starts neutral ("scan path not known yet") and is set only from the path a scan actually used; a failure resets it. | `test_ra_n1_wifi_label_is_neutral_until_a_path_reports` |
+| N2 | High | `recon._run_scan` spawns in its own process group and, given the worker, polls interruptibly; stop or timeout kills the group. Wi-Fi iw + nmcli pass the worker. `ReconApp.stop` stops all workers, then `stop_worker` (joins or parks + alerts). | `test_ra_n2_run_scan_is_killed_on_stop`, `test_ra_n2_closing_recon_mid_nmcli_scan_joins_and_kills`, `test_ra_n2_a_worker_that_will_not_join_is_parked_not_dropped` |
+| N2b / N7 | Med / Low | bluetoothctl path: bounded, interruptible `bluetoothctl show` preflight (4 s) names "bluetoothd is not answering" / "no Bluetooth adapter" / "powered off"; `devices` the same way. | `test_ra_n2b_n7_bluetoothd_down_is_named_and_stop_is_prompt`, `test_ra_n2b_powered_off_from_show` |
+| N3 | Med | bleak `start()` polled every 0.1 s for stop, abandoned after 10 s with "BlueZ did not answer start"; `stop()` bounded to 2 s. | `test_ra_n3_bleak_start_hang_times_out_with_a_reason`, `test_ra_n3_bleak_hang_never_blocks_stop` |
+| N4 | Med | Remote-ID active fallback goes out as a status note (`rid_note` → warn chip), not an error/fault. | `test_scan3_remote_id_falls_back_to_active_when_bluez_has_no_monitor` (asserts no fault) |
+| N5 | Low | nmcli output that parses to nothing but is not empty → SCAN FAILED "output not understood"; empty output stays "no access points heard". | `test_ra_n5_unreadable_nmcli_output_is_a_failure` |
+| N6 | Low | A bluetoothctl window that ends in < 2 s having heard nothing is a failure; any short window sleeps RETRY_MS before the next. | `test_ra_n6_instant_exit_never_storms` |
+| N8 | Med | doctor BLE: a timed-out or controller-less `bluetoothctl show` is a failure, not all-clear. | `test_ra_n8_doctor_bluetoothd_down_is_not_all_clear` |
+| N9 | Low | doctor Wi-Fi ignores the doctor's own euid (the app runs as the desktop user): passive only when iw has cap_net_admin. | `test_scan1_doctor_wifi_paths` |
+| N10 | Low | Allowlist + BLE label + doctor wording: "active discovery (scan requests), no connect/pair" (no "listen only"/"passive"). The status chip is kept per sub-tab (AP count on WIFI, BLE count on BLE, none on NET/RF). | `test_ra_n10_chip_belongs_to_the_tab_on_screen_and_labels_are_honest` |
+| N11 | Low | Renders force-added (`*.png` is gitignored). | — |

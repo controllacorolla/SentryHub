@@ -200,7 +200,7 @@ class RidSource:
     BLE + Wi-Fi only (OpenDroneID) — NOT the SDR, so no lease is taken. The Wi-Fi-monitor path is
     device-only and left stubbed; BLE works on the dev Mac but sees zero without real beacons."""
 
-    def __init__(self, on_fault=None):
+    def __init__(self, on_fault=None, on_note=None):
         import dronewatch
         self._dw = dronewatch
         self._drones = dronewatch.Drones()
@@ -209,8 +209,10 @@ class RidSource:
         self._thread = None
         self._fault = None             # E3: a scanner failure is surfaced, never swallowed
         self._on_fault = on_fault
+        self._on_note = on_note        # RA-SCAN N4: an honest note, not a fault
         self.state = "off"             # off | scanning | fault | unavailable
         self.mode = "passive"          # SCAN-3: "active" when BlueZ cannot do passive
+        self.note = None
 
     def start(self):
         if self._on:
@@ -293,7 +295,12 @@ class RidSource:
                 scanner = BleakScanner(detection_callback=cb, scanning_mode="active")
                 await scanner.start()
                 self.mode = "active"
-                self._set_fault(self.ACTIVE_NOTE, state="scanning")
+                self.note = self.ACTIVE_NOTE
+                if self._on_note is not None:
+                    try:
+                        self._on_note(self.ACTIVE_NOTE)
+                    except Exception:
+                        pass
             self.state = "scanning"
             try:
                 while self._on:
@@ -681,7 +688,8 @@ class AtlasLiveWorker(Worker):
         want = "drone" in self._wanted
         if want and self._rid is None:
             try:
-                self._rid = RidSource(on_fault=lambda m: self.error.emit(m))
+                self._rid = RidSource(on_fault=lambda m: self.error.emit(m),
+                                      on_note=lambda m: self.status.emit({"rid_note": m}))
                 self._rid.start()
             except Exception as e:
                 self.error.emit("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
@@ -920,6 +928,8 @@ class AtlasApp(PalisadeApp):
             self._update_busy()
         if "adsb" in status:
             self._adsb_health = status["adsb"]
+        if status.get("rid_note"):               # RA-SCAN N4: a working scan, said plainly
+            self.set_chip("rid", str(status["rid_note"])[:90], state="warn")
 
     def _on_home_changed(self):
         """H5: HOME was set in SETTINGS: re-centre now; positions re-project as contacts refresh."""

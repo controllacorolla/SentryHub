@@ -501,12 +501,11 @@ def chk_wifi_scan(run=None, which=None, euid=None):
     Reports the path; never changes the system — the setcap line is the owner's decision."""
     run = run or core.run
     which = which or shutil.which
-    euid = os.geteuid() if euid is None else euid
+    # RA-SCAN N9: the app runs as the desktop user, so root running the doctor proves nothing;
+    # only a capability on iw makes the app's scan passive. (euid kept for callers/tests.)
     iw = which("iw")
     passive = False
-    if iw and euid == 0:
-        passive = True
-    elif iw and which("getcap"):
+    if iw and which("getcap"):
         rc, out = run(["getcap", os.path.realpath(iw)], timeout=3)
         passive = rc == 0 and "cap_net_admin" in (out or "").lower()
     if passive:
@@ -544,12 +543,18 @@ def chk_ble_scan(run=None, which=None, find=None, sysfs="/sys/class/bluetooth"):
     if which("bluetoothctl"):
         rc, out = run(["bluetoothctl", "show"], timeout=4)
         low = (out or "").lower()
-        if "powered: no" in low:
-            return None, "%s: adapter %s is powered off" % (backend, adapters[0]), \
-                "bluetoothctl power on   (or rfkill unblock bluetooth)"
         if "not authorized" in low or "access denied" in low:
             return False, "BlueZ refused this user (D-Bus policy)", \
                 "owner decision: add the user to the bluetooth group"
+        if rc != 0 and ("timed out" in low or "timeout" in low):          # RA-SCAN N8
+            return False, "bluetoothd is not answering", "sudo systemctl start bluetooth"
+        if "no default controller" in low or "controller" not in low:
+            return False, "BlueZ reports no controller (%s)" % ((out or "").strip()[:50] or
+                                                              "no output"), \
+                "sudo systemctl start bluetooth; check the adapter"
+        if "powered: no" in low:
+            return None, "%s: adapter %s is powered off" % (backend, adapters[0]), \
+                "bluetoothctl power on   (or rfkill unblock bluetooth)"
     note, fix = "", ""
     if which("pgrep"):
         rc, out = run(["pgrep", "-a", "bluetoothd"], timeout=3)
@@ -559,7 +564,7 @@ def chk_ble_scan(run=None, which=None, find=None, sysfs="/sys/class/bluetooth"):
             note = "; Remote-ID uses an ACTIVE scan (bluetoothd has no --experimental)"
             fix = "optional, owner decision: run bluetoothd with --experimental (systemd " \
                   "override) for passive Remote-ID"
-    return True, "%s on %s (active discovery, listen only)%s" % (backend, adapters[0], note), fix
+    return True, "%s on %s (active discovery, no connect/pair)%s" % (backend, adapters[0], note), fix
 
 
 CHECKS = [

@@ -164,7 +164,7 @@ def test_h3_failed_scan_is_not_zero_aps(monkeypatch):
                                 "sys.exit(255)"])
     assert out is None and "exit 255" in why and "not permitted" in why
     assert recon._run_cmd([sys.executable, "-c", "import sys; sys.exit(1)"]) is None
-    monkeypatch.setattr(recon, "_run_scan", lambda argv, timeout=12: (None, "exit 255 — denied"))
+    monkeypatch.setattr(recon, "_run_scan", lambda argv, timeout=12, **k: (None, "exit 255 — denied"))
     w = recon.WifiScanWorker(demo=False)
     st, rows = [], []
     w.status.connect(st.append)
@@ -795,7 +795,7 @@ def test_n29_alerts_and_predictions_are_not_a_running_feed():
 def test_n30_wifi_worker_is_paused_before_it_starts(monkeypatch):
     from palisade_qt import recon
     calls = []
-    monkeypatch.setattr(recon, "_run_scan", lambda argv, timeout=12: calls.append(1) or ("", None))
+    monkeypatch.setattr(recon, "_run_scan", lambda argv, timeout=12, **k: calls.append(1) or ("", None))
     for _ in range(10):
         p = recon.ReconApp(demo=False)
         p._subtab = "BLE"
