@@ -12,6 +12,8 @@ import time
 import urllib.error
 import urllib.request
 
+import netpolicy  # noqa: E402  (L3: every outbound request)
+
 TILE = 256
 UA = "uconsole-suite/1.0 (personal handheld; tkinter)"
 CACHE_ROOT = os.path.join(os.path.expanduser("~"), ".cache", "uconsole-suite", "tiles")
@@ -307,7 +309,7 @@ class TileLayer:
         url = LAYERS[layer]["url"].format(z=z, x=x, y=y)
         req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "image/*"})
         try:
-            with urllib.request.urlopen(req, timeout=8) as r:
+            with netpolicy.urlopen(req, timeout=8) as r:
                 data = r.read()
                 ctype = r.headers.get_content_type() if r.headers else "image/x"
         except urllib.error.HTTPError as e:

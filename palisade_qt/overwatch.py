@@ -44,9 +44,7 @@ def _home(demo=False):
     return h
 
 
-def _offscreen():
-    return bool(os.environ.get("PALISADE_OFFLINE") or
-                os.environ.get("QT_QPA_PLATFORM") == "offscreen")
+from .kit.seams import offscreen as _offscreen  # noqa: E402  (C5: one copy)
 
 
 # ======================= the polar sky dome =======================

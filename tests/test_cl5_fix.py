@@ -90,7 +90,7 @@ exec cat > /dev/null
 exec cat > /dev/null
 """,
     "rtl_ais": """#!/bin/sh
-while :; do echo '!AIVDM,1,1,,A,15M67FC000G?ufbE`FepT@3n00Sa,0*5C'; sleep 0.2; done
+while :; do echo '!AIVDM,1,1,,A,15M67FC000G?ufbE`FepT@3n00Sa,0*5F'; sleep 0.2; done
 """,
 }
 
@@ -480,7 +480,7 @@ def test_fix6_stop_hide_and_revoke_never_block_the_gui_thread(monkeypatch, live)
     lease.gate.set()
     monkeypatch.setattr(ra, "_make_lease", lease.make)
     import ais
-    monkeypatch.setattr(ais, "pipeline", lambda gain=0: [["rtl_fm", "-f", "162.0M", "-"]])
+    monkeypatch.setattr(ais, "pipeline_argv", lambda gain=0: [["rtl_fm", "-f", "162.0M", "-"]])
     w = babel.DecoderWorker(demo=False, mode="AIS")
     w.set_running(True)
     w.start()

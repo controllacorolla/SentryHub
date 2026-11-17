@@ -3,12 +3,24 @@ import json
 
 import headless
 
+TOK = "test-token-0123456789abcdef"     # C1 (CL8): every route but /health needs the token
+
+
+class _Authed:
+    def __init__(self, app):
+        self.app = app
+
+    def test_client(self):
+        c = self.app.test_client()
+        c.environ_base["HTTP_AUTHORIZATION"] = "Bearer " + TOK
+        return c
+
 
 def _app():
-    return headless.make_app({
+    return _Authed(headless.make_app({
         "status": lambda: {"active_contacts": 3, "radio": "aprs"},
         "contacts": lambda: [{"id": "UAS-1", "type": "drone", "lat": 39.6, "lon": -104.9}],
-    })
+    }, token=TOK))
 
 
 def test_health_endpoint():
@@ -36,7 +48,7 @@ def test_dashboard_served():
 
 
 def test_empty_providers_are_safe():
-    c = headless.make_app().test_client()
+    c = _Authed(headless.make_app(token=TOK)).test_client()
     assert c.get("/api/status").get_json() == {}
     assert c.get("/api/contacts").get_json() == {"contacts": []}
 

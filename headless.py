@@ -5,12 +5,30 @@ For a field-deployed box left on site and watched remotely: a small Flask server
 dashboard and a JSON API (/api/status, /api/contacts), and alerts can be pushed out via webhook.
 Data is supplied by injected provider callbacks, so the server is decoupled from the suite and
 unit-testable (Flask test client). Read-only HTTP; bind to localhost/VPN in the field.
+
+Every route except /health needs the access token (audit C1): `Authorization: Bearer <token>`,
+or `?token=<token>` on the dashboard URL (the page then sends the header itself). The token is
+generated once and kept in headless.json; a server is never started without one.
 """
+import hmac
 import json
 import os
+import secrets
 import sys
 import time
 import urllib.request
+
+import netpolicy  # noqa: E402  (L3: every outbound request)
+
+TOKEN_MIN = 16
+
+
+def new_token():
+    return secrets.token_urlsafe(24)
+
+
+def valid_token(tok):
+    return isinstance(tok, str) and len(tok) >= TOKEN_MIN and tok.isprintable() and " " not in tok
 
 
 def dashboard_html():
@@ -24,11 +42,16 @@ def dashboard_html():
         "<div id='status'>loading…</div><h2>Contacts</h2><table id='contacts'></table>"
         # contact fields come off the air (ADS-B callsigns): build cells with textContent, never
         # innerHTML, so a crafted callsign cannot inject script into the remote dashboard (S1)
-        "<script>async function tick(){"
-        "let s=await (await fetch('/api/status')).json();"
+        # C1: the token arrives once in the URL; keep it in memory, drop it from the address
+        # bar, send it as a header on every API call
+        "<script>const TOK=new URLSearchParams(location.search).get('token')||'';"
+        "history.replaceState(null,'',location.pathname);"
+        "const H={headers:{'Authorization':'Bearer '+TOK}};"
+        "async function tick(){"
+        "let s=await (await fetch('/api/status',H)).json();"
         "document.getElementById('status').textContent="
         "(s.feed||'')+' · active '+(s.active_contacts||0)+' · '+(s.radio||'')+' · '+(s.time||'');"
-        "let c=await (await fetch('/api/contacts')).json();"
+        "let c=await (await fetch('/api/contacts',H)).json();"
         "let t=document.getElementById('contacts');t.replaceChildren();"
         "for(const x of c.contacts){let r=t.insertRow();"
         "for(const [v,k] of [[x.id||'?','tag'],[x.label||'',''],[x.type||'',''],"
@@ -37,11 +60,38 @@ def dashboard_html():
         "}tick();setInterval(tick,5000);</script></body></html>")
 
 
-def make_app(providers=None):
-    """Build the Flask app. providers: {'status': ()->dict, 'contacts': ()->list}."""
-    from flask import Flask, jsonify, Response
+def make_app(providers=None, token=None):
+    """Build the Flask app. providers: {'status': ()->dict, 'contacts': ()->list}.
+    token: required (C1) — every route but /health answers 401 without it."""
+    from flask import Flask, jsonify, Response, request, abort
+    if not valid_token(token):
+        raise ValueError("Remote Mode needs an access token (>= %d chars)" % TOKEN_MIN)
     providers = providers or {}
     app = Flask("sentry-remote")
+
+    def _authorized():
+        got = ""
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            got = auth[7:].strip()
+        elif request.path == "/":
+            got = request.args.get("token", "")
+        return bool(got) and hmac.compare_digest(got.encode(), token.encode())
+
+    @app.before_request
+    def _gate():
+        if request.path != "/health" and not _authorized():
+            abort(401)
+
+    @app.after_request
+    def _headers(resp):
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        resp.headers["Content-Security-Policy"] = (
+            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+            "connect-src 'self'")
+        return resp
 
     @app.route("/")
     def index():
@@ -49,7 +99,7 @@ def make_app(providers=None):
 
     @app.route("/health")
     def health():
-        return jsonify({"ok": True, "ts": time.time()})
+        return jsonify({"ok": True})
 
     @app.route("/api/status")
     def status():
@@ -60,6 +110,15 @@ def make_app(providers=None):
         return jsonify({"contacts": (providers.get("contacts") or (lambda: []))()})
 
     return app
+
+
+def ensure_token(s):
+    """The settings dict's token, generated (and returned as changed=True) when absent/weak."""
+    tok = s.get("token")
+    if valid_token(tok):
+        return tok, False
+    s["token"] = new_token()
+    return s["token"], True
 
 
 def webhook_payload(alert, source="sentry"):
@@ -116,7 +175,7 @@ def post_webhook(url, alert, poster=None, timeout=5):
         return bool(poster(url, data))
     try:
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with netpolicy.urlopen(req, timeout=timeout) as r:
             return 200 <= r.status < 300
     except Exception:
         return False
@@ -130,13 +189,28 @@ def serve(app, host="127.0.0.1", port=8731):
     return srv
 
 
+def _save_private(path, s):
+    """Write headless.json readable by the owner only: it holds the access token."""
+    try:
+        fd = os.open(path + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(s, f, indent=1)
+        os.chmod(path + ".tmp", 0o600)
+        os.replace(path + ".tmp", path)
+    except OSError:
+        pass
+
+
 def main(parent=None):
     import threading
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import suite as S
     if parent is None:
         S.single_instance("Headless")
-    s, spath = S.settings("headless", {"host": "127.0.0.1", "port": 8731, "webhook": ""})
+    s, spath = S.settings("headless", {"host": "127.0.0.1", "port": 8731, "webhook": "", "token": ""})
+    token, changed = ensure_token(s)
+    if changed:
+        _save_private(spath, s)
     root, F = S.make_root("Remote Mode", parent=parent)
     import tkinter as tk
     T = S.T
@@ -149,7 +223,7 @@ def main(parent=None):
                                      or ["/run/readsb"]))
     except Exception:
         feed = None                      # no engine: status reports ADS-B NO FEED, never zero-as-OK
-    app = make_app(adsb_providers(feed, radio=S.radio_holder))
+    app = make_app(adsb_providers(feed, radio=S.radio_holder), token=token)
 
     S.top_bar(root, F, "Remote Mode", "Web dashboard + API + webhook alerts")
     status = tk.Label(root, bg=S.BG, fg=T.TXT_3, font=F["mono"], anchor="w", justify="left",
@@ -176,7 +250,8 @@ def main(parent=None):
             return
         st["srv"] = srv
         threading.Thread(target=srv.serve_forever, daemon=True).start()
-        status.config(text="Serving at http://%s:%d/  (dashboard + API)" % (host, port), fg=S.GREEN)
+        status.config(text="Serving at http://%s:%d/?token=%s\n(dashboard; the API needs "
+                           "'Authorization: Bearer <token>')" % (host, port, token), fg=S.GREEN)
 
     bar = tk.Frame(root, bg=T.SURFACE)
     bar.pack(side="bottom", fill="x")
@@ -192,10 +267,7 @@ def main(parent=None):
                 st["srv"].shutdown()
             except Exception:
                 pass
-        try:
-            S.save_json(spath, s)
-        except Exception:
-            pass
+        _save_private(spath, s)
         root.destroy()
     S.bind_quit(root, on_close)
     root.mainloop()

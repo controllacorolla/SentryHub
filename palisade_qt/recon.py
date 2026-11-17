@@ -42,9 +42,7 @@ if HERE not in sys.path:
 SUBTABS = ("WIFI", "BLE", "NET", "RF")
 
 
-def _offscreen():
-    return bool(os.environ.get("PALISADE_OFFLINE") or
-                os.environ.get("QT_QPA_PLATFORM") == "offscreen")
+from .kit.seams import offscreen as _offscreen  # noqa: E402  (C5: one copy)
 
 
 def _run_cmd(argv, timeout=12):
@@ -307,7 +305,7 @@ class DetectorWorker(Worker):
 
 # ---- demo data (synthetic, flagged) ----
 def _demo_aps():
-    secs = ["WPA2/3", "WPA2/3", "open", "WPA", "WPA2/3"]
+    secs = ["WPA2-PSK", "WPA3-SAE", "open", "WEP", "WPA2-EAP"]
     names = ["Cafe-Guest", "HOME-5G", "xfinitywifi", "Acme-Corp", "Pixel_1234"]
     out = []
     for i, (n, s) in enumerate(zip(names, secs)):

@@ -873,6 +873,26 @@ def backup_configs(dest=None):
     return dest, n
 
 
+def _restores_tx_setting(tf, member):
+    """True if this settings file carries a TX setting (tx_enabled, tx_region, …). A backup may
+    not switch transmit on or move the region: those are set on this device, by its operator."""
+    import json
+    try:
+        f = tf.extractfile(member)
+        raw = f.read() if f else b""
+    except OSError:
+        return True                 # unreadable: do not restore it (fail closed, RA-CL8e NEW-U)
+    import re
+    if re.search(rb'"\s*tx_[a-z0-9_]*\s*"\s*:', raw.lower()):
+        return True                 # a "tx_…": key, however the file is padded or malformed
+        # (a value such as a channel label "ATX_TOWER" is not a key: RA-CL8f NEW-AB)
+    try:
+        d = json.loads(raw.decode("utf-8", "replace"))
+    except ValueError:
+        return False                # not JSON and no tx_ text: harmless to restore
+    return isinstance(d, dict) and any(str(k).lower().startswith("tx_") for k in d)
+
+
 def restore_configs(archive):
     """Restore a backup_configs archive into HOME. Overwrites existing settings.
     Returns the list of restored member names."""
@@ -880,16 +900,37 @@ def restore_configs(archive):
     if not os.path.exists(archive):
         raise FileNotFoundError(archive)
     names = []
+    # RA-CL8b NEW-C: restore only what backup_configs writes. An archive is data; it may not drop
+    # a .bashrc, suite code, or another program's config (rtl_433.conf) into HOME.
+    allowed_dirs = (".config/uconsole-suite/", ".config/sky-app/", ".local/share/uconsole-suite/logbook/")
+    allowed_files = {".local/share/uconsole-suite/" + n for n in
+                     ("sky_records.json", "sky_coverage.json", "sky_types.json", "logbook")} | \
+        {".cache/uconsole-suite/bingo.json", ".cache/sky-app/bingo.json",
+         ".config/uconsole-suite", ".config/sky-app"}
+    skipped_tx = []
     with tarfile.open(archive, "r:gz") as tf:
         for m in tf.getmembers():
+            rel = os.path.normpath(m.name).replace(os.sep, "/")
+            if not (rel in allowed_files or any(rel.startswith(d) for d in allowed_dirs)):
+                continue
+            if not (m.isfile() or m.isdir()):
+                continue                              # no links, devices or fifos
+            if rel in (".config/uconsole-suite/net.json", ".config/uconsole-suite/headless.json"):
+                continue      # RA-CL8c NEW-J: network mode and Remote Mode token stay this device's
+            if m.isfile() and rel.endswith(".json") and _restores_tx_setting(tf, m):
+                skipped_tx.append(m.name)
+                continue      # RA-CL8d NEW-Q: TX enable/region stay this device's (txguard)
             # defensive: never let an archive write outside HOME
             target = os.path.normpath(os.path.join(HOME, m.name))
             if not target.startswith(os.path.normpath(HOME) + os.sep):
                 continue
             try:
-                tf.extract(m, HOME, filter="data")   # 3.12+: blocks traversal/absolute/device files
-            except TypeError:
-                tf.extract(m, HOME)                   # older Python: our manual check above still guards
+                try:
+                    tf.extract(m, HOME, filter="data")   # 3.12+: blocks traversal/absolute/devices
+                except TypeError:
+                    tf.extract(m, HOME)                   # older Python: the checks above still guard
+            except OSError:
+                continue          # e.g. a file where a folder should be: skip it, restore the rest
             names.append(m.name)
     return names
 

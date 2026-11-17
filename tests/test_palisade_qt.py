@@ -155,7 +155,8 @@ ALL_CALLSIGNS = PAGE_KEYS + FOLDED_CALLSIGNS
 
 
 @pytest.mark.parametrize("name", ALL_CALLSIGNS)
-def test_every_callsign_opens_pumps_closes_clean(name):
+def test_every_callsign_opens_pumps_closes_clean(name, monkeypatch):
+    monkeypatch.setenv("PALISADE_SHOW_HIDDEN", "1")  # CL8 v0.1: SWEEP is hidden but still built
     _app()
     from palisade_qt.shell import PalisadeHub
     hub = PalisadeHub(demo=True, mode="dark")
@@ -180,11 +181,12 @@ def test_all_callsigns_build_in_both_themes(mode):
         page.stop()
 
 
-def test_hub_soak_open_all_callsigns_then_close_no_leaks():
+def test_hub_soak_open_all_callsigns_then_close_no_leaks(monkeypatch):
     """Back-test: one hub, open every callsign in sequence, pump, close -> zero running QThreads."""
     from PySide6 import QtCore
     _app()
     from palisade_qt.shell import PalisadeHub, QT_PAGES
+    monkeypatch.setenv("PALISADE_SHOW_HIDDEN", "1")  # CL8 v0.1: SWEEP hidden, still soaked
     before = QtCore.QThread.__subclasses__()  # noqa: F841 (kept for clarity)
     hub = PalisadeHub(demo=True, mode="dark")
     hub.show()
@@ -323,7 +325,17 @@ def test_rid_source_decodes_drone_and_operator():
     kinds = {e["payload"]["kind"] for e in evs}
     assert "drone" in kinds and "operator" in kinds, "RID must plot the drone AND its operator"
     drone = next(e for e in evs if e["payload"]["kind"] == "drone")
-    assert drone["source"] == "RID" and drone["severity"] == "alert"
+    # CL8 P3: one advert is an unauthenticated claim -> amber UNCONFIRMED, never the red alert
+    assert drone["source"] == "RID" and drone["severity"] == "warn"
+    assert drone["payload"]["trust"] == "unconfirmed"
+    for c in rs._drones.by_addr.values():
+        c["first"] -= 3.0                     # heard for 3 s …
+    for _ in range(3):                        # … and several adverts: confirmed, red
+        for addr, payload, rssi in demo.adverts():
+            rs.ingest_payload(addr, payload, rssi)
+    evs = rs.contacts()
+    drone = next(e for e in evs if e["payload"]["kind"] == "drone")
+    assert drone["severity"] == "alert" and drone["payload"]["trust"] == "confirmed"
     op = next(e for e in evs if e["payload"]["kind"] == "operator")
     assert op["source"] == "RID"
     assert isinstance(op["payload"]["lat"], float) and isinstance(op["payload"]["lon"], float)

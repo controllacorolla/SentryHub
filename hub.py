@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Radio Hub - one launcher for the uConsole suite, and the owner of the built-in SDR."""
 
+import re
 import json
+
+import netpolicy  # noqa: E402  (L3: every outbound request)
 import os
 import shutil
 import subprocess
@@ -85,6 +88,25 @@ TILES = [
 ]
 
 
+
+# CL8 (owner decision 3, CL2-fix): the Tk gated tools could never be unlocked here (the Tk hub
+# has no UNLOCK and cannot open an engagement), so they are retired from the Tk hub. Their
+# engines stay: PALISADE (the Qt hub) runs the assessments behind engagement + txguard.
+# v0.1 line (owner, 2026-11-16): SWEEP is hidden in PALISADE until its detectors are validated;
+# the Tk hub hides the same detectors (bug sweep, jamming, IMSI-catcher, GNSS jam/spoof).
+HIDDEN_V01_TK = frozenset({"sweep", "jam", "imsi", "gnss"})
+RETIRED_TK = frozenset({"cw", "rtty", "digi", "replay", "pm3", "wifix", "blex", "zb", "zw",
+                        "hid"}) | HIDDEN_V01_TK
+TILES = [t for t in TILES if t[0] not in RETIRED_TK]
+
+
+def visible_groups(groups):
+    """The Tk home grid is built from GROUPS, not TILES (RA-CL8): drop retired/hidden keys there
+    too — a retired tile left in it was visible but dead (launch() had no command for it)."""
+    out = [(n, c, [t for t in ts if not (t[3][0] == "launch" and t[3][1] in RETIRED_TK)])
+           for n, c, ts in groups]
+    return [g for g in out if g[2]]
+
 class Shell:
     """The workstation: one window, every app a workspace inside it.
 
@@ -103,6 +125,7 @@ class Shell:
         "scout": ("scout", "main"), "ow": ("overwatch", "main"),
         "hw": ("hwlab", "main"), "dev": ("devterm", "main"), "fc": ("fieldcomp", "main"),
     }
+    MODS = {k: v for k, v in MODS.items() if k not in RETIRED_TK}
     PASS = ("--demo",)            # shell flags every workspace inherits
 
     def __init__(self, root, F, barhost, host):
@@ -270,18 +293,8 @@ def read_jsonl(path, n, max_bytes=400_000):
 
 
 def main():
-    # Auto-load any drop-in plugins (Phase 3e) before the UI is built, so they appear like any
-    # other module. Guarded: a bad plugin can never stop the hub from starting.
-    try:
-        import plugins as _plugins
-        _found = _plugins.discover(os.path.join(HERE, "plugins"))
-        if _found:
-            added, _ = _plugins.register_into(Shell.MODS, _found)
-            if added:
-                print("plugins loaded: " + ", ".join(added), file=sys.stderr)
-    except Exception as _e:        # never let plugin loading break startup
-        print("plugin load skipped: %r" % _e, file=sys.stderr)
-
+    # C5 (CL8): plugins.py (auto-loading python from the app dir) is deleted — dead, and a
+    # code-execution path for anything that could write there.
     S.single_instance("Sentry")
     root, F = S.make_root("Sentry")
     import tkinter as tk
@@ -784,6 +797,9 @@ def main():
             return
         if key == "sdrpp":
             return launch_sdrpp()
+        if not cmd:                           # no command for this key: say so, never a TypeError
+            msg.config(text="%s is not available in this build." % key)
+            return
         if not os.path.exists(cmd[1]):
             msg.config(text="Missing %s - re-run the suite installer." % cmd[1])
             return
@@ -962,6 +978,8 @@ def main():
             w.bind("<Enter>", lambda e: hover(True))
             w.bind("<Leave>", lambda e: hover(False))
         return f
+
+    GROUPS = visible_groups(GROUPS)
 
     for _name, _col, _tiles in GROUPS:
         hdr = tk.Label(grid, text=T.spaced(_name), font=F["lbl"], fg=T.TXT_3, bg=T.SURFACE,
@@ -1260,8 +1278,7 @@ def main():
             slow["tpv"] = S.gps_fix(timeout=1.0)
             llm_ = None
             try:
-                import urllib.request
-                urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1).read()
+                netpolicy.urlopen("http://127.0.0.1:11434/api/tags", timeout=1).read()
                 llm_ = "local Ollama"
             except Exception:
                 pass
@@ -1382,13 +1399,19 @@ def main():
                 sdr_lease[0]._write(pid=p.pid)
             except OSError:
                 pass
-            paused = " ".join(sdr_lease[0].paused)
-            script = ("while kill -0 %d 2>/dev/null; do sleep 2; done; "
-                      "for s in %s; do sudo -n systemctl start $s; done; "
-                      "python3 -c 'import json,sys;p=sys.argv[1];d=json.load(open(p));"
-                      "d.update(owner=None,pid=None,paused=[]);json.dump(d,open(p,\"w\"))' '%s'"
-                      % (p.pid, paused, S.LEASE_STATE))
-            S.fire_and_forget(["bash", "-c", script])
+            # L4: no shell. The service names travel as argv and must be plain words.
+            paused = [n for n in sdr_lease[0].paused if re.match(r"^[A-Za-z0-9_.@-]+$", str(n))]
+            watcher = ("import json,os,subprocess,sys,time\n"
+                       "pid=int(sys.argv[1]);p=sys.argv[2]\n"
+                       "while True:\n"
+                       "    try: os.kill(pid,0)\n"
+                       "    except OSError: break\n"
+                       "    time.sleep(2)\n"
+                       "for s in sys.argv[3:]:\n"
+                       "    subprocess.run(['sudo','-n','systemctl','start',s])\n"
+                       "d=json.load(open(p));d.update(owner=None,pid=None,paused=[])\n"
+                       "json.dump(d,open(p,'w'))\n")
+            S.fire_and_forget([sys.executable, "-c", watcher, str(p.pid), S.LEASE_STATE] + paused)
             msg.config(text="SDR++ stays open; the plane map returns when it closes.")
             return True
         return False

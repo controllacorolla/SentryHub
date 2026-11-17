@@ -29,6 +29,8 @@ DEFAULTS = {
 def pipeline(freq, mode, gain, squelch, rds=False):
     """argv lists (no shell): rtl_fm producer, optional redsea RDS decoder, audio sink."""
     freq, gain, squelch = float(freq), float(gain), int(squelch)
+    if not (0 < freq < 6000) or not (0 <= gain <= 60):   # L4: also refuses nan/inf from settings
+        raise ValueError("bad FM settings: freq %r gain %r" % (freq, gain))
     mid = None
     if mode == "nbfm":
         rate = 24000

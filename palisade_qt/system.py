@@ -34,9 +34,7 @@ SUBTABS = ("SETTINGS", "DOCTOR", "ASSISTANT", "MESH", "SITREP")
 DECODE_WINDOW_S = 600                 # decodes "recent" = the last 10 minutes (H17)
 
 
-def _offscreen():
-    return bool(os.environ.get("PALISADE_OFFLINE") or
-                os.environ.get("QT_QPA_PLATFORM") == "offscreen")
+from .kit.seams import offscreen as _offscreen  # noqa: E402  (C5: one copy)
 
 
 # ======================= workers =======================

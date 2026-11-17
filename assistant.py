@@ -20,6 +20,8 @@ import threading
 import time
 import urllib.request
 
+import netpolicy  # noqa: E402  (L3: every outbound request)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite as S  # noqa: E402
 
@@ -47,7 +49,7 @@ REC = os.path.join(S.CACHE, "ptt.wav")
 def http_json(url, data=None, timeout=3):
     req = urllib.request.Request(url, data=json.dumps(data).encode() if data else None,
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with netpolicy.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 
 
@@ -491,7 +493,7 @@ def main():
         full, buf = "", ""
         ev.put(("stream_start", None))
         try:
-            with urllib.request.urlopen(req, timeout=120) as r:
+            with netpolicy.urlopen(req, timeout=120) as r:
                 for line in r:
                     if gen != st["gen"]:
                         return

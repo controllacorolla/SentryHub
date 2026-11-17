@@ -173,7 +173,9 @@ def listen_channel(freq, mode, s, scan, post, popen=subprocess.Popen, sink_fn=No
             if ready:
                 data = os.read(fd, 4096)
                 if not data:
-                    early_exit = not got and now - t0 < 1.0
+                    # rtl_fm exited by itself (we stop it only after the loop): the dongle is
+                    # busy/unplugged. RA-CL8d NEW-M: any self-exit counts, not only one < 1 s.
+                    early_exit = True
                     break                       # rtl_fm exited
                 data = carry + data             # keep int16 samples aligned for the sink
                 carry, chunk = (data[-1:], data[:-1]) if len(data) % 2 else (b"", data)
@@ -205,7 +207,8 @@ def listen_channel(freq, mode, s, scan, post, popen=subprocess.Popen, sink_fn=No
             elif deadline is not None and now > deadline:
                 break
             elif deadline is None and now - t0 > TUNE_SETTLE + 3.0:
-                break                           # software gate, but rtl_fm never sent audio
+                early_exit = True               # RA-CL8e NEW-S: rtl_fm alive but silent (AM never
+                break                           # gates samples away): a dead dongle, not quiet
         if result != "retune":
             result = active
     finally:

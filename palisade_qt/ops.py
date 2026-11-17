@@ -25,11 +25,15 @@ from .worker import Worker
 # The eight page keys, in key order (1-8), each with the function label shown beside the callsign
 # in the top strip (owner decision 2026-11-15, plan/audit/AUDIT_INDEX.md · D7). BABEL is folded into
 # PROWL, OVERWATCH's sky views into ATLAS, BENCH into SYSTEM; SWEEP is promoted from RECON/COUNTER.
-CALLSIGNS = [
+ALL_CALLSIGNS = [
     ("OPS", "home"), ("ATLAS", "map"), ("PRISM", "spectrum"), ("PROWL", "listen"),
     ("SWEEP", "sweep"), ("RECON", "survey"), ("FORGE", "hardware"),
     ("SYSTEM", "settings"),
 ]
+# v0.1 launch line (owner, 2026-11-16): SWEEP is hidden until CL7 validates its detectors.
+# Its code stays; the strip, the keys and the palette do not offer it.
+from .release import HIDDEN_PAGES  # noqa: E402
+CALLSIGNS = [c for c in ALL_CALLSIGNS if c[0] not in HIDDEN_PAGES]
 
 STALE_S = 12.0          # a contact not refreshed within this drops off the scope
 
@@ -228,6 +232,7 @@ class OpsHome(PalisadeApp):
         # the width to the rail instead of a dead well either side (D3 / RA-CL1)
         self._hero = hero
         self.ppi.resized.connect(self._fit_scope)
+        self.ppi.contact_clicked.connect(self.select_contact)          # B5
 
         # rail: PRISM / BABEL / ALERTS / minis
         rail = QtWidgets.QWidget()
@@ -303,6 +308,11 @@ class OpsHome(PalisadeApp):
         side = self.ppi.height()
         if side > 0 and self._hero.maximumWidth() != max(360, side):
             self._hero.setMaximumWidth(max(360, side))
+
+    def select_contact(self, cid):
+        """B5: select a contact on the scope (click again to clear): violet ring + its label."""
+        self._selected = None if cid == self._selected or cid not in self._contacts else cid
+        self._refresh_ppi()
 
     def _refresh_ppi(self):
         now = time.time()

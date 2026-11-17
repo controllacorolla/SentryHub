@@ -2,8 +2,9 @@
 
 Structure (CL1, owner decision in plan/audit/AUDIT_INDEX.md):
 
-    1 OPS home · 2 ATLAS map · 3 PRISM spectrum · 4 PROWL listen · 5 SWEEP counter-surveillance
-    6 RECON survey + assess · 7 FORGE hardware · 8 SYSTEM settings
+    1 OPS home · 2 ATLAS map · 3 PRISM spectrum · 4 PROWL listen · 5 RECON survey + assess
+    6 FORGE hardware · 7 SYSTEM settings
+    (SWEEP counter-surveillance is hidden in v0.1 — release.HIDDEN_PAGES; back with CL7.)
 
 There is no left rail and no footer: navigation and the four shell-owned status slots (MODE / RADIO /
 TX / ENGAGEMENT) share one ≤ 40 px strip, and the page gets everything below it. The shell owns the
@@ -19,7 +20,7 @@ import sys
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import theme, chrome, eventbus, panels, procs
+from . import theme, chrome, eventbus, panels, procs, release, sessionlog
 from .kit import TopBar
 from .ops import OpsHome, CALLSIGNS
 from .prism import PrismApp
@@ -59,6 +60,30 @@ _TEXT_INPUTS = (QtWidgets.QLineEdit, QtWidgets.QAbstractSpinBox, QtWidgets.QPlai
 def child_pids(pid=None):
     """Direct child processes of this app (the decoders / tools it spawned). Best effort."""
     return procs.child_pids(pid)
+
+
+class _NetBridge(QtCore.QObject):
+    """netpolicy calls its listeners on the requesting thread; this queues a mode change onto the
+    GUI thread for the NET slot."""
+    changed = QtCore.Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        if HERE not in sys.path:
+            sys.path.insert(0, HERE)
+        import netpolicy
+        self._np = netpolicy
+        netpolicy.add_listener(self._on)
+
+    def _on(self, ev):
+        if ev and ev[0] == "mode":
+            try:
+                self.changed.emit()
+            except RuntimeError:
+                pass
+
+    def stop(self):
+        self._np.remove_listener(self._on)
 
 
 class PalisadeHub(QtWidgets.QMainWindow):
@@ -102,8 +127,13 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.alerts_drawer = panels.AlertsDrawer(mode, central, store=self.alerts)
         self.keymap = panels.KeyMapOverlay(mode, central)
         self.palette = panels.CommandPalette(mode, central)
+        self.log_panel = panels.SessionLogPanel(mode, central)
         self._overlays = [self.radios_panel, self.engage_panel, self.tx_panel, self.alerts_drawer,
-                          self.keymap, self.palette]
+                          self.keymap, self.palette, self.log_panel]
+        # C4 + L3: the fault indicator and the NET slot follow the session log / network mode
+        self._net_bridge = _NetBridge(self)
+        self._net_bridge.changed.connect(self._on_net)
+        sessionlog.log().changed.connect(self._on_log)
         self.panic_banner = QtWidgets.QLabel("", central)
         self.panic_banner.setProperty("class", "value")
         self.panic_banner.setAlignment(QtCore.Qt.AlignCenter)
@@ -118,6 +148,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.show_page("OPS")
         self._on_state()
         self._on_alerts()
+        self._on_net()
+        self._on_log()
 
         # keyboard: one filter for the whole window (D8)
         QtWidgets.QApplication.instance().installEventFilter(self)
@@ -156,8 +188,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
             self.pages[name] = self.pages[page].child(cls)      # the folded app itself
             return
         if name not in self.pages:
-            if name not in QT_PAGES:
-                return
+            if name not in QT_PAGES or release.page_hidden(name):
+                return                 # v0.1: a hidden page is not built, by key or by name
             self._add_page(name, QT_PAGES[name](demo=self.demo, mode=self.mode))
             inner = _INNER.get(name)
             if inner is not None:
@@ -191,13 +223,23 @@ class PalisadeHub(QtWidgets.QMainWindow):
             self.engage_panel.refresh()
 
     def _slot_clicked(self, key):
+        # MODE opens the session log while it carries the fault indicator, else the key map
+        if key == "mode":
+            key = "log" if sessionlog.log().faults_unseen() else "keys"
         self.open_panel({"radio": "radios", "engagement": "engagement", "alerts": "alerts",
-                         "tx": "tx", "mode": "keys"}[key])
+                         "tx": "tx", "keys": "keys", "net": "log", "log": "log"}[key])
+
+    def _on_log(self):
+        self.topbar.set_faults(sessionlog.log().faults_unseen())
+
+    def _on_net(self, *_):
+        import netpolicy
+        self.topbar.set_net(netpolicy.mode())
 
     def open_panel(self, which):
         panel = {"radios": self.radios_panel, "engagement": self.engage_panel,
                  "tx": self.tx_panel, "alerts": self.alerts_drawer, "keys": self.keymap,
-                 "palette": self.palette}.get(which)
+                 "palette": self.palette, "log": self.log_panel}.get(which)
         if panel is None:
             return
         if panel.isVisible():
@@ -447,7 +489,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
             return False                # never steal characters from a text field
 
         page = self.current_page()
-        if text and text in "12345678":
+        if text and len(text) == 1 and text.isdigit() and 1 <= int(text) <= len(CALLSIGNS):
             self.open_callsign(CALLSIGNS[int(text) - 1][0])
             return True
         if key in (K.Key_Left, K.Key_Right):
@@ -525,6 +567,13 @@ class PalisadeHub(QtWidgets.QMainWindow):
             self.alerts.changed.disconnect(self._on_alerts)
         except (TypeError, RuntimeError):
             pass
+        self._net_bridge.stop()
+        for sig, slot in ((sessionlog.log().changed, self._on_log),
+                          (self.log_panel.log.changed, self.log_panel._changed)):
+            try:
+                sig.disconnect(slot)
+            except (TypeError, RuntimeError):
+                pass
         seen = set()
         for w in self.pages.values():
             if id(w) in seen or self.stack.indexOf(w) < 0:
@@ -547,6 +596,8 @@ def main(argv=None):
     theme.set_palette(app, mode)
     app.setStyleSheet(theme.qss(mode))
     eventbus.load_home(demo=demo)              # H5: the saved HOME, before any page reads it
+    sessionlog.install_hooks()                 # C4: uncaught exceptions reach the session log
+    sessionlog.watch_network()                 # L3: every outbound request is logged
     hub = PalisadeHub(demo=demo, mode=mode)
     hub.show()
     return app.exec()

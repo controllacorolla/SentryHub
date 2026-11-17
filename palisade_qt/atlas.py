@@ -25,6 +25,7 @@ from . import theme, eventbus, radio_arbiter
 from .kit import MapPanel, FeedTable, DetailCard
 from .kit.components import Cover
 from .worker import Worker
+from .kit.seams import offscreen as _seam_offscreen
 
 # kind -> (legend label, theme colour token). Severity "alert" overrides the colour to red.
 # Remote-ID adds two kinds: the drone (alert red) and its OPERATOR (accent violet).
@@ -145,27 +146,52 @@ def adsb_contacts(aircraft):
 
 
 # ------------------------------------------------------------------ Remote-ID (dronewatch)
+RID_CONFIRM_ADVERTS = 3          # P3: Remote ID is an unauthenticated broadcast — one advert
+RID_CONFIRM_SPAN_S = 2.0         # (anyone with a phone can send it) never raises a red drone
+
+
+# what each positional source can be trusted for (shown on the detail card — P3)
+SOURCE_TRUST = {            # short: one line on the detail card (the full reason is the tooltip)
+    "RID": "UNAUTHENTICATED RID",
+    "ADS-B": "UNAUTHENTICATED ADS-B",
+    "AIS": "UNAUTHENTICATED AIS",
+    "APRS": "UNAUTHENTICATED APRS",
+}
+
+
 def rid_contacts(fusion_list):
-    """Adapt dronewatch fusion_contacts() -> typed contact events: the DRONE (alert) and, when
-    the OpenDroneID System message carried it, the OPERATOR (operator kind). Decoding is
-    dronewatch's, unchanged — this only reshapes its output."""
+    """Adapt dronewatch fusion_contacts() -> typed contact events: the DRONE and, when the
+    OpenDroneID System message carried it, the OPERATOR (operator kind). Decoding is
+    dronewatch's, unchanged — this only reshapes its output.
+
+    P3: a drone is ALERT (red) only once it has been heard RID_CONFIRM_ADVERTS times over at
+    least RID_CONFIRM_SPAN_S; before that it is plotted amber and marked UNCONFIRMED."""
     out = []
     for fc in fusion_list:
+        n = int(fc.get("adverts") or 0)
+        first, last = fc.get("first"), fc.get("timestamp")
+        span = (last - first) if isinstance(first, (int, float)) and \
+            isinstance(last, (int, float)) else 0.0
+        confirmed = n >= RID_CONFIRM_ADVERTS and span >= RID_CONFIRM_SPAN_S
+        trust = "confirmed" if confirmed else "unconfirmed"
         lat, lon = fc.get("lat"), fc.get("lon")
         if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
             alt_m = fc.get("alt_m")
             out.append(eventbus.contact(
                 "RID", fc.get("id"), lat, lon,
                 alt=int(alt_m * 3.28084) if isinstance(alt_m, (int, float)) else None,
-                kind="drone", severity="alert",
+                kind="drone", severity="alert" if confirmed else "warn",
+                label=(fc.get("id") if confirmed else "%s ?" % fc.get("id")),
                 spd=int(fc["speed_mps"]) if isinstance(fc.get("speed_mps"), (int, float)) else None,
-                uas_id=fc.get("uas_id"), operator_id=fc.get("operator_id")))
+                uas_id=fc.get("uas_id"), operator_id=fc.get("operator_id"),
+                trust=trust, adverts=n))
         olat, olon = fc.get("operator_lat"), fc.get("operator_lon")
         if isinstance(olat, (int, float)) and isinstance(olon, (int, float)):
             out.append(eventbus.contact(
                 "RID", (fc.get("operator_id") or fc.get("id") or "OP") + "-OP", olat, olon,
                 kind="operator", severity="warn",
-                label="OP " + str(fc.get("uas_id") or fc.get("id")), drone=fc.get("uas_id")))
+                label="OP " + str(fc.get("uas_id") or fc.get("id")), drone=fc.get("uas_id"),
+                trust=trust, adverts=n))
     return out
 
 
@@ -222,7 +248,7 @@ class RidSource:
         return kw
 
     def _scan_ble(self):
-        if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        if _seam_offscreen():
             self.state = "unavailable"
             return                      # never open a real BLE scan under tests/offline
         try:
@@ -285,10 +311,11 @@ class RidSource:
 # offscreen/offline/no-tools, so CI never opens a real radio. Legacy decode paths reused AS-IS.
 def _open_aprs_pipe(gain):
     import shutil
-    if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+    if _seam_offscreen():
         return None
-    if not shutil.which("rtl_fm") or not shutil.which("multimon-ng"):
-        return None
+    for b in ("rtl_fm", "multimon-ng"):
+        if not shutil.which(b):        # RA-CL8d NEW-N: say so; never hold the radio for nothing
+            raise FileNotFoundError("no %s" % b)
     import aprs
     from .kit.procs import Pipeline
     return Pipeline(aprs.pipeline_argv(gain))          # one session: PANIC/arbiter kill the lot (A4)
@@ -296,10 +323,10 @@ def _open_aprs_pipe(gain):
 
 def _open_ais_pipe(gain):
     import shutil
-    if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+    if _seam_offscreen():
         return None
     if not shutil.which("rtl_ais"):
-        return None
+        raise FileNotFoundError("no rtl_ais")      # RA-CL8d NEW-N
     import ais
     from .kit.procs import Pipeline
     return Pipeline(ais.pipeline_argv(gain))           # one session: PANIC/arbiter kill the lot (A4)
@@ -445,8 +472,19 @@ class LeaseSource:
             return []
         if st != "HELD":
             return []                                # ACQUIRING: readsb is still being paused
+        alive = getattr(self._proc, "poll", None)
+        if self._proc is not None and alive is not None and alive() is not None:
+            # RA-CL8d NEW-N: the decoder died. Holding the radio for a dead pipe pauses readsb and
+            # shows "no stations": give it back and say why (the page unticks the layer)
+            self._fault("decoder exited — is the SDR free?")
+            return []
         if self._proc is None and self._thread is None:
-            self._proc = self._open_pipe()
+            try:
+                self._proc = self._open_pipe()
+            except Exception as e:              # missing binary, refused settings
+                self._proc = None
+                self._fault("cannot start: %s" % (str(e)[:80] or type(e).__name__))
+                return []
             if self._proc is not None and not arb.held_by(self.NAME):
                 self._has_radio = False              # N-j: lost it while spawning — reap first
                 self._give_back(radio_arbiter.lost_reason(self.NAME))
@@ -457,6 +495,16 @@ class LeaseSource:
             else:
                 self._thread = False                 # seam opened nothing: don't retry each poll
         return self._contacts()
+
+    def _fault(self, why):
+        label = (self.NAME or "ATLAS").replace("ATLAS-", "")
+        try:
+            from . import sessionlog
+            sessionlog.record("fault", "ATLAS", "%s %s" % (label, why))
+        except Exception:
+            pass
+        self.given_back = "FAULT — %s" % why
+        self._give_back(self.given_back)
 
     def acquiring(self):
         st, owner = radio_arbiter.arbiter.state()
@@ -864,7 +912,9 @@ class AtlasApp(PalisadeApp):
             self._worker.hold_off("PANIC")
         return []
 
-    def _color(self, kind, severity):
+    def _color(self, kind, severity, trust=None):
+        if trust == "unconfirmed":                   # P3: never the drone red on one advert
+            return self._tok["warn"]
         return self._tok["alert"] if severity == "alert" else self._tok[KIND_TOKEN.get(kind, "text")]
 
     def _on_event(self, ev):
@@ -877,6 +927,7 @@ class AtlasApp(PalisadeApp):
             "id": pl["id"], "label": pl.get("label", pl["id"]), "kind": pl.get("kind", "air"),
             "x": x, "y": y, "alt": pl.get("alt"), "spd": pl.get("spd"),
             "severity": ev["severity"], "_ts": ev["ts"],
+            "source": ev.get("source"), "trust": pl.get("trust"), "adverts": pl.get("adverts"),
             "rng": math.hypot(x, y) if known else None,
             "brg": (math.degrees(math.atan2(x, y)) % 360) if known else None}
 
@@ -889,14 +940,16 @@ class AtlasApp(PalisadeApp):
         plotted = [] if no_home else shown
         self.map.set_contacts([(c["x"], c["y"]) for c in plotted],
                               labels=[c["label"] for c in plotted],
-                              colors=[self._color(c["kind"], c["severity"]) for c in plotted])
+                              colors=[self._color(c["kind"], c["severity"], c.get("trust"))
+                                      for c in plotted])
         rows = []
         for c in sorted(shown, key=lambda c: (c["rng"] is None, c["rng"] or 0, c["label"])):
             rows.append({"_id": c["id"], "label": c["label"],
                          "kind": KIND_LABEL.get(c["kind"], c["kind"]),
                          "rng": "%.0f" % c["rng"] if c["rng"] is not None else "—",
                          "alt": "%d" % c["alt"] if c["alt"] else "—",
-                         "_src": c, "_colors": {"rng": self._color(c["kind"], c["severity"])}})
+                         "_src": c, "_colors": {"rng": self._color(c["kind"], c["severity"],
+                                                                   c.get("trust"))}})
         self.feed.model.set_rows(rows)
         if self._selected is not None and self._selected not in {c["id"] for c in shown}:
             self._show_lost()
@@ -981,7 +1034,12 @@ class AtlasApp(PalisadeApp):
             ("ALTITUDE", "%d ft" % c["alt"] if c.get("alt") else "—"),
             ("SPEED", "%d kt" % c["spd"] if c.get("spd") else "—"),
             ("RANGE", "%.0f nm" % c["rng"] if c.get("rng") is not None else "— (HOME NOT SET)"),
-            ("BEARING", "%03d°" % c["brg"] if c.get("brg") is not None else "—")])
+            ("BEARING", "%03d°" % c["brg"] if c.get("brg") is not None else "—")] + (
+            [("SOURCE", SOURCE_TRUST[c["source"]])] if c.get("source") in SOURCE_TRUST else []) + (
+            [("STATUS", "UNCONFIRMED · %s advert%s" % (
+                c.get("adverts") or 0, "" if c.get("adverts") == 1 else "s"))]
+            if c.get("trust") == "unconfirmed"
+            else []))
 
     def _show_lost(self):
         """The selected contact is gone (stale or its layer hidden): say so, and drop its last fix

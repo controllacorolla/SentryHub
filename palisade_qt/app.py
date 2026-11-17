@@ -75,6 +75,11 @@ def _park(worker, title):
         eventbus.bus.publish(eventbus.alert("SYSTEM", msg, severity="warn", kind="lifecycle"))
     except Exception:
         pass
+    try:
+        from . import sessionlog
+        sessionlog.record("fault", "lifecycle", msg)          # C4: visible, not stderr only
+    except Exception:
+        pass
     _hook_exit()
 
 
@@ -360,8 +365,11 @@ class PalisadeApp(QtWidgets.QWidget):
         return tables if len(tables) == 1 else []
 
     def on_error(self, msg):
-        # R2: surface, don't swallow. Subclasses can show it in the UI; default routes to stderr.
+        # R2: surface, don't swallow. C4: every worker error lands in the session log (the strip's
+        # fault indicator); subclasses may also show it on the page.
         import sys
+        from . import sessionlog
+        sessionlog.record("error", self.TITLE, msg)
         print("[%s] %s" % (self.TITLE, msg), file=sys.stderr)
 
     # ---- lifecycle (the baked-in correctness) ----
@@ -477,6 +485,8 @@ class PalisadeApp(QtWidgets.QWidget):
     def on_fault(self, msg):
         """A worker's persistent fault ("" when it clears): shown in the page status row."""
         if msg:
+            from . import sessionlog
+            sessionlog.record("fault", self.TITLE, msg)        # C4
             self.set_chip("fault", msg[:60], state="alert")
         else:
             self._last_status.pop("fault", None)

@@ -6,7 +6,7 @@ The plain black "scope" background is only the offline fallback until tiles arri
 cached locally under ~/.cache/palisade/tiles/.
 """
 import pyqtgraph as pg
-from PySide6 import QtWidgets, QtCore
+from PySide6 import QtWidgets, QtCore, QtGui
 
 from .. import theme
 from .tiles import TileLayer
@@ -163,11 +163,27 @@ class MapPanel(QtWidgets.QFrame):
             self.plot.removeItem(lbl)
         self._contact_labels.clear()
         if labels:
+            # B6: declutter — a label whose box would overlap one already placed is skipped (the
+            # dot stays; the table and the detail card name it). Boxes are in screen pixels.
+            vb = self.plot.getViewBox()
+            placed = []
+            self.labels_skipped = 0
             for (x, y), txt in zip(pts, labels):
                 t = pg.TextItem(txt, color=self._label_color, anchor=(0, 1))
                 _f = t.textItem.font()
                 _f.setPixelSize(16)
                 t.setFont(_f)
+                try:
+                    sp = vb.mapViewToScene(QtCore.QPointF(x + 1.5, y + 1.5))
+                    w = QtGui.QFontMetrics(_f).horizontalAdvance(str(txt)) + 4
+                    box = QtCore.QRectF(sp.x(), sp.y() - 20, w, 20)
+                except Exception:
+                    box = None
+                if box is not None and any(box.intersects(b) for b in placed):
+                    self.labels_skipped += 1
+                    continue
+                if box is not None:
+                    placed.append(box)
                 t.setPos(x + 1.5, y + 1.5)
                 self.plot.addItem(t)
                 self._contact_labels.append(t)

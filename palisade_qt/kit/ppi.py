@@ -1,8 +1,9 @@
 """PpiScope — the OPS hero: a radar PPI (plan-position indicator).
 
-North-up, home at centre, range rings, a slow sweep, and contacts fed from the event bus
-(contact events) by OPS. Selected contact gets a violet ring. Severity colours the dot:
-live=green, warn=amber, alert=red. Pure view — set_contacts() is the only input.
+North-up, home at centre, range rings, and contacts fed from the event bus (contact events) by
+OPS. Click a contact to select it (B5): it gets a violet ring and its label. Severity colours the
+dot: live=green, warn=amber, alert=red. No decorative sweep line (B5): nothing on the scope moves
+unless a contact moved.
 """
 import math
 
@@ -14,6 +15,7 @@ from .. import theme
 
 class PpiScope(QtWidgets.QFrame):
     resized = QtCore.Signal()       # the host keeps the scope square (no dead well either side)
+    contact_clicked = QtCore.Signal(str)   # B5: the id of the contact the operator clicked
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
@@ -49,9 +51,8 @@ class PpiScope(QtWidgets.QFrame):
                                  pen=pg.mkPen(tok["hairline"], width=1))
             self.plot.addItem(ln)
 
-        self._sweep = pg.PlotDataItem(pen=pg.mkPen(tok["accent"], width=1.3))
-        self.plot.addItem(self._sweep)
-        self.scatter = pg.ScatterPlotItem(size=6, pen=None)
+        self.scatter = pg.ScatterPlotItem(size=10, pen=None, hoverable=False)
+        self.scatter.sigClicked.connect(self._clicked)
         self.plot.addItem(self.scatter)
         self.sel_ring = pg.ScatterPlotItem(size=12, pen=pg.mkPen(tok["accent"], width=1.5),
                                            brush=None)
@@ -61,18 +62,15 @@ class PpiScope(QtWidgets.QFrame):
         self.plot.addItem(self.home)
         self._labels = []
 
-        self._angle = 0.0
-        self._timer = QtCore.QTimer(self)
-        self._timer.timeout.connect(self._spin)
-        self._timer.start(60)
-
     def stop(self):
-        self._timer.stop()
+        pass                         # nothing animates any more (B5); kept for the page lifecycle
 
-    def _spin(self):
-        self._angle = (self._angle + 4) % 360
-        rad = math.radians(self._angle)
-        self._sweep.setData([0, self._span * math.sin(rad)], [0, self._span * math.cos(rad)])
+    def _clicked(self, _item, points, *_):
+        for p in points or []:
+            cid = p.data()
+            if cid is not None:
+                self.contact_clicked.emit(str(cid))
+                return
 
     def set_contacts(self, contacts, selected=None):
         """contacts: list of dicts with x, y, severity, label; selected: an id to ring."""
@@ -85,7 +83,8 @@ class PpiScope(QtWidgets.QFrame):
         for c in contacts:
             x, y = c["x"], c["y"]
             spots.append({"pos": (x, y), "brush": pg.mkBrush(col.get(c.get("severity", "live"),
-                                                                     tok["live"])), "size": 6})
+                                                                     tok["live"])), "size": 10,
+                          "data": c.get("id")})
             if selected is not None and c.get("id") == selected:
                 sel.append((x, y))
                 t = pg.TextItem(c.get("label", ""), color=tok["accent"], anchor=(0, 1))
