@@ -273,19 +273,19 @@ def test_deauth_runs_while_the_handshake_capture_keeps_running(monkeypatch):
         _close(p)
 
 
-def test_closing_recon_and_end_kill_a_running_deauth(monkeypatch):
+class Slow(Spawns):
+    def __call__(self, argv, **kw):
+        self.calls.append(list(argv))
+        p = subprocess.Popen([sys.executable, "-u", "-c", "import time; time.sleep(30)"],
+                             start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.procs.append(p)
+        return p
+
+
+def test_closing_recon_kills_a_running_deauth_and_records_the_kill(monkeypatch):
     info = _start()
     G.arm(True)
-
-    class Slow(Spawns):
-        def __call__(self, argv, **kw):
-            self.calls.append(list(argv))
-            p = subprocess.Popen([sys.executable, "-u", "-c", "import time; time.sleep(30)"],
-                                 start_new_session=True, stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            self.procs.append(p)
-            return p
-
     sp = Slow()
     p = _recon(monkeypatch, sp)
     _deauth(p)
@@ -296,18 +296,27 @@ def test_closing_recon_and_end_kill_a_running_deauth(monkeypatch):
     assert "kill" in [r["event"] for r in _recs(info["path"])]
 
 
+def test_end_kills_a_running_deauth_and_records_kill_before_close(monkeypatch):
+    info = _start()
+    G.arm(True)
+    sp = Slow()
+    p = _recon(monkeypatch, sp)
+    try:
+        _deauth(p)
+        assert p.wifi_deauth_run.running()
+        E.end()
+        assert _wait(lambda: sp.procs[0].poll() is not None)
+        assert _wait(lambda: not p.wifi_deauth_run.running())
+        names = [r["event"] for r in _recs(info["path"])]
+        assert names.index("spawn") < names.index("kill") < names.index("exit") \
+            < names.index("engagement.close")
+    finally:
+        _close(p)
+
+
 def test_disarm_kills_a_running_deauth_from_the_card(monkeypatch):
     _start()
     G.arm(True)
-
-    class Slow(Spawns):
-        def __call__(self, argv, **kw):
-            self.calls.append(list(argv))
-            p = subprocess.Popen([sys.executable, "-u", "-c", "import time; time.sleep(30)"],
-                                 start_new_session=True, stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            self.procs.append(p)
-            return p
 
     sp = Slow()
     p = _recon(monkeypatch, sp)
