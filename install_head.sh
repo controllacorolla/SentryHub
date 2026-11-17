@@ -65,13 +65,6 @@ for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-uti
   rc=0; safe_apt "$pkg" >/dev/null 2>&1 || rc=$?
   case $rc in 0) echo "      ok  $pkg";; 2) echo "      --  $pkg (not in your apt sources - optional)";; *) echo "      --  $pkg (skipped)";; esac
 done
-# RX: RECON NET runs through the engagement gate; install what netpent.ALLOWED_PROGRAMS names
-# (nmap above, arp-scan) plus pcap/LAN-survey tools. tshark is left out: its package asks a
-# debconf question (wireshark group) that an unattended install cannot answer; tcpdump covers pcap.
-for pkg in arp-scan tcpdump nbtscan netdiscover; do
-  rc=0; safe_apt "$pkg" >/dev/null 2>&1 || rc=$?
-  case $rc in 0) echo "      ok  $pkg";; 2) echo "      --  $pkg (not in your apt sources - optional)";; *) echo "      --  $pkg (skipped)";; esac
-done
 # (the H4M / HackRF is deliberately not installed or configured: this suite does not use it)
 
 # --- Pentest + SIGINT toolkit (OPTIONAL) --------------------------------------------------------
