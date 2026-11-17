@@ -218,8 +218,9 @@ class GatedTool(QtWidgets.QFrame):
             return
         self._app.on_authorized(self._domain, action, target, list(ticket.argv or ()))
         started, msg = self._runner.run(ticket, spawner=self._app._spawner())
-        self.result.setText("AUTHORIZED: %s%s\n%s" % (why, bind, "RUNNING — output below"
-                                                        if started else "NOT RUN: %s" % msg))
+        self.result.setText("AUTHORIZED: %s%s\n$ %s\n%s" % (
+            why, bind, ticket.display(),
+            "RUNNING — output below" if started else "NOT RUN: %s" % msg))
         if not started:
             self.result.setStyleSheet("color:%s;" % self._tok["alert"])
         self.refresh()

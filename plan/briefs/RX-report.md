@@ -65,4 +65,14 @@ yet; merge main into this branch when it does (no shared hunks: CL8 touches reco
 
 ## Suite
 
-See bottom of this file (filled after the full run).
+Full suite at 6ac1b89 (PySide6 6.8.2.1, Python 3.13, xvfb offscreen):
+`4 failed, 1506 passed, 7 skipped, 7 errors in 696.56s`.
+- Baseline (same on main): `test_audit_tiles::test_undecodable_tile_is_marked_failed`,
+  `test_hwlab::test_doctor_hwbench_check`, 7 `test_shell.py` errors (no tkinter).
+- `test_cl1_screen::test_up_down_drive_the_list_and_the_detail_follows`: order-dependent; passes
+  alone and in a full `tests/test_cl1_screen.py` run (51 passed). Not touched by RX.
+- `test_palisade_qt::test_recon_gate_authorizes_in_scope_denies_out_of_scope`: **RX regression,
+  fixed** in the next commit: the card again shows the authorized command (`$ airodump-ng --bssid …`)
+  above RUNNING / NOT RUN, so the G5 assertion holds unchanged. Re-run: `tests/test_palisade_qt.py`
+  + `tests/test_rx_recon_exec.py` 139 passed.
+pyflakes: clean on every touched file.
