@@ -13,7 +13,6 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
-os.chdir(ROOT)
 results = []
 
 
@@ -86,12 +85,18 @@ def tools():
                                      (" · missing: " + " ".join(miss)) if miss else "")
 
 
+PYTEST_FIX = "python3 -m pip install --user --break-system-packages pytest"
+
+
 def tests():
+    import importlib.util
+    if importlib.util.find_spec("pytest") is None:   # the app installer does not ship pytest
+        return False, "pytest is not installed -> run: %s" % PYTEST_FIX
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
     r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
                         "tests/test_cl8_ship.py"], capture_output=True, text=True, env=env,
                        timeout=600)
-    tail = (r.stdout.strip().splitlines() or ["(no output)"])[-1]
+    tail = (r.stdout.strip().splitlines() or r.stderr.strip().splitlines() or ["(no output)"])[-1]
     return r.returncode == 0, tail
 
 
@@ -107,14 +112,22 @@ def hub_builds():
     return ok, "keys %s · NET %s · width %s px" % tuple(out) if len(out) == 3 else r.stderr[-200:]
 
 
-for name, fn in (("python", py), ("Qt stack", qt), ("L4 settings PoC", argsafe_poc),
-                 ("L3 network mode", net_default), ("S4 libcrypt (no crypt module)", libcrypt),
-                 ("S4 doctor password check", doctor_pw), ("L2 harden.sh field profile", harden_dry),
-                 ("radio tools", tools), ("PALISADE hub builds", hub_builds),
-                 ("CL8 regression tests", tests)):
-    check(name, fn)
+def main():
+    os.chdir(ROOT)
+    for name, fn in CHECKS:
+        check(name, fn)
+    n = sum(results)
+    print("\nDEVICE CHECK CL8: %s (%d/%d)" % ("PASS" if n == len(results) else "FAIL", n,
+                                            len(results)))
+    print("Then look:  python3 -m palisade_qt   -> 7 keys (no SWEEP), NET OFF in the top strip.")
+    return 0 if n == len(results) else 1
 
-n = sum(results)
-print("\nDEVICE CHECK CL8: %s (%d/%d)" % ("PASS" if n == len(results) else "FAIL", n, len(results)))
-print("Then look:  python3 -m palisade_qt   -> 7 keys (no SWEEP), NET OFF in the top strip.")
-sys.exit(0 if n == len(results) else 1)
+
+CHECKS = (("python", py), ("Qt stack", qt), ("L4 settings PoC", argsafe_poc),
+          ("L3 network mode", net_default), ("S4 libcrypt (no crypt module)", libcrypt),
+          ("S4 doctor password check", doctor_pw), ("L2 harden.sh field profile", harden_dry),
+          ("radio tools", tools), ("PALISADE hub builds", hub_builds),
+          ("CL8 regression tests", tests))
+
+if __name__ == "__main__":
+    sys.exit(main())
