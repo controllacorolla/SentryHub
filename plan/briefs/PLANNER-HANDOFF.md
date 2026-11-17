@@ -93,3 +93,16 @@ ham callsign, head signing automation, session-chain prune policy, the v0.1 laun
    row has no common baseline. Fix: shared baseline for all keys + visible gap/separator between
    keys, within the 1270 px worst-case budget (test_cl1 strip-width tests).
 Screenshot: Dalton's upload 2026-11-17 04:47 MT.
+8. **v0.1 BLOCKER N-op1 (High, found on device 2026-11-17): the UI cannot set the operator, so no
+   engagement can be opened from PALISADE.** SYSTEM › SETTINGS prefills Operator from
+   `opprofile.load(suite.settings)` (operator.json) but SAVE SETTINGS writes `callsign` into
+   `palisade_ui.json` (`palisade_qt/system.py` `_write_settings`/`_save_settings`), while
+   `engagement._profile_operator()` reads operator.json. Result: start_engagement always says
+   "no operator profile", and the save message falsely says "persisted: operator". Present on
+   **main and fix/cl8-ship** (same code). Dalton has a manual workaround (edit operator.json).
+   Fix in its own cluster branch off main after PR #24 merges, before the v0.1 tag: SAVE writes
+   the operator identity through opprofile (operator.json) only, never sets or changes
+   `tx_enabled` (CL2 strict default: a callsign alone never enables TX), validates per
+   opprofile, reports honestly; regression test = save in SETTINGS → `engagement._profile_operator()`
+   returns it → start_engagement succeeds; plus a test that tx_enabled is untouched. Gate-adjacent:
+   planner writes it; cold audit RA-<cluster> before merge.
