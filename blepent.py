@@ -15,7 +15,8 @@ import engagement
 
 # CL2-fix2 R1: the only program this module may run through the engagement gate (argv[0],
 # a bare name). engagement.issue refuses anything else.
-ALLOWED_PROGRAMS = frozenset(("gatttool",))
+CATALOG_PROGRAMS = frozenset(("btlejack",))
+ALLOWED_PROGRAMS = frozenset(("gatttool",)) | CATALOG_PROGRAMS
 
 
 def _gatt_argv(address, op, handle=None, value=None, adapter="hci0"):
@@ -52,6 +53,24 @@ def prepare(action, address, handle=None, value=None, evidence_chain=None, adapt
         return False, "missing parameter %s for %s" % (e, action), None
     return engagement.issue("ble:" + action, address, argv=argv, kind="mac",
                             evidence_chain=evidence_chain, label="ble:" + action)
+
+
+def catalog_prepare(tool, address, args=(), evidence_chain=None):
+    """Gate a catalogued active BLE tool (CATALOG_PROGRAMS, e.g. btlejack) against an in-scope BLE
+    address. Returns (ok, reason, ticket). The MAC/OUI must be in the open engagement's scope; no
+    attack-specific flags are baked in here. Out of scope — or with no engagement — returns
+    (False, reason, None)."""
+    if tool not in CATALOG_PROGRAMS:
+        return False, "%r is not a catalogued BLE tool" % (tool,), None
+    toks = [str(a) for a in (args or ())]
+    if any((not a) or a != a.strip() for a in toks):
+        return False, "extra arguments must be plain, non-empty tokens", None
+    addr = str(address).strip()
+    if addr.startswith("-"):
+        return False, "address %r looks like an option" % (address,), None
+    argv = [tool] + toks + [addr]
+    return engagement.issue("ble:" + tool, addr, argv=argv, kind="mac",
+                            evidence_chain=evidence_chain, label="ble:" + tool)
 
 
 def main(parent=None):

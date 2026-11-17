@@ -68,3 +68,31 @@ Locked: **name = PALISADE**, accent = violet `#A492DA` + green live, both light/
 - `jammer.py` and `imsicatch.py` are **detectors** (defensive), not weapons — keep.
 - No over-the-air attack/jam/deauth tooling built or extended.
 - No kernel-hold / firewall / SSH / sudoers changes; no full-system apt upgrades.
+
+---
+
+## Pentest toolkit — full scope (owner decision 2026-11-17)
+
+**Standing rule: every tool below is in scope; nothing is removed from scope without the owner's
+explicit authorization.** Full per-tool matrix (page, passive/active, hardware, verified arm64
+install source) is in `FEATURE_MAP.md` → "Tool scope — the full pentest + SIGINT toolkit".
+
+Landing order (this cluster does scope + install + gate-catalog only; execution wiring is the
+executor cluster):
+- [x] Scope documented (FEATURE_MAP tool matrix + this entry).
+- [ ] Installer: plain-apt tools added as **optional** (`--` when absent, never fatal).
+- [ ] Installer: source-build tools documented, not auto-built — Responder, OP25, dsd-fme,
+      Proxmark3 client, Kismet (official apt repo), and the pip/go/cargo tools
+      (mitmproxy, netexec, enum4linux-ng, urh, btlejack, feroxbuster, nuclei, rtlamr).
+- [ ] Gate catalog: new active tools added to each module's `ALLOWED_PROGRAMS`, behind the
+      existing engagement scope checks, one refusal test per entry.
+- [ ] Executor wiring per tool (separate cluster, after PR #27).
+
+**Owner's call, flagged not decided:** (1) capped targeted deauth (`aireplay-ng --deauth`) vs the
+CLAUDE.md "no deauth/jamming" guardrail; (2) Responder poisoning (broadcast-scope, un-targetable) —
+analyze/passive only until the owner rules.
+
+**Hardware the toolkit still needs** (no buy yet — owner): USB monitor-mode Wi-Fi adapter (unlocks
+aircrack/hcx/kismet/bettercap Wi-Fi), PN532 reader (libnfc/mfoc/mfcuk), Proxmark3, SocketCAN
+adapter (can-utils), SPI programmer (flashrom), JTAG/SWD adapter (openocd), logic analyzer
+(sigrok), micro:bit ×1–3 (btlejack).

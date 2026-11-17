@@ -67,6 +67,38 @@ for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-uti
 done
 # (the H4M / HackRF is deliberately not installed or configured: this suite does not use it)
 
+# --- Pentest + SIGINT toolkit (OPTIONAL) --------------------------------------------------------
+# Every tool is gated behind an open, scoped engagement (engagement.py) before it can run; the
+# installer only makes the binary available. Each is best-effort via safe_apt: a package that is
+# missing from your apt sources, or that would remove a system package, is skipped ("--"), never
+# fatal. Source-build / pip / go tools are NOT auto-built here (see the "[2c]" notes below).
+# Verified against Debian trixie arm64 (2026-11-17). See FEATURE_MAP.md "Tool scope" for the matrix.
+echo "[1b/8] Pentest + SIGINT tools (optional, engagement-gated)"
+# tshark is intentionally omitted: its package asks a debconf question (wireshark-group) that an
+# unattended install cannot answer; tcpdump covers pcap capture. nikto lives in non-free and is
+# skipped automatically if that component is not enabled.
+for pkg in \
+  arp-scan tcpdump nbtscan netdiscover masscan smbmap python3-impacket hydra bettercap \
+  sqlmap whatweb gobuster ffuf nikto testssl.sh \
+  aircrack-ng hcxdumptool hcxtools \
+  gqrx-sdr inspectrum rtl-433 dsdcc \
+  libnfc-bin libnfc-examples mfoc mfcuk \
+  sigrok-cli pulseview flashrom openocd picocom minicom can-utils \
+  libimage-exiftool-perl cewl hashcat python3-scapy ; do
+  rc=0; safe_apt "$pkg" >/dev/null 2>&1 || rc=$?
+  case $rc in 0) echo "      ok  $pkg";; 2) echo "      --  $pkg (not in your apt sources - optional)";; *) echo "      --  $pkg (skipped)";; esac
+done
+echo "[2c/8] Tools that are NOT in Debian apt (install by hand if your engagement needs them):"
+echo "      pip  : mitmproxy · netexec · enum4linux-ng · urh · btlejack · bluing"
+echo "             (python3 -m pip install --user --break-system-packages <name>)"
+echo "      go   : rtlamr (github.com/bemasher/rtlamr) · nuclei (github.com/projectdiscovery/nuclei/v3)"
+echo "      cargo: feroxbuster  (or grab the arm64 GitHub release binary)"
+echo "      apt repo: kismet — add the official repo at kismetwireless.net/repos (trixie arm64)"
+echo "      source : Responder (github.com/lgandx/Responder) · OP25 (github.com/boatbod/op25) ·"
+echo "               dsd-fme (github.com/lwvmobile/dsd-fme) · Proxmark3 client (github.com/RfidResearchGroup/proxmark3)"
+echo "      These are catalogued and engagement-gated; they just are not auto-built here."
+# -----------------------------------------------------------------------------------------------
+
 echo "[2/8] Python packages (PALISADE UI, Whisper, Skyfield, Meshtastic) - this can take a few minutes"
 PIP="python3 -m pip install --user --break-system-packages --upgrade --quiet"
 # S1: the Qt UI. Debian packages first (no compiler, matched to the system Qt); pip if apt
