@@ -67,8 +67,9 @@ def _literal_targets(t):
     """RA-RX H1: what nmap is given for a non-hostname target — address / network literals only.
     A scope prefix (ip: / host:) is stripped and an a-b range becomes the CIDR blocks that cover
     exactly it, because nmap reads neither form as an address and would hand the text to the
-    system resolver (a search domain or hostile DNS would then choose the scanned host). With
-    -n on every nmap command, nmap itself never resolves anything. None if t is no literal."""
+    system resolver (a search domain or hostile DNS would then choose the scanned host). Passing
+    literals only is what stops forward lookups; -n additionally stops nmap's reverse lookups.
+    None if t is no literal."""
     import ipaddress
     s = t
     for pre in ("ip:", "host:"):
@@ -111,8 +112,13 @@ def prepare(action, target, evidence_chain=None, ports="1-1024", syn=None, out=N
     t = str(target).strip()
     if t.startswith("-"):
         return False, "target %r looks like an option" % (target,), None
-    if out is not None and (not str(out) or str(out).startswith("-")):
-        return False, "output path %r is not a file path" % (out,), None
+    if out is not None:
+        # RA-RXc N5: results go only under <DATA>/captures (no option, no other path)
+        import suite
+        cap = os.path.realpath(os.path.join(suite.DATA, "captures"))
+        o = str(out)
+        if not o or o.startswith("-") or os.path.dirname(os.path.realpath(o)) != cap:
+            return False, "output path %r is not a file in the captures folder" % (out,), None
     # CL2-fix N5: a hostname is resolved ONCE here; nmap gets the checked addresses (every one in
     # scope, re-checked at spawn), never the name — no second, unchecked lookup by nmap.
     try:

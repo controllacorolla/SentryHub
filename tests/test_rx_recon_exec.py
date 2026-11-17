@@ -645,3 +645,47 @@ def test_rx_fix2_nmap_that_scanned_nothing_is_not_done(monkeypatch):
         assert p.net_run.state.text() == "NOTHING SCANNED · exit 0"
     finally:
         _close(p)
+
+
+# ============================================================ RA-RXc N4 N5 N6
+
+def test_rx_n4_two_scans_in_one_second_never_share_a_results_file(monkeypatch):
+    from palisade_qt import recon
+    monkeypatch.setattr(recon.time, "strftime", lambda *a: "20261117T000000Z")
+    p = _recon(monkeypatch, Spawns())
+    try:
+        a = p._net_extra("portscan")[0]["out"]
+        b = p._net_extra("portscan")[0]["out"]
+        assert a != b
+        assert p._wifi_extra("pmkid")[0]["out"] != p._wifi_extra("pmkid")[0]["out"]
+    finally:
+        _close(p)
+
+
+def test_rx_n5_results_path_must_be_in_the_captures_folder():
+    import suite
+    import netpent
+    _start(["10.0.0.0/24"])
+    cap = os.path.join(suite.DATA, "captures")
+    for bad in ("/etc/cron.d/x", "/dev/sda", os.path.join(cap, "..", "x.txt"),
+                os.path.join(cap, "sub", "x.txt"), "x.txt"):
+        ok, _w, t = netpent.prepare("discover", "10.0.0.5", out=bad)
+        assert not ok and t is None, bad
+    ok, why, t = netpent.prepare("discover", "10.0.0.5", out=os.path.join(cap, "ok.txt"))
+    assert ok, why
+
+
+def test_rx_n6_nothing_scanned_never_claims_results_saved(monkeypatch):
+    sp = ArgvSpawns("import sys\na = sys.argv[1:]\n"
+                    "open(a[a.index('-oN') + 1], 'w').write('# Nmap header only\\n')\n"
+                    "print('WARNING: No targets were specified, so 0 hosts scanned.')\n")
+    _start(["10.0.0.0/24"])
+    p = _recon(monkeypatch, sp)
+    try:
+        p.net_gated.target.setText("10.0.0.5")
+        _press(p.net_gated, "discover")
+        assert _wait(lambda: "[nothing scanned" in p.net_run.out.toPlainText())
+        assert "[results saved" not in p.net_run.out.toPlainText()
+        assert p.net_run.saved is None and p.net_run.state.text() == "NOTHING SCANNED · exit 0"
+    finally:
+        _close(p)
