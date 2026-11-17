@@ -9,6 +9,7 @@ misalign; CL8 device-check test failure.
 ## OPS
 
 ## ATLAS
+- **[UI]** Maps are too small on screen; need more of the 1280×720 given to the map. Also "menu needs ..." (note cut off, follow-up pending). (2026-11-16 22:02)
 
 ## PRISM
 
