@@ -106,3 +106,9 @@ Screenshot: Dalton's upload 2026-11-17 04:47 MT.
    opprofile, reports honestly; regression test = save in SETTINGS → `engagement._profile_operator()`
    returns it → start_engagement succeeds; plus a test that tx_enabled is untouched. Gate-adjacent:
    planner writes it; cold audit RA-<cluster> before merge.
+9. 2026-11-17 **N-op1 fixed** on `fix/n-op1-operator` (off main 1bc8ad1), **draft PR #26**, cold audit
+   RA-N-op1 **MERGE** (report on the branch). SAVE SETTINGS now writes callsign/name to operator.json
+   via opprofile DEFAULTS; tx_enabled untouched; honest message. Merge only on Dalton's OK; if PR #24
+   lands first, merge main into the branch (system.py identical on both, expect no conflict).
+   Low follow-ups: N1 wrong-typed profile values written back corrected; N2 field keeps lowercase
+   after a callsign save; N3 corrupt operator.json reset not named in the save message.
