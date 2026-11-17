@@ -111,13 +111,23 @@ def leader(c):
     return (c["x"], c["y"], c["x"] + d * math.sin(r), c["y"] + d * math.cos(r))
 
 
+def _num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
 def data_block(c):
-    """'UAL123 FL120' for an aircraft with an altitude; the bare label otherwise."""
-    label = str(c.get("label") or c.get("id") or "")
-    alt = c.get("alt")
-    if c.get("kind") == "aircraft" and isinstance(alt, (int, float)) and alt > 0:
-        return "%s FL%03d" % (label, int(round(alt / 100.0)))
-    return label
+    """'UAL123 FL120 450KT' for an aircraft: callsign, flight level and ground speed in knots, each
+    only when reported (device notes: callsign · alt · speed). Other contacts keep the bare label:
+    the map is crowded enough without a speed on every ship and station."""
+    parts = [str(c.get("label") or c.get("id") or "")]
+    if c.get("kind") != "aircraft":
+        return parts[0]
+    alt, spd = c.get("alt"), c.get("spd")
+    if _num(alt) and alt > 0:
+        parts.append("FL%03d" % int(round(alt / 100.0)))
+    if _num(spd) and spd > 0:
+        parts.append("%dKT" % int(round(spd)))
+    return " ".join(parts)
 
 
 def push_trail(trails, cid, x, y):
@@ -174,7 +184,10 @@ def classify(c):
     if kind == "aircraft":
         if is_military(c):
             return "mil"
-        if str(c.get("category") or "").upper() == "A7":        # ADS-B emitter category: rotorcraft
+        cat = str(c.get("category") or "").upper()
+        if cat == "B6":                     # ADS-B emitter category: unmanned aerial vehicle
+            return "drone"
+        if cat == "A7":                     # ADS-B emitter category: rotorcraft
             return "helo"
         return "plane"
     return kind if kind in CLASS_COLOR else "df"
@@ -205,5 +218,5 @@ def legend_html(per_row=4):
 def glyph(c):
     """The contact's glyph: shape by type, rotated to its reported course."""
     cls = classify(c)
-    g = "helo" if cls == "helo" else c.get("kind")
+    g = "helo" if cls == "helo" else "drone" if cls == "drone" else c.get("kind")
     return symbol(g, heading(c))

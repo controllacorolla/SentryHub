@@ -35,6 +35,19 @@ def tint(arr, style):
     return out
 
 
+def make_legend(parent, per_row=4):
+    """The track-type legend overlay (ATLAS map and OPS scope): fixed colours on a dark plate, so it
+    reads on DARK SAT and LIGHT SAT alike. The parent places it (bottom-left) on resize."""
+    from . import tracksym
+    lab = QtWidgets.QLabel(tracksym.legend_html(per_row), parent)
+    lab.setObjectName("track_legend")
+    lab.setTextFormat(QtCore.Qt.RichText)
+    lab.setStyleSheet("QLabel#track_legend { background: rgba(0,0,0,170); "
+                      "border: 1px solid #555; font-size: 16px; padding: 2px 6px; }")
+    lab.adjustSize()
+    return lab
+
+
 class BaseMap(QtCore.QObject):
     """The tinted satellite basemap behind a plot (ATLAS map, OPS scope). The image item is
     row-major by construction (device 2026-11-17: the map drew rotated 90 degrees whenever ATLAS
@@ -197,13 +210,7 @@ class MapPanel(QtWidgets.QFrame):
         self.plot.setBackground("#000000")
         self._set_overlay_colors((255, 255, 255, 50), "#888")
         self._zoom_btns = self._make_zoom_buttons()
-        from . import tracksym
-        self.legend = QtWidgets.QLabel(tracksym.legend_html(), self)
-        self.legend.setObjectName("track_legend")
-        self.legend.setTextFormat(QtCore.Qt.RichText)
-        self.legend.setStyleSheet("QLabel#track_legend { background: rgba(0,0,0,170); "
-                                  "border: 1px solid #555; font-size: 16px; padding: 2px 6px; }")
-        self.legend.adjustSize()
+        self.legend = make_legend(self)
         self._combo.setCurrentIndex(0)
         self._style_changed(0)
 

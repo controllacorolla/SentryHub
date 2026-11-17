@@ -19,6 +19,9 @@ class PpiScope(QtWidgets.QFrame):
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
+        if getattr(self, "legend", None) is not None:      # bottom-left, like the ATLAS map
+            self.legend.move(10, self.height() - self.legend.height() - 10)
+            self.legend.raise_()
         self.resized.emit()
 
     def __init__(self, span_nm=80, mode="dark", parent=None):
@@ -43,6 +46,9 @@ class PpiScope(QtWidgets.QFrame):
         # owner 2026-11-17: the OPS scope sits on dark-tinted satellite imagery (no HOME -> none)
         from .mappanel import BaseMap
         self._base = BaseMap(self.plot, None, None, span_nm, style="dark_sat", parent=self)
+        # the track-type legend on OPS too (device notes: symbols + legend on ATLAS and OPS)
+        from .mappanel import make_legend
+        self.legend = make_legend(self, per_row=2)
 
         for r in (span_nm / 3, span_nm * 2 / 3, span_nm):
             c = pg.QtWidgets.QGraphicsEllipseItem(-r, -r, 2 * r, 2 * r)

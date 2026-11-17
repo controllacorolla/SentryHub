@@ -833,9 +833,17 @@ def test_u10_colour_by_type_and_no_heading_means_no_direction():
     assert T.glyph(dict(base, kind="aircraft")) is T.symbol("ring", None)
     assert T.leader(dict(base, kind="aircraft", spd=400)) is None
     assert T.leader(dict(base, kind="aircraft", track=45, spd=0)) is None
-    # data block: callsign + flight level
+    # data block: callsign + flight level + speed (device notes: "callsign · alt · speed")
     assert T.data_block(dict(base, kind="aircraft", label="UAL1", alt=12049)) == "UAL1 FL120"
+    assert T.data_block(dict(base, kind="aircraft", label="UAL1", alt=12049, spd=451.6)) == \
+        "UAL1 FL120 452KT"
     assert T.data_block(dict(base, kind="vessel", label="MMSI")) == "MMSI"
+    assert T.data_block(dict(base, kind="vessel", label="MMSI", spd=12)) == "MMSI"
+    assert T.data_block(dict(base, kind="aircraft", label="X", spd=True)) == "X"
+    # ADS-B emitter category B6 = unmanned aerial vehicle -> the drone colour and shape
+    uav = dict(base, kind="aircraft", category="B6", track=90)
+    assert T.classify(uav) == "drone" and T.color(uav) == T.CLASS_COLOR["drone"]
+    assert T.glyph(uav) is T.symbol("drone", 90)
     # every class in the legend
     html = T.legend_html()
     for _k, name in T.LEGEND:
@@ -1028,6 +1036,10 @@ def test_u10_atlas_and_ops_draw_tracks_with_leaders_trails_and_a_legend():
         assert len(atlas.map.track_spots) == 1 and atlas.map.leader_count == 1
         assert atlas.map.trail_count == 2
         assert len(hub.ops.ppi.track_spots) == 1
+        # the legend on OPS too, inside the scope, bottom-left (device notes: ATLAS and OPS)
+        lg = hub.ops.ppi.legend
+        assert not lg.isHidden() and "PLANE" in lg.text() and "DRONE" in lg.text()
+        assert hub.ops.ppi.rect().contains(lg.geometry())
         assert any("FL120" in lbl.textItem.toPlainText() for lbl in atlas.map._contact_labels)
     finally:
         eventbus.set_home(None)
