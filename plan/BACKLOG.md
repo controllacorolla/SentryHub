@@ -80,11 +80,11 @@ install source) is in `FEATURE_MAP.md` → "Tool scope — the full pentest + SI
 Landing order (this cluster does scope + install + gate-catalog only; execution wiring is the
 executor cluster):
 - [x] Scope documented (FEATURE_MAP tool matrix + this entry).
-- [ ] Installer: plain-apt tools added as **optional** (`--` when absent, never fatal).
-- [ ] Installer: source-build tools documented, not auto-built — Responder, OP25, dsd-fme,
+- [x] Installer: plain-apt tools added as **optional** (`--` when absent, never fatal).
+- [x] Installer: source-build tools documented, not auto-built — Responder, OP25, dsd-fme,
       Proxmark3 client, Kismet (official apt repo), and the pip/go/cargo tools
       (mitmproxy, netexec, enum4linux-ng, urh, btlejack, feroxbuster, nuclei, rtlamr).
-- [ ] Gate catalog: new active tools added to each module's `ALLOWED_PROGRAMS`, behind the
+- [x] Gate catalog: new active tools added to each module's `ALLOWED_PROGRAMS`, behind the
       existing engagement scope checks, one refusal test per entry.
 - [ ] Executor wiring per tool (separate cluster, after PR #27).
 

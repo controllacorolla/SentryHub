@@ -108,6 +108,14 @@ def test_rfid_catalog_refused_out_of_scope(tool):
 
 
 @pytest.mark.parametrize("tool", sorted(PM.CATALOG_PROGRAMS))
+def test_rfid_catalog_refused_when_scope_is_uid_only(tool):
+    # a uid-only engagement does not authorize a label-only tool (mfoc/mfcuk bind to no UID)
+    E.start("rfid audit", "self-owned", ["uid:04A22B3C"], "KD0ABC")
+    ok, _why, ticket = PM.catalog_prepare(tool, "BADGE-7")
+    assert ok is False and ticket is None
+
+
+@pytest.mark.parametrize("tool", sorted(PM.CATALOG_PROGRAMS))
 def test_rfid_catalog_in_scope_builds_label_only_ticket(tool):
     E.start("rfid audit", "self-owned", ["BADGE-7"], "KD0ABC")
     ok, _why, ticket = PM.catalog_prepare(tool, "BADGE-7")
