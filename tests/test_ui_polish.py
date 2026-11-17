@@ -1534,7 +1534,7 @@ def test_uipd_n1_each_view_says_what_its_own_source_is_doing(monkeypatch, tmp_pa
         atlas.on_status({"rid_note": {"text": "Remote-ID: adapter off", "detail": "x",
                                       "setup": True}})
         assert "SETUP NEEDED" in empty()
-        atlas.on_error("Remote-ID BLE scan failed: EIO")
+        atlas.on_status({"rid_fault": "Remote-ID BLE scan failed: EIO"})
         assert "SCAN FAILED" in empty() and "EIO" in empty()
         atlas._layers.add("df")
         atlas.set_view("DF")
@@ -1543,7 +1543,7 @@ def test_uipd_n1_each_view_says_what_its_own_source_is_doing(monkeypatch, tmp_pa
         atlas.set_view("SONDE")
         assert "NO SONDE FEED" in empty()
         (tmp_path / "none.json").write_text('{"sondes": []}')
-        assert "READING" in empty()
+        assert "UPDATED 0S AGO" in empty()
         atlas._layers.add("station")
         atlas.set_view("APRS")
         atlas._busy_shown = {"station"}
@@ -1646,6 +1646,109 @@ def test_uipd_lc_setup_warning_logs_the_raw_error_and_hidden_atlas_defers_its_ma
         assert calls == [] and atlas._home_pending
         atlas.set_active(True)
         assert calls == [(39.71, -104.9)] and not atlas._home_pending
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+# ================================================================ RA-UIPe follow-ups
+def test_uipe_e1_drones_off_and_on_inside_one_tick_restarts_the_scan(monkeypatch):
+    from palisade_qt import atlas as A
+    started = []
+
+    class FakeRid:
+        def __init__(self, on_fault=None, on_note=None):
+            self.on_fault, self.on_note = on_fault, on_note
+            started.append(self)
+            self.stopped = False
+
+        def start(self):
+            pass
+
+        def stop(self):
+            self.stopped = True
+    monkeypatch.setattr(A, "RidSource", FakeRid)
+    w = A.AtlasLiveWorker()
+    got = []
+    w.status.connect(got.append)
+    w.set_layer("drone", True, gen=1)
+    w._reconcile_rid()
+    first = started[-1]
+    w.set_layer("drone", False, gen=2)               # off and on again before the next tick
+    w.set_layer("drone", True, gen=3)
+    w._reconcile_rid()
+    assert len(started) == 2 and first.stopped, "the retry starts a fresh scan"
+    first.on_note({"text": "late", "ok": True})       # the old scan's notes carry its number
+    started[-1].on_fault("Remote-ID BLE scan failed: x")
+    _pump(20)
+    assert got[0]["rid_gen"] == 1 and got[1]["rid_gen"] == 3
+
+
+def test_uipe_e3_an_old_scans_note_or_fault_is_ignored():
+    from palisade_qt import eventbus
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        atlas.set_view("DRONES")
+        atlas._toggle("drone", True)
+        g_old = atlas._rid_gen
+        atlas._toggle("drone", False)
+        atlas.on_status({"rid_note": {"text": "Remote-ID: PASSIVE", "ok": True}, "rid_gen": g_old})
+        assert "rid" not in atlas._last_status, "no green PASSIVE chip after DRONES went off"
+        atlas._toggle("drone", True)
+        g = atlas._rid_gen
+        atlas.on_status({"rid_note": {"text": "Remote-ID: PASSIVE", "ok": True}, "rid_gen": g})
+        atlas.on_status({"rid_fault": "Remote-ID BLE scan failed: old", "rid_gen": g_old})
+        assert atlas._rid_state == "passive"
+        atlas.on_status({"rid_fault": "Remote-ID BLE scan failed: now", "rid_gen": g})
+        assert atlas._rid_state == "fault" and "now" in atlas.page_status()["fault"]
+        atlas._toggle("drone", False)                     # its fault chip goes with it
+        assert "fault" not in atlas._last_status
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_uipe_e2_sonde_view_reads_only_a_fresh_parseable_file(tmp_path):
+    import os
+    from palisade_qt import atlas as A
+    p = tmp_path / "sondes.json"
+    assert A.sonde_feed_state(str(p))[0] == "none"
+    p.write_text("garbage")
+    assert A.sonde_feed_state(str(p))[0] == "bad"
+    p.write_text('{"sondes": []}')
+    assert A.sonde_feed_state(str(p))[0] == "fresh"
+    os.utime(str(p), (0, 0))                              # written in 1970: auto_rx stopped
+    assert A.sonde_feed_state(str(p))[0] == "stale"
+
+
+def test_uipe_e4_e5_e6_home_field_values_clearing_and_one_rebuild(monkeypatch):
+    import numpy as np
+    from palisade_qt import eventbus, system
+    from palisade_qt.kit import mappanel
+    m = mappanel.MapPanel(span_nm=20, home_lat=39.70, home_lon=-104.90)
+    base = m._base
+    refreshes = []
+    base.refresh = lambda: refreshes.append(1)
+    base.set_home(39.95, -104.90)                         # big move: one rebuild ...
+    base._on_tiles(np.zeros((8, 8, 4), dtype=np.uint8), -9, -9, 9, 9, (39.70, -104.90))
+    assert refreshes == [1], "... not two"
+    store = {"home": [39.626134, -104.912345]}
+    monkeypatch.setattr(system.MoreApp, "_saved_settings", staticmethod(lambda: store))
+    eventbus.set_home((40.01, -105.27), "gps")
+    hub = _big_hub()
+    try:
+        hub.start_gps_home(reader=lambda: None, enabled=True)
+        more = _settings(hub)
+        saved = {}
+        more._write_settings = lambda d: (saved.update(d), True)[1]
+        more.set_home.setText("39.6261,-104.9123")        # same value, other format: no edit
+        more._save_settings()
+        assert eventbus.HOME_SOURCE == "gps" and saved["home"] == [39.626134, -104.912345]
+        more.set_home.setText("")                         # cleared: the typed HOME is unset
+        more._save_settings()
+        assert saved["home"] is None and eventbus.HOME_SOURCE == "gps"
     finally:
         eventbus.set_home(None)
         _close(hub)

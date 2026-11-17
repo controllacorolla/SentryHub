@@ -139,7 +139,8 @@ class BaseMap(QtCore.QObject):
             from .. import eventbus
             dx, dy = eventbus.to_xy(built[0], built[1], home=cur)
             if math.hypot(dx, dy) >= self.SHIFT_MAX_NM:
-                self.refresh()
+                if self._raw is not None:     # else set_home's big-move path already re-fetched
+                    self.refresh()            # (RA-UIPe E4: no second build)
                 return
             rect = rect0.translated(dx, dy)
         self._rect0, self._built = rect0, built

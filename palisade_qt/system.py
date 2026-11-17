@@ -370,10 +370,11 @@ class MoreApp(PalisadeApp):
         except Exception:
             pass        # no suite/profile on the dev host — leave blank, never invent an identity
 
-    def _parse_home(self):
+    def _parse_home(self, text=None):
         """'lat, lon' -> (lat, lon) if valid, else None."""
         try:
-            lat, lon = [float(x.strip()) for x in self.set_home.text().split(",")]
+            raw = self.set_home.text() if text is None else text
+            lat, lon = [float(x.strip()) for x in raw.split(",")]
         except (ValueError, IndexError):
             return None
         return (lat, lon) if -90 <= lat <= 90 and -180 <= lon <= 180 else None
@@ -436,7 +437,12 @@ class MoreApp(PalisadeApp):
         g = self._gps_follower()
         following = follow and g is not None and eventbus.HOME_SOURCE == "gps"
         typed_before = self._typed_home()
-        field_changed = self.set_home.text().strip() != getattr(self, "_home_text_shown", "")
+        # changed = a different VALUE from what the field showed, not different text: retyping the
+        # same position as "39.6261,-104.9123" is not an edit (RA-UIPe E6)
+        shown = getattr(self, "_home_text_shown", "")
+        field_changed = (home != self._parse_home(shown)) if shown else bool(
+            self.set_home.text().strip())
+        cleared = not self.set_home.text().strip() and bool(shown)
         if not field_changed and home is not None and typed_before is not None:
             home = typed_before                  # untouched: the stored value, not its rounding
         # RA-UIPc H1: the typed HOME goes live only when it is what HOME should be now. While HOME
@@ -477,7 +483,9 @@ class MoreApp(PalisadeApp):
         persisted = self._write_settings({
             "home_follows_gps": follow,
             # only ever the TYPED HOME (the field), never a GPS position (RA-UIPc H1)
-            "home": list(home) if home else (list(typed_before) if typed_before else None),
+            # clearing the field unsets the typed HOME (RA-UIPe E5); left empty, the old one stays
+            "home": list(home) if home else (
+                None if cleared or not typed_before else list(typed_before)),
             "theme": self.set_theme.currentText(),
             "retention": self.set_retention.value()})
         if persisted:

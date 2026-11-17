@@ -477,6 +477,31 @@ def ais_vessel_contacts(vessels, now):
 _SONDES_PATH = os.path.join(os.path.expanduser("~"), ".cache", "uconsole-suite", "sondes.json")
 
 
+SONDE_FRESH_S = 300.0     # the sonde file counts as a live feed if written within this
+
+
+def _ago(s):
+    s = int(max(0, s))
+    return "%ds" % s if s < 120 else ("%dm" % (s // 60) if s < 7200 else "%dh" % (s // 3600))
+
+
+def sonde_feed_state(path=None, now=None):
+    """('none' | 'bad' | 'stale' | 'fresh', age_s) of the sonde decoder's file. The file stays on
+    disk after auto_rx stops, so existing is not 'reading' (RA-UIPe E2)."""
+    path = path or _SONDES_PATH
+    try:
+        age = (time.time() if now is None else now) - os.path.getmtime(path)
+        with open(path) as f:
+            data = json.load(f)
+    except OSError:
+        return "none", None
+    except ValueError:
+        return "bad", None
+    if not isinstance(data, dict):
+        return "bad", None
+    return ("fresh" if age <= SONDE_FRESH_S else "stale"), age
+
+
 def balloon_contacts(path=None):
     """Read the radiosonde cache (sondes.json, written by the Balloons app's auto_rx UDP listener;
     the same file sky_app reads) -> balloon contacts. No SDR lease: auto_rx owns its pipeline.
@@ -755,9 +780,16 @@ class AtlasLiveWorker(Worker):
 
     LEASE_LAYERS = {"station": AprsSource, "vessel": AisSource}
 
-    def set_layer(self, kind, on):
+    _rid_gen = 0          # DRONES switch generation (GUI's count); the live scan's is _rid_live_gen
+    _rid_live_gen = None
+
+    def set_layer(self, kind, on, gen=None):
         """Lease-layer toggle (GUI thread): want this capture on/off. Reconciled in step() so the
-        arbiter request/release runs off the GUI thread."""
+        arbiter request/release runs off the GUI thread. For DRONES, gen numbers the switch: an
+        off->on inside one tick still restarts the scan, and notes from an old scan are tagged
+        with its generation so the page can ignore them (RA-UIPe E1/E3)."""
+        if kind == "drone":
+            self._rid_gen = gen if gen is not None else self._rid_gen + 1
         if on:
             self._wanted.add(kind)
         else:
@@ -765,13 +797,22 @@ class AtlasLiveWorker(Worker):
 
     def _reconcile_rid(self):
         want = "drone" in self._wanted
+        gen = self._rid_gen
+        if want and self._rid is not None and self._rid_live_gen != gen:
+            self._rid.stop()                  # switched off and on since it started: a fresh scan
+            self._rid = None
         if want and self._rid is None:
+            def fault(m, g=gen):              # numbered, so the page drops an old scan's fault
+                self.status.emit({"rid_fault": m, "rid_gen": g})
+
+            def note(m, g=gen):
+                self.status.emit({"rid_note": m, "rid_gen": g})
             try:
-                self._rid = RidSource(on_fault=lambda m: self.error.emit(m),
-                                      on_note=lambda m: self.status.emit({"rid_note": m}))
+                self._rid = RidSource(on_fault=fault, on_note=note)
+                self._rid_live_gen = gen
                 self._rid.start()
             except Exception as e:
-                self.error.emit("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
+                fault("Remote-ID (BLE) unavailable: %s" % str(e)[:120])
                 self._rid = None
         elif not want and self._rid is not None:
             self._rid.stop()
@@ -1038,11 +1079,18 @@ class AtlasApp(PalisadeApp):
         self._layers.add(kind) if on else self._layers.discard(kind)
         if kind == "drone":                      # the scan is off: so is what it said (RA-UIPc L1)
             self._last_status.pop("rid", None)
+            if str((self._last_status.get("fault") or {}).get("tip") or "").startswith(
+                    "Remote-ID"):                # the old scan's fault, not another source's
+                self._last_status.pop("fault", None)
             self._rid_note = None
             self._rid_state = "starting" if on else None
+            self._rid_gen += 1                   # notes from an earlier scan are ignored (E3)
         if (kind in self.LEASE_NAME or kind == "drone") and not self.demo \
                 and self._worker is not None and hasattr(self._worker, "set_layer"):
-            self._worker.set_layer(kind, on)     # SDR layers via the arbiter; DRONES = BLE scan
+            if kind == "drone":                  # DRONES = BLE scan, numbered per switch (E1)
+                self._worker.set_layer(kind, on, gen=self._rid_gen)
+            else:
+                self._worker.set_layer(kind, on)     # SDR layers via the arbiter
         self._render()
 
     def handle_key(self, text):
@@ -1099,6 +1147,8 @@ class AtlasApp(PalisadeApp):
         if w is not None and hasattr(w, "set_hidden"):
             w.set_hidden(not active)
 
+    _rid_gen = 0
+
     def on_error(self, msg):
         """CL5-fix 10: a source fault (the BLE Remote-ID scanner, an engine that is missing) is
         shown on the page, not only printed to stderr."""
@@ -1130,6 +1180,10 @@ class AtlasApp(PalisadeApp):
             self._update_busy()
         if "adsb" in status:
             self._adsb_health = status["adsb"]
+        if "rid_gen" in status and status["rid_gen"] != self._rid_gen:
+            return      # from a scan switched off since (RA-UIPe E3): nothing it says is current
+        if status.get("rid_fault") and "drone" in self._layers:
+            self.on_error(status["rid_fault"])   # the current scan's fault (E3)
         note = status.get("rid_note")
         if isinstance(note, dict) and note.get("ok"):  # passive scan running: no warning at all
             self._rid_note = None
@@ -1306,9 +1360,15 @@ class AtlasApp(PalisadeApp):
             return "offline", "NO DF SOURCE", "direction finding needs a KrakenSDR array — not " \
                                               "wired in this build"
         if kind == "balloon":
-            if not os.path.exists(_SONDES_PATH):
+            st, age = sonde_feed_state()
+            if st == "none":
                 return "offline", "NO SONDE FEED", "nothing from the sonde decoder (auto_rx) yet"
-            return "watching", "no sondes", "reading the sonde decoder feed"
+            if st == "bad":
+                return "offline", "SONDE FEED UNREADABLE", "the sonde decoder file does not parse"
+            if st == "stale":
+                return "offline", "NO SONDE FEED", "the sonde decoder file was last written %s " \
+                                                   "ago — is auto_rx running?" % _ago(age)
+            return "watching", "no sondes", "sonde decoder feed updated %s ago" % _ago(age)
         return "watching", "no contacts", "%s layer on" % lbl
 
     def _layer_summary(self, shown):
