@@ -26,6 +26,7 @@ def test_brief_uses_llm_host_tuple(monkeypatch):
 
 
 def test_metar_stops_after_network_failure(monkeypatch):
+    monkeypatch.setenv("PALISADE_NET", "ONLINE")    # CL8/L3: OFFLINE is the default; this is ONLINE
     calls = []
 
     def urlopen(req, timeout=0):

@@ -9,6 +9,8 @@ KrakenSDR is attached; the triangulation geometry is pure and unit-testable.
 """
 import math
 import os
+
+import netpolicy  # noqa: E402  (L3: every outbound request)
 import sys
 
 
@@ -75,8 +77,7 @@ def confidence(fixes, emitter, good_deg=5.0):
 
 def kraken_available(host="127.0.0.1", port=8080, opener=None):
     """Is a KrakenSDR DAQ/DOA server reachable? (The Kraken DOA server exposes an HTTP API.)"""
-    import urllib.request
-    opener = opener or (lambda url, t: urllib.request.urlopen(url, timeout=t))
+    opener = opener or (lambda url, t: netpolicy.urlopen(url, timeout=t))
     try:
         opener("http://%s:%d/" % (host, int(port)), 2)
         return True

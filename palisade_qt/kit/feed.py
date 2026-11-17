@@ -115,6 +115,10 @@ class FeedTable(QtWidgets.QFrame):
         self._keep_key = None
         self.model.modelAboutToBeReset.connect(self._remember_row)
         self.model.modelReset.connect(self._restore_row)
+        # RA-CL8 (B4): a prepended row (BABEL decodes, NWR) must not move a scrolled view either.
+        # The selection follows inserts by itself; only the scroll position needs keeping.
+        self.model.rowsAboutToBeInserted.connect(lambda *_: self._remember_top())
+        self.model.rowsInserted.connect(lambda *_: self._restore_top())
         # D4: a table with no rows is never blank — it shows the one EmptyState component, saying
         # why (OFFLINE / WATCHING / STALE). Pages set the reason with set_empty().
         from .components import EmptyState
@@ -189,9 +193,43 @@ class FeedTable(QtWidgets.QFrame):
         row = self.view.currentIndex().row()
         rows = self.model.rows
         self._keep_key = row_key(rows[row], self.model.columns) if 0 <= row < len(rows) else None
+        # B4: keep the scroll position on the same ITEM too. At the very top the operator is
+        # following the live feed: stay at the top. Scrolled down: keep the top visible item.
+        top = self.view.rowAt(0)
+        sb = self.view.verticalScrollBar()
+        self._keep_top = row_key(rows[top], self.model.columns) \
+            if sb.value() > 0 and 0 <= top < len(rows) else None
+
+    def _remember_top(self):
+        rows = self.model.rows
+        top = self.view.rowAt(0)
+        self._keep_top_ins = row_key(rows[top], self.model.columns) \
+            if self.view.verticalScrollBar().value() > 0 and 0 <= top < len(rows) else None
+
+    def _restore_top(self):
+        top, self._keep_top_ins = getattr(self, "_keep_top_ins", None), None
+        if top is None:
+            return
+        cols = self.model.columns
+        for i, r in enumerate(self.model.rows):
+            if row_key(r, cols) == top:
+                self.view.scrollTo(self.model.index(i, 0),
+                                   QtWidgets.QAbstractItemView.PositionAtTop)
+                return
 
     def _restore_row(self):
         key, self._keep_key = self._keep_key, None
+        top, self._keep_top = getattr(self, "_keep_top", None), None
+        self._restore_selection(key)
+        if top is not None:
+            cols = self.model.columns
+            for i, r in enumerate(self.model.rows):
+                if row_key(r, cols) == top:
+                    self.view.scrollTo(self.model.index(i, 0),
+                                       QtWidgets.QAbstractItemView.PositionAtTop)
+                    break
+
+    def _restore_selection(self, key):
         if key is None:
             return
         cols = self.model.columns
@@ -199,7 +237,10 @@ class FeedTable(QtWidgets.QFrame):
             if row_key(r, cols) == key:
                 sm = self.view.selectionModel()
                 sm.blockSignals(True)
-                self.view.selectRow(i)
+                # select without scrolling: the scroll position is restored separately (B4)
+                sm.setCurrentIndex(self.model.index(i, 0),
+                                   QtCore.QItemSelectionModel.ClearAndSelect |
+                                   QtCore.QItemSelectionModel.Rows)
                 sm.blockSignals(False)
                 self.selected.emit(r)              # the detail follows the item's fresh data
                 return

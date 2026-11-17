@@ -11,7 +11,9 @@ import re
 import sys
 from collections import Counter
 
-_BSS = re.compile(r"BSS ([0-9a-fA-F:]{17})")
+# P1: a BSS header is "BSS <mac>" at the START of a line. An SSID (or any IE text) that spells
+# "BSS de:ad:be:ef:00:01" is indented, so it can no longer start a phantom access point.
+_BSS = re.compile(r"^BSS ([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})(?![0-9a-fA-F:])")
 
 
 def channel_from_freq(mhz):
@@ -27,21 +29,69 @@ def channel_from_freq(mhz):
     return None
 
 
+def classify(privacy, rsn_akms, has_rsn, has_wpa):
+    """P2: the security class from the capability Privacy bit and the RSN/WPA AKM suites.
+
+    open        no Privacy bit, no RSN/WPA
+    OWE         RSN with only the OWE AKM (Enhanced Open: encrypted, no password)
+    WEP         Privacy bit with no RSN and no WPA element
+    WPA         WPA (v1) element only
+    WPA2-PSK / WPA3-SAE / WPA2/WPA3 (transition: PSK + SAE)
+    WPA2-EAP / WPA3-EAP (802.1X; Suite-B / SHA-384 counts as WPA3-EAP)
+    WPA2/3      RSN present but no AKM line was heard (unknown which)
+    """
+    akm = " ".join(rsn_akms).upper()
+    if has_rsn:
+        eap = "802.1X" in akm or "IEEE 802.1X" in akm
+        suite_b = "SUITEB" in akm.replace("-", "").replace(" ", "") or "SHA-384" in akm
+        sae = "SAE" in akm
+        psk = re.search(r"(^|[\s/])PSK\b", akm) is not None
+        owe = "OWE" in akm
+        if eap:
+            return "WPA3-EAP" if suite_b else "WPA2-EAP"
+        if sae and psk:
+            return "WPA2/WPA3"
+        if sae:
+            return "WPA3-SAE"
+        if psk:
+            return "WPA2-PSK"
+        if owe:
+            return "OWE"
+        return "WPA2/3"
+    if has_wpa:
+        return "WPA"
+    if privacy:
+        return "WEP"
+    return "open"
+
+
 def parse_iw_scan(text):
     """`iw ... scan` output -> list of AP dicts."""
     aps = []
     cur = None
+    section = None                                 # "RSN" / "WPA" while inside that element
+
+    def _close():
+        if cur is not None:
+            cur["security"] = classify(cur.pop("_privacy"), cur.pop("_akms"), cur.pop("_rsn"),
+                                       cur.pop("_wpa"))
+            aps.append(cur)
+
     for line in (text or "").splitlines():
-        m = _BSS.search(line)
+        m = _BSS.match(line)
         if m:
-            if cur:
-                aps.append(cur)
+            _close()
             cur = {"bssid": m.group(1).lower(), "ssid": "", "freq": None, "channel": None,
-                   "signal": None, "security": "open"}
+                   "signal": None, "security": "open",
+                   "_privacy": False, "_akms": [], "_rsn": False, "_wpa": False}
+            section = None
             continue
         if cur is None:
             continue
         s = line.strip()
+        # a new top-level element ends the RSN/WPA section; its sub-lines start with "*"
+        if not s.startswith("*") and not line.startswith(("\t\t", "        ")):
+            section = None
         if s.startswith("freq:"):
             try:
                 cur["freq"] = float(s.split(":", 1)[1].strip())
@@ -55,12 +105,19 @@ def parse_iw_scan(text):
                 pass
         elif s.startswith("SSID:"):
             cur["ssid"] = s[5:].strip()
-        elif "RSN:" in s:
-            cur["security"] = "WPA2/3"
-        elif "WPA:" in s and cur["security"] == "open":
-            cur["security"] = "WPA"
-    if cur:
-        aps.append(cur)
+        elif s.startswith("capability:"):
+            cur["_privacy"] = "Privacy" in s.split(":", 1)[1].split()
+        elif s.startswith("RSN:"):
+            cur["_rsn"], section = True, "RSN"
+            rest = s[4:]
+        elif s.startswith("WPA:"):
+            cur["_wpa"], section = True, "WPA"
+            rest = s[4:]
+        else:
+            rest = s
+        if section == "RSN" and "Authentication suites:" in rest:
+            cur["_akms"].append(rest.split("Authentication suites:", 1)[1].strip())
+    _close()
     return aps
 
 
@@ -77,6 +134,88 @@ def open_networks(aps):
 def scan_argv(iface="wlan0"):
     # H3: `scan passive` — listen for beacons only, send no probe requests
     return ["iw", "dev", iface, "scan", "passive"]
+
+
+# ---- NetworkManager fallback (SCAN-1) ----
+# `iw ... scan` needs CAP_NET_ADMIN, so as a normal user it fails with "Operation not permitted".
+# NetworkManager scans on the user's behalf (polkit allows the desktop user). Its scan is ACTIVE:
+# NM sends probe requests, so the UI must never call this path passive.
+NMCLI_FIELDS = "SSID,BSSID,CHAN,SIGNAL,SECURITY"
+
+
+def nmcli_scan_argv(iface="wlan0", rescan="auto"):
+    """Terse NetworkManager AP list for one interface. rescan=auto: NM scans again when its list
+    is older than ~30 s, else returns its current list."""
+    return ["nmcli", "-t", "-f", NMCLI_FIELDS, "device", "wifi", "list",
+            "--rescan", rescan, "ifname", iface]
+
+
+def _split_terse(line):
+    """nmcli -t joins fields with ':' and escapes a literal ':' or '\\' with a backslash."""
+    out, cur, esc = [], [], False
+    for ch in line:
+        if esc:
+            cur.append(ch)
+            esc = False
+        elif ch == "\\":
+            esc = True
+        elif ch == ":":
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    out.append("".join(cur))
+    return out
+
+
+def nm_security(sec):
+    """nmcli's SECURITY column ('', 'WPA2', 'WPA1 WPA2', 'WPA2 WPA3', 'WPA2 802.1X', 'WEP', 'OWE')
+    -> the same classes parse_iw_scan uses. Only an empty / '--' value is 'open'."""
+    toks = set((sec or "").replace("--", "").upper().split())
+    if not toks:
+        return "open"
+    if "802.1X" in toks:
+        return "WPA3-EAP" if "WPA3" in toks else ("WPA2-EAP" if "WPA2" in toks else "WPA-EAP")
+    if "WPA3" in toks and "WPA2" in toks:
+        return "WPA2/WPA3"
+    if "WPA3" in toks:
+        return "WPA3-SAE"
+    if "WPA2" in toks:
+        return "WPA2-PSK"
+    if "WPA1" in toks or "WPA" in toks:
+        return "WPA"
+    if "WEP" in toks:
+        return "WEP"
+    if any(t.startswith("OWE") for t in toks):
+        return "OWE"
+    return " ".join(sorted(toks))           # unknown: show what NM said, never call it open
+
+
+def parse_nmcli(text):
+    """`nmcli -t -f SSID,BSSID,CHAN,SIGNAL,SECURITY dev wifi list` -> AP dicts like parse_iw_scan,
+    except the signal is NetworkManager's 0-100 quality: 'signal' is None and 'quality' holds
+    the percentage (NM's percentage is not a dBm value and is not converted into one)."""
+    aps = []
+    for line in (text or "").splitlines():
+        if not line.strip():
+            continue
+        f = _split_terse(line)
+        if len(f) < 5:
+            continue
+        ssid, bssid, chan, sig, sec = f[:5]
+        if not re.fullmatch(r"[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5}", bssid.strip()):
+            continue
+        try:
+            ch = int(chan)
+        except ValueError:
+            ch = None
+        try:
+            q = int(sig)
+        except ValueError:
+            q = None
+        aps.append({"bssid": bssid.strip().lower(), "ssid": ssid, "freq": None, "channel": ch,
+                    "signal": None, "quality": q, "security": nm_security(sec)})
+    return aps
 
 
 def main(parent=None):

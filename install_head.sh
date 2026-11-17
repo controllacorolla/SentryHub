@@ -1,6 +1,6 @@
 #!/bin/bash
-# Sentry installer (uConsole): Hub, Sky (ADS-B + airband + transcripts), FM Radio,
-# Weather Sats, SSTV, Balloons, APRS, Mesh, Field Status, Assistant.
+# PALISADE installer (uConsole): the PALISADE Qt hub (default), the legacy Tk hub and apps,
+# Sky (ADS-B + airband + transcripts), FM Radio, Weather Sats, SSTV, APRS, Mesh, Field Status.
 # Usage:  bash install-uconsole-suite.sh
 set -e
 # everything runs inside main(), called on the last line: a cut-off copy of this file
@@ -52,7 +52,7 @@ fi
 
 echo "[1/8] System packages"
 NEED=0
-for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-utils espeak-ng mpv iw redsea rtl-433 multimon-ng nmap iproute2 libnotify-bin wmctrl stress-ng python3-serial i2c-tools raspi-gpio bluez; do
+for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-utils espeak-ng mpv iw redsea rtl-433 multimon-ng nmap iproute2 libnotify-bin wmctrl stress-ng python3-serial i2c-tools raspi-gpio bluez rtl-sdr; do
   dpkg -s "$pkg" >/dev/null 2>&1 || NEED=1
 done
 if [ "$NEED" = 1 ] && [ -z "${SKIP_APT_UPDATE:-}" ]; then
@@ -61,7 +61,7 @@ elif [ "$NEED" = 1 ]; then
   echo "      (package lists not refreshed - see the warning above; missing packages may be skipped)"
 fi
 # one package at a time, so one unavailable or conflicting package can't block the rest
-for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-utils espeak-ng mpv iw redsea rtl-433 multimon-ng nmap iproute2 libnotify-bin wmctrl stress-ng python3-serial i2c-tools raspi-gpio bluez; do
+for pkg in python3-tk python3-pil python3-pil.imagetk python3-pip pulseaudio-utils espeak-ng mpv iw redsea rtl-433 multimon-ng nmap iproute2 libnotify-bin wmctrl stress-ng python3-serial i2c-tools raspi-gpio bluez rtl-sdr; do
   rc=0; safe_apt "$pkg" >/dev/null 2>&1 || rc=$?
   case $rc in 0) echo "      ok  $pkg";; 2) echo "      --  $pkg (not in your apt sources - optional)";; *) echo "      --  $pkg (skipped)";; esac
 done
@@ -74,8 +74,52 @@ for pkg in arp-scan tcpdump nbtscan netdiscover; do
 done
 # (the H4M / HackRF is deliberately not installed or configured: this suite does not use it)
 
-echo "[2/8] Python packages (Whisper, Skyfield, Meshtastic) - this can take a few minutes"
+# --- Pentest + SIGINT toolkit (OPTIONAL) --------------------------------------------------------
+# Every tool is gated behind an open, scoped engagement (engagement.py) before it can run; the
+# installer only makes the binary available. Each is best-effort via safe_apt: a package that is
+# missing from your apt sources, or that would remove a system package, is skipped ("--"), never
+# fatal. Source-build / pip / go tools are NOT auto-built here (see the "[2c]" notes below).
+# Verified against Debian trixie arm64 (2026-11-17). See FEATURE_MAP.md "Tool scope" for the matrix.
+echo "[1b/8] Pentest + SIGINT tools (optional, engagement-gated)"
+# tshark is intentionally omitted: its package asks a debconf question (wireshark-group) that an
+# unattended install cannot answer; tcpdump covers pcap capture. nikto lives in non-free and is
+# skipped automatically if that component is not enabled.
+for pkg in \
+  arp-scan tcpdump nbtscan netdiscover masscan smbmap python3-impacket hydra bettercap \
+  sqlmap whatweb gobuster ffuf nikto testssl.sh \
+  aircrack-ng hcxdumptool hcxtools \
+  gqrx-sdr inspectrum rtl-433 dsdcc \
+  libnfc-bin libnfc-examples mfoc mfcuk \
+  sigrok-cli pulseview flashrom openocd picocom minicom can-utils \
+  libimage-exiftool-perl cewl hashcat python3-scapy ; do
+  rc=0; safe_apt "$pkg" >/dev/null 2>&1 || rc=$?
+  case $rc in 0) echo "      ok  $pkg";; 2) echo "      --  $pkg (not in your apt sources - optional)";; *) echo "      --  $pkg (skipped)";; esac
+done
+echo "[2c/8] Tools that are NOT in Debian apt (install by hand if your engagement needs them):"
+echo "      pip  : mitmproxy · netexec · enum4linux-ng · urh · btlejack · bluing"
+echo "             (python3 -m pip install --user --break-system-packages <name>)"
+echo "      go   : rtlamr (github.com/bemasher/rtlamr) · nuclei (github.com/projectdiscovery/nuclei/v3)"
+echo "      cargo: feroxbuster  (or grab the arm64 GitHub release binary)"
+echo "      apt repo: kismet — add the official repo at kismetwireless.net/repos (trixie arm64)"
+echo "      source : Responder (github.com/lgandx/Responder) · OP25 (github.com/boatbod/op25) ·"
+echo "               dsd-fme (github.com/lwvmobile/dsd-fme) · Proxmark3 client (github.com/RfidResearchGroup/proxmark3)"
+echo "      These are catalogued and engagement-gated; they just are not auto-built here."
+# -----------------------------------------------------------------------------------------------
+
+echo "[2/8] Python packages (PALISADE UI, Whisper, Skyfield, Meshtastic) - this can take a few minutes"
 PIP="python3 -m pip install --user --break-system-packages --upgrade --quiet"
+# S1: the Qt UI. Debian packages first (no compiler, matched to the system Qt); pip if apt
+# has none. PALISADE does not start without PySide6 + pyqtgraph + numpy.
+for pkg in python3-numpy python3-pyqtgraph python3-pyside6.qtcore python3-pyside6.qtgui python3-pyside6.qtwidgets python3-pyside6.qtsvg; do
+  rc=0; safe_apt "$pkg" >/dev/null 2>&1 || rc=$?
+  case $rc in 0) echo "      ok  $pkg";; *) echo "      --  $pkg (not from apt; trying pip)";; esac
+done
+python3 -c 'import PySide6.QtWidgets' 2>/dev/null || $PIP PySide6 || \
+  echo "      WARNING: PySide6 failed - PALISADE (the Qt hub) will not start; the legacy hub still works"
+python3 -c 'import pyqtgraph' 2>/dev/null || $PIP pyqtgraph || \
+  echo "      WARNING: pyqtgraph failed - PALISADE will not start"
+python3 -c 'import numpy' 2>/dev/null || $PIP numpy || echo "      WARNING: numpy failed"
+python3 -c 'import flask' 2>/dev/null || $PIP flask || echo "      note: flask not installed - Remote Mode needs it"
 $PIP faster-whisper || echo "      WARNING: faster-whisper failed - transcripts/assistant voice won't work"
 $PIP skyfield || echo "      WARNING: skyfield failed - weather-sat predictions won't work"
 $PIP meshtastic || echo "      WARNING: meshtastic failed - Mesh app won't connect"

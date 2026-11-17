@@ -384,9 +384,11 @@ KIND_COL = {"moving": "#e8eaed", "weather": "#7fa7d9", "infra": "#5ec4d4",
 def pipeline_argv(gain):
     """rtl_fm -> multimon-ng as two argv lists (no shell) — the Qt pages run these in one
     session so the whole pipeline is killed and waited as a group (audit A4)."""
+    import argsafe
     rtl = ["rtl_fm", "-f", str(FREQ), "-M", "fm", "-s", "22050"]
-    if gain:
-        rtl += ["-g", str(int(gain))]
+    g = argsafe.gain_arg(gain)
+    if g:
+        rtl += ["-g", str(g)]
     rtl += ["-E", "dc", "-"]
     mm = ["multimon-ng", "-t", "raw", "-a", "AFSK1200", "-A", "/dev/stdin"]
     if shutil.which("stdbuf"):
@@ -394,14 +396,6 @@ def pipeline_argv(gain):
     return [rtl, mm]
 
 
-def pipeline(gain):
-    """rtl_fm -> multimon-ng. Fixed argv pieces only; gain is an int from settings.
-    LEGACY shell string for the Tk app; Qt uses pipeline_argv()."""
-    g = " -g %d" % int(gain) if gain else ""
-    mm = "multimon-ng -t raw -a AFSK1200 -A /dev/stdin"
-    if shutil.which("stdbuf"):
-        mm = "stdbuf -oL " + mm          # line-buffer so packets arrive as they're heard
-    return "rtl_fm -f %s -M fm -s 22050%s -E dc - 2>/dev/null | %s" % (FREQ, g, mm)
 
 
 def kind_of(st):
@@ -702,8 +696,9 @@ def main():
                 time.sleep(1.5)
             return
         with S.errfile(os.path.join(S.CACHE, "aprs.err")) as err:
-            p = S.spawn(pipeline(s.get("gain", 0)), shell=True, stdout=__import__(
-                "subprocess").PIPE, stderr=err, text=True, errors="replace")
+            import argsafe
+            p = argsafe.spawn_pipeline(pipeline_argv(s.get("gain", 0)), stderr=err, text=True,
+                                       errors="replace")
         if st["gen"] == gen:
             st["proc"] = p
         try:
@@ -730,6 +725,12 @@ def main():
             return
         if demo:
             begin()
+            return
+        try:                       # L4: refuse a bad settings value before anything starts
+            pipeline_argv(s.get("gain", 0))
+        except ValueError as e:
+            state_pill.config(text="Fault", bg=S.RED)
+            print("settings refused:", e)
             return
         st["starting"] = True
         state_pill.config(text="Starting", bg=S.AMBER)

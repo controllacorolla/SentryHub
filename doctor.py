@@ -15,6 +15,8 @@ import sys
 import time
 import urllib.request
 
+import netpolicy  # noqa: E402  (L3: every outbound request)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite as S  # noqa: E402
 
@@ -25,7 +27,7 @@ UA = {"User-Agent": "uconsole-suite doctor"}
 def _head(url, timeout=5):
     req = urllib.request.Request(url, headers=UA, method="GET")
     t0 = time.time()
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with netpolicy.urlopen(req, timeout=timeout) as r:
         r.read(2048)
         return int((time.time() - t0) * 1000), r.status
 
@@ -93,7 +95,7 @@ def chk_aircraft_json():
     for src in core.DEFAULT_SETTINGS["adsb_sources"]:
         try:
             if src.startswith("http"):
-                data = json.loads(urllib.request.urlopen(src + "/aircraft.json", timeout=2).read())
+                data = json.loads(netpolicy.urlopen(src + "/aircraft.json", timeout=2).read())
             else:
                 with open(os.path.join(src, "aircraft.json")) as f:
                     data = json.load(f)
@@ -248,7 +250,7 @@ def _server(name, url, fix=""):
 
 def chk_ollama():
     try:
-        d = json.loads(urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1.5).read())
+        d = json.loads(netpolicy.urlopen("http://127.0.0.1:11434/api/tags", timeout=1.5).read())
         models = [m.get("name") for m in d.get("models", [])]
         return True, "local Ollama: " + (", ".join(models[:4]) or "no models pulled"), ""
     except Exception:
@@ -493,6 +495,78 @@ def chk_dronewatch():
     return False, "bleak not installed - DroneWatch runs in demo only", "pip install bleak"
 
 
+def chk_wifi_scan(run=None, which=None, euid=None):
+    """SCAN-1: which Wi-Fi scan path RECON will use. A passive `iw scan` needs CAP_NET_ADMIN (root
+    or a capability on iw); without it RECON falls back to NetworkManager, which probes (active).
+    Reports the path; never changes the system — the setcap line is the owner's decision."""
+    run = run or core.run
+    which = which or shutil.which
+    # RA-SCAN N9: the app runs as the desktop user, so root running the doctor proves nothing;
+    # only a capability on iw makes the app's scan passive. (euid kept for callers/tests.)
+    iw = which("iw")
+    passive = False
+    if iw and which("getcap"):
+        rc, out = run(["getcap", os.path.realpath(iw)], timeout=3)
+        passive = rc == 0 and "cap_net_admin" in (out or "").lower()
+    if passive:
+        return True, "passive scan (iw, beacons only)", ""
+    nm = False
+    if which("nmcli"):
+        rc, out = run(["nmcli", "-t", "-f", "RUNNING", "general"], timeout=3)
+        nm = rc == 0 and (out or "").strip().splitlines()[:1] == ["running"]
+    why = "iw scan needs CAP_NET_ADMIN" if iw else "iw not installed"
+    if nm:
+        return None, "ACTIVE scan via NetworkManager (%s)" % why, \
+            "optional, owner decision: passive scans need `sudo setcap cap_net_admin+ep %s` " \
+            "(lets every local user reconfigure Wi-Fi through iw)" % os.path.realpath(iw or "/usr/sbin/iw")
+    return False, "no Wi-Fi scan path (%s; NetworkManager not running)" % why, \
+        "start NetworkManager (sudo systemctl enable --now NetworkManager)"
+
+
+def chk_ble_scan(run=None, which=None, find=None, sysfs="/sys/class/bluetooth"):
+    """SCAN-2: can RECON's BLE survey run? Backend (bleak, else bluetoothctl), an adapter, and
+    whether it is powered. Reports only; powering the adapter on is the operator's call."""
+    run = run or core.run
+    which = which or shutil.which
+    find = find or _py
+    backend = "bleak" if find("bleak") else ("bluetoothctl" if which("bluetoothctl") else None)
+    if backend is None:
+        return False, "no BLE scan backend (no bleak, no bluetoothctl)", \
+            "sudo apt install bluez  (or pip install bleak)"
+    try:
+        adapters = sorted(os.listdir(sysfs)) if os.path.isdir(sysfs) else []
+    except OSError:
+        adapters = []
+    adapters = [a for a in adapters if a.startswith("hci")]
+    if not adapters:
+        return False, "no Bluetooth adapter (%s ready)" % backend, "enable/plug in a Bluetooth adapter"
+    if which("bluetoothctl"):
+        rc, out = run(["bluetoothctl", "show"], timeout=4)
+        low = (out or "").lower()
+        if "not authorized" in low or "access denied" in low:
+            return False, "BlueZ refused this user (D-Bus policy)", \
+                "owner decision: add the user to the bluetooth group"
+        if rc != 0 and ("timed out" in low or "timeout" in low):          # RA-SCAN N8
+            return False, "bluetoothd is not answering", "sudo systemctl start bluetooth"
+        if "no default controller" in low or "controller" not in low:
+            return False, "BlueZ reports no controller (%s)" % ((out or "").strip()[:50] or
+                                                              "no output"), \
+                "sudo systemctl start bluetooth; check the adapter"
+        if "powered: no" in low:
+            return None, "%s: adapter %s is powered off" % (backend, adapters[0]), \
+                "bluetoothctl power on   (or rfkill unblock bluetooth)"
+    note, fix = "", ""
+    if which("pgrep"):
+        rc, out = run(["pgrep", "-a", "bluetoothd"], timeout=3)
+        args = (out or "").split()
+        if rc == 0 and args and not ({"-E", "--experimental"} & set(args)):
+            # SCAN-3: ATLAS Remote-ID falls back to an active scan without BlueZ's monitor API
+            note = "; Remote-ID uses an ACTIVE scan (bluetoothd has no --experimental)"
+            fix = "optional, owner decision: run bluetoothd with --experimental (systemd " \
+                  "override) for passive Remote-ID"
+    return True, "%s on %s (active discovery, no connect/pair)%s" % (backend, adapters[0], note), fix
+
+
 CHECKS = [
     ("Software", [("Python packages", chk_python), ("Fonts", chk_fonts), ("rtl_airband", chk_airband),
                   ("rtl_fm", chk_rtl_fm), ("Whisper model", chk_whisper), ("Optional tools", chk_tools)]),
@@ -506,7 +580,8 @@ CHECKS = [
                 ("DroneWatch (Remote ID)", chk_dronewatch)]),
     ("Device", [("GPS", chk_gpsd), ("Meshtastic", chk_mesh), ("Audio", chk_audio), ("Power", chk_power),
                 ("SD card", chk_sdcard), ("Disk", chk_disk), ("System updates", chk_updates),
-                ("Boot files", chk_bootfiles)]),
+                ("Boot files", chk_bootfiles), ("Wi-Fi scan", chk_wifi_scan),
+                ("BLE scan", chk_ble_scan)]),
     ("Network", [("Connection", chk_net),
                  ("Dark basemap (USGS)", _server("USGS", "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/6/24/13")),
                  ("Satellite (USGS)", _server("USGS", "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/6/24/13")),
@@ -667,29 +742,71 @@ def chk_ssh_config():
     return True, "SSH: root login off, key auth" + note, ""
 
 
-def chk_default_password():
-    """Warn if the login password looks like a known default (hash compare, no plaintext stored)."""
-    try:
-        import warnings
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        import crypt
-        import spwd
-        user = os.environ.get("USER") or "dragon"
+def _shadow_hash(user, path="/etc/shadow"):
+    """The password hash for `user` from the shadow file (S4: the spwd module is gone in Python
+    3.13). Raises PermissionError when not readable (needs root), KeyError when absent."""
+    with open(path) as f:
+        for line in f:
+            parts = line.rstrip("\n").split(":")
+            if len(parts) > 1 and parts[0] == user:
+                return parts[1]
+    raise KeyError(user)
+
+
+def _libcrypt():
+    """crypt(3) from the system libcrypt via ctypes (S4: the crypt module is gone in 3.13).
+    libxcrypt on Debian handles yescrypt ($y$), sha512 ($6$) … Returns a function or None."""
+    import ctypes
+    import ctypes.util
+    for name in (ctypes.util.find_library("crypt"), "libcrypt.so.1", "libcrypt.so.2"):
+        if not name:
+            continue
         try:
-            h = spwd.getspnam(user).sp_pwdp
-        except (KeyError, PermissionError):
-            return None, "can't read the shadow file (needs root) - skipped", ""
-        if not h or h in ("*", "!"):
-            return None, "no password set for %s (key-only?)" % user, ""
-        for guess in ("dragon", "raspberry", "uconsole", "clockworkpi", "password", "admin", "123456"):
-            try:
-                if crypt.crypt(guess, h) == h:
-                    return False, "login password for %s is a common default" % user,                         "run passwd and set a unique password"
-            except Exception:
-                pass
-        return True, "login password is not a common default", ""
-    except Exception:
-        return None, "password check unavailable", ""
+            lib = ctypes.CDLL(name)
+        except OSError:
+            continue
+        fn = lib.crypt
+        fn.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+        fn.restype = ctypes.c_char_p
+
+        def _crypt(word, salt, _fn=fn):
+            out = _fn(word.encode(), salt.encode())
+            return out.decode() if out else None
+        return _crypt
+    return None
+
+
+def chk_default_password(shadow="/etc/shadow", crypt_fn=None):
+    """Warn if the login password looks like a known default (hash compare, no plaintext stored).
+    Runs on Python 3.13 (Debian 13): no crypt/spwd modules (S4)."""
+    user = os.environ.get("USER") or "dragon"
+    try:
+        h = _shadow_hash(user, shadow)
+    except PermissionError:
+        return None, "can't read the shadow file (needs root) - skipped", ""
+    except (KeyError, OSError):
+        return None, "no shadow entry for %s - skipped" % user, ""
+    if not h or h[0] in "*!":
+        return None, "no password set for %s (key-only?)" % user, ""
+    crypt_fn = crypt_fn or _libcrypt()
+    if crypt_fn is None:
+        return None, "password check unavailable (no libcrypt)", ""
+    hashed_any = False
+    for guess in ("dragon", "raspberry", "uconsole", "clockworkpi", "password", "admin", "123456"):
+        try:
+            out = crypt_fn(guess, h)
+        except Exception:
+            out = None
+        if out and out.startswith("$") == h.startswith("$"):
+            hashed_any = True
+        if out == h:
+            return False, "login password for %s is a common default" % user, \
+                "run passwd and set a unique password"
+    if not hashed_any:
+        # RA-CL8: libcrypt could not hash this scheme: unknown, never "not a default"
+        return None, "password check unavailable (hash type %s not supported here)" % (
+            h.split("$")[1] if h.startswith("$") and h.count("$") > 1 else "?"), ""
+    return True, "login password is not a common default", ""
 
 
 def chk_config_perms():

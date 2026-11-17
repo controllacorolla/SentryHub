@@ -11,6 +11,8 @@ import time
 import urllib.error
 import urllib.request
 
+import netpolicy  # noqa: E402  (L3: every outbound request)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite as S  # noqa: E402
 
@@ -24,7 +26,7 @@ def _tfr(states):
     try:
         url = "https://tfr.faa.gov/tfrapi/exportTfrList"
         req = urllib.request.Request(url, headers={"User-Agent": "uconsole-suite"})
-        data = json.loads(urllib.request.urlopen(req, timeout=6).read())
+        data = json.loads(netpolicy.urlopen(req, timeout=6).read())
         want = {s.upper() for s in states}
         out = []
         for t in data if isinstance(data, list) else []:
@@ -40,7 +42,7 @@ def _metar(ident="KDEN"):
     try:
         url = "https://aviationweather.gov/api/data/metar?ids=%s&format=json" % ident
         req = urllib.request.Request(url, headers={"User-Agent": "uconsole-suite"})
-        obs = json.loads(urllib.request.urlopen(req, timeout=6).read())
+        obs = json.loads(netpolicy.urlopen(req, timeout=6).read())
         if obs:
             o = obs[0]
             return {"cat": o.get("fltCat"), "temp": o.get("temp"), "wind_dir": o.get("wdir"),
@@ -67,7 +69,7 @@ def gather():
         for src in feed_src:
             try:
                 if src.startswith("http"):
-                    data = json.loads(urllib.request.urlopen(src + "/aircraft.json", timeout=2).read())
+                    data = json.loads(netpolicy.urlopen(src + "/aircraft.json", timeout=2).read())
                 else:
                     with open(os.path.join(src, "aircraft.json")) as f:
                         data = json.load(f)

@@ -1052,8 +1052,12 @@ SPAWN_ALLOWLIST = {
         "RF tab: rtl_power receive-only spectrum survey (RX, no TX, no target contact)",
     ("scout.py", "work", "subprocess.run"): "harden.sh --dry-run: prints the plan, changes nothing",
     ("radio.py", "_run", "subprocess.run"): "SDR enumeration (hackrf_info / SoapySDRUtil --find)",
-    ("palisade_qt/recon.py", "_run_scan", "subprocess.run"):
-        "passive survey commands (iw scan / bluetoothctl) — no target contact",
+    ("palisade_qt/recon.py", "_run_scan", "subprocess.Popen"):
+        "survey commands (iw passive scan / nmcli wifi list / bluetoothctl show|devices) — "
+        "no target contact; process group killed on stop",
+    ("palisade_qt/recon.py", "_scan_bluetoothctl", "subprocess.Popen"):
+        "SCAN-2 live BLE survey: fixed argv `bluetoothctl --timeout N scan on` (BlueZ active "
+        "discovery: scan requests only, no connect/pair); no target contact, killed on stop",
     ("devterm.py", "ssh_open", "subprocess.Popen"):
         "opens an interactive terminal; the host passed devterm.authorize_ssh_host first",
 }

@@ -402,10 +402,13 @@ def test_disabled_buttons_look_disabled():
 
 # ============================================================ D7: the 8-key structure
 def test_eight_keys_in_order_with_function_labels():
-    from palisade_qt.ops import CALLSIGNS
+    from palisade_qt.ops import ALL_CALLSIGNS, CALLSIGNS
     from palisade_qt.shell import QT_PAGES
-    assert [n for n, _ in CALLSIGNS] == ["OPS", "ATLAS", "PRISM", "PROWL", "SWEEP", "RECON",
-                                         "FORGE", "SYSTEM"]
+    assert [n for n, _ in ALL_CALLSIGNS] == ["OPS", "ATLAS", "PRISM", "PROWL", "SWEEP", "RECON",
+                                             "FORGE", "SYSTEM"]
+    # v0.1 launch line (owner, 2026-11-16; CL8): SWEEP is hidden until CL7 — 7 keys, same order
+    assert [n for n, _ in CALLSIGNS] == ["OPS", "ATLAS", "PRISM", "PROWL", "RECON", "FORGE",
+                                         "SYSTEM"]
     assert set(QT_PAGES) == {"ATLAS", "PRISM", "PROWL", "SWEEP", "RECON", "FORGE", "SYSTEM"}
     hub = _hub()
     try:
@@ -971,10 +974,13 @@ def test_no_audio_sink_disables_the_controls_instead_of_pretending():
 
 
 def test_opsec_slot_is_reserved_as_a_placeholder():
+    # CL8 (L3): the reserved OPSEC placeholder showed nothing; its width went to the NET slot,
+    # which shows the network mode. OPSEC needs a slot of its own when it lands (flagged).
     _app()
     from palisade_qt.kit import TopBar
     tb = TopBar()
-    assert tb.opsec_slot is not None and "reserved" in tb.opsec_slot.toolTip().lower()
+    assert not hasattr(tb, "opsec_slot")
+    assert tb.net.caption == "NET" and tb.net.text() == "OFF"
 
 
 def test_plot_text_is_status_size():

@@ -326,6 +326,7 @@ class Drones:
             elif t == MSG_SELF_ID:
                 c["self_id"] = m.get("description")
         c["last"] = now
+        c["adverts"] = c.get("adverts", 0) + 1     # P3: how often it has been heard
         if rssi is not None:
             c["rssi"] = rssi
         if is_new and self.on_new:
@@ -358,7 +359,8 @@ class Drones:
                 "speed_mps": loc.get("speed_mps"), "heading_deg": loc.get("direction_deg"),
                 "operator_lat": sys.get("operator_lat"), "operator_lon": sys.get("operator_lon"),
                 "operator_id": c.get("operator_id"),
-                "timestamp": c.get("last"), "rssi": c.get("rssi")}
+                "timestamp": c.get("last"), "rssi": c.get("rssi"),
+                "first": c.get("first"), "adverts": c.get("adverts", 0)}
 
     def fusion_contacts(self, now=None):
         return [self.fusion_contact(c) for c in self.active(now)]

@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# harden.sh — scope the uConsole's listening services to your own LAN subnet.
+# harden.sh — firewall profiles for the uConsole (ufw). Default-deny inbound in every profile.
 #
-# What it does: turns on ufw with "deny incoming, allow outgoing", then re-opens
-# SSH, the readsb web map/stats, and the ADS-B feed ports ONLY to the subnet
-# you're currently on. Everything keeps working at home; nothing is reachable
-# when you're on untrusted Wi-Fi.
+#   harden.sh --field      CLIENT SITE / UNTRUSTED NETWORK: deny ALL inbound, no exceptions.
+#                          The subnet you are on is the client's LAN: nothing of ours listens to it.
+#   harden.sh              HOME: deny inbound except SSH, the readsb web map/stats and the ADS-B
+#                          feed ports, re-opened ONLY to the subnet you are on now.
+#   harden.sh --revert     remove the HOME exceptions and return to default-deny (= --field).
+#                          It never turns the firewall off (audit L2): to do that, use ufw yourself.
+#   --dry-run              show the plan and exit, change nothing
+#   --yes                  apply without the prompt
 #
-# Receive-only and reversible. It never touches the radios. Undo with:  harden.sh --revert
-#
-#   harden.sh            show the plan, then ask before applying
-#   harden.sh --yes      apply without the prompt
-#   harden.sh --dry-run  show the plan and exit, change nothing
-#   harden.sh --revert   disable ufw and wipe its rules (back to wide open)
+# Receive-only and reversible. It never touches the radios.
 #
 set -euo pipefail
 
@@ -25,20 +24,59 @@ say() { printf '%s\n' "$*"; }
 die() { printf 'harden: %s\n' "$*" >&2; exit 1; }
 
 MODE="ask"
+PROFILE="home"
 for a in "$@"; do
   case "$a" in
     --yes|-y)     MODE="yes" ;;
     --dry-run|-n) MODE="dry" ;;
-    --revert)     MODE="revert" ;;
-    *) die "unknown option: $a (use --yes, --dry-run, or --revert)" ;;
+    --field)      PROFILE="field" ;;
+    --revert)     PROFILE="field"; REVERT=1 ;;
+    *) die "unknown option: $a (use --field, --revert, --yes or --dry-run)" ;;
   esac
 done
 
-if [ "$MODE" = "revert" ]; then
-  say "Reverting: disabling ufw and clearing all rules…"
+ensure_ufw() {
+  if ! command -v ufw >/dev/null 2>&1; then
+    say "Installing ufw…"
+    sudo apt-get install -y --no-upgrade ufw
+  fi
+}
+
+if [ "$PROFILE" = "field" ]; then
+  [ -n "${REVERT:-}" ] && say "Reverting the HOME exceptions: back to default-deny." \
+                       || say "FIELD profile: deny ALL inbound, allow outbound."
+  say ""
+  say "Plan:"
+  say "  ufw reset (drop every allow rule)"
+  say "  ufw default deny incoming / allow outgoing"
+  say "  enable ufw"
+  say "  NOTE: SSH into this device stops working until you run harden.sh (HOME) again."
+  say ""
+  [ "$MODE" = "dry" ] && { say "(dry run — nothing changed)"; exit 0; }
+  if [ "$MODE" = "ask" ]; then
+    printf 'Apply this? [y/N] '
+    read -r ans
+    case "$ans" in y|Y|yes|YES) ;; *) say "Aborted."; exit 0 ;; esac
+  fi
+  ensure_ufw
+  # `ufw reset` also turns ufw off. If any later step fails (set -e), the EXIT trap turns it back
+  # on with inbound denied, so the profile can never leave the firewall off (RA-CL8 / L2).
+  REENABLE=1
+  trap 'rc=$?; if [ "${REENABLE:-0}" = 1 ]; then
+          printf "harden: a step failed after the reset; turning the firewall back on, inbound denied\n" >&2
+          sudo ufw default deny incoming || true
+          if sudo ufw --force enable; then printf "harden: firewall is ON (inbound denied)\n" >&2
+          else printf "harden: COULD NOT turn the firewall back on - it is OFF. Run: sudo ufw enable\n" >&2; fi
+        fi; exit $rc' EXIT
   sudo ufw --force reset
-  sudo ufw disable
-  say "Done. The firewall is off and all rules are gone (services are wide open again)."
+  sudo ufw default deny incoming
+  sudo ufw default allow outgoing
+  sudo ufw --force enable
+  REENABLE=0
+  say ""
+  sudo ufw status verbose
+  say ""
+  say "Done. Nothing is reachable from the network. HOME profile: harden.sh"
   exit 0
 fi
 
@@ -57,6 +95,7 @@ SUBNET="$(python3 -c 'import ipaddress,sys; print(ipaddress.ip_interface(sys.arg
 say "Interface : $IFACE"
 say "Your IP   : $ADDR_CIDR"
 say "Subnet    : $SUBNET   (rules below allow this range only)"
+say "WARNING   : on a client site this subnet is the CLIENT's LAN — use harden.sh --field there."
 say ""
 say "Plan:"
 say "  ufw default deny incoming / allow outgoing"
@@ -76,10 +115,7 @@ if [ "$MODE" = "ask" ]; then
 fi
 
 # --- ensure ufw is present ----------------------------------------------------
-if ! command -v ufw >/dev/null 2>&1; then
-  say "Installing ufw…"
-  sudo apt-get update -qq && sudo apt-get install -y ufw
-fi
+ensure_ufw
 
 # --- apply (SSH rule goes in BEFORE enable, so the session never drops) --------
 sudo ufw default deny incoming
@@ -100,4 +136,4 @@ say ""
 sudo ufw status verbose
 say ""
 say "Hardened. These services are now reachable only from $SUBNET."
-say "On a new network, re-run harden.sh to re-scope, or harden.sh --revert to open back up."
+say "On a client site or untrusted network: harden.sh --field (deny all inbound)."

@@ -28,7 +28,7 @@ live = _H.live               # fake radio binaries on PATH, decoder seams open
 # the retiring mode still HOLDS the radio when the operator presses FREE THE RADIO
 _TRAP_RTL = """#!/bin/sh
 trap '' TERM
-while :; do echo '!AIVDM,1,1,,A,15M67FC000G?ufbE`FepT@3n00Sa,0*5C'; sleep 0.2; done
+while :; do echo '!AIVDM,1,1,,A,15M67FC000G?ufbE`FepT@3n00Sa,0*5F'; sleep 0.2; done
 # FAKE_rtl_fm
 """
 _TRAP_MM = """#!/bin/sh
@@ -82,7 +82,7 @@ def test_nk_a_revoke_during_a_babel_switch_sticks_and_unticks_run(monkeypatch, l
     lease = _SlowLease(2.0)
     monkeypatch.setattr(ra, "_make_lease", lease.make)
     import ais
-    monkeypatch.setattr(ais, "pipeline", lambda gain=0: [["rtl_fm", "-f", "162.0M", "-"]])
+    monkeypatch.setattr(ais, "pipeline_argv", lambda gain=0: [["rtl_fm", "-f", "162.0M", "-"]])
     b = babel.BabelApp(demo=False, mode="dark")
     b.set_active(True)
     b.start()

@@ -26,6 +26,7 @@ class _Resp(io.BytesIO):
 
 
 def test_http_404_does_not_mark_layer_offline(monkeypatch, tmp_path):
+    monkeypatch.setenv("PALISADE_NET", "ONLINE")    # CL8/L3: OFFLINE is the default; this is ONLINE
     t = _layer(monkeypatch, tmp_path)
 
     def boom(req, timeout=0):

@@ -18,7 +18,8 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.request
+
+import netpolicy  # noqa: E402  (L3: every outbound request)
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -48,7 +49,7 @@ def fetch_tles(s, force=False, path=None):
     want = {str(x["norad"]) for x in s["satellites"]}
     for url in s["tle_urls"]:
         try:
-            with urllib.request.urlopen(url, timeout=15) as r:
+            with netpolicy.urlopen(url, timeout=15) as r:
                 txt = r.read().decode()
             if any(("1 %s" % n.zfill(5)) in txt for n in want):   # TLEs zero-pad the id
                 open(TLE_PATH, "w").write(txt)
@@ -59,7 +60,7 @@ def fetch_tles(s, force=False, path=None):
     out = []
     for n in want:
         try:
-            with urllib.request.urlopen("https://celestrak.org/NORAD/elements/gp.php?CATNR=%s&FORMAT=tle"
+            with netpolicy.urlopen("https://celestrak.org/NORAD/elements/gp.php?CATNR=%s&FORMAT=tle"
                                         % n, timeout=15) as r:
                 out.append(r.read().decode().strip())
         except Exception:
@@ -113,12 +114,19 @@ class PassSet:
             self.keys.remove(k)
 
 
+LOOKBACK_MIN = 30          # E6: longer than any LEO pass above 10° (~16 min)
+
+
 def predict(s, home, hours=48, path=None):
     from skyfield.api import wgs84
     ts, sats = load_sats(s, path)
     obs = wgs84.latlon(home["lat"], home["lon"], elevation_m=home.get("alt_m", 0))
-    t0 = ts.now()
-    t1 = ts.tt_jd(t0.tt + hours / 24)
+    now = ts.now()
+    # E6: a pass already in progress has its rise BEFORE now; searching from now dropped it.
+    # Start LOOKBACK_MIN earlier (longer than any LEO pass) and keep passes that have not set.
+    t0 = ts.tt_jd(now.tt - LOOKBACK_MIN / 1440.0)
+    t1 = ts.tt_jd(now.tt + hours / 24)
+    now_ts = now.utc_datetime().timestamp()
     passes = []
     for meta, sat in sats:
         try:
@@ -154,6 +162,9 @@ def predict(s, home, hours=48, path=None):
                                "max": round(cur["max"], 1), "track": track, "ground": ground,
                                "dir": "southbound" if north else "northbound"})
                 cur = {}
+    passes = [p for p in passes if p["los"] > now_ts]
+    for p in passes:
+        p["in_progress"] = p["aos"] <= now_ts
     passes.sort(key=lambda p: p["aos"])
     if path is not None:
         return passes          # another app's satellites: don't overwrite the weather cache

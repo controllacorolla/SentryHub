@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Assemble the single-file installer: install_head.sh + base64(tar.gz of app files) + install_tail.sh.
-# Payload = every *.py, the fonts/ dir, harden.sh, and the test suite.
+# Payload = every *.py, the palisade_qt package (S1), the fonts/ dir, harden.sh, and the tests.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -8,7 +8,7 @@ OUT="${1:-install-uconsole-suite.sh}"
 TARBALL="$(mktemp)"          # no --suffix: BSD mktemp (macOS) lacks it, and the name is internal
 trap 'rm -f "$TARBALL"' EXIT
 
-FILES=(*.py harden.sh install_radiosonde.sh run_tests.sh fonts tests)
+FILES=(*.py palisade_qt harden.sh install_radiosonde.sh run_tests.sh fonts tests)
 # Prefer GNU tar for a deterministic, sorted archive; fall back to the platform tar (bsdtar on
 # macOS) so the documented macOS dev build still works - just not byte-reproducible there.
 if tar --version 2>/dev/null | grep -qi 'gnu tar'; then

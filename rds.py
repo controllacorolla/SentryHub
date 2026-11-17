@@ -83,10 +83,15 @@ class Demo:
         return [self.LINES[self.i % len(self.LINES)]]
 
 
-def pipeline(freq, gain=0):
-    g = " -g %d" % int(gain) if gain else ""
-    return ("rtl_fm -M fm -l 0 -A std -p 0 -s 171k%s -F 9 -f %s 2>/dev/null | redsea -r 171000 "
-            "2>/dev/null" % (g, freq))
+def pipeline_argv(freq, gain=0):
+    """rtl_fm (wide FM, 171 kS/s) -> redsea as two argv lists (no shell); settings checked (L4)."""
+    import argsafe
+    rtl = ["rtl_fm", "-M", "fm", "-l", "0", "-A", "std", "-p", "0", "-s", "171k"]
+    g = argsafe.gain_arg(gain)
+    if g:
+        rtl += ["-g", str(g)]
+    rtl += ["-F", "9", "-f", argsafe.freq_arg(freq)]
+    return [rtl, ["redsea", "-r", "171000"]]
 
 
 DEFAULTS = {"freq": FREQ_DEFAULT, "gain": 0}
@@ -142,8 +147,9 @@ def main(parent=None):
                 time.sleep(1.0)
             return
         with S.errfile(os.path.join(S.CACHE, "rds.err")) as err:
-            p = S.spawn(pipeline(s.get("freq", FREQ_DEFAULT), s.get("gain", 0)), shell=True,
-                        stdout=__import__("subprocess").PIPE, stderr=err, text=True, errors="replace")
+            import argsafe
+            p = argsafe.spawn_pipeline(pipeline_argv(s.get("freq", FREQ_DEFAULT), s.get("gain", 0)),
+                                       stderr=err, text=True, errors="replace")
         try:
             for line in p.stdout:
                 if not st["on"] or st["gen"] != gen:
@@ -155,6 +161,13 @@ def main(parent=None):
     def start():
         if st["on"]:
             return
+        if not demo:
+            try:                       # L4: refuse a bad settings value before anything starts
+                pipeline_argv(s.get("freq", FREQ_DEFAULT), s.get("gain", 0))
+            except ValueError as e:
+                state_pill.config(text="Fault", bg=S.RED)
+                print("settings refused:", e)
+                return
         st["gen"] += 1
         st["on"] = True
         state_pill.config(text="Listening" + (" (demo)" if demo else ""), bg=S.GREEN)

@@ -20,10 +20,13 @@ from . import theme, radio_arbiter, eventbus
 from .timebase import zulu
 from .kit import ControlBar, FeedTable, DetailCard
 from .worker import Worker
+from .kit.seams import offscreen as _seam_offscreen
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
+
+import argsafe  # noqa: E402  (repo root, after the path fix: L4 settings checks)
 
 MODES = ["AIS", "ACARS", "POCSAG", "RDS", "TPMS", "SSTV", "CW", "RTTY"]
 
@@ -43,10 +46,13 @@ def _open_pipe(cmd, shell=None, stderr=None):
     `cmd` may be a legacy `a | b` shell STRING (split into argv stages — never run through a
     shell) or a list of argv lists. Every stage shares one session so PANIC / the arbiter kill
     the whole pipeline (audit A4). stderr goes to a temp file so an early exit can show WHY (R2)."""
-    if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+    if _seam_offscreen():
         return None
     import tempfile
     from .kit.procs import Pipeline, split_shell_pipeline
+    if not isinstance(cmd, str) and any(isinstance(x, str) for x in cmd):
+        # RA-CL8c NEW-K: a flat argv here was read as one stage per string (NEW-A/NEW-B)
+        raise TypeError("_open_pipe wants a list of argv lists, got a flat argv: %r" % (cmd[:3],))
     stages = split_shell_pipeline(cmd) if isinstance(cmd, str) else [list(x) for x in cmd]
     err = tempfile.TemporaryFile(mode="w+", errors="replace")
     pipe = Pipeline(stages, stderr_last=err)
@@ -153,7 +159,7 @@ def _can_run(mode):
 def _run_ais(worker):
     import ais as engine
     s = _load_settings("ais", engine.DEFAULTS)
-    cmd = engine.pipeline(gain=s.get("gain", 0))
+    cmd = engine.pipeline_argv(s.get("gain", 0))           # L4: argv, settings checked
     asm = engine.AivdmAssembler()
     n = 0
     proc = _open_pipe(cmd)
@@ -197,14 +203,17 @@ def _run_acars(worker):
     import signals as engine
     s = _load_settings("signals", engine.DEFAULTS)
     engine.migrate(s)
+    if s.get("source") not in ("acars", "vdl2"):
+        # RA-CL8b NEW-E: signals.json's default source is the Tk app's "sensors" (rtl_433); BABEL's
+        # ACARS mode decodes ACARS, so it never runs the sensor decoder under an ACARS label
+        s = dict(s, source="acars")
     argv = engine.build_argv(s)
     parser = engine.parse_acars if s.get("source") != "vdl2" else engine.parse_vdl2
     n = 0
-    try:
-        proc = _open_pipe(argv, shell=False, stderr=subprocess.STDOUT)
-    except FileNotFoundError:
-        worker.error.emit("acarsdec not found — install it or use --demo")
-        return
+    # RA-CL8b NEW-A: one stage. A flat argv given to _open_pipe was read as one stage per string
+    # (Popen('a'), …): FileNotFoundError every time, caught here, and the worker held the radio.
+    # A missing binary now raises into the worker loop: FAULT, radio released, no retry.
+    proc = _open_pipe([argv], shell=False, stderr=subprocess.STDOUT)
     if proc is None:
         return                       # offscreen/offline seam: never open a real radio in tests
     if not worker._adopt(proc):      # RUN off / hidden / revoked / PANIC while spawning
@@ -238,7 +247,7 @@ def _run_acars(worker):
 def _run_pocsag(worker):
     import pager as engine
     s = _load_settings("pager", engine.DEFAULTS)
-    cmd = engine.pipeline(freq=s.get("freq", engine.FREQ_DEFAULT), gain=s.get("gain", 0))
+    cmd = engine.pipeline_argv(s.get("freq", engine.FREQ_DEFAULT), s.get("gain", 0))   # L4
     n = 0
     proc = _open_pipe(cmd)
     if proc is None:
@@ -274,7 +283,7 @@ def _run_pocsag(worker):
 def _run_rds(worker):
     import rds as engine
     s = _load_settings("rds", engine.DEFAULTS)
-    cmd = engine.pipeline(freq=s.get("freq", engine.FREQ_DEFAULT), gain=s.get("gain", 0))
+    cmd = engine.pipeline_argv(s.get("freq", engine.FREQ_DEFAULT), s.get("gain", 0))   # L4
     stations = engine.Stations()
     n = 0
     proc = _open_pipe(cmd)
@@ -311,17 +320,40 @@ def _run_rds(worker):
         _stop_proc(proc)
 
 
+TPMS_HOP_S = 30        # B6: rtl_433's default hop with two -f is 600 s — one band for 10 minutes
+
+
+def tpms_argv(s):
+    """rtl_433 argv for TPMS from settings. L4: every frequency and the gain pass argsafe; B6: with
+    more than one frequency, hop every hop_s seconds (5..600) instead of rtl_433's 600 s default."""
+    fl = s.get("freqs") or ["315M", "433.92M"]
+    if not isinstance(fl, (list, tuple)):
+        raise argsafe.SettingsRefused("bad TPMS freqs in settings: %r" % (fl,))
+    freqs = [argsafe.freq_arg(f) for f in fl]
+    gain = argsafe.gain_arg(s.get("gain") or 0)
+    argv = ["rtl_433", "-F", "json", "-M", "level"]
+    for f in freqs:
+        argv += ["-f", f]
+    if len(freqs) > 1:
+        try:
+            hop = int(s.get("hop_s", TPMS_HOP_S))
+        except (TypeError, ValueError):
+            raise argsafe.SettingsRefused("bad TPMS hop_s in settings: %r" % (s.get("hop_s"),))
+        if not 5 <= hop <= 600:
+            raise argsafe.SettingsRefused("TPMS hop_s out of range: %r" % hop)
+        argv += ["-H", str(hop)]
+    if gain:
+        argv += ["-g", str(gain)]
+    return argv
+
+
 def _run_tpms(worker):
     """TPMS tire-pressure sensors via rtl_433 JSON (315/433.92 MHz). tpms.parse_tpms reused AS-IS;
     rtl_433 is the capture binary and SDR owner (tpms.py has no pipeline of its own)."""
     import tpms as engine
-    s = _load_settings("tpms", {"freqs": ["315M", "433.92M"], "gain": 0})
-    argv = ["rtl_433", "-F", "json", "-M", "level"]
-    for f in s.get("freqs", ["315M", "433.92M"]):
-        argv += ["-f", f]
-    if int(s.get("gain") or 0):
-        argv += ["-g", str(int(s["gain"]))]
-    proc = _open_pipe(argv, shell=False)
+    s = _load_settings("tpms", {"freqs": ["315M", "433.92M"], "gain": 0, "hop_s": TPMS_HOP_S})
+    argv = tpms_argv(s)
+    proc = _open_pipe([argv], shell=False)          # one stage (RA-CL8b NEW-B)
     if proc is None:
         return                       # offscreen/offline seam: never open a real radio in tests
     if not worker._adopt(proc):      # RUN off / hidden / revoked / PANIC while spawning
@@ -564,8 +596,28 @@ class DecoderWorker(Worker):
                 self._proc = None
                 try:
                     _LIVE_RUNNERS[mode](self)
+                except argsafe.SettingsRefused as e:
+                    # L4: a settings value failed argsafe (frequency, gain, command template).
+                    # Refuse to start, say so, do not retry, give the radio back.
+                    msg = "%s settings refused: %s" % (mode, str(e)[:150])
+                    self._running = False
+                    self.fault.emit("FAULT: " + msg)
+                    self.status.emit({"run_off": True, "live": False, "idle": True, "fault": msg,
+                                      "sdr": {"text": "%s FAULT — SETTINGS REFUSED" % mode,
+                                              "state": "alert", "ok": False}})
+                    break
                 except Exception as e:
-                    self.error.emit("%s: %s" % (mode, str(e)[:150]))
+                    # RA-CL8: an unexpected error building or starting the decoder is a fault too.
+                    # Before, it fell into the "no capture (offline)" branch below and held the
+                    # radio, retrying every second. Say so, do not retry, give the radio back.
+                    msg = "%s failed to start: %s: %s" % (mode, type(e).__name__, str(e)[:140])
+                    self.error.emit(msg)
+                    self._running = False
+                    self.fault.emit("FAULT: " + msg)
+                    self.status.emit({"run_off": True, "live": False, "idle": True, "fault": msg,
+                                      "sdr": {"text": "%s FAULT — FAILED TO START" % mode,
+                                              "state": "alert", "ok": False}})
+                    break
                 if self._stop or self._mode_changed or not self.wants_radio():
                     break
                 if not radio_arbiter.arbiter.held_by(LEASE_NAME):    # freed under us
@@ -766,7 +818,7 @@ class SstvWorker(Worker):
 
     # seams so tests/CI never open a real radio or require a WAV
     def _make_recorder(self, path):
-        if os.environ.get("PALISADE_OFFLINE") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        if _seam_offscreen():
             return None
         import sstv
         return sstv.Recorder(path, self.freq, self.gain, monitor=False,  # rolling window (R5)
@@ -815,6 +867,7 @@ class SstvWorker(Worker):
                 os.makedirs(suite.CACHE, exist_ok=True)          # R5: under the cache dir, not /tmp
                 self._wav = os.path.join(suite.CACHE, "palisade_sstv_%d.wav" % os.getpid())
                 rec = self._rec = self._make_recorder(self._wav)
+                self._rec_t0 = time.time()
         if rec is not None and (not self.wants_radio()
                                 or not radio_arbiter.arbiter.held_by(self.NAME)):
             self._stop_rec()                         # RUN off / revoke / PANIC while starting
@@ -824,10 +877,31 @@ class SstvWorker(Worker):
                               "busy": None, "live": False})
             return
         if rec.err:                                  # rtl_fm died: reap + restart on the next step
+            err = rec.err
             self._stop_rec()
-            self.status.emit({"sdr": {"text": "SSTV — %s (retrying)" % rec.err[:34], "ok": False}})
+            # RA-CL8e NEW-T: an rtl_fm that dies within 5 s of starting, 3 times in a row, is a
+            # fault: stop, say so, give the radio back — not a respawn every second on a held radio
+            quick = time.time() - getattr(self, "_rec_t0", 0) < 5.0
+            self._early = getattr(self, "_early", 0) + 1 if quick else 0
+            if self._early >= 3:
+                self._early = 0
+                msg = "SSTV rtl_fm exits at once (×3): %s" % err[:60]
+                self._running = False
+                self._why = "FAULT — rtl_fm exits at once"
+                self._give_back(self._why)
+                self.fault.emit("FAULT: " + msg)
+                self.status.emit({"run_off": True, "live": False, "fault": msg,
+                                  "sdr": {"text": "SSTV FAULT — RTL_FM EXITS AT ONCE",
+                                          "state": "alert", "ok": False}})
+                return
+            self.status.emit({"sdr": {"text": "SSTV — %s (retrying)" % err[:34], "ok": False},
+                              "live": False})
             return
         secs = rec.seconds()
+        if rec.total_samples() <= 0:                 # RA-CL8e: no audio yet: not live
+            self.status.emit({"sdr": {"text": "SSTV — starting rtl_fm", "ok": False},
+                              "busy": None, "live": False})
+            return
         self.status.emit({"sdr": {"text": "SSTV — capturing %ds (lvl %.0f)" % (secs, rec.level),
                                   "ok": True}, "busy": None, "live": True})
         # run the CPU-bound decode on a DISPOSABLE daemon thread so step() stays responsive to

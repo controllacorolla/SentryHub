@@ -42,9 +42,7 @@ if HERE not in sys.path:
 SUBTABS = ("SERIAL", "BUS", "RFID", "RADIO", "SENSORS")
 
 
-def _offscreen():
-    return bool(os.environ.get("PALISADE_OFFLINE") or
-                os.environ.get("QT_QPA_PLATFORM") == "offscreen")
+from .kit.seams import offscreen as _offscreen  # noqa: E402  (C5: one copy)
 
 
 def _engagement():
@@ -192,13 +190,18 @@ class SerialWorker(Worker):
                 ok, why = hwlab.gated_send(self._reader, text, self.device, port_name=self.port or "demo")
             except Exception as e:
                 ok, why = False, "NOT SENT — %s" % e
+                from . import sessionlog
+                sessionlog.note_exception("FORGE", "serial write on %s" % (self.port or "demo"))
             if not ok:
                 self.row.emit({"kind": "deny", "line": why})
         try:
             for line in self._reader.read_lines():
                 self.row.emit({"kind": "rx", "line": hwlab.clean_text(line)})
-        except Exception:
-            pass
+        except Exception as e:
+            # C4: a read failure (cable pulled, device reset) is shown and logged, never dropped
+            from . import sessionlog
+            sessionlog.note_exception("FORGE", "serial read on %s" % (self.port or "demo"))
+            self.row.emit({"kind": "deny", "line": "READ FAILED — %s" % e})
 
     def run(self):
         try:

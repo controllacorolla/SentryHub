@@ -39,7 +39,11 @@ _PARAM_RE = __import__("re").compile(r"^[0-9A-Za-z_.:-]{1,64}$")
 
 # CL2-fix2 R1: the only programs this module may run through the engagement gate (argv[0],
 # a bare name). engagement.issue refuses anything else.
-ALLOWED_PROGRAMS = frozenset(("pm3", "proxmark3"))
+# Scope catalogue (owner decision 2026-11-17): libnfc MIFARE-Classic key-recovery tools, which
+# act on whichever card is on the reader and so cannot be bound to a UID in the command —
+# label-only authorization. Gated by catalog_prepare() below.
+CATALOG_PROGRAMS = frozenset(("mfoc", "mfcuk"))
+ALLOWED_PROGRAMS = frozenset(("pm3", "proxmark3")) | CATALOG_PROGRAMS
 
 
 def is_active(op):
@@ -126,6 +130,22 @@ def prepare(op, target=None, evidence_chain=None, read_uid=None, port="/dev/ttyA
     if ok and op in UNBOUND_CONTENT:
         why += " — written content is not bound to the scope (label-only for the data)"
     return ok, why, ticket
+
+
+def catalog_prepare(tool, target, args=(), evidence_chain=None):
+    """Gate a catalogued libnfc MIFARE key-recovery tool (CATALOG_PROGRAMS: mfoc/mfcuk). The card
+    on the reader is whatever is presented, so the command cannot be bound to a UID — this is a
+    LABEL-ONLY authorization: the engagement must carry a matching `label:` (or uid) scope entry.
+    Returns (ok, reason, ticket). No attack-specific flags are baked in here. Out of scope — or
+    with no engagement — returns (False, reason, None)."""
+    if tool not in CATALOG_PROGRAMS:
+        return False, "%r is not a catalogued RFID tool" % (tool,), None
+    toks = [str(a) for a in (args or ())]
+    if any((not a) or a != a.strip() for a in toks):
+        return False, "extra arguments must be plain, non-empty tokens", None
+    return engagement.issue("rfid:" + tool, target, argv=[tool] + toks, kind="label",
+                            evidence_chain=evidence_chain, label="rfid:" + tool,
+                            binding="label-only")
 
 
 def detect(which=shutil.which):

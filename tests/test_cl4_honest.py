@@ -164,7 +164,7 @@ def test_h3_failed_scan_is_not_zero_aps(monkeypatch):
                                 "sys.exit(255)"])
     assert out is None and "exit 255" in why and "not permitted" in why
     assert recon._run_cmd([sys.executable, "-c", "import sys; sys.exit(1)"]) is None
-    monkeypatch.setattr(recon, "_run_scan", lambda argv, timeout=12: (None, "exit 255 — denied"))
+    monkeypatch.setattr(recon, "_run_scan", lambda argv, timeout=12, **k: (None, "exit 255 — denied"))
     w = recon.WifiScanWorker(demo=False)
     st, rows = [], []
     w.status.connect(st.append)
@@ -559,13 +559,16 @@ def test_e1_stale_adsb_publishes_nothing():
 
 # ----------------------------------------------------------------- E4 NOT IMPLEMENTED, not hardware
 
-def test_e4_ble_with_bleak_says_not_implemented(monkeypatch):
+def test_e4_ble_no_backend_says_what_is_missing(monkeypatch):
+    """SCAN-2 superseded "BLE NOT IMPLEMENTED": live BLE is wired (tests/test_scan_live.py).
+    With neither bleak nor bluetoothctl the standby names both."""
     import importlib.util
+    import shutil
     from palisade_qt.recon import BleScanWorker
-    monkeypatch.setattr(importlib.util, "find_spec", lambda n, *a: object())
-    assert BleScanWorker._no_feed_text().startswith("BLE NOT IMPLEMENTED")
     monkeypatch.setattr(importlib.util, "find_spec", lambda n, *a: None)
-    assert "not installed" in BleScanWorker._no_feed_text()
+    monkeypatch.setattr(shutil, "which", lambda n, *a, **k: None)
+    assert BleScanWorker.backend_available() is None
+    assert "bleak" in BleScanWorker._no_feed_text() and "bluetoothctl" in BleScanWorker._no_feed_text()
 
 
 def test_e4_can_and_sensors_present_say_not_implemented(monkeypatch):
@@ -632,8 +635,9 @@ def test_l5_remote_mode_serves_real_adsb_contacts_when_live():
     feed = types.SimpleNamespace(
         snapshot=lambda: ([{"hex": "a1b2c3", "flight": "UAL1 ", "lat": 1.0, "lon": 2.0},
                            {"hex": "nopos"}], {}, "live", None), data_t=time.time())
-    app = headless.make_app(headless.adsb_providers(feed))
+    app = headless.make_app(headless.adsb_providers(feed), token="t" * 24)   # C1 (CL8)
     c = app.test_client()
+    c.environ_base["HTTP_AUTHORIZATION"] = "Bearer " + "t" * 24
     assert c.get("/api/contacts").get_json()["contacts"] == [
         {"id": "a1b2c3", "label": "UAL1", "type": "aircraft", "lat": 1.0, "lon": 2.0,
          "alt": None}]
@@ -791,7 +795,7 @@ def test_n29_alerts_and_predictions_are_not_a_running_feed():
 def test_n30_wifi_worker_is_paused_before_it_starts(monkeypatch):
     from palisade_qt import recon
     calls = []
-    monkeypatch.setattr(recon, "_run_scan", lambda argv, timeout=12: calls.append(1) or ("", None))
+    monkeypatch.setattr(recon, "_run_scan", lambda argv, timeout=12, **k: calls.append(1) or ("", None))
     for _ in range(10):
         p = recon.ReconApp(demo=False)
         p._subtab = "BLE"
