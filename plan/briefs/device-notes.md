@@ -29,7 +29,7 @@ misalign; CL8 device-check test failure.
 - **[bug]** Confirmed Remote-ID BLE failure text: "Remote-ID BLE scan failed: passive scanning on Linux requires BlueZ >…" (cut off). This is bleak's version/experimental check. Debian 13's BlueZ is new enough, so likely `bluetoothd` lacks `--experimental`. See the earlier BLE entry. Also the error sets MODE to the red ▲ LIVE fault state. (2026-11-16 22:22)
 
 - **[idea]** Track symbology (owner, 22:31): aircraft and other contacts should look like a modern C2 / common-operating-picture display (he cited Anduril's Lattice as the reference look), not dots. Concretely: heading-rotated type icons (aircraft, vessel, drone, balloon, APRS station), a velocity leader line, a short history trail, a compact data block (callsign · alt · speed), and affiliation/threat colouring. Consider MIL-STD-2525/APP-6-style frames. Our own design, no copied branding or assets. Applies to ATLAS and OPS. (2026-11-16 22:31)
-  - Add-on (22:32): contact **type must be separated by colour**: fixed-wing planes, helicopters, drones, military, each a distinct colour (and shape, for colour-blind/sunlight legibility), with a legend. Type comes from ADS-B emitter category (A1–A7 fixed-wing, A7 rotorcraft, B6 UAV) and the existing military flag; Remote-ID = drone.
+  - Add-on (22:32): contact **type must be separated by colour**: fixed-wing planes, helicopters, drones, military, each a distinct colour (and shape, for colour-blind/sunlight legibility), with a legend. Type comes from ADS-B emitter category (A1–A6 fixed-wing, A7 rotorcraft, B6 UAV) and the existing military flag; Remote-ID = drone.
 
 ## PRISM
 
