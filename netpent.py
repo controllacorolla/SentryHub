@@ -49,11 +49,19 @@ _ACTIONS = {"discover": _ping_sweep_argv, "portscan": _port_scan_argv,
 _PORTS_RE = __import__("re").compile(r"^[0-9]{1,5}(-[0-9]{1,5})?(,[0-9]{1,5}(-[0-9]{1,5})?)*$")
 
 
-def prepare(action, target, evidence_chain=None, ports="1-1024"):
+def _is_root():
+    return hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+def prepare(action, target, evidence_chain=None, ports="1-1024", syn=None):
     """Gate + build a network scan. Every action is active (touches the target), so all require an
     open engagement with `target` inside the typed IP scope (address / network / range; a hostname
     is resolved and every address must be in scope). Returns (ok, reason, ticket) — the ticket is
-    single-use and runs only through executor.run()/start()."""
+    single-use and runs only through executor.run()/start().
+
+    RX: `syn=None` picks the port-scan type that can actually run: a SYN scan (-sS) needs raw
+    sockets (root), so an unprivileged operator gets a connect scan (-sT) instead of an nmap that
+    quits with "requires root privileges". The scope check is the same either way."""
     if action not in _ACTIONS:
         return False, "unknown action %r" % (action,), None
     if not _PORTS_RE.match(str(ports)):
@@ -68,8 +76,12 @@ def prepare(action, target, evidence_chain=None, ports="1-1024"):
     except ValueError as e:
         return False, "refused: %s" % e, None
     addrs = pinned or [t]
-    argv = _ACTIONS[action](addrs[0], ports) if action in ("portscan", "services") \
-        else _ACTIONS[action](addrs[0])
+    if action == "portscan":
+        argv = _port_scan_argv(addrs[0], ports, syn=_is_root() if syn is None else bool(syn))
+    elif action == "services":
+        argv = _service_enum_argv(addrs[0], ports)
+    else:
+        argv = _ACTIONS[action](addrs[0])
     argv = argv[:-1] + addrs                        # every builder ends with its target
     label = "net:" + action + ((":" + t) if pinned else "")
     return engagement.issue("net:" + action, addrs[0], argv=argv, kind="ip",
