@@ -107,3 +107,6 @@ services DONE · exit 0, chain `authorize → issue → spawn → exit` for each
 | X4 | Low | nmap exits 0 when it scanned nothing (`No targets were specified`) → pane said DONE | State `NOTHING SCANNED · exit 0` | `test_rx_fix2_nmap_that_scanned_nothing_is_not_done` |
 | — | note | main's new `netpent.catalog_prepare` (#28 toolkit) still passes non-literal targets verbatim (the H1 pattern) | Not wired to any UI → no execution path; follow-up for whoever wires the catalog | — |
 | — | note | RX's installer loop dropped: main's toolkit list already installs arp-scan/tcpdump/nbtscan/netdiscover | — | built installer `bash -n` OK |
+
+RX-fix2 full suite at e3d9545 (+ NOTHING SCANNED test): `2 failed, 1829 passed, 7 skipped, 7 errors
+in 919.70s` — test_audit_tiles, test_hwlab doctor, 7 test_shell errors (no tkinter): all baseline.
