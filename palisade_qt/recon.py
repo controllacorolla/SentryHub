@@ -835,6 +835,13 @@ class ReconApp(PalisadeApp):
         if mon and not self.wifi_iface.text().strip():
             self.wifi_iface.setText(mon)
 
+    def _net_extra(self, action):
+        """RX-fix2: every scan writes its results (nmap -oN) under the suite data dir, so they
+        survive the pane; the directory is created only once the gate passed (prepare_run)."""
+        import suite
+        return {"out": os.path.join(suite.DATA, "captures", "nmap-%s-%s.txt" % (
+            action, time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())))}, None
+
     def _wifi_pick(self, row):
         """A survey row fills the target BSSID and channel (the operator still presses the
         action; the engine still checks the BSSID against the engagement scope)."""
@@ -897,7 +904,8 @@ class ReconApp(PalisadeApp):
         self.net_run = RunPane("NETPENT", self._tok)
         self.net_gated = GatedTool("NETPENT", "target", netpent.prepare,
                                    ["discover", "portscan", "services"], self, self._tok,
-                                   "target IP / host / CIDR", runner=self.net_run)
+                                   "target IP / host / CIDR", runner=self.net_run,
+                                   extra=self._net_extra)
         self.pass_gated = GatedTool("PASSAUDIT", "target", passaudit.prepare,
                                     ["convert", "hashcat", "aircrack"], self, self._tok,
                                     "capture / hash target")

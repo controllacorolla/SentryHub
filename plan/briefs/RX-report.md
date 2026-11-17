@@ -93,3 +93,17 @@ RX-fix full suite at 2ffb2da: `3 failed, 1520 passed, 7 skipped, 7 errors in 674
 test_audit_tiles, test_hwlab doctor, 7 test_shell errors (baseline), and
 test_cl1_screen::test_up_down_drive_the_list_and_the_detail_follows (order-dependent; passes in
 its own file; RA-RX also saw it and attributed it to PROWL, untouched by RX).
+
+## RX-fix2 (planner backcheck before Dalton's device test; after merging main @ c911825)
+
+Real nmap 7.94 run here through the real RECON path (real executor spawner): discover / portscan /
+services DONE · exit 0, chain `authorize → issue → spawn → exit` for each. The backcheck found:
+
+| ID | Sev | Gap | Fix | Test |
+|---|---|---|---|---|
+| X1 | Med | Scan results lived only in the pane (lost on close; nothing in the evidence) | `netpent.prepare(out=)` adds `-oN <DATA>/captures/nmap-<action>-<UTC>.txt` (path in the chained argv); pane ends with `[results saved: …]` or `[results file NOT written: …]`; out path starting with `-` refused | `test_rx_fix2_scan_results_are_saved_…`, `…_wrote_no_results_says_so`, `…_out_path_cannot_be_an_option` |
+| X2 | Med | RA-RXb N1: IPv6 without `-6` scanned nothing, said DONE | `-6` when every address is IPv6; a target mixing families refused, naming the addresses | `test_rx_fix2_ipv6_targets_get_dash_6`, `…_ipv4_targets_never_get_dash_6`, `…_dual_stack_name_is_refused_…` |
+| X3 | Low | Single-word names (`router`, `localhost`) refused with a false "not a hostname" | Honest refusal: not looked up (search-domain dependent), use the IP or a full name | `test_rx_fix2_a_single_word_name_gets_an_honest_refusal` |
+| X4 | Low | nmap exits 0 when it scanned nothing (`No targets were specified`) → pane said DONE | State `NOTHING SCANNED · exit 0` | `test_rx_fix2_nmap_that_scanned_nothing_is_not_done` |
+| — | note | main's new `netpent.catalog_prepare` (#28 toolkit) still passes non-literal targets verbatim (the H1 pattern) | Not wired to any UI → no execution path; follow-up for whoever wires the catalog | — |
+| — | note | RX's installer loop dropped: main's toolkit list already installs arp-scan/tcpdump/nbtscan/netdiscover | — | built installer `bash -n` OK |

@@ -38,6 +38,7 @@ class RunPane(QtWidgets.QFrame):
         self.setProperty("class", "card")
         self._tok = tok
         self._handle = None
+        self.saved = None
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(12, 10, 12, 10)
         lay.setSpacing(6)
@@ -140,9 +141,19 @@ class RunPane(QtWidgets.QFrame):
         code = h.exit_code
         if h.stopped:
             self._set_state("STOPPED (%s) · exit %s" % (h.stopped, code), "muted")
+        elif code == 0 and any("No targets were specified" in ln for ln in h.lines[-50:]):
+            # nmap exits 0 when it scanned nothing (no route, unresolvable target): never "DONE"
+            self._set_state("NOTHING SCANNED · exit 0", "alert")
         elif code == 0:
             self._set_state("DONE · exit 0", "muted")
         else:
             self._set_state("FAILED · exit %s" % code, "alert")
         self._append("[exit %s%s]" % (code, (" — stopped: %s" % h.stopped) if h.stopped else ""))
+        argv = list(getattr(h, "argv", ()) or ())
+        if "-oN" in argv[:-1]:                # RX-fix2: where the results were kept, honestly
+            import os
+            path = argv[argv.index("-oN") + 1]
+            self.saved = path if os.path.isfile(path) else None
+            self._append("[results saved: %s]" % path if self.saved else
+                         "[results file NOT written: %s]" % path)
         self.finished.emit(h)

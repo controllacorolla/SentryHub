@@ -431,7 +431,7 @@ def _targets(argv):
         if skip:
             skip = False
             continue
-        if tok in ("-p", "-oG"):
+        if tok in ("-p", "-oG", "-oN"):
             skip = True
             continue
         if tok.startswith("-"):
@@ -535,5 +535,113 @@ def test_rx_l2_the_monitor_note_follows_the_adapter(monkeypatch):
         p._switch("BLE")
         p._switch("WIFI")
         assert p.wifi_hw.text() == "monitor-mode interface: wlan1"
+    finally:
+        _close(p)
+
+
+# ============================================================ RX-fix2 (planner backcheck before the device test)
+
+class ArgvSpawns(Spawns):
+    """Like Spawns, but the child gets the real argv, so it can act like nmap -oN."""
+
+    def __call__(self, argv, **kw):
+        self.calls.append(list(argv))
+        p = subprocess.Popen([sys.executable, "-u", "-c", self.code] + list(argv),
+                             start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        self.procs.append(p)
+        return p
+
+
+_FAKE_NMAP = ("import sys\na = sys.argv[1:]\nprint('Nmap scan report for 10.0.0.5')\n"
+              "if '-oN' in a:\n    open(a[a.index('-oN') + 1], 'w').write('# Nmap done\\n')\n")
+
+
+def test_rx_fix2_scan_results_are_saved_as_evidence_and_the_path_is_in_the_chain(monkeypatch):
+    import suite
+    sp = ArgvSpawns(_FAKE_NMAP)
+    info = _start(["10.0.0.0/24"])
+    p = _recon(monkeypatch, sp)
+    try:
+        p.net_gated.target.setText("10.0.0.5")
+        _press(p.net_gated, "portscan")
+        argv = sp.calls[0]
+        path = argv[argv.index("-oN") + 1]
+        assert path.startswith(os.path.join(suite.DATA, "captures") + os.sep) and path.endswith(".txt")
+        assert argv[-1] == "10.0.0.5"
+        assert _wait(lambda: "[results saved" in p.net_run.out.toPlainText())
+        assert p.net_run.saved == path and open(path).read() == "# Nmap done\n"
+        spawn = [r for r in _recs(info["path"]) if r["event"] == "spawn"][0]
+        assert path in spawn["argv"], "the evidence file is named in the chain"
+    finally:
+        _close(p)
+
+
+def test_rx_fix2_a_scan_that_wrote_no_results_says_so(monkeypatch):
+    sp = Spawns("print('nmap died')")
+    _start(["10.0.0.0/24"])
+    p = _recon(monkeypatch, sp)
+    try:
+        p.net_gated.target.setText("10.0.0.5")
+        _press(p.net_gated, "discover")
+        assert _wait(lambda: "[results file NOT written" in p.net_run.out.toPlainText())
+        assert p.net_run.saved is None
+    finally:
+        _close(p)
+
+
+def test_rx_fix2_out_path_cannot_be_an_option():
+    import netpent
+    _start(["10.0.0.0/24"])
+    for bad in ("-oX", "--script=x", ""):
+        ok, _w, t = netpent.prepare("discover", "10.0.0.5", out=bad)
+        assert not ok and t is None, bad
+
+
+def test_rx_fix2_ipv6_targets_get_dash_6():
+    import netpent
+    _start(["fd00::/64"])
+    ok, why, t = netpent.prepare("portscan", "fd00::5")
+    assert ok, why
+    assert "-6" in t.argv and t.argv[-1] == "fd00::5"
+    ok, _w, t = netpent.prepare("discover", "fd00::/120")
+    assert ok and "-6" in t.argv
+
+
+def test_rx_fix2_ipv4_targets_never_get_dash_6():
+    import netpent
+    _start(["10.0.0.0/24"])
+    ok, _w, t = netpent.prepare("services", "10.0.0.5")
+    assert ok and "-6" not in t.argv
+
+
+def test_rx_fix2_a_dual_stack_name_is_refused_with_both_addresses(monkeypatch):
+    import netpent
+    _start(["10.0.0.0/24", "fd00::/64"])
+    monkeypatch.setattr(E, "_resolve", lambda h: ["10.0.0.9", "fd00::9"])
+    ok, why, t = netpent.prepare("portscan", "nas.lan")
+    assert not ok and t is None
+    assert "mixes IPv4 and IPv6" in why and "10.0.0.9" in why and "fd00::9" in why
+
+
+def test_rx_fix2_a_single_word_name_gets_an_honest_refusal():
+    import netpent
+    _start(["10.0.0.0/24"])
+    for name in ("router", "host:nas", "localhost"):
+        ok, why, t = netpent.prepare("portscan", name)
+        assert not ok and t is None
+        assert "single-word name" in why and "use its IP address" in why, why
+
+
+def test_rx_fix2_nmap_that_scanned_nothing_is_not_done(monkeypatch):
+    sp = Spawns("print('setup_target: failed to determine route to ::1'); "
+                "print('WARNING: No targets were specified, so 0 hosts scanned.')")
+    _start(["10.0.0.0/24"])
+    p = _recon(monkeypatch, sp)
+    try:
+        p.net_gated.target.setText("10.0.0.5")
+        _press(p.net_gated, "discover")
+        assert _wait(lambda: not p.net_run.state.text().startswith("RUNNING"))
+        assert p.net_run.state.text() == "NOTHING SCANNED · exit 0"
     finally:
         _close(p)
