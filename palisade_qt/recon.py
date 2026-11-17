@@ -847,7 +847,7 @@ class ReconApp(PalisadeApp):
         self.wifi_hw.setProperty("class", "note")
         self.wifi_hw.setWordWrap(True)
         right.addWidget(self.wifi_hw)
-        right.addWidget(self.wifi_run, 2)
+        right.addWidget(self.wifi_run, 1)
         right.addWidget(self.wifi_deauth_run, 1)
         split.addLayout(right, 2)
         pl.addLayout(split, 1)
