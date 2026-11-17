@@ -17,6 +17,8 @@ misalign; CL8 device-check test failure.
 - **[bug]** Can't pan or zoom the map. `kit/mappanel.py` sets `setMouseEnabled(False, False)` and ATLAS fixes `span_nm=80`, so there's no drag, no wheel/pinch and no zoom keys. Wanted: touch/mouse pan + zoom, plus keys (e.g. +/− like PRISM) and a re-centre-on-HOME control. Tile fetching must follow the view. (2026-11-16 22:17)
 - **[bug]** The basemap shows the wrong place: Dalton set his HOME coords and the map shows "somewhere in a desert". Unconfirmed cause; candidates: (a) longitude entered without the minus sign (Denver area is about 39.7, -104.9; +104.9 lands in China/Mongolia desert); input validation accepts it silently; (b) `tiles.py` `canvas[::-1]` vertical flip, the same suspicion as the upside-down SAT placeholder text; (c) tile x/y vs. nm-extent mapping. Waiting on the exact coords he typed. (2026-11-16 22:17)
 
+- **[idea]** Location should be automatic. Today HOME comes only from SYSTEM › SETTINGS; `eventbus.py:37` says GPS isn't wired yet (planned CL6, v0.2). Owner wants it automatic: GPS (gpsd) when there's a fix, with the typed HOME as fallback. Possibly a coarse network/Wi-Fi fix when NET is on, labelled as approximate. Owner signal to consider pulling GPS→HOME into v0.1. (2026-11-16 22:18)
+
 ## PRISM
 
 ## PROWL
