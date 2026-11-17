@@ -551,3 +551,17 @@ def test_scan3_doctor_names_the_experimental_flag(tmp_path):
                   "pgrep": (0, "612 /usr/libexec/bluetooth/bluetoothd --experimental")}),
         which=which, find=lambda m: True, sysfs=str(sysfs))
     assert ok is True and fix == ""
+
+
+# ============================================================ SCAN-4 installer ships the scan tools
+
+def test_scan4_installer_installs_the_scan_tools():
+    """PRISM sweeps need rtl_power and PROWL needs rtl_fm (both from Debian's rtl-sdr package);
+    the installer only checked for them at the end. bluez + bleak back RECON BLE."""
+    src = open(os.path.join(SUITE_DIR, "install_head.sh")).read()
+    lists = [ln for ln in src.splitlines() if ln.startswith("for pkg in ") and "bluez" in ln]
+    assert len(lists) == 2
+    for ln in lists:
+        pkgs = ln.split(" in ", 1)[1].split(";")[0].split()
+        assert {"rtl-sdr", "bluez", "iw"} <= set(pkgs)
+    assert "$PIP bleak" in src

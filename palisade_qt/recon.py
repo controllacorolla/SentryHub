@@ -44,11 +44,10 @@ SUBTABS = ("WIFI", "BLE", "NET", "RF")
 # SCAN-1/2: what each scan path really does (honest labels; nmcli and BlueZ discovery probe)
 WIFI_MODE = {
     "iw": "WIFISURVEY · passive (iw, beacons only) · no deauth/inject",
-    "nmcli": "WIFISURVEY · ACTIVE scan via NetworkManager (probe requests; passive iw needs "
-             "CAP_NET_ADMIN) · no deauth/inject",
+    "nmcli": "WIFISURVEY · ACTIVE scan (NetworkManager probes) · no deauth/inject",
     "demo": "WIFISURVEY · demo · no deauth/inject",
 }
-BLE_MODE = "BLESCAN · active discovery (scan requests) · listen only, no connect/pair"
+BLE_MODE = "BLESCAN · active discovery · listen only, no connect/pair"
 
 
 from .kit.seams import offscreen as _offscreen  # noqa: E402  (C5: one copy)
