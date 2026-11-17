@@ -927,10 +927,36 @@ def test_l3_offline_sitrep_and_tiles_never_call_urlopen(net, monkeypatch, tmp_pa
         raise OSError("no local feed")
     monkeypatch.setattr(urllib.request, "urlopen", fake)
     monkeypatch.setattr(sitrep.core, "AIRPORTS", {k: {"name": k} for k in ("KAPA", "KDEN")})
+    # Pin the ADS-B feed to the loopback HTTP source. The defaults try /run/readsb first, and on a
+    # uConsole with readsb running that file feed answers, so urllib is never reached and the
+    # loopback assertion had nothing to check (device check 2026-11-17: calls == []).
+    monkeypatch.setattr(sitrep.core, "load_settings",
+                        lambda: {"adsb_sources": [str(tmp_path / "no-feed"), "http://127.0.0.1:8080/data"]})
     assert net.mode() == "OFFLINE"
     d = sitrep.gather()
     assert d["metar"] is None and sitrep._tfr(["CO"]) is None
     assert calls and all(u.startswith("http://127.0.0.1") for u in calls), calls   # loopback only
+
+
+def test_l3_offline_with_a_local_readsb_file_feed_reaches_no_url(net, monkeypatch, tmp_path):
+    """The device case: readsb writes aircraft.json locally, so OFFLINE sitrep makes no URL call at
+    all (metar/TFR refused before urllib) and still reads the aircraft."""
+    import json
+    import urllib.request
+    import sitrep
+    calls = []
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda req, *a, **k: calls.append(getattr(req, "full_url", req)))
+    monkeypatch.setattr(sitrep.core, "AIRPORTS", {k: {"name": k} for k in ("KAPA", "KDEN")})
+    feed = tmp_path / "readsb"
+    feed.mkdir()
+    (feed / "aircraft.json").write_text(json.dumps({"aircraft": [{"hex": "abc123", "seen": 1}]}))
+    monkeypatch.setattr(sitrep.core, "load_settings",
+                        lambda: {"adsb_sources": [str(feed), "http://127.0.0.1:8080/data"]})
+    assert net.mode() == "OFFLINE"
+    d = sitrep.gather()
+    assert d["metar"] is None and sitrep._tfr(["CO"]) is None
+    assert calls == []
 
 
 # ================================================================== CL8-fix (RA-CL8 findings)
