@@ -74,3 +74,6 @@ Implementation, tests, report: Opus (this thread). Cold audit: Opus subagent (RA
 | N9 | Low | doctor Wi-Fi ignores the doctor's own euid (the app runs as the desktop user): passive only when iw has cap_net_admin. | `test_scan1_doctor_wifi_paths` |
 | N10 | Low | Allowlist + BLE label + doctor wording: "active discovery (scan requests), no connect/pair" (no "listen only"/"passive"). The status chip is kept per sub-tab (AP count on WIFI, BLE count on BLE, none on NET/RF). | `test_ra_n10_chip_belongs_to_the_tab_on_screen_and_labels_are_honest` |
 | N11 | Low | Renders force-added (`*.png` is gitignored). | — |
+
+Full suite at 3f1f3f7: `2 failed, 1691 passed, 6 skipped, 7 errors` — baselines only (`test_audit_tiles`, `test_hwlab`, 7 `test_shell` without tkinter).
+RA-SCANb: **MERGE** (47fa6ff). Follow-ups (not blockers): B1 Med ATLAS Remote-ID note chip never clears after DRONES off; N4 rid_note render untested; N5 empty NM list (radio off) shows "no access points heard" without a reason; N8 doctor all-clear with bleak but no bluetoothd; B2 bleak stop hang close takes ~3 s; B3 cancelled bleak start skips stop; B4 duplicate BSSID counted twice; B5 no "scanning…" state during the first scan; B6 ATLAS Remote-ID start unbounded (pre-existing); B7 doctor wording.
