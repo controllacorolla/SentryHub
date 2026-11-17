@@ -1,10 +1,11 @@
-"""Map panel — PyQtGraph scatter with range rings and optional tile backgrounds.
+"""Map panel — PyQtGraph scatter with range rings over a satellite basemap.
 
-Map styles are DARK (CartoDB dark_nolabels) or SAT (Esri World Imagery) only — owner rule
-(2026-11-15): "all maps need to be satellite or dark", in every theme including light and sun.
-The plain black "scope" background is only the offline fallback until tiles arrive. Tiles are fetched in a background thread and
-cached locally under ~/.cache/palisade/tiles/.
+Map styles are DARK SAT (default) or LIGHT SAT only (owner, 2026-11-17): one satellite fetch,
+tinted. The imagery is resampled into the contacts' own frame (eventbus.to_xy), follows the view
+(pan / zoom), and slides with small HOME moves (GPS follow). Tiles are fetched in a background
+thread and cached under ~/.cache/palisade/tiles/.
 """
+import math
 import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtWidgets, QtCore, QtGui
@@ -94,18 +95,42 @@ class BaseMap(QtCore.QObject):
         else:
             self.refresh()
 
+    SHIFT_MAX_NM = 5.0      # a HOME move this small slides the image; further, it is rebuilt
+
     def set_home(self, lat, lon):
         if lat is None or lon is None:
             return
-        if not self.can_fetch or (self.tiles.home_lat, self.tiles.home_lon) != (lat, lon):
-            self.can_fetch = True
-            self.tiles.home_lat, self.tiles.home_lon = lat, lon
-            self._raw = None
-            self.img.clear()
-            self.refresh()
+        if self.can_fetch and (self.tiles.home_lat, self.tiles.home_lon) == (lat, lon):
+            return
+        self.can_fetch = True
+        self.tiles.home_lat, self.tiles.home_lon = lat, lon
+        built = getattr(self, "_built", None)
+        if self._raw is not None and built is not None:
+            # RA-UIPc M4: HOME follows GPS in small steps. Slide the imagery already built (its
+            # rect is relative to the HOME it was built for) instead of blanking it, and re-fetch
+            # only when it no longer covers the view or HOME has moved SHIFT_MAX_NM from it.
+            from .. import eventbus
+            dx, dy = eventbus.to_xy(built[0], built[1], home=(lat, lon))
+            if math.hypot(dx, dy) < self.SHIFT_MAX_NM:
+                r0 = self._rect0
+                self._raw = (self._raw[0], r0.translated(dx, dy))
+                self._show()
+                if not self._covers(self._raw[1]):
+                    self.refresh()
+                return
+        self._raw = None
+        self.img.clear()
+        self.refresh()
+
+    def _covers(self, rect):
+        x0, x1, y0, y1, _w = self.view()
+        return (rect.x() <= x0 and rect.x() + rect.width() >= x1 and
+                rect.y() <= y0 and rect.y() + rect.height() >= y1)
 
     def _on_tiles(self, arr, x0, y0, x1, y1):
-        self._raw = (arr, QtCore.QRectF(x0, y0, x1 - x0, y1 - y0))
+        self._rect0 = QtCore.QRectF(x0, y0, x1 - x0, y1 - y0)
+        self._built = (self.tiles.home_lat, self.tiles.home_lon)
+        self._raw = (arr, QtCore.QRectF(self._rect0))
         self._show()
 
     def _show(self):

@@ -791,6 +791,7 @@ KEYMAP = [
     ("A", "alerts drawer"),
     ("M", "mute"),
     ("F", "full map: hide / show the side panels (OPS, ATLAS)"),
+    ("V", "ATLAS: next view (ALL · AIR · SEA · APRS · DRONES · DF · SONDE)"),
     ("?", "this key map"),
     ("Shift+Esc  (or F12)", "PANIC — disarm TX, end the engagement, kill child processes"),
     ("Tab", "move focus between controls"),

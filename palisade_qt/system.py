@@ -190,9 +190,12 @@ class MoreApp(PalisadeApp):
         fl.setContentsMargins(14, 12, 14, 12)
         self.set_operator = QtWidgets.QLineEdit()
         self.set_home = QtWidgets.QLineEdit()
-        h = eventbus.home()
-        if h and eventbus.HOME_SOURCE != "demo":
+        # the field is the TYPED HOME (the fallback), never the GPS position: SAVE would otherwise
+        # pin a GPS fix the operator has since left as "typed", and persist it (RA-UIPc H1)
+        h = self._typed_home()
+        if h:
             self.set_home.setText("%.4f, %.4f" % h)
+        self._typed_at_build = h
         self.set_home.setPlaceholderText("HOME NOT SET — enter lat, lon (e.g. 47.6, -122.3)")
         self.set_theme = QtWidgets.QComboBox()
         self.set_theme.addItems(["dark", "light", "sun"])
@@ -301,6 +304,26 @@ class MoreApp(PalisadeApp):
         self.set_msg.setText("HOME filled from GPS (%dD fix) — press SAVE SETTINGS to use it"
                              % (fix.get("mode") if fix.get("mode") in (2, 3) else 2))
 
+    @staticmethod
+    def _saved_settings():
+        """Seam: the palisade_ui settings dict (tests replace it)."""
+        import suite
+        s, _p = suite.settings("palisade_ui", {})
+        return s
+
+    def _typed_home(self):
+        """The operator's typed HOME: the saved one, else a HOME set from SETTINGS this session.
+        Never a GPS or demo HOME."""
+        try:
+            v = self._saved_settings().get("home")
+            if v is not None:
+                lat, lon = float(v[0]), float(v[1])
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    return (lat, lon)
+        except Exception:
+            pass
+        return eventbus.home() if eventbus.HOME_SOURCE == "settings" else None
+
     def _gps_follower(self):
         w = self.window()
         return getattr(w, "gpshome", None)
@@ -407,7 +430,14 @@ class MoreApp(PalisadeApp):
             self.set_msg.setText(why)
             return
         live = []
-        if home is not None:
+        follow = self.set_follow.isChecked()
+        g = self._gps_follower()
+        following = follow and g is not None and eventbus.HOME_SOURCE == "gps"
+        typed_before = self._typed_home()
+        # RA-UIPc H1: the typed HOME goes live only when it is what HOME should be now. While HOME
+        # follows a GPS fix, an unchanged typed HOME is only the fallback: SAVE keeps it on disk and
+        # does not drag HOME back to it.
+        if home is not None and (not following or home != typed_before):
             eventbus.set_home(home, "settings")
             live.append("HOME")
         try:
@@ -419,17 +449,30 @@ class MoreApp(PalisadeApp):
         # engagement gate reads operator.json, never palisade_ui.json); HOME/theme/retention to
         # the UI store.
         op_ok, op_kind = self._write_operator(self.set_operator.text())
-        follow = self.set_follow.isChecked()
-        g = self._gps_follower()
+        parts_note = None
         if g is not None and g.enabled != follow:
             g.set_enabled(follow)
-        if follow and home is not None:
+            if not follow and eventbus.HOME_SOURCE == "gps":
+                # follow turned off (RA-UIPc L2): HOME goes back to the typed one; with none typed it
+                # stays on the last GPS fix and says so (never saved, never called "typed")
+                if home is not None:
+                    eventbus.set_home(home, "settings")
+                    live.append("HOME (typed)")
+                else:
+                    parts_note = "HOME stays at the last GPS fix until you type one (not saved)"
+        if g is not None and not follow:
+            if eventbus.HOME_SOURCE == "gps":
+                g._set_status("GPS follow off — HOME is the last GPS fix until you type one",
+                              "warn")
+            else:
+                g._set_status("HOME: typed (GPS follow off)" if eventbus.home_set()
+                              else "GPS follow off — HOME NOT SET", "neutral")
+        if follow and home is not None and parts_note is None:
             parts_note = "HOME follows GPS: a confirmed fix replaces the typed HOME"
-        else:
-            parts_note = None
         persisted = self._write_settings({
             "home_follows_gps": follow,
-            "home": list(home) if home else (list(eventbus.home()) if eventbus.HOME_SOURCE == "settings" else None),
+            # only ever the TYPED HOME (the field), never a GPS position (RA-UIPc H1)
+            "home": list(home) if home else (list(typed_before) if typed_before else None),
             "theme": self.set_theme.currentText(),
             "retention": self.set_retention.value()})
         theme_changed = self.set_theme.currentText() != self.mode

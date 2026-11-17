@@ -599,6 +599,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
             return True
         if low == "f":                           # full map: hide / show the side panels
             return bool(page is not None and page.handle_key("f"))
+        if low == "v":                           # ATLAS: cycle the views (RA-UIPc M2)
+            return bool(page is not None and page.handle_key("v"))
         return False
 
     # ------------------------------------------------------------------ geometry + lifecycle

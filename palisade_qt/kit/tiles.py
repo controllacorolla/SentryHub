@@ -238,8 +238,11 @@ class TileLayer(QtCore.QObject):
 
     def _work(self, style):
         try:
+            home = (self.home_lat, self.home_lon)
             arr, x0, y0, x1, y1 = self._build(style)
-            if arr is not None:
+            # built for a HOME that has since moved (GPS follow): its nm rect is relative to the
+            # old HOME, so drop it; the move queued a re-fetch (RA-UIP L3 / RA-UIPc M4)
+            if arr is not None and (self.home_lat, self.home_lon) == home:
                 self.ready.emit(arr, x0, y0, x1, y1)
         except Exception:
             pass

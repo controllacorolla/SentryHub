@@ -56,9 +56,12 @@ def usable(fix):
         return None
     if abs(lat) < 0.01 and abs(lon) < 0.01:          # "null island": a receiver with no real fix
         return None
-    for k in ("epx", "epy"):
+    for k in ("epx", "epy"):           # reported -> must be a finite number under MAX_ERR_M
         e = fix.get(k)
-        if isinstance(e, (int, float)) and not isinstance(e, bool) and e > MAX_ERR_M:
+        if e is None:
+            continue
+        if not isinstance(e, (int, float)) or isinstance(e, bool) or not math.isfinite(e) \
+                or e > MAX_ERR_M:
             return None
     return float(lat), float(lon)
 

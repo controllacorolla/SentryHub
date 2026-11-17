@@ -1154,7 +1154,7 @@ def test_u12_follow_off_never_touches_home_and_the_choice_is_saved():
         more.set_follow.setChecked(False)
         more._save_settings()
         assert saved.get("home_follows_gps") is False and g.enabled is False
-        assert "manual" in more.gps_status.text().lower()
+        assert "follow off" in more.gps_status.text().lower()
     finally:
         _close(hub)
 
@@ -1366,3 +1366,139 @@ def test_u12_small_gps_moves_do_not_repredict_satellite_passes():
         assert len(calls) == 3
     finally:
         eventbus.set_home(None)
+
+
+# ================================================================ RA-UIPc fixes
+def test_uipc_h1_save_never_pins_a_gps_position_as_the_typed_home(monkeypatch):
+    """RA-UIPc H1: the SETTINGS field was filled from the CURRENT HOME (a GPS fix); SAVE then set it
+    live as 'typed' and persisted it, pinning HOME where the operator had been."""
+    from palisade_qt import eventbus, system
+    store = {"home": [39.70, -104.90]}
+    monkeypatch.setattr(system.MoreApp, "_saved_settings", staticmethod(lambda: store))
+    eventbus.set_home((40.01, -105.27), "gps")                   # following GPS (Boulder)
+    hub = _big_hub()
+    try:
+        hub.start_gps_home(reader=lambda: None, enabled=True)
+        more = _settings(hub)
+        assert more.set_home.text() == "39.7000, -104.9000", "the field is the TYPED home"
+        saved = {}
+        more._write_settings = lambda d: (saved.update(d), True)[1]
+        eventbus.set_home((40.20, -105.10), "gps")               # drove on
+        more._save_settings()                                    # e.g. a theme change
+        assert eventbus.HOME_SOURCE == "gps" and eventbus.home() == (40.20, -105.10)
+        assert saved["home"] == [39.70, -104.90], "only the typed HOME is ever persisted"
+        more.set_follow.setChecked(False)                        # follow off -> typed HOME
+        more._save_settings()
+        assert eventbus.HOME_SOURCE == "settings" and eventbus.home() == (39.70, -104.90)
+        assert "typed" in more.gps_status.text()
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_uipc_h1_follow_off_with_nothing_typed_keeps_the_fix_and_says_so(monkeypatch):
+    from palisade_qt import eventbus, system
+    monkeypatch.setattr(system.MoreApp, "_saved_settings", staticmethod(lambda: {}))
+    eventbus.set_home((40.01, -105.27), "gps")
+    hub = _big_hub()
+    try:
+        hub.start_gps_home(reader=lambda: None, enabled=True)
+        more = _settings(hub)
+        assert more.set_home.text() == ""
+        saved = {}
+        more._write_settings = lambda d: (saved.update(d), True)[1]
+        more.set_follow.setChecked(False)
+        more._save_settings()
+        assert eventbus.home() == (40.01, -105.27) and saved["home"] is None
+        assert "last GPS fix" in more.gps_status.text() and "not saved" in more.set_msg.text()
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_uipc_m2_v_key_cycles_atlas_views_through_the_hub():
+    from palisade_qt import eventbus
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        hub.activateWindow()
+        QtTest.QTest.keyClick(hub, "v")
+        _pump(50)
+        assert atlas._view == "AIR"
+        from palisade_qt import panels
+        assert any(k == "V" for k, _d in panels.KEYMAP)
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+@pytest.mark.parametrize("err", ["Operation blocked by an ongoing connection",
+                                 "scanner is not ready yet", "passive scanning failed: EIO",
+                                 "device is not powered by USB-C"])
+def test_uipc_m3_unrelated_errors_stay_faults(err):
+    from palisade_qt import atlas as A
+    assert A.RidSource.setup_problem(Exception(err)) is None
+
+
+def test_uipc_m4_a_small_home_move_slides_the_imagery_a_big_one_rebuilds():
+    import numpy as np
+    from palisade_qt import eventbus
+    from palisade_qt.kit import mappanel
+    m = mappanel.MapPanel(span_nm=20, home_lat=39.70, home_lon=-104.90)
+    m.resize(900, 640)
+    base = m._base
+    refreshes = []
+    base.refresh = lambda: refreshes.append(1)
+    arr = np.zeros((64, 64, 4), dtype=np.uint8)
+    base._on_tiles(arr, -40.0, -40.0, 40.0, 40.0)
+    base.set_home(39.705, -104.90)                            # 0.3 nm north
+    assert base._raw is not None and base.img.image is not None, "not blanked"
+    r = base._raw[1]
+    x, y = eventbus.to_xy(39.70, -104.90, home=(39.705, -104.90))
+    assert r.x() == pytest.approx(-40.0 + x) and r.y() == pytest.approx(-40.0 + y)
+    assert refreshes == [], "still covers the view: no re-fetch"
+    base.set_home(39.90, -104.90)                             # 12 nm: rebuild
+    assert base._raw is None and refreshes == [1]
+
+
+def test_uipc_m4_a_tile_build_for_a_home_that_moved_is_dropped(monkeypatch):
+    import numpy as np
+    from palisade_qt.kit import tiles
+    layer = tiles.TileLayer(home_lat=39.7, home_lon=-104.9)
+    got = []
+    layer.ready.connect(lambda *a: got.append(a))
+
+    def build(style):
+        layer.home_lat = 39.8                                 # HOME moved while building
+        return np.zeros((4, 4, 4), dtype=np.uint8), -1, -1, 1, 1
+    layer._build = build
+    layer._busy = True
+    layer._work("satellite")
+    _pump(20)
+    assert got == []
+
+
+def test_uipc_lows_gps_error_fields_drone_chip_and_nan_speed():
+    import time
+    from palisade_qt import eventbus, gpshome
+    for bad in (float("nan"), "12", True):
+        assert gpshome.usable({"mode": 3, "lat": 39.6, "lon": -104.9, "epx": bad}) is None
+    assert gpshome.usable({"mode": 3, "lat": 39.6, "lon": -104.9, "epx": 8.0}) is not None
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        atlas._layers.add("drone")
+        atlas.on_status({"rid_note": {"text": "Remote-ID: PASSIVE BLE scan", "ok": True}})
+        assert "rid" in atlas._last_status
+        atlas._toggle("drone", False)
+        assert "rid" not in atlas._last_status
+        ev = eventbus.contact("ADS-B", "N1", 39.8, -104.8, kind="aircraft", spd=float("nan"))
+        ev["ts"] = time.time()
+        atlas._on_event(ev)
+        atlas.set_view("AIR")
+        assert atlas.feed.model.rows[0]["kt"] == "—"
+    finally:
+        eventbus.set_home(None)
+        _close(hub)

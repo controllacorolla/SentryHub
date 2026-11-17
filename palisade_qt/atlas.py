@@ -262,23 +262,23 @@ class RidSource:
     # BlueZ >…" (cut off) turned the strip's MODE into a red fault. A Bluetooth stack that is not
     # set up (adapter off or blocked, bluetoothd not running, bleak missing) is a setup step for the
     # operator, said in full with the fix, not an application fault. Unknown errors stay faults.
+    # exact BlueZ / D-Bus / bleak phrases only (RA-UIPc M3: loose words like "blocked" or "not
+    # ready" turned unrelated faults into a setup warning with the wrong fix)
     SETUP_PROBLEMS = (
-        (("notready", "not ready", "not powered", "powered off"),
+        (("org.bluez.error.notready", "adapter is not powered", "adapter not powered"),
          "Remote-ID: Bluetooth adapter is off — run: bluetoothctl power on"),
-        (("rfkill", "blocked"),
+        (("org.bluez.error.rfkilled", "soft blocked", "hard blocked", "rfkill"),
          "Remote-ID: Bluetooth is blocked — run: rfkill unblock bluetooth"),
-        (("no bluetooth adapters", "adapter not found", "hci0 not found", "no adapter"),
+        (("no bluetooth adapters found", "bluetooth adapter not found"),
          "Remote-ID: no Bluetooth adapter found"),
-        (("serviceunknown", "org.bluez was not provided", "name org.bluez", "bluez not running"),
+        (("org.freedesktop.dbus.error.serviceunknown", "the name org.bluez was not provided"),
          "Remote-ID: bluetoothd is not running — run: sudo systemctl start bluetooth"),
-        (("passive scanning",),
-         "Remote-ID: BlueZ refused passive and active scans — check SYSTEM › DOCTOR"),
     )
 
     @classmethod
     def setup_problem(cls, err):
         """The operator-fixable reason a BLE scan cannot start, or None (a real fault)."""
-        s = str(err).lower().replace(" ", " ")
+        s = str(err).lower()
         for needles, msg in cls.SETUP_PROBLEMS:
             if any(n in s for n in needles):
                 return msg
@@ -1030,6 +1030,9 @@ class AtlasApp(PalisadeApp):
 
     def _toggle(self, kind, on):
         self._layers.add(kind) if on else self._layers.discard(kind)
+        if kind == "drone" and not on:           # the scan is off: so is what it said (RA-UIPc L1)
+            self._last_status.pop("rid", None)
+            self._rid_note = None
         if (kind in self.LEASE_NAME or kind == "drone") and not self.demo \
                 and self._worker is not None and hasattr(self._worker, "set_layer"):
             self._worker.set_layer(kind, on)     # SDR layers via the arbiter; DRONES = BLE scan
@@ -1076,6 +1079,11 @@ class AtlasApp(PalisadeApp):
         if active:
             self._ever_shown = True
             if not was and self._background and hasattr(self, "map"):
+                if getattr(self, "_home_pending", False):
+                    self._home_pending = False
+                    h = eventbus.home()
+                    self.map.set_home(h[0] if h else None, h[1] if h else None,
+                                      known=h is not None)
                 QtCore.QTimer.singleShot(0, self._render)   # redraw at once on show (M4)
         w = self._worker
         if self._background and w is not None and hasattr(w, "pause") and \
@@ -1122,9 +1130,10 @@ class AtlasApp(PalisadeApp):
                 text = str(note.get("text") or "")
                 tip = text + ("\n\n" + note["detail"] if note.get("detail") else "")
                 short = "REMOTE-ID: SETUP NEEDED — see the DRONES view"
-                if note.get("setup"):
+                if note.get("setup"):              # the raw error goes in too (RA-UIPc L5)
                     from . import sessionlog
-                    sessionlog.record("warn", "ATLAS", text)
+                    sessionlog.record("warn", "ATLAS", text + (" — " + note["detail"]
+                                                               if note.get("detail") else ""))
             else:
                 text = tip = str(note)
                 short = "REMOTE-ID: ACTIVE BLE SCAN — see the DRONES view"
@@ -1147,6 +1156,12 @@ class AtlasApp(PalisadeApp):
             c.update(x=x, y=y, rng=math.hypot(x, y) if known else None,
                      brg=(math.degrees(math.atan2(x, y)) % 360) if known else None)
         self._trails = {}
+        if self._background and not self._active:
+            # OPS's background feed, page not on screen: no imagery work for a map nobody sees
+            # (RA-UIPc M4); the map catches up when ATLAS is opened
+            self._home_pending = True
+            return
+        self._home_pending = False
         self.map.set_home(h[0] if h else None, h[1] if h else None, known=known)
         self._render()
 
@@ -1207,7 +1222,8 @@ class AtlasApp(PalisadeApp):
                          "alt": "%d" % c["alt"] if c["alt"] else "—",
                          "fl": "%03d" % round(c["alt"] / 100.0) if c.get("alt") else "—",
                          "kt": "%d" % round(c["spd"]) if isinstance(c.get("spd"), (int, float))
-                         and not isinstance(c.get("spd"), bool) else "—",
+                         and not isinstance(c.get("spd"), bool) and math.isfinite(c["spd"])
+                         else "—",
                          "cog": "%03d°" % round(hdg) if hdg is not None else "—",
                          "brgs": "%03d°" % round(c["brg"]) if c.get("brg") is not None else "—",
                          "_src": c, "_colors": {"rng": self._color(c["kind"], c["severity"],
@@ -1230,6 +1246,10 @@ class AtlasApp(PalisadeApp):
             if off:
                 self.feed.set_empty("offline", "%s LAYER OFF" % KIND_LABEL[kinds[0]],
                                     "switch it on above to listen for it")
+            elif kinds is not None and "aircraft" not in kinds:
+                # a non-ADS-B view: its own layer is on, it just has nothing yet (RA-UIPc L4)
+                self.feed.set_empty("watching", "no contacts", "%s layer on — listening"
+                                    % KIND_LABEL[kinds[0]])
             else:
                 self.feed.set_empty("watching" if live else "offline",
                                     "no contacts" if live else "NO LIVE LAYER", text)
