@@ -18,6 +18,7 @@ misalign; CL8 device-check test failure.
 
 ## RECON
 - **[bug]** The passive Wi-Fi scan never works on the device. `wifisurvey.scan_argv` runs `iw dev wlan0 scan passive` as the normal user. On the uConsole (user `dragon`) this fails with `command failed: Operation not permitted (-1)`, because a scan needs CAP_NET_ADMIN. The installer doesn't grant it. Fix options for the planner: (a) fall back to NetworkManager (`nmcli -t dev wifi list`, unprivileged, but triggers an active scan, so label it non-passive); (b) a scoped capability or polkit rule for the scan, which is a system change and the owner must OK it. Also check that the UI shows "WIFI SCAN FAILED — Operation not permitted" and not an empty list. (2026-11-16 22:11)
+- **[bug]** BLE scan doesn't work on the device either. The cause is different from the Wi-Fi scan: live BLE scanning was never wired. `BleScanWorker._scan_adverts()` returns None (audit E4), and the UI shows "BLE NOT IMPLEMENTED" or "BLE STANDBY — bleak is not installed". It needs a real bleak (BlueZ D-Bus, no root needed) passive scan, plus bleak in the installer if it's missing. Owner expects it for v0.1 testing. (2026-11-16 22:12)
 
 ## FORGE
 
