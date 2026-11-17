@@ -141,3 +141,18 @@ Screenshot: Dalton's upload 2026-11-17 04:47 MT.
    END kill reason says "expired"; L3 CLIENT placeholder elided. Wi-Fi active tools stay dead on
    the device (no monitor-mode radio; tools need root/caps — owner decision). Owner decision
    pending: DEAUTH conflicts with the no-deauth rule.
+
+## 2026-11-17 TOOLKIT cluster MERGED (PR #28, squash c9118255) on Dalton's "ok"
+Thread "Add the full pentest toolkit to scope". Owner standing rule: **every tool in the inventory
+is in scope; nothing leaves scope without his authorization.** Cluster = scope docs + installer +
+gate catalog ONLY (no execution wiring — that's the executor cluster/PR #27). Branch
+claude/project-thread-cp3fi6 off main. Cold audit RA-TOOLKIT MERGE (report 4e9f787; F1/F2 cosmetic
+fixed 713a8ac).
+- FEATURE_MAP.md "Tool scope" matrix (~55 tools, verified trixie arm64 sources); BACKLOG scope rule.
+- install_head.sh [1b/8] optional apt (safe_apt) + [2c/8] documented pip/go/cargo/source step; tshark omitted (debconf).
+- netpent/blepent/proxmark catalog_prepare() + extended ALLOWED_PROGRAMS; no attack flags baked in;
+  emitters (bettercap, btlejack) still txguard-gated; mfoc/mfcuk label-only. tests/test_toolkit_scope.py (88).
+- Suite: 3 failed/1783 passed — the 3 are the known baseline.
+**Owner decisions still open (flagged, not blocking):** (1) capped aireplay-ng --deauth vs CLAUDE.md
+no-deauth; (2) Responder poisoning (broadcast/un-targetable) — catalogued analyze-only, no poison builder.
+Next per device order: UI reorganisation (fix/ui-polish), RECON execution (PR #27), radio preset banks.
