@@ -1341,3 +1341,28 @@ def test_u14_a_passive_scan_is_reported_as_passive_without_a_warning():
     finally:
         eventbus.set_home(None)
         _close(hub)
+
+
+def test_u12_small_gps_moves_do_not_repredict_satellite_passes():
+    """A GPS HOME moves every MOVE_NM; skyfield pass prediction on the CM5 is not re-run for that."""
+    from palisade_qt import eventbus, overwatch
+    calls = []
+
+    class W:
+        def repredict(self):
+            calls.append(1)
+    ow = overwatch.OverwatchApp.__new__(overwatch.OverwatchApp)
+    ow._passw, ow._stopped = W(), False
+    try:
+        eventbus.set_home((39.70, -104.90), "settings")
+        ow._on_home_changed()
+        eventbus.set_home((39.71, -104.90), "gps")          # 0.6 nm
+        ow._on_home_changed()
+        assert len(calls) == 1
+        eventbus.set_home((39.85, -104.90), "gps")          # 9 nm
+        ow._on_home_changed()
+        eventbus.set_home((39.851, -104.90), "settings")    # typed: always
+        ow._on_home_changed()
+        assert len(calls) == 3
+    finally:
+        eventbus.set_home(None)
