@@ -20,6 +20,8 @@ misalign; CL8 device-check test failure.
 
 - **[idea]** Location should be automatic. Today HOME comes only from SYSTEM › SETTINGS; `eventbus.py:37` says GPS isn't wired yet (planned CL6, v0.2). Owner wants it automatic: GPS (gpsd) when there's a fix, with the typed HOME as fallback. Possibly a coarse network/Wi-Fi fix when NET is on, labelled as approximate. Owner signal to consider pulling GPS→HOME into v0.1. (2026-11-16 22:18)
 
+- **[UI]** Map style choices should be just two: **dark satellite** and **light satellite** (imagery with a dark or light treatment), replacing today's dark / light / SAT set. Applies to ATLAS and the OPS home map. (2026-11-16 22:21)
+
 ## PRISM
 
 ## PROWL
