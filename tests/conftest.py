@@ -48,3 +48,17 @@ def _cl3_private_data_dir(monkeypatch, tmp_path_factory):
     chain.reset_for_tests()
     yield
     chain.reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _n_op1_private_config_dir(monkeypatch, tmp_path_factory):
+    """N-op1: SYSTEM › SETTINGS › SAVE now writes the operator profile (operator.json under
+    suite.CFG). Tests must never write into the developer's real ~/.config/uconsole-suite, so CFG
+    is redirected to a per-test temp dir (same pattern as the CL3 DATA redirect above)."""
+    try:
+        import suite
+    except ImportError:
+        yield
+        return
+    monkeypatch.setattr(suite, "CFG", str(tmp_path_factory.mktemp("palisade-cfg")))
+    yield
