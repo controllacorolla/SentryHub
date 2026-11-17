@@ -127,11 +127,26 @@ class BaseMap(QtCore.QObject):
         return (rect.x() <= x0 and rect.x() + rect.width() >= x1 and
                 rect.y() <= y0 and rect.y() + rect.height() >= y1)
 
-    def _on_tiles(self, arr, x0, y0, x1, y1):
-        self._rect0 = QtCore.QRectF(x0, y0, x1 - x0, y1 - y0)
-        self._built = (self.tiles.home_lat, self.tiles.home_lon)
-        self._raw = (arr, QtCore.QRectF(self._rect0))
+    def _on_tiles(self, arr, x0, y0, x1, y1, built=None):
+        # RA-UIPd N2: the rect is relative to the HOME the build was made for, which may not be
+        # HOME any more (a GPS move between the worker's emit and this queued delivery). Place it
+        # by that HOME: slide it into the current frame, or drop it and rebuild if it is too far.
+        cur = (self.tiles.home_lat, self.tiles.home_lon)
+        built = tuple(built) if built is not None else cur
+        rect0 = QtCore.QRectF(x0, y0, x1 - x0, y1 - y0)
+        rect = QtCore.QRectF(rect0)
+        if built != cur:
+            from .. import eventbus
+            dx, dy = eventbus.to_xy(built[0], built[1], home=cur)
+            if math.hypot(dx, dy) >= self.SHIFT_MAX_NM:
+                self.refresh()
+                return
+            rect = rect0.translated(dx, dy)
+        self._rect0, self._built = rect0, built
+        self._raw = (arr, rect)
         self._show()
+        if built != cur and not self._covers(rect):
+            self.refresh()
 
     def _show(self):
         arr, rect = self._raw

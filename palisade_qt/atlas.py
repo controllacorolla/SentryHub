@@ -267,8 +267,14 @@ class RidSource:
     SETUP_PROBLEMS = (
         (("org.bluez.error.notready", "adapter is not powered", "adapter not powered"),
          "Remote-ID: Bluetooth adapter is off — run: bluetoothctl power on"),
-        (("org.bluez.error.rfkilled", "soft blocked", "hard blocked", "rfkill"),
+        # exact phrases only: a bare "rfkill" also matched "failed to open /dev/rfkill: permission
+        # denied", a real fault (RA-UIPd L-a)
+        (("org.bluez.error.rfkilled", "soft blocked", "hard blocked", "blocked through rfkill"),
          "Remote-ID: Bluetooth is blocked — run: rfkill unblock bluetooth"),
+        # bleak's own wording when the adapter is off or rfkilled (RA-UIPd N4)
+        (("no powered bluetooth adapters found",),
+         "Remote-ID: Bluetooth adapter is off or blocked — run: rfkill unblock bluetooth, then "
+         "bluetoothctl power on"),
         (("no bluetooth adapters found", "bluetooth adapter not found"),
          "Remote-ID: no Bluetooth adapter found"),
         (("org.freedesktop.dbus.error.serviceunknown", "the name org.bluez was not provided"),
@@ -1030,9 +1036,10 @@ class AtlasApp(PalisadeApp):
 
     def _toggle(self, kind, on):
         self._layers.add(kind) if on else self._layers.discard(kind)
-        if kind == "drone" and not on:           # the scan is off: so is what it said (RA-UIPc L1)
+        if kind == "drone":                      # the scan is off: so is what it said (RA-UIPc L1)
             self._last_status.pop("rid", None)
             self._rid_note = None
+            self._rid_state = "starting" if on else None
         if (kind in self.LEASE_NAME or kind == "drone") and not self.demo \
                 and self._worker is not None and hasattr(self._worker, "set_layer"):
             self._worker.set_layer(kind, on)     # SDR layers via the arbiter; DRONES = BLE scan
@@ -1099,6 +1106,10 @@ class AtlasApp(PalisadeApp):
         text = " ".join(str(msg).split())
         short = text if len(text) <= 90 else text[:88].rstrip() + "…"
         self.set_chip("fault", short, state="alert", tip=text)       # the whole message on hover
+        if text.startswith("Remote-ID"):         # the DRONES view must not say "listening"
+            self._rid_state = "fault"
+            self._rid_fault = text
+            self._render()
 
     def on_status(self, status):
         super().on_status(status)
@@ -1122,6 +1133,7 @@ class AtlasApp(PalisadeApp):
         note = status.get("rid_note")
         if isinstance(note, dict) and note.get("ok"):  # passive scan running: no warning at all
             self._rid_note = None
+            self._rid_state = "passive"
             self.set_chip("rid", "REMOTE-ID: PASSIVE BLE SCAN", state="ok", tip=note.get("text"))
             self._render()
             note = None
@@ -1130,6 +1142,7 @@ class AtlasApp(PalisadeApp):
                 text = str(note.get("text") or "")
                 tip = text + ("\n\n" + note["detail"] if note.get("detail") else "")
                 short = "REMOTE-ID: SETUP NEEDED — see the DRONES view"
+                self._rid_state = "setup" if note.get("setup") else "active"
                 if note.get("setup"):              # the raw error goes in too (RA-UIPc L5)
                     from . import sessionlog
                     sessionlog.record("warn", "ATLAS", text + (" — " + note["detail"]
@@ -1137,6 +1150,7 @@ class AtlasApp(PalisadeApp):
             else:
                 text = tip = str(note)
                 short = "REMOTE-ID: ACTIVE BLE SCAN — see the DRONES view"
+                self._rid_state = "active"
             # the status row is one line: a short chip there, the whole text (with its fix) in the
             # DRONES view, where it wraps (device notes: "…requires BlueZ >…" was cut off)
             self._rid_note = text
@@ -1240,16 +1254,13 @@ class AtlasApp(PalisadeApp):
         text, state = self._layer_summary(on)
         self.set_chip("sdr", text, state=state)
         kinds = VIEW_KINDS.get(self._view)
+        self._update_busy()                            # the empty state below reads RADIO BUSY
         if not rows:                                   # D4: the list says why it is empty
-            off = kinds is not None and not any(k in self._layers for k in kinds)
             live = self.demo or (self._adsb_health or {}).get("state") == "live"
-            if off:
-                self.feed.set_empty("offline", "%s LAYER OFF" % KIND_LABEL[kinds[0]],
-                                    "switch it on above to listen for it")
-            elif kinds is not None and "aircraft" not in kinds:
-                # a non-ADS-B view: its own layer is on, it just has nothing yet (RA-UIPc L4)
-                self.feed.set_empty("watching", "no contacts", "%s layer on — listening"
-                                    % KIND_LABEL[kinds[0]])
+            if kinds is not None and "aircraft" not in kinds:
+                # a non-ADS-B view says what its OWN source is doing (RA-UIPd N1: DRONES said
+                # "listening" with the Remote-ID scan off, DF and SONDE with no source at all)
+                self.feed.set_empty(*self._view_empty(kinds[0]))
             else:
                 self.feed.set_empty("watching" if live else "offline",
                                     "no contacts" if live else "NO LIVE LAYER", text)
@@ -1263,7 +1274,42 @@ class AtlasApp(PalisadeApp):
                           state="warn")
         else:
             self._last_status.pop("home", None)
-        self._update_busy()
+
+    def _view_empty(self, kind):
+        """(state, title, line) for an empty single-layer view. Only claims "listening" when that
+        layer's own source is actually running. kind is the view's primary layer (the one it has a
+        switch for): the DRONES view's OPERATOR layer comes from the same scan, so it does not count."""
+        lbl = KIND_LABEL[kind]
+        if kind not in self._layers:
+            return "offline", "%s LAYER OFF" % lbl, "switch it on above to listen for it"
+        if self.demo:
+            return "watching", "no contacts", "%s layer on (demo)" % lbl
+        if kind == "drone":
+            st = getattr(self, "_rid_state", None)
+            if st == "passive":
+                return "watching", "no drones heard", "passive BLE Remote-ID scan running"
+            if st == "active":
+                return "watching", "no drones heard", "active BLE Remote-ID scan running"
+            if st == "setup":
+                return "offline", "REMOTE-ID SETUP NEEDED", "see the note above"
+            if st == "fault":
+                return "offline", "REMOTE-ID SCAN FAILED", getattr(self, "_rid_fault", "")[:120]
+            return "offline", "REMOTE-ID STARTING", "the BLE scan has not reported yet"
+        if kind in ("station", "vessel"):
+            if kind in getattr(self, "_busy_shown", ()):
+                return "offline", "RADIO BUSY", "the SDR is held by another tool — see above"
+            if kind in getattr(self, "_acquiring", ()):
+                return "offline", "ACQUIRING THE SDR", "pausing readsb for %s" % lbl
+            return "watching", "no contacts", "%s decoder on the SDR" % lbl
+        if kind == "df":
+            # df_contacts() has no bearing source wired yet (KrakenSDR array, device-only)
+            return "offline", "NO DF SOURCE", "direction finding needs a KrakenSDR array — not " \
+                                              "wired in this build"
+        if kind == "balloon":
+            if not os.path.exists(_SONDES_PATH):
+                return "offline", "NO SONDE FEED", "nothing from the sonde decoder (auto_rx) yet"
+            return "watching", "no sondes", "reading the sonde decoder feed"
+        return "watching", "no contacts", "%s layer on" % lbl
 
     def _layer_summary(self, shown):
         """H10: per-layer health instead of one total that let a live APRS station hide a dead

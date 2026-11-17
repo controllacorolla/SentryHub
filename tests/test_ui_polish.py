@@ -1502,3 +1502,150 @@ def test_uipc_lows_gps_error_fields_drone_chip_and_nan_speed():
     finally:
         eventbus.set_home(None)
         _close(hub)
+
+
+# ================================================================ RA-UIPd fixes
+def test_uipd_n1_each_view_says_what_its_own_source_is_doing(monkeypatch, tmp_path):
+    """RA-UIPd N1: DRONES read 'DRONES layer on — listening' with the Remote-ID scan OFF (the
+    OPERATOR layer, on by default, counted as the view's layer); DF and SONDE said 'listening'
+    with no source at all."""
+    from palisade_qt import eventbus, atlas as A
+    monkeypatch.setattr(A, "_SONDES_PATH", str(tmp_path / "none.json"))
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        for k in list(atlas._contacts):
+            atlas._contacts.pop(k)
+
+        def empty():
+            atlas._render()
+            assert atlas.feed.showing_empty()
+            return (atlas.feed.empty.big.text() + " " + atlas.feed.empty.hint.text()).upper()
+        atlas._layers.discard("drone")
+        atlas._layers.add("operator")
+        atlas.set_view("DRONES")
+        assert "DRONES LAYER OFF" in empty() and "LISTENING" not in empty()
+        atlas._layers.add("drone")
+        atlas._rid_state = None
+        assert "STARTING" in empty()
+        atlas.on_status({"rid_note": {"text": "Remote-ID: PASSIVE BLE scan", "ok": True}})
+        assert "PASSIVE BLE" in empty() and "NO DRONES" in empty()
+        atlas.on_status({"rid_note": {"text": "Remote-ID: adapter off", "detail": "x",
+                                      "setup": True}})
+        assert "SETUP NEEDED" in empty()
+        atlas.on_error("Remote-ID BLE scan failed: EIO")
+        assert "SCAN FAILED" in empty() and "EIO" in empty()
+        atlas._layers.add("df")
+        atlas.set_view("DF")
+        assert "NO DF SOURCE" in empty() and "LISTENING" not in empty()
+        atlas._layers.add("balloon")
+        atlas.set_view("SONDE")
+        assert "NO SONDE FEED" in empty()
+        (tmp_path / "none.json").write_text('{"sondes": []}')
+        assert "READING" in empty()
+        atlas._layers.add("station")
+        atlas.set_view("APRS")
+        atlas._busy_shown = {"station"}
+        monkeypatch.setattr(atlas, "_update_busy", lambda: None)
+        assert "RADIO BUSY" in empty()
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+def test_uipd_n2_a_build_delivered_after_home_moved_is_placed_by_its_own_home():
+    """RA-UIPd N2: the worker checks HOME at emit, but the signal is queued; a HOME move before
+    delivery labelled the old imagery as built for the new HOME and drew it offset."""
+    import numpy as np
+    from palisade_qt import eventbus
+    from palisade_qt.kit import mappanel
+    m = mappanel.MapPanel(span_nm=20, home_lat=39.70, home_lon=-104.90)
+    m.resize(900, 640)
+    base = m._base
+    refreshes = []
+    base.refresh = lambda: refreshes.append(1)
+    arr = np.zeros((64, 64, 4), dtype=np.uint8)
+    base.tiles.home_lat, base.tiles.home_lon = 39.75, -104.90     # HOME moved 3 nm meanwhile
+    base._on_tiles(arr, -40.0, -40.0, 40.0, 40.0, (39.70, -104.90))
+    x, y = eventbus.to_xy(39.70, -104.90, home=(39.75, -104.90))
+    r = base._raw[1]
+    assert r.x() == pytest.approx(-40.0 + x) and r.y() == pytest.approx(-40.0 + y)
+    assert base._built == (39.70, -104.90), "labelled with the HOME it was built for"
+    base.tiles.home_lat = 39.90                                     # 12 nm: drop + rebuild
+    before = base._raw
+    base._on_tiles(arr, -40.0, -40.0, 40.0, 40.0, (39.70, -104.90))
+    assert base._raw is before and refreshes == [1]
+    # the worker sends the HOME it built for
+    from palisade_qt.kit import tiles
+    layer = tiles.TileLayer(home_lat=39.7, home_lon=-104.9)
+    got = []
+    layer.ready.connect(lambda *a: got.append(a))
+    layer._build = lambda style: (np.zeros((4, 4, 4), dtype=np.uint8), -1, -1, 1, 1)
+    layer._busy = True
+    layer._work("satellite")
+    _pump(20)
+    assert got and got[0][5] == (39.7, -104.9)
+
+
+def test_uipd_n3_an_untouched_field_never_moves_home_or_truncates_the_typed_home(monkeypatch):
+    """RA-UIPd N3: the 4-decimal field was compared with the stored floats, so SAVE with follow ON
+    moved HOME back to the typed HOME and saved it truncated."""
+    from palisade_qt import eventbus, system
+    store = {"home": [39.626134, -104.912345]}
+    monkeypatch.setattr(system.MoreApp, "_saved_settings", staticmethod(lambda: store))
+    eventbus.set_home((40.01, -105.27), "gps")
+    hub = _big_hub()
+    try:
+        hub.start_gps_home(reader=lambda: None, enabled=True)
+        more = _settings(hub)
+        assert more.set_home.text() == "39.6261, -104.9123"
+        saved = {}
+        more._write_settings = lambda d: (saved.update(d), True)[1]
+        more._save_settings()
+        assert eventbus.HOME_SOURCE == "gps" and eventbus.home() == (40.01, -105.27)
+        assert saved["home"] == [39.626134, -104.912345], "full precision kept"
+        more.set_home.setText("39.5, -104.8")                     # an edit IS a typed HOME
+        more._save_settings()
+        assert eventbus.HOME_SOURCE == "settings" and eventbus.home() == (39.5, -104.8)
+        assert saved["home"] == [39.5, -104.8]
+    finally:
+        eventbus.set_home(None)
+        _close(hub)
+
+
+@pytest.mark.parametrize("err,want", [
+    ("No powered Bluetooth adapters found.", "off or blocked"),
+    ("org.bluez.Error.Failed: Blocked through rfkill", "rfkill unblock"),
+    ("failed to open /dev/rfkill: Permission denied", None),
+])
+def test_uipd_n4_setup_phrases(err, want):
+    from palisade_qt import atlas as A
+    got = A.RidSource.setup_problem(Exception(err))
+    assert (got is None) if want is None else (want in got)
+
+
+def test_uipd_lc_setup_warning_logs_the_raw_error_and_hidden_atlas_defers_its_map(monkeypatch):
+    """RA-UIPd L-c: L5 (raw error in the session log) and the hidden-ATLAS deferral had no test."""
+    from palisade_qt import eventbus, sessionlog
+    logged = []
+    monkeypatch.setattr(sessionlog, "record", lambda *a, **k: logged.append(a))
+    eventbus.set_home((39.7, -104.9), "test")
+    hub = _big_hub()
+    try:
+        _page, atlas = _atlas(hub)
+        atlas.on_status({"rid_note": {"text": "Remote-ID: adapter off",
+                                      "detail": "org.bluez.Error.NotReady", "setup": True}})
+        assert any(a[0] == "warn" and "org.bluez.Error.NotReady" in a[2] for a in logged)
+        calls = []
+        monkeypatch.setattr(atlas.map, "set_home", lambda *a, **k: calls.append(a))
+        atlas._background = True
+        atlas._active = False
+        eventbus.set_home((39.71, -104.9), "gps")
+        atlas._on_home_changed()
+        assert calls == [] and atlas._home_pending
+        atlas.set_active(True)
+        assert calls == [(39.71, -104.9)] and not atlas._home_pending
+    finally:
+        eventbus.set_home(None)
+        _close(hub)

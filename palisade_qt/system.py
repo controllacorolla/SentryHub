@@ -195,7 +195,9 @@ class MoreApp(PalisadeApp):
         h = self._typed_home()
         if h:
             self.set_home.setText("%.4f, %.4f" % h)
-        self._typed_at_build = h
+        # what the field showed: SAVE with it untouched keeps the stored typed HOME at full precision
+        # instead of the 4-decimal text, and never moves HOME (RA-UIPd N3)
+        self._home_text_shown = self.set_home.text().strip()
         self.set_home.setPlaceholderText("HOME NOT SET — enter lat, lon (e.g. 47.6, -122.3)")
         self.set_theme = QtWidgets.QComboBox()
         self.set_theme.addItems(["dark", "light", "sun"])
@@ -434,10 +436,13 @@ class MoreApp(PalisadeApp):
         g = self._gps_follower()
         following = follow and g is not None and eventbus.HOME_SOURCE == "gps"
         typed_before = self._typed_home()
+        field_changed = self.set_home.text().strip() != getattr(self, "_home_text_shown", "")
+        if not field_changed and home is not None and typed_before is not None:
+            home = typed_before                  # untouched: the stored value, not its rounding
         # RA-UIPc H1: the typed HOME goes live only when it is what HOME should be now. While HOME
         # follows a GPS fix, an unchanged typed HOME is only the fallback: SAVE keeps it on disk and
         # does not drag HOME back to it.
-        if home is not None and (not following or home != typed_before):
+        if home is not None and (not following or field_changed):
             eventbus.set_home(home, "settings")
             live.append("HOME")
         try:
@@ -475,6 +480,8 @@ class MoreApp(PalisadeApp):
             "home": list(home) if home else (list(typed_before) if typed_before else None),
             "theme": self.set_theme.currentText(),
             "retention": self.set_retention.value()})
+        if persisted:
+            self._home_text_shown = self.set_home.text().strip()
         theme_changed = self.set_theme.currentText() != self.mode
         parts = ["applied now: " + ", ".join(live)] if live else []
         if parts_note:

@@ -211,7 +211,9 @@ def _qimg_to_rgb(data_bytes):
 class TileLayer(QtCore.QObject):
     """Fetches map tiles in a background thread, emits a stitched RGBA array + NM bounds."""
 
-    ready = QtCore.Signal(object, float, float, float, float)
+    # the stitched array, its nm rect, and the HOME it was built for: the receiver places it by
+    # that HOME, since HOME can move between this emit and its queued delivery (RA-UIPd N2)
+    ready = QtCore.Signal(object, float, float, float, float, object)
 
     def __init__(self, home_lat=47.6, home_lon=-122.3, span_nm=80, parent=None):
         super().__init__(parent)
@@ -243,7 +245,7 @@ class TileLayer(QtCore.QObject):
             # built for a HOME that has since moved (GPS follow): its nm rect is relative to the
             # old HOME, so drop it; the move queued a re-fetch (RA-UIP L3 / RA-UIPc M4)
             if arr is not None and (self.home_lat, self.home_lon) == home:
-                self.ready.emit(arr, x0, y0, x1, y1)
+                self.ready.emit(arr, x0, y0, x1, y1, home)
         except Exception:
             pass
         finally:
