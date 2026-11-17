@@ -82,3 +82,13 @@ Full suite at e07de17: **1786 passed, 2 failed, 7 skipped, 7 errors** (36 min) �
 only (`test_audit_tiles` undecodable tile, `test_hwlab` doctor, `test_shell` ×7 without tkinter).
 3b6abe9 (pass re-predict throttle) adds one test; overwatch tests 23 passed.
 Renders: `UIP-renders/views_*_dark_after.png`, `settings_location_dark_after.png`.
+
+## Round 2 fix-up (RA-UIPc → 1e10cc1)
+
+H1/L2 typed vs GPS HOME, M2/L8 V through the hub, M3/L5/L6/L9 exact Remote-ID setup phrases with the
+raw error logged, M4 slide-on-small-move + stale-build drop + hidden-ATLAS defer, L1, L3, L4, L7.
+Regression tests `test_uipc_*` in `tests/test_ui_polish.py`; pyflakes clean.
+
+Full suite at 1e10cc1: **1797 passed, 7 skipped, 2 failed, 7 errors (38 min)**. All baseline:
+`test_audit_tiles::test_undecodable_tile_is_marked_failed`, `test_hwlab::test_doctor_hwbench_check`,
+`test_shell` ×7 (no tkinter in the container). Re-audit: `RA-UIPd`.
