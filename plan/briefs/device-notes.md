@@ -7,6 +7,7 @@ Already logged elsewhere (not repeated here): top key-strip labels overlap and s
 misalign; CL8 device-check test failure.
 
 ## OPS
+- **[UI]** OPS home map should default to a dark satellite basemap (satellite imagery, darkened to fit the theme), not the current style. Depends on the SAT tile source fix under ATLAS (Esri now needs a key). (2026-11-16 22:19)
 
 ## ATLAS
 - **[UI]** Maps are too small; give more of the 1280×720 to the map. (2026-11-16 22:02)
