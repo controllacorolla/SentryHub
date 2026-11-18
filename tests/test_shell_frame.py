@@ -409,6 +409,12 @@ def test_ra_s1b_n3_a_still_active_warning_shows_again_on_return():
         hub.open_callsign("SYSTEM")
         _pump(50)
         assert not hub.notice.isVisible()
+        hub.open_callsign("ATLAS")                    # a quick flip back: no repeat (RA-S1c N10)
+        _pump(80)
+        assert "STILL BROKEN" not in hub.notice.text() or not hub.notice.isVisible()
+        hub.notice.REMIND_S = 0                       # away long enough: reminded once on return
+        hub.open_callsign("SYSTEM")
+        _pump(50)
         hub.open_callsign("ATLAS")
         _pump(80)
         assert hub.notice.isVisible() and "STILL BROKEN" in hub.notice.text()
@@ -422,3 +428,48 @@ def test_ra_s1b_n4_open_nav_key_focus_is_a_full_ring():
         tok = theme.tokens(mode)
         assert "QPushButton.navkey_on:focus { border: %s solid %s; }" % (
             tok["focus_w"], tok["focus_on"]) in theme.qss(mode)
+
+
+# ---------------------------------------------------------------- RA-S1c follow-ups
+def test_ra_s1c_n6_atlas_layer_counts_moving_do_not_re_pop_the_adsb_warning():
+    from types import SimpleNamespace
+    from palisade_qt.atlas import AtlasApp, KINDS
+    from palisade_qt.shell import PageNotice
+    stub = SimpleNamespace(_layers={k for k, _l, _t in KINDS}, demo=False,
+                           _adsb_health={"state": "none"})
+    kinds = [k for k, _l, _t in KINDS if k not in ("aircraft", "operator")]
+    w = QtWidgets.QWidget()
+    n = PageNotice("dark", w)
+    shown = []
+    for i in range(7):                      # a layer flickers between 0 and 1 contact
+        pts = [{"kind": kinds[0]}] if i % 2 else []
+        text, st = AtlasApp._layer_summary(stub, pts)
+        assert st == "warn" and "ADS-B NO FEED" in text
+        shown += n.consider("ATLAS", {"sdr": {"text": text, "state": st}})
+    assert len(shown) == 1, shown
+    w.deleteLater()
+
+
+def test_ra_s1c_n8_notice_timers_stop_with_the_window():
+    hub = _big_hub()
+    hub.open_callsign("ATLAS")
+    _pump(100)
+    hub.notice._retry.start()
+    n = hub.notice
+    hub.close()
+    assert not n._retry.isActive() and not n._timer.isActive() and n.refresh is None
+    _pump(150)
+
+
+def test_ra_s1c_a_second_warning_joins_the_notice_showing():
+    from palisade_qt.shell import PageNotice
+    w = QtWidgets.QWidget()
+    w.resize(800, 600)
+    w.show()
+    n = PageNotice("dark", w)
+    n.consider("ATLAS", {"a": {"text": "FIRST", "state": "warn"}})
+    n.consider("ATLAS", {"a": {"text": "FIRST", "state": "warn"},
+                         "b": {"text": "SECOND", "state": "warn"}})
+    assert "FIRST" in n.text() and "SECOND" in n.text()
+    w.close()
+    w.deleteLater()

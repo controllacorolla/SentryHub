@@ -18,6 +18,7 @@ gate, and touches no decode path. The four slots follow the engines through chro
 import os
 import re
 import sys
+import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -95,6 +96,7 @@ class PageNotice(QtWidgets.QLabel):
     the operator clicks the page name in the strip (then it lists everything the page reports)."""
     SHOW_MS = 7000
     LONG_MS = 12000
+    REMIND_S = 60
     _STATES = ("warn", "alert")
 
     def __init__(self, mode, parent):
@@ -107,7 +109,9 @@ class PageNotice(QtWidgets.QLabel):
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.hide)
-        self._active = {}              # page -> {key: state} of the warnings already shown
+        self._active = {}              # page -> {key: _sig} of the warnings already shown
+        self._left = {}                # page -> monotonic time the operator left it
+        self._page, self._lines, self._worst = None, [], "warn"   # what the notice shows now
         self.anchor = None             # the widget whose bottom-right corner it sits in
         self.blocked = None            # callable: True while a drawer / panel is open (RA-S1 F8)
         self.refresh = None            # callable: re-read the page on screen (after a panel closes)
@@ -143,10 +147,11 @@ class PageNotice(QtWidgets.QLabel):
 
     @staticmethod
     def _sig(v):
-        """What makes a warning the same warning: its state and its text with the numbers taken out,
-        so a counter or "(12s)" ticking is not a new warning (RA-S1 F2) but a different message on
-        the same key is (RA-S1b N1: RECON WIFI STANDBY -> BLE STANDBY on the shared sdr key)."""
-        return (v.get("state"), re.sub(r"\d+", "#", str(v.get("text") or "")).strip())
+        """What makes a warning the same warning: its state and the words of its text, without the
+        numbers and dashes. A counter or "(12s)" ticking, or an ATLAS layer count going "—" <-> 1, is
+        the same warning (RA-S1 F2, RA-S1c N6); a different message on the same key is new
+        (RA-S1b N1: RECON WIFI STANDBY -> BLE STANDBY on the shared sdr key)."""
+        return (v.get("state"), tuple(re.findall(r"[A-Za-z]+", str(v.get("text") or "").upper())))
 
     def consider(self, page, status):
         """Show the page's warnings that were not already shown. A warning that clears and comes
@@ -157,6 +162,9 @@ class PageNotice(QtWidgets.QLabel):
         for key, v in status.items():
             if (v or {}).get("text") and v.get("state") in self._STATES:
                 cur[key] = v
+        left = self._left.pop(page, None)
+        if left is not None and time.monotonic() - left >= self.REMIND_S:
+            self._active.pop(page, None)          # away a while: remind once on return (N3/N10)
         before = self._active.get(page, {})
         sigs = {k: self._sig(v) for k, v in cur.items()}
         new, worst = [], "warn"
@@ -174,13 +182,26 @@ class PageNotice(QtWidgets.QLabel):
             return []
         self._active[page] = sigs
         if new:
-            self._show(["%s · %s" % (page, t) for t in new], worst, self.SHOW_MS)
+            lines = ["%s · %s" % (page, t) for t in new]
+            if self.isVisible() and self._page == page:
+                # a second warning moments later joins the one showing instead of replacing it
+                lines = [ln for ln in self._lines if ln not in lines] + lines
+                worst = "alert" if (worst == "alert" or self._worst == "alert") else worst
+            self._page, self._lines, self._worst = page, lines, worst
+            self._show(lines, worst, self.SHOW_MS)
         return new
 
     def forget(self, page):
-        """The operator left the page: its still-active warnings show again on return, and one that
-        cleared and came back while away is not missed (RA-S1b N3)."""
-        self._active.pop(page, None)
+        """The operator left the page. If they come back after REMIND_S, its still-active warnings
+        show once more (RA-S1b N3); a quick flip between pages does not re-show them (RA-S1c N10)."""
+        self._left[page] = time.monotonic()
+
+    def stop(self):
+        """Window closing: no timer fires afterwards (RA-S1c N8)."""
+        self._retry.stop()
+        self._timer.stop()
+        self.refresh = None
+        self.blocked = None
 
     def _on_retry(self):
         if callable(self.blocked) and self.blocked():
@@ -195,6 +216,7 @@ class PageNotice(QtWidgets.QLabel):
                 lines.append(v["text"])
                 if v.get("state") == "alert" or (v.get("state") == "warn" and worst != "alert"):
                     worst = v["state"]
+        self._page = None              # the full list stands on its own; nothing merges into it
         self._show(lines or ["%s: nothing to report" % page], worst, self.LONG_MS)
         return lines
 
@@ -812,6 +834,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
         return self.gpshome
 
     def closeEvent(self, ev):
+        if getattr(self, "notice", None) is not None:
+            self.notice.stop()
         if getattr(self, "gpshome", None) is not None:
             self.gpshome.stop()
         app = QtWidgets.QApplication.instance()

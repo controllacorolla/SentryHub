@@ -70,7 +70,7 @@ class DemoFeedWorker(Worker):
             "batt": batt, "gps": 9}, severity="info", demo=True))
         self.status.emit({"sdr": {"text": "SDR DEMO", "state": "neutral"},
                           "gps": {"text": "GPS 9 SV", "state": "neutral"}})
-        # battery: the top strip's BAT slot (shell), not a bare PWR in this footer (2026-11-18)
+        # battery: the top strip's BAT slot (shell), not a bare PWR on the page (2026-11-18)
 
 
 def sdr_chip(sys_root="/sys"):
