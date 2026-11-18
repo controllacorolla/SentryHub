@@ -19,6 +19,7 @@ Status: open · in progress · done (PR). Keep this table current as items close
 | 4 | Status strip: "0221Z" gets a UTC label or goes. Power % moves to a fixed, labelled slot. The icon beside CONTACTS LIVE and the item left of it get names or tooltips. | in progress | — |
 | 5 | Every start/stop/scan button app-wide: green while running, red when stopped. One shared control (`kit.components.set_run`) so it can't drift per page. | in progress | — |
 | 6 | Volume slider: full-length with real travel. | in progress | — |
+| 26 | Remove the bottom status bar from every module (the line with "SDR present", a second power icon). The top strip carries status; anything that only lived in the bottom bar (SDR presence, power) is shown once in the strip, labelled. A transient message, if needed, goes somewhere unobtrusive, not a permanent bar. (Dalton 02:38Z) | in progress | — |
 
 ## Stage 2: OPS, ATLAS and maps — owner: UI thread
 

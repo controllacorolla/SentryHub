@@ -92,3 +92,6 @@ Batch 2 (02:22Z):
 - **[bug]** Nothing in RF. (plan 16, waiting on owner)
 - **[bug]** No model tied to ASSISTANT. (plan 17, waiting on owner)
 - **[UI]** MESH UI is boring. (plan 18)
+
+Batch 3 (02:38Z):
+- **[UI]** A second power icon down where it says "SDR present": remove the status bar at the bottom of all modules; the top strip already has it. A small message is OK somewhere, but not there. (plan 26)
