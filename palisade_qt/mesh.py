@@ -388,6 +388,7 @@ class MeshPage(PalisadeApp):
         self._link = ("connecting", "")
         self._seen_nodes = None              # node ids known before (None until the first list)
         self._ever_seen = set()              # every node id heard this session (alerts once)
+        self._names = {}                     # node id -> last known name
         self._low_alerted = set()
         self._msgs = []
         self._sel = None
@@ -584,6 +585,8 @@ class MeshPage(PalisadeApp):
         self._nodes = nodes
         # DM targets
         cur = self.chat_to.currentData()
+        for nid in nodes:
+            self._name(nid, nodes)           # remember names before the old list goes
         self.chat_to.blockSignals(True)
         self.chat_to.clear()
         self.chat_to.addItem("everyone · primary channel", "^all")
@@ -602,7 +605,11 @@ class MeshPage(PalisadeApp):
     def _name(self, nid, nodes=None):
         n = (nodes or self._nodes).get(nid) or {}
         u = n.get("user") or {}
-        return u.get("longName") or u.get("shortName") or str(nid)
+        name = u.get("longName") or u.get("shortName")
+        if name:
+            self._names[nid] = name
+        # a node that dropped off the list keeps the name it had (RA-MESHb N1)
+        return name or self._names.get(nid) or str(nid)
 
     def _show_msg(self, m):
         frm = "me" if m.get("mine") else self._name(m.get("fromId"))
@@ -766,6 +773,10 @@ class MeshPage(PalisadeApp):
             self._map_cover.show(True, title="NO REFERENCE POSITION",
                                  detail="this radio reports no position and HOME is not set — "
                                         "set HOME in SYSTEM › SETTINGS")
+            warn = True
+        elif linked and not me and others:
+            text = ("NOT ON THE MAP: this node and HOME have no position, and no node reports one. "
+                    "Set HOME in SYSTEM › SETTINGS.")
             warn = True
         elif linked and others:
             text = "%d node(s) on the map" % placed

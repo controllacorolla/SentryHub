@@ -145,16 +145,22 @@ class AskWorker(Worker):
                                       # arrives (RA-MESH L2)
 
     def _abort(self):
-        """Break a read that is waiting on the model: shut the socket under the open response."""
-        r = getattr(self, "_resp", None)
-        if r is None:
-            return
+        """Break a request that is waiting on the model: shut the connection's socket (works
+        before the reply headers too: the model may still be loading)."""
         import socket
+        socks = [getattr(getattr(self, "_conn", None), "sock", None)]
+        r = getattr(self, "_resp", None)          # once the reply started, the response owns it
         try:
-            sock = r.fp.raw._sock
-            sock.shutdown(socket.SHUT_RDWR)
+            socks.append(r.fp.raw._sock)
         except Exception:
             pass
+        for sock in socks:
+            if sock is None:
+                continue
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
 
     def _s(self):
         import assistant
@@ -231,48 +237,69 @@ class AskWorker(Worker):
         self._stream(s, url, model, msgs)
 
     def _stream(self, s, url, model, msgs):
+        """Stream /api/chat from the local model. A plain HTTP connection held by the worker (after
+        netpolicy's check and log), so STOP and page close can shut it at any moment, even while
+        the model is still loading and has sent nothing yet (RA-MESHb N2); and no proxy from the
+        environment ever sees the request (RA-MESH L1: it is loopback only)."""
+        import http.client
         import json
-        import urllib.request
+        import urllib.parse
         import assistant
         import netpolicy
-        req = urllib.request.Request(url + "/api/chat", data=json.dumps(
-            assistant.chat_body(s, url, model, msgs)).encode(),
-            headers={"Content-Type": "application/json"})
+        body = json.dumps(assistant.chat_body(s, url, model, msgs)).encode()
         full = ""
         try:
-            with netpolicy.urlopen(req, timeout=180, purpose="assistant (local model)") as r:
-                self._resp = r
+            netpolicy.check(url + "/api/chat", "assistant (local model)")
+            u = urllib.parse.urlsplit(url)
+            conn = http.client.HTTPConnection(u.hostname, u.port or 11434, timeout=180)
+            self._conn = conn
+            if self.stopping or self._cancel:
+                raise ConnectionAbortedError("stopped")
+            conn.request("POST", (u.path.rstrip("/") or "") + "/api/chat", body=body,
+                         headers={"Content-Type": "application/json"})
+            r = conn.getresponse()
+            self._resp = r
+            if self.stopping or self._cancel:
+                self._abort()
+            if r.status != 200:
+                raise RuntimeError("HTTP %d from the local model" % r.status)
+            for line in r:
                 if self.stopping or self._cancel:
-                    self._abort()
-                for line in r:
-                    if self.stopping or self._cancel:
-                        full += " [stopped]"
-                        break
-                    try:
-                        m = json.loads(line)
-                    except ValueError:
-                        continue
-                    tok = (m.get("message") or {}).get("content", "")
-                    if tok:
-                        full += tok
-                        self.row.emit({"kind": "tok", "text": tok})
-                    if m.get("done"):
-                        break
-                if (self.stopping or self._cancel) and not full.endswith("[stopped]"):
-                    full += " [stopped]"         # STOP broke the read (socket shut)
+                    break
+                try:
+                    m = json.loads(line)
+                except ValueError:
+                    continue
+                tok = (m.get("message") or {}).get("content", "")
+                if tok:
+                    full += tok
+                    self.row.emit({"kind": "tok", "text": tok})
+                if m.get("done"):
+                    break
         except Exception as e:
-            self._resp = None
-            if self.stopping or self._cancel:    # STOP pressed before the first token
-                self._history.pop()
-                self.row.emit({"kind": "done", "text": full + " [stopped]"})
+            if not (self.stopping or self._cancel):
+                self._close_conn()
+                self._history.pop()              # the question was never answered
+                self.row.emit({"kind": "error", "text": "local model failed: %s"
+                               % " ".join(str(e).split())[:160]})
                 return
-            self._history.pop()                  # the question was never answered
-            self.row.emit({"kind": "error", "text": "local model failed: %s"
-                           % " ".join(str(e).split())[:160]})
+        self._close_conn()
+        if self.stopping or self._cancel:
+            # a stopped answer is marked, and never kept as the model's reply (RA-MESHb N4)
+            self._history.pop()
+            self.row.emit({"kind": "done", "text": full + " [stopped]"})
             return
-        self._resp = None
         self._history.append({"role": "assistant", "content": full})
         self.row.emit({"kind": "done", "text": full})
+
+    def _close_conn(self):
+        self._resp = None
+        c, self._conn = getattr(self, "_conn", None), None
+        if c is not None:
+            try:
+                c.close()
+            except Exception:
+                pass
 
 
 # the on-screen assistant answers in text (the Tk push-to-talk one reads aloud)

@@ -480,3 +480,71 @@ def test_ra_mesh_l9_l10_live_context_off_and_listen_address():
         pg.stop()
         pg.deleteLater()
         _pump(50)
+
+
+# ================================================================ RA-MESHb follow-ups
+def test_ra_meshb_n2_stop_and_close_work_while_the_model_is_still_loading(offline):
+    """Real Ollama sends no headers until the model has loaded: STOP and close must not wait."""
+    from palisade_qt.system import AskWorker
+    import socket
+    lst = socket.socket()
+    lst.bind(("127.0.0.1", 0))
+    lst.listen(1)
+    url = "http://127.0.0.1:%d" % lst.getsockname()[1]
+    held = []
+    threading.Thread(target=lambda: held.append(lst.accept()), daemon=True).start()  # silent
+    try:
+        w = AskWorker(settings={"hosts": [{"name": "me", "url": url, "model": "m"}],
+                                "system": "x"}, power=lambda: {"pct": 80, "charging": True})
+        w.find_model = lambda s: ((url, "m"), "")
+        rows = []
+        w.row.connect(rows.append)
+        threading.Timer(1.0, w.cancel).start()
+        t0 = time.time()
+        w.ask("q", "")
+        w.step()
+        _pump(50)
+        assert time.time() - t0 < 3, "STOP waited for the model to load"
+        assert rows[-1]["kind"] == "done" and rows[-1]["text"].endswith("[stopped]")
+        assert w._history == [], "a stopped turn is not kept"
+        # close: the worker thread ends within its 3 s join
+        w2 = AskWorker(settings={"hosts": [{"name": "me", "url": url, "model": "m"}],
+                                 "system": "x"}, power=lambda: {"pct": 80, "charging": True})
+        w2.find_model = lambda s: ((url, "m"), "")
+        threading.Thread(target=lambda: held.append(lst.accept()), daemon=True).start()
+        w2.start()
+        w2.ask("q", "")
+        _pump(800)
+        t0 = time.time()
+        w2.stop()
+        w2.quit()
+        assert w2.wait(3000) and time.time() - t0 < 3
+    finally:
+        lst.close()
+
+
+def test_ra_meshb_n1_n3_kept_dm_keeps_its_name_and_no_reference_is_said():
+    import copy
+    from palisade_qt import eventbus
+    p, nodes, radio = _live_page()
+    try:
+        p._on_row({"kind": "nodes", "nodes": nodes, "radio": radio})
+        p.chat_to.setCurrentIndex(p.chat_to.findData("!c3d4e5f6"))
+        gone = copy.deepcopy(nodes)
+        del gone["!c3d4e5f6"]
+        p._on_row({"kind": "nodes", "nodes": gone, "radio": radio})
+        assert p.chat_to.currentText() == "DM Trail bike node (not in the node list now)"
+        nopos = copy.deepcopy(nodes)
+        for n in nopos.values():
+            n.pop("position", None)
+        old = eventbus.home
+        eventbus.home = lambda: None
+        try:
+            p._on_row({"kind": "nodes", "nodes": nopos, "radio": radio})
+        finally:
+            eventbus.home = old
+        assert "this node and HOME have no position" in p.map_where.text()
+    finally:
+        p.stop()
+        p.deleteLater()
+        _pump(50)
