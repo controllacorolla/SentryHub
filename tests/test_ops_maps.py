@@ -408,7 +408,6 @@ def test_ra_s2b_n9_an_old_alert_never_overrides_the_prediction_list(home):
 
 def test_ra_s2b_n10_refused_grants_are_logged_https_only_and_only_tiles_use_grants(offline,
                                                                                      monkeypatch):
-    import re
     import urllib.request
     from palisade_qt.kit import tiles
     tiles._netpolicy()
@@ -419,16 +418,61 @@ def test_ra_s2b_n10_refused_grants_are_logged_https_only_and_only_tiles_use_gran
             offline.urlopen(url, purpose="p", granted=True)
     assert not calls
     assert sum(1 for e in offline.log() if e[2] == "blocked" and "grant refused" in e[4]) == 2
-    # only the map tiles may ask for a grant
-    root = os.path.dirname(HERE) if "HERE" in globals() else os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__)))
-    users = []
+    # only the map tiles may ask for a grant: any urlopen with a granted / **kwargs / 4th
+    # positional argument, or any use of the grant table or API, anywhere else fails this
+    import ast
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    users = set()
     for d, _dirs, files in os.walk(root):
-        if any(x in d for x in (".git", "tests", "plan", "venv")):
+        rel = os.path.relpath(d, root).split(os.sep)
+        if rel[0] in (".git", "tests", "plan", "venv", ".venv") or "__pycache__" in rel:
             continue
         for f in files:
-            if f.endswith(".py"):
-                src = open(os.path.join(d, f), encoding="utf-8", errors="ignore").read()
-                if re.search(r"granted\s*=\s*(True|getattr)|allow_grant\(", src):
-                    users.append(os.path.relpath(os.path.join(d, f), root))
+            if not f.endswith(".py"):
+                continue
+            path = os.path.join(d, f)
+            try:
+                tree = ast.parse(open(path, encoding="utf-8", errors="ignore").read())
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                hit = False
+                if isinstance(node, ast.Call):
+                    fn = node.func
+                    name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+                    if name in ("urlopen", "_fetch_one"):
+                        hit = (any(k.arg in ("granted", None) for k in node.keywords) or
+                               (name == "urlopen" and len(node.args) > 3))
+                elif isinstance(node, (ast.Name, ast.Attribute)):
+                    hit = getattr(node, "id", getattr(node, "attr", "")) in ("allow_grant",
+                                                                           "GRANTABLE")
+                elif isinstance(node, ast.alias):
+                    hit = node.name in ("allow_grant", "GRANTABLE")
+                if hit:
+                    users.add(os.path.relpath(path, root))
     assert sorted(users) == ["netpolicy.py", os.path.join("palisade_qt", "kit", "tiles.py")], users
+
+
+
+def test_ra_s2c_n12_folding_during_a_download_never_offers_a_second_one(home):
+    from palisade_qt.kit.tiles import imagery_state
+    hub = _big_hub()
+    try:
+        hub.open_callsign("ATLAS")
+        _pump(200)
+        base = hub.page_app("ATLAS").map._base
+        base.can_fetch = True
+        base._on_imagery(*imagery_state({"tiles": 6, "shown": 0, "blocked": 6}))
+        asked = []
+        base.tiles.download = lambda style: asked.append(style)
+        base.download_btn.click()
+        base.dismiss()
+        base.dismiss()                                 # fold and unfold mid-download
+        assert not base.download_btn.isEnabled() and base.download_btn.text() == "DOWNLOADING…"
+        base.download()
+        assert len(asked) == 1
+        base._on_imagery("ok", "")                     # the download finished
+        base._on_imagery(*imagery_state({"tiles": 6, "shown": 0, "blocked": 6}))
+        assert base.download_btn.isEnabled()
+    finally:
+        _close(hub)
