@@ -371,3 +371,11 @@ def _tokens_for(widget):
                 return tok
     return theme.tokens("dark")
 
+
+def set_run(btn, on):
+    """Run-state colour for a start/stop/scan button: green while running, red while stopped
+    (QSS `QPushButton[run="on"|"off"]` in theme.qss). Sets the property and re-polishes."""
+    btn.setProperty("run", "on" if on else "off")
+    btn.style().unpolish(btn)
+    btn.style().polish(btn)
+    btn.update()

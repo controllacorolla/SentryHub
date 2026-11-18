@@ -1,4 +1,4 @@
-"""RECON — survey + assess: Wi-Fi / BLE / network (key 6).
+"""RECON — survey + assess: Wi-Fi / BLE / network (a page key in the left rail).
 
 Since CL1 the counter-surveillance detectors live on their own page (SWEEP, sweep.py — the
 DetectorWorker class stays here and is imported there, unchanged) and ENGAGE is global chrome: the

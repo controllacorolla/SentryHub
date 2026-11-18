@@ -21,6 +21,7 @@ from .timebase import zulu
 from .kit import ControlBar, FeedTable, DetailCard
 from .worker import Worker
 from .kit.seams import offscreen as _seam_offscreen
+from .kit.components import set_run
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
@@ -1129,6 +1130,7 @@ class BabelApp(PalisadeApp):
         self.run_btn.setToolTip("Take the SDR and start this decoder. STOP releases it. The page "
                                 "releases it on its own when you leave it.")
         self.run_btn.toggled.connect(self._toggle_run)
+        set_run(self.run_btn, False)                     # red while stopped, green while running
         self.bar.lay.addWidget(self.run_btn)
         self.busy = QtWidgets.QLabel("")        # "RADIO BUSY — held by X" when another layer owns it
         self.busy.setProperty("class", "note")
@@ -1162,6 +1164,7 @@ class BabelApp(PalisadeApp):
 
     def _toggle_run(self, on):
         self.run_btn.setText("STOP" if on else "RUN")
+        set_run(self.run_btn, on)
         w = self._worker
         if w is not None and hasattr(w, "set_running"):
             w.set_running(on)
@@ -1227,6 +1230,7 @@ class BabelApp(PalisadeApp):
             self.run_btn.blockSignals(True)
             self.run_btn.setChecked(False)
             self.run_btn.setText("RUN")
+            set_run(self.run_btn, False)
             self.run_btn.blockSignals(False)
 
     def on_status(self, status):

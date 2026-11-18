@@ -196,6 +196,7 @@ class PalisadeApp(QtWidgets.QWidget):
     SUBTABS = ()
     request = QtCore.Signal(str, object)      # page -> shell: ("tune_fm", mhz), ("open", "PROWL"), …
     _retired = QtCore.Signal(object)          # a retiring worker finished (queued to the GUI thread)
+    status_shown = QtCore.Signal()            # the page's status changed (the shell's notices)
 
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         super().__init__(parent)
@@ -234,6 +235,11 @@ class PalisadeApp(QtWidgets.QWidget):
         if not embedded:
             self._status_row = QtWidgets.QFrame()
             self._status_row.setObjectName("page_status")
+            # owner, device run 2026-11-18: no status bar along the bottom of every module (it
+            # duplicated the top strip). The row is never shown; what it carried is still the
+            # page's status (page_status()), and the shell turns a new warning into a short
+            # notice that goes away by itself (shell.PageNotice). Standalone windows too.
+            self._status_row.setVisible(False)
             self._status_lay = QtWidgets.QHBoxLayout(self._status_row)
             self._status_lay.setContentsMargins(2, 2, 2, 2)
             self._status_lay.setSpacing(18)
@@ -348,10 +354,19 @@ class PalisadeApp(QtWidgets.QWidget):
         """{key: text} of what this page currently reports (tests + the composite read this)."""
         return {k: v["text"] for k, v in self._last_status.items() if v.get("text")}
 
+    def shown_status(self):
+        """{key: {text, state, tip}} this page is reporting now (a composite: its current child)."""
+        return dict(getattr(self, "_shown_status", None) or self._last_status)
+
     def _render_status(self, status=None):
         if self._status_row is None:
             return
         status = self._last_status if status is None else status
+        self._shown_status = status
+        try:
+            self.status_shown.emit()
+        except RuntimeError:
+            pass
         for key in list(self._status_labels):
             if key not in status:
                 self._status_labels.pop(key).deleteLater()

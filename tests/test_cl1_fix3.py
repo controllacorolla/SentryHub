@@ -97,7 +97,9 @@ def test_nav_key_focus_cue_does_not_widen_the_strip():
                 _pump(20)
                 # UIP: keys fill the left rail's width; focus still costs no width
                 assert k.sizeHint().width() == before[k.callsign], (mode, k.callsign)
-                assert k.width() == hub.nav_rail.contentsRect().width() - 8, (mode, k.callsign)
+                m = hub.nav_rail.layout().contentsMargins()      # Stage 1: 6 px either side
+                assert k.width() == hub.nav_rail.contentsRect().width() - m.left() - m.right(), \
+                    (mode, k.callsign)
         finally:
             hub.close()
             _pump(100)
