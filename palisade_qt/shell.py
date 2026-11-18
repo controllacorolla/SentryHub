@@ -111,7 +111,8 @@ class PageNotice(QtWidgets.QLabel):
         self._timer.timeout.connect(self.hide)
         self._active = {}              # page -> {key: _sig} of the warnings already shown
         self._left = {}                # page -> monotonic time the operator left it
-        self._page, self._lines, self._worst = None, [], "warn"   # what the notice shows now
+        self._page, self._keys = None, []    # the page and status keys the notice shows now
+        self._lines, self._worst = [], "warn"
         self.anchor = None             # the widget whose bottom-right corner it sits in
         self.blocked = None            # callable: True while a drawer / panel is open (RA-S1 F8)
         self.refresh = None            # callable: re-read the page on screen (after a panel closes)
@@ -167,29 +168,46 @@ class PageNotice(QtWidgets.QLabel):
             self._active.pop(page, None)          # away a while: remind once on return (N3/N10)
         before = self._active.get(page, {})
         sigs = {k: self._sig(v) for k, v in cur.items()}
-        new, worst = [], "warn"
+        newk = []
         for key, v in cur.items():
             was = before.get(key)
             if was == sigs[key] or (was and was[0] == "alert" and was[1] == sigs[key][1]):
                 continue
-            new.append(v["text"])
-            if v.get("state") == "alert":
-                worst = "alert"
-        if new and callable(self.blocked) and self.blocked():
+            newk.append(key)
+        if newk and callable(self.blocked) and self.blocked():
             # keep only what was already shown and is unchanged; try again shortly
             self._active[page] = {k: s for k, s in sigs.items() if before.get(k) == s}
             self._retry.start()
             return []
         self._active[page] = sigs
-        if new:
-            lines = ["%s · %s" % (page, t) for t in new]
-            if self.isVisible() and self._page == page:
-                # a second warning moments later joins the one showing instead of replacing it
-                lines = [ln for ln in self._lines if ln not in lines] + lines
-                worst = "alert" if (worst == "alert" or self._worst == "alert") else worst
-            self._page, self._lines, self._worst = page, lines, worst
+        showing = self.isVisible() and self._page == page
+        if newk:
+            # a second warning moments later joins the one showing instead of replacing it
+            keys = [k for k in self._keys if k in cur and k not in newk] if showing else []
+            self._show_keys(page, cur, keys + newk, restart=True)
+        elif showing:
+            # the notice only ever says what the page reports NOW (RA-S1d N12): a line whose
+            # warning cleared goes, a line whose text changed is rewritten, the timer runs on
+            keys = [k for k in self._keys if k in cur]
+            if keys:
+                self._show_keys(page, cur, keys, restart=False)
+            else:
+                self.hide()
+                self._page, self._keys = None, []
+        return [cur[k]["text"] for k in newk]
+
+    def _show_keys(self, page, cur, keys, restart):
+        lines = ["%s · %s" % (page, cur[k]["text"]) for k in keys]
+        worst = "alert" if any(cur[k].get("state") == "alert" for k in keys) else "warn"
+        self._page, self._keys = page, list(keys)
+        if restart:
             self._show(lines, worst, self.SHOW_MS)
-        return new
+        elif lines != self._lines or worst != self._worst:
+            if callable(self.blocked) and self.blocked():
+                self.hide()            # never raised over an open drawer by an update (RA-S1e N16)
+            else:
+                self._show(lines, worst, max(1, self._timer.remainingTime()))
+        self._lines, self._worst = lines, worst
 
     def forget(self, page):
         """The operator left the page. If they come back after REMIND_S, its still-active warnings
