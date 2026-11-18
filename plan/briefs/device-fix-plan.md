@@ -25,10 +25,10 @@ Status: open · in progress · done (PR). Keep this table current as items close
 
 | # | Item | Status | PR |
 |---|---|---|---|
-| 7 | Maps load on the device. Root-cause first (tile source vs network vs cache path), then satellite tiles actually appear offline and online. | open (cause found: NET defaults OFFLINE, tile fetches are refused silently) | — |
-| 8 | OPS: wire it to real contacts (readsb, gpsd, Wi-Fi/BLE sightings) so it shows something, with an honest reason when empty. | open | — |
-| 9 | OPS legend: one tight row spread across the bottom of the map. | open | — |
-| 10 | SKY DOME: title, legend and what's plotted so it explains itself. | open | — |
+| 7 | Maps load on the device. Root-cause first (tile source vs network vs cache path), then satellite tiles actually appear offline and online. | in progress (cause: NET defaults OFFLINE, tile fetches refused silently. Fix: banner says why + one-tap DOWNLOAD MAP, Dalton's pick 02:51Z; refetch on NET change) | fix/ops-maps |
+| 8 | OPS: wire it to real contacts (readsb, gpsd, Wi-Fi/BLE sightings) so it shows something, with an honest reason when empty. | in progress (cards open their pages; empty reason from ATLAS feed health; NEXT PASS from OVERWATCH started at launch) | fix/ops-maps |
+| 9 | OPS legend: one tight row spread across the bottom of the map. | in progress | fix/ops-maps |
+| 10 | SKY DOME: title, legend and what's plotted so it explains itself. | in progress | fix/ops-maps |
 
 ## Stage 3: RECON — owner: RECON thread
 
@@ -49,6 +49,6 @@ Status: open · in progress · done (PR). Keep this table current as items close
 
 | # | Item | Status |
 |---|---|---|
-| 16 | RF module is empty: what RF should show versus PRISM/PROWL. | waiting on Dalton |
-| 17 | ASSISTANT has no model: Opus (cloud) or a local model for offline field use. | waiting on Dalton |
-| 18 | MESH: UI thread proposes a real layout for his yes/no. | proposal being drafted |
+| 16 | RF module is empty: what RF should show versus PRISM/PROWL. | parked (Dalton 04:14Z: no use case yet, leave as is) |
+| 17 | ASSISTANT has no model: Opus (cloud) or a local model for offline field use. | decided: Opus cloud (Dalton 04:14Z); UI thread, with the MESH PR. Egress through NET + session log; engagement details not sent |
+| 18 | MESH: UI thread proposes a real layout for his yes/no. | decided: full layout MAP/NODES/CHAT/RADIO (Dalton 02:51Z); UI thread, after Stage 2 |
