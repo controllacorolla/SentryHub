@@ -8,6 +8,7 @@ says why not. 9 legend: one tight row along the bottom of the scope. 10 SKY DOME
 Headless (Qt offscreen), real hub at 1280x720, no network.
 """
 import os
+import time
 import sys
 
 import pytest
@@ -22,7 +23,7 @@ for p in (SUITE_DIR, HERE):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtTest, QtWidgets  # noqa: E402
 
 from test_cl1_screen import _pump, _hub, _isolate  # noqa: E402
 
@@ -94,7 +95,7 @@ def test_s2_7_fetch_counts_refusals_and_a_granted_fetch_is_logged(tmp_path, offl
     calls = []
     monkeypatch.setattr(urllib.request, "urlopen", lambda req, **kw: calls.append(req) or Resp())
     why = {}
-    tpl = "https://tiles.example.test/{z}/{y}/{x}.png"
+    tpl = "https://server.arcgisonline.com/tile/{z}/{y}/{x}"     # a registered tile host
     assert tiles._fetch_one(tpl, 5, 1, 2, tmp_path, why) is None
     assert why.get("blocked") == 1 and not calls
     assert any(e[2] == "blocked" and e[4] == "map tiles" for e in offline.log())
@@ -141,9 +142,12 @@ def test_s2_7_map_says_why_it_is_blank_and_offers_download(home):
         assert asked and not base.download_btn.isEnabled()
         base._on_imagery("ok", "")
         assert not base.banner.isVisible() and not base.download_btn.isVisible()
-        # a network failure has no download button (a tap would not help)
-        base._on_imagery(*imagery_state({"tiles": 6, "shown": 0, "failed": 6, "error": "x"}))
-        assert base.banner.isVisible() and not base.download_btn.isVisible()
+        # a network failure offers RETRY (the same one-shot logged grant; RA-S2 N6), and the raw
+        # error is in the tooltip, not on the map
+        base._on_imagery(*imagery_state({"tiles": 6, "shown": 0, "failed": 6,
+                                         "error": "<urlopen error [Errno -3] x>"}))
+        assert base.banner.isVisible() and base.download_btn.text() == "RETRY"
+        assert "urlopen" not in base.banner.text() and "urlopen" in base.banner.toolTip()
     finally:
         _close(hub)
 
@@ -307,3 +311,79 @@ def test_s2_10_sky_dome_explains_itself():
         assert not img.isNull()
     finally:
         _close(hub)
+
+
+
+# ---------------------------------------------------------------- RA-S2 follow-ups
+def test_ra_s2_n1_next_pass_reads_overwatch_predictions_not_the_hourly_alert(home):
+    hub = _big_hub()
+    try:
+        now = time.time()
+        hub.ops._next_pass = None                     # the alert's pass is long gone
+        hub.ops.pass_state = lambda: "live"
+        hub.ops.next_pass = lambda: {"sat": "NOAA 19", "aos": now + 3600, "los": now + 4200}
+        assert hub.ops._pass_text().startswith("NOAA 19 ")
+        hub.ops.next_pass = lambda: {"sat": "NOAA 19", "aos": now - 60, "los": now + 400}
+        assert hub.ops._pass_text() == "NOAA 19 NOW"
+        hub.ops.next_pass = lambda: None
+        assert hub.ops._pass_text() == "none in 24 h"
+        # the shell's source: OVERWATCH's own list, earliest pass not over yet
+        class OW:
+            passes = [{"sat": "A", "aos": now - 3000, "los": now - 2400},
+                      {"sat": "B", "aos": now + 900, "los": now + 1500},
+                      {"sat": "C", "aos": now + 300, "los": now + 900}]
+        hub._overwatch = lambda: OW()
+        assert hub._next_pass(now)["sat"] == "C"
+    finally:
+        _close(hub)
+
+
+def test_ra_s2_n2_imagery_strip_stays_out_of_the_map_centre_and_can_be_put_away(home):
+    from palisade_qt.kit.tiles import imagery_state
+    hub = _big_hub()
+    try:
+        for page in ("OPS", "ATLAS"):
+            hub.open_callsign(page)
+            _pump(200)
+            base = hub.ops.ppi._base if page == "OPS" and hasattr(hub.ops.ppi, "_base") else None
+            if base is None:
+                from palisade_qt.kit.mappanel import BaseMap
+                base = next(b for b in hub.findChildren(BaseMap) if b.plot.isVisible())
+            base.can_fetch = True
+            base._on_imagery(*imagery_state({"tiles": 6, "shown": 0, "blocked": 6}))
+            _pump(50)
+            ph = base.plot.height()
+            for wdg in (base.banner, base.download_btn):
+                g = wdg.geometry()
+                assert base.plot.rect().contains(g), (page, g)
+                assert g.bottom() < ph * 0.35 or g.top() > ph * 0.65, (page, g, ph)
+                for r in base._overlay_rects():          # never over the map's own controls
+                    assert not g.intersects(r), (page, g, r)
+            assert base.banner.height() <= 48                   # one line (RA-S2 N3)
+            QtTest.QTest.mouseClick(base.banner, QtCore.Qt.LeftButton)
+            assert not base.banner.isVisible() and not base.download_btn.isVisible()
+            base._on_imagery(*imagery_state({"tiles": 6, "shown": 0, "blocked": 6}))
+            assert not base.banner.isVisible(), "put away until the state changes"
+            base._on_imagery(*imagery_state({"tiles": 6, "shown": 3, "blocked": 3}))
+            assert base.banner.isVisible()
+    finally:
+        _close(hub)
+
+
+def test_ra_s2_n4_a_grant_reaches_only_the_registered_tile_hosts(offline, monkeypatch):
+    import urllib.request
+    from palisade_qt.kit import tiles
+    tiles._netpolicy()
+    calls = []
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, **kw: calls.append(req))
+    with pytest.raises(offline.NetBlocked):
+        offline.urlopen("https://example.com/x", purpose="anything", granted=True)
+    assert not calls and offline.mode() == "OFFLINE"
+
+
+def test_ra_s2_n7_sky_table_does_not_claim_everything_is_above_the_horizon():
+    import inspect
+    from palisade_qt import overwatch
+    src = inspect.getsource(overwatch)
+    assert 'micro("ABOVE THE HORIZON")' not in src
+    assert "BELOW 0° = UNDER THE HORIZON" in src

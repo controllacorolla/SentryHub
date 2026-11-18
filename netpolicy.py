@@ -207,6 +207,18 @@ def check(url_or_host, purpose=""):
     return host
 
 
+# Hosts an operator grant may reach (RA-S2 N4): a module that offers a one-tap download names its
+# hosts here; urlopen(granted=True) to any other host is refused like any blocked request.
+GRANTABLE = {}
+
+
+def allow_grant(hosts, purpose):
+    with _lock:
+        for h in hosts:
+            if h:
+                GRANTABLE[h.lower()] = purpose
+
+
 def grant(url, purpose):
     """An operator's one-tap exception to the mode for ONE request (owner 2026-11-18: "one-tap
     download on the map" while NET stays OFFLINE). Only an explicit operator action may pass this
@@ -233,6 +245,9 @@ def urlopen(req, timeout=10, purpose="", granted=False, **kw):
         except Exception:
             purpose = ""
     if granted:
+        host = (_host_of(url) or "").lower()
+        if host not in GRANTABLE:
+            raise NetBlocked(host, mode(), "no operator grant for this host")
         grant(url, purpose)
     else:
         check(url, purpose)

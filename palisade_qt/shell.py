@@ -325,6 +325,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.ops = OpsHome(demo=demo, mode=mode)
         self.ops.feed_summary = self._atlas_feed_summary
         self.ops.pass_state = self._pass_state
+        self.ops.next_pass = self._next_pass
         self._add_page("OPS", self.ops)
         self.show_page("OPS")
         self._on_state()
@@ -398,12 +399,23 @@ class PalisadeHub(QtWidgets.QMainWindow):
         fh = getattr(app, "feed_health", None)
         return fh[0] if fh else None
 
-    def _pass_state(self):
+    def _overwatch(self):
         atlas = self.pages.get("ATLAS")
         if atlas is None or not hasattr(atlas, "children_apps"):
             return None
-        ow = next((c for c in atlas.children_apps() if isinstance(c, OverwatchApp)), None)
-        return getattr(ow, "pass_state", None)
+        return next((c for c in atlas.children_apps() if isinstance(c, OverwatchApp)), None)
+
+    def _pass_state(self):
+        return getattr(self._overwatch(), "pass_state", None)
+
+    def _next_pass(self, now=None):
+        """The next pass that is not over yet, from OVERWATCH's own prediction list (RA-S2 N1: the
+        hourly alert alone left OPS saying "none in 24 h" while passes were still predicted)."""
+        import time as _t
+        now = _t.time() if now is None else now
+        passes = getattr(self._overwatch(), "passes", None) or []
+        live = [p for p in passes if p.get("los", p.get("aos", 0)) >= now and p.get("aos")]
+        return min(live, key=lambda p: p["aos"]) if live else None
 
     def start_background_feeds(self):
         """Build ATLAS (not shown) and start its worker, so OPS gets contacts from launch. Pass

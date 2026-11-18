@@ -200,6 +200,12 @@ def _netpolicy():
     if root not in sys.path:
         sys.path.insert(0, root)
     import netpolicy
+    if not getattr(netpolicy, "_tiles_grantable", False):
+        # only the tile hosts may be reached by DOWNLOAD MAP (RA-S2 N4)
+        hosts = {netpolicy._host_of(u) for u in TILE_URLS.values()}
+        hosts |= {netpolicy._host_of(u) for srcs in TILE_SOURCES.values() for _n, u in srcs}
+        netpolicy.allow_grant(hosts, "map tiles (operator download)")
+        netpolicy._tiles_grantable = True
     return netpolicy
 
 
