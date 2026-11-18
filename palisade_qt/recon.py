@@ -40,7 +40,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-SUBTABS = ("WIFI", "BLE", "NET", "RF")
+SUBTABS = ("WIFI", "BLE", "NET", "CAPTURE", "ENUM", "RF")
 SYS_NET = "/sys/class/net"
 
 
@@ -764,6 +764,7 @@ class ReconApp(PalisadeApp):
         self._chips = {}                                 # sub-tab -> (chip text, state)
         self.wifi_path = None
         self._gated = []                                 # cards to refresh on gate change
+        self._tool_panes = []     # TOOLKIT: capture/enum panes (stopped on close / PANIC)
         self.evidence = None      # CL3: the ONE chain lives with the engagement (engagement.chain_states)
         super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
 
@@ -785,8 +786,10 @@ class ReconApp(PalisadeApp):
         lay.setSpacing(10)
 
         self.stack = QtWidgets.QStackedWidget()
+        from . import recon_tools
         self._pages = {
             "WIFI": self._wifi_page(), "BLE": self._ble_page(), "NET": self._net_page(),
+            "CAPTURE": recon_tools.capture_page(self), "ENUM": recon_tools.enum_page(self),
             "RF": self._rf_page()}
         for t in SUBTABS:
             self.stack.addWidget(self._pages[t])
@@ -1079,7 +1082,17 @@ class ReconApp(PalisadeApp):
         self.pass_gated = GatedTool("PASSAUDIT", "target", passaudit.prepare,
                                     ["convert", "hashcat", "aircrack"], self, self._tok,
                                     "capture / hash target")
-        self._gated += [self.net_gated, self.pass_gated]
+        # TOOLKIT item 2: ARP / NetBIOS / netdiscover LAN host discovery — active, gated like nmap.
+        self.disc_run = RunPane("DISCOVERY", self._tok)
+        self.disc_iface = QtWidgets.QLineEdit()
+        self.disc_iface.setPlaceholderText("iface (optional)")
+        self.disc_iface.setMaximumWidth(140)
+        self.disc_gated = GatedTool("LAN DISCOVERY", "target", netpent.discover_prepare,
+                                    ["arp", "nbt", "netdiscover"], self, self._tok,
+                                    "subnet / range, e.g. 10.0.0.0/24", runner=self.disc_run,
+                                    extra=self._disc_extra,
+                                    fields=[("IFACE", self.disc_iface)])
+        self._gated += [self.net_gated, self.pass_gated, self.disc_gated]
         # RX: NETPENT runs (nmap through the executor); PASSAUDIT stays authorize-only (v0.2)
         top = QtWidgets.QHBoxLayout()
         top.setSpacing(10)
@@ -1087,7 +1100,17 @@ class ReconApp(PalisadeApp):
         top.addWidget(self.pass_gated, 1)
         pl.addLayout(top)
         pl.addWidget(self.net_run, 1)
+        mid = QtWidgets.QHBoxLayout()
+        mid.addWidget(self.disc_gated, 1)
+        pl.addLayout(mid)
+        pl.addWidget(self.disc_run, 1)
         return page
+
+    def _disc_extra(self, action):
+        """-> (kwargs for netpent.discover_prepare, error). Passes the optional interface through;
+        the ENGINE still gates the subnet against the engagement scope."""
+        iface = self.disc_iface.text().strip()
+        return ({"iface": iface} if iface else {}), None
 
     def _rf_page(self):
         page = QtWidgets.QWidget()
@@ -1138,7 +1161,20 @@ class ReconApp(PalisadeApp):
             os.makedirs(d, exist_ok=True)
 
     def run_panes(self):
-        return [self.wifi_run, self.wifi_deauth_run, self.net_run]
+        return [self.wifi_run, self.wifi_deauth_run, self.net_run,
+                getattr(self, "disc_run", None)] + list(getattr(self, "_tool_panes", []))
+
+    def on_panic(self):
+        """PANIC stops the PASSIVE captures too (one-button stop): the gated tools are already
+        killed by the executor when the gate drops, but a passive tcpdump / Responder analyze holds
+        no gate, so PANIC must stop it here. UI-only; no gate change."""
+        from .recon_tools import PassiveRunPane
+        lines = []
+        for pane in getattr(self, "_tool_panes", []):
+            if isinstance(pane, PassiveRunPane) and pane.running():
+                pane.stop("PANIC")
+                lines.append("RECON: stopped passive capture")
+        return lines
 
     def on_authorized(self, domain, action, target, argv):
         """An active tool produced an authorized command. Announce it; the trail is in the
@@ -1231,8 +1267,7 @@ class ReconApp(PalisadeApp):
     def stop(self):
         if self._stopped:
             return
-        for pane in (getattr(self, "wifi_run", None), getattr(self, "wifi_deauth_run", None),
-                     getattr(self, "net_run", None)):
+        for pane in self.run_panes():
             if pane is not None and pane.running():
                 pane.stop("RECON closed")          # recorded kill + exit, like BENCH
         for w in getattr(self, "_workers", []):

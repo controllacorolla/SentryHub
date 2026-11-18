@@ -1060,6 +1060,12 @@ SPAWN_ALLOWLIST = {
         "discovery: scan requests only, no connect/pair); no target contact, killed on stop",
     ("devterm.py", "ssh_open", "subprocess.Popen"):
         "opens an interactive terminal; the host passed devterm.authorize_ssh_host first",
+    ("palisade_qt/recon.py", "_associated_bssid", "subprocess.run"):
+        "RX-fix4 select-a-network: `iw dev` / `iw dev <sta> link` read THIS host's own "
+        "association (fixed argv, read-only); no target contact, no TX",
+    ("palisade_qt/recon.py", "_default_gateway", "subprocess.run"):
+        "RX-fix4 select-a-network: `ip -4 route show default` reads this host's own routing "
+        "table (fixed argv, read-only); no target contact, no TX",
 }
 WRITE_ALLOWLIST = {
     ("txguard.py", "log_tx", "f.write"): "append to the local TX log file",

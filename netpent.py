@@ -28,7 +28,13 @@ _WEB_CATALOG = frozenset((
     "nikto", "sqlmap", "whatweb", "gobuster", "ffuf", "feroxbuster", "nuclei", "testssl", "cewl",
 ))
 CATALOG_PROGRAMS = _NET_CATALOG | _WEB_CATALOG
-ALLOWED_PROGRAMS = frozenset(("nmap", "arp-scan")) | CATALOG_PROGRAMS
+# Active LAN host-discovery tools wired with their own builders (TOOLKIT cluster, owner ask #2).
+# Each sweeps a subnet with ARP / NetBIOS probes, so it is ACTIVE and engagement-gated exactly like
+# nmap: the target network must sit inside the open engagement's IP scope. arp-scan / netdiscover
+# need root (or cap_net_raw); the installer grants the capability, else the tool exits with a clear
+# "requires root" the RunPane shows.
+_DISCOVERY_PROGRAMS = frozenset(("arp-scan", "nbtscan", "netdiscover"))
+ALLOWED_PROGRAMS = frozenset(("nmap",)) | _DISCOVERY_PROGRAMS | CATALOG_PROGRAMS
 
 
 def _ping_sweep_argv(cidr):
@@ -55,6 +61,39 @@ def _survey_argv(target):
 def _arp_scan_argv(iface):
     """arp-scan of the local net: ACTIVE. Private and not wired to any gate action yet."""
     return ["arp-scan", "--interface", iface, "--localnet"]
+
+
+def _iface_opt(iface):
+    """A plain interface token (letters/digits/.-_) or None. Never an option or shell metachar —
+    the interface is still appended to a gated argv, so it must not be able to inject a flag."""
+    import re
+    i = str(iface or "").strip()
+    return i if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}", i) else None
+
+
+def _arp_discover_argv(addrs, iface=None):
+    # -x greppable, -q quiet, -N no header; arp-scan takes target networks/ranges as trailing args
+    argv = ["arp-scan", "-x", "-q"]
+    if iface:
+        argv += ["--interface", iface]
+    return argv + list(addrs)
+
+
+def _nbt_discover_argv(addrs, iface=None):
+    # nbtscan accepts a CIDR / a.b.c.d-e range / single address as trailing args; -q quiet banner.
+    return ["nbtscan", "-q"] + list(addrs)
+
+
+def _netdiscover_argv(addrs, iface=None):
+    # -P print-then-exit (one pass, not an endless live sniff), -N no header. One -r range.
+    argv = ["netdiscover", "-P", "-N"]
+    if iface:
+        argv += ["-i", iface]
+    return argv + ["-r", addrs[0]]
+
+
+_DISCOVERY = {"arp": _arp_discover_argv, "nbt": _nbt_discover_argv,
+              "netdiscover": _netdiscover_argv}
 
 
 _ACTIONS = {"discover": _ping_sweep_argv, "portscan": _port_scan_argv,
@@ -179,6 +218,46 @@ def catalog_prepare(tool, target, args=(), evidence_chain=None):
     argv = [tool] + toks + addrs
     label = "recon:" + tool + ((":" + t) if pinned else "")
     return engagement.issue("recon:" + tool, addrs[0], argv=argv, kind="ip",
+                            evidence_chain=evidence_chain, label=label,
+                            also=tuple((a, "ip") for a in addrs[1:]))
+
+
+def discover_prepare(action, target, iface=None, evidence_chain=None):
+    """Gate + build an active LAN host-discovery sweep (arp / nbt / netdiscover) over `target`
+    (an IP address, network or range). Like prepare(), the target is checked as a single IP
+    interval against the open engagement's scope — refusing out of scope, with no engagement, or
+    when it is not an address/network/range (a bare hostname is resolved; a wide subnet is checked
+    as one interval, not host-by-host). Returns (ok, reason, ticket) — the ticket runs only through
+    executor.run()/start(). No attack flags are built here; each sweep only enumerates live hosts.
+    """
+    if action not in _DISCOVERY:
+        return False, "unknown discovery action %r" % (action,), None
+    t = str(target).strip()
+    if t.startswith("-"):
+        return False, "target %r looks like an option" % (target,), None
+    i = None
+    if iface:
+        i = _iface_opt(iface)
+        if i is None:
+            return False, "interface %r is not a plain interface name" % (iface,), None
+    try:
+        pinned = engagement.pin_host(t)
+    except ValueError as e:
+        return False, "refused: %s" % e, None
+    if pinned:
+        addrs = pinned
+    else:
+        addrs = _literal_targets(t)
+        if addrs is None:
+            import re
+            if re.fullmatch(r"(host:)?[A-Za-z0-9][A-Za-z0-9-]{0,62}", t, re.I):
+                return False, ("refused: %r is a single-word name — use its IP address or a full "
+                               "name like %s.lan" % (target, t.split(":")[-1])), None
+            return False, ("refused: %r is not an IP address, network, range or hostname"
+                           % (target,)), None
+    argv = _DISCOVERY[action](addrs, i)
+    label = "net:disc:" + action + ((":" + t) if pinned else "")
+    return engagement.issue("net:disc:" + action, addrs[0], argv=argv, kind="ip",
                             evidence_chain=evidence_chain, label=label,
                             also=tuple((a, "ip") for a in addrs[1:]))
 
