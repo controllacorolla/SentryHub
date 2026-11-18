@@ -338,8 +338,13 @@ class OpsHome(PalisadeApp):
             if p["aos"] <= time.time():
                 return "%s NOW" % p.get("sat", "?")
             return "%s %s" % (p.get("sat", "?"), zulu(p["aos"], secs=False))
-        p = self._next_pass
+        st = self.pass_state() if callable(self.pass_state) else None
+        # the alert only while OVERWATCH has no prediction of its own here: a later NO TLE / HOME
+        # NOT SET / empty list wins over an old announcement (RA-S2b N9)
+        p = self._next_pass if st is None else None
         if p:
+            if p["aos"] <= time.time():
+                return "%s NOW" % p["sat"]
             return "%s %s" % (p["sat"], zulu(p["aos"], secs=False))
         if self.demo:
             return "demo"

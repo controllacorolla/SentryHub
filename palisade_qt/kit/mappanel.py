@@ -215,17 +215,23 @@ class BaseMap(QtCore.QObject):
         self.imagery = (state, text)
         if changed:
             self._dismissed = False
-        show = state in ("offline", "failed", "partial") and bool(text) and self.can_fetch \
-            and not getattr(self, "_dismissed", False)
-        self.banner.setText(self.short_text(state, text) + "  ✕")
-        self.banner.setToolTip(text + "\n(tap to hide)")
+        show = state in ("offline", "failed", "partial") and bool(text) and self.can_fetch
         self.banner.setVisible(show)
-        # the button where a tap can help: tiles the NET mode refused (DOWNLOAD MAP), or a
-        # failed download (RETRY: the same one-shot, logged grant; RA-S2 N6)
-        self.download_btn.setVisible(show and ((state in ("offline", "partial") and
-                                                "OFFLINE" in text) or
-                                               "download failed" in text or
-                                               "some tiles failed" in text))
+        if self._dismissed:
+            # put away = folded to a small chip in the corner, never gone: a new blank area still
+            # shows that the map has no imagery and a tap brings DOWNLOAD MAP back (RA-S2b N8)
+            self.banner.setText("NO IMAGERY ▸")
+            self.banner.setToolTip(text + "\n(tap to show DOWNLOAD MAP)")
+            self.download_btn.setVisible(False)
+        else:
+            self.banner.setText(self.short_text(state, text) + "  ✕")
+            self.banner.setToolTip(text + "\n(tap to fold away)")
+            # the button where a tap can help: tiles the NET mode refused (DOWNLOAD MAP), or a
+            # failed download (RETRY: the same one-shot, logged grant; RA-S2 N6)
+            self.download_btn.setVisible(show and ((state in ("offline", "partial") and
+                                                    "OFFLINE" in text) or
+                                                   "download failed" in text or
+                                                   "some tiles failed" in text))
         self.download_btn.setEnabled(True)
         self.download_btn.setText("DOWNLOAD MAP" if "OFFLINE" in text else "RETRY")
         if show:
@@ -234,10 +240,9 @@ class BaseMap(QtCore.QObject):
             self.download_btn.raise_()
 
     def dismiss(self):
-        """Put the strip away until the imagery state changes (RA-S2 N2)."""
-        self._dismissed = True
-        self.banner.hide()
-        self.download_btn.hide()
+        """Tap: fold the strip to a small "NO IMAGERY ▸" chip; tap the chip to unfold it."""
+        self._dismissed = not self._dismissed
+        self._on_imagery(*self.imagery)
 
     def download(self):
         """One tap: this view's tiles, once, despite NET OFFLINE (TileLayer.download)."""
