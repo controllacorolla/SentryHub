@@ -1274,6 +1274,9 @@ class AtlasApp(PalisadeApp):
             # opened ATLAS, its BUSY edge alerts keep running while hidden, as before UIP.
             if self._ever_shown:
                 self._update_busy()
+            # cheap (counts only): OPS says why its map is empty from this (owner 2026-11-18)
+            self.feed_health = self._layer_summary(
+                [c for c in self._contacts.values() if c["kind"] in self._layers])
             return
         on = [c for c in self._contacts.values() if c["kind"] in self._layers]
         shown = [c for c in on if self._in_view(c)]
@@ -1306,6 +1309,7 @@ class AtlasApp(PalisadeApp):
             else:
                 self._show_lost()
         text, state = self._layer_summary(on)
+        self.feed_health = (text, state)               # OPS's empty-map reason reads this
         self.set_chip("sdr", text, state=state)
         kinds = VIEW_KINDS.get(self._view)
         self._update_busy()                            # the empty state below reads RADIO BUSY

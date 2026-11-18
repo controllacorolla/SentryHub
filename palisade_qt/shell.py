@@ -323,6 +323,9 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.pages = {}
         self._current = None
         self.ops = OpsHome(demo=demo, mode=mode)
+        self.ops.feed_summary = self._atlas_feed_summary
+        self.ops.pass_state = self._pass_state
+        self.ops.next_pass = self._next_pass
         self._add_page("OPS", self.ops)
         self.show_page("OPS")
         self._on_state()
@@ -387,8 +390,36 @@ class PalisadeHub(QtWidgets.QMainWindow):
             self.nav_rail.attach_sub(n, rail)
             rail.setVisible(page is cur and not page.side_hidden())
 
+    def _atlas_feed_summary(self):
+        """ATLAS's per-layer feed health (its "sdr" chip), for OPS's empty-map reason; None while
+        ATLAS has not started."""
+        app = self.pages.get("ATLAS:inner")
+        if app is None or not getattr(app, "_started", False):
+            return None
+        fh = getattr(app, "feed_health", None)
+        return fh[0] if fh else None
+
+    def _overwatch(self):
+        atlas = self.pages.get("ATLAS")
+        if atlas is None or not hasattr(atlas, "children_apps"):
+            return None
+        return next((c for c in atlas.children_apps() if isinstance(c, OverwatchApp)), None)
+
+    def _pass_state(self):
+        return getattr(self._overwatch(), "pass_state", None)
+
+    def _next_pass(self, now=None):
+        """The next pass that is not over yet, from OVERWATCH's own prediction list (RA-S2 N1: the
+        hourly alert alone left OPS saying "none in 24 h" while passes were still predicted)."""
+        import time as _t
+        now = _t.time() if now is None else now
+        passes = getattr(self._overwatch(), "passes", None) or []
+        live = [p for p in passes if p.get("los", p.get("aos", 0)) >= now and p.get("aos")]
+        return min(live, key=lambda p: p["aos"]) if live else None
+
     def start_background_feeds(self):
-        """Build ATLAS (not shown) and start its worker, so OPS gets contacts from launch."""
+        """Build ATLAS (not shown) and start its worker, so OPS gets contacts from launch. Pass
+        prediction (OVERWATCH) starts too, so OPS's NEXT PASS card is real (owner 2026-11-18)."""
         if self.release_hidden("ATLAS"):
             return False
         if "ATLAS" not in self.pages:
@@ -400,6 +431,10 @@ class PalisadeHub(QtWidgets.QMainWindow):
         app.start()
         if hasattr(app, "set_background"):
             app.set_background(True)
+        try:
+            self.pages["ATLAS"].child(OverwatchApp).start()
+        except Exception:
+            pass                       # passes stay "predicting…" on OPS; ATLAS still runs
         return True
 
     @staticmethod
@@ -507,6 +542,11 @@ class PalisadeHub(QtWidgets.QMainWindow):
     def _on_net(self, *_):
         import netpolicy
         self.topbar.set_net(netpolicy.mode())
+        # a map that had no imagery because NET was OFFLINE fetches again as soon as it can
+        from .kit.mappanel import BaseMap
+        for b in self.findChildren(BaseMap):
+            if b.imagery[0] in ("offline", "partial", "failed"):
+                b.refresh()
 
     def open_panel(self, which):
         panel = {"radios": self.radios_panel, "engagement": self.engage_panel,
@@ -530,7 +570,10 @@ class PalisadeHub(QtWidgets.QMainWindow):
         return None
 
     def _on_request(self, what, arg):
-        if what == "tune_fm":
+        if what == "open":                         # an OPS card: (callsign, sub-tab or None)
+            cs, sub = arg
+            self.open_callsign(cs, sub)
+        elif what == "tune_fm":
             self.tune_fm(arg)
         elif what == "open_panel":
             self.open_panel(arg)

@@ -49,6 +49,23 @@ from .kit.seams import offscreen as _offscreen  # noqa: E402  (C5: one copy)
 
 # ======================= the polar sky dome =======================
 
+DOME_HELP = ("Looking straight up from HOME: the centre is directly overhead, the outer ring is "
+             "the horizon, north is at the top. It shows where the sun, the moon and satellites "
+             "are in your sky, and the path the next satellite passes will take, so you know "
+             "where to point an antenna and when.")
+
+
+def dome_key_html(tok):
+    """The dome's key: what each mark means (the same colours the dome paints)."""
+    items = [(tok["warn"], "&#9679;", "sun"), ("#C8CDD7", "&#9679;", "moon"),
+             (tok["live"], "&#9679;", "satellite up now"),
+             (tok["accent"], "&#9472;&#9472;", "pass track (next 24 h)"),
+             (tok["muted"], "&#9711;", "rings: 0° horizon · 30° · 60°")]
+    return "<br>".join('<span style="color:%s; font-weight:600;">%s</span>'
+                       '<span style="color:%s;">&nbsp;%s</span>' % (c, m, tok["text"], t)
+                       for c, m, t in items)
+
+
 class SkyDome(QtWidgets.QFrame):
     """Zenith at the centre, horizon on the rim, north up. Paints sun / moon / satellites and their
     pass arcs. Projection reused from overwatch.project (dome_r gives the low sky more room)."""
@@ -85,6 +102,13 @@ class SkyDome(QtWidgets.QFrame):
         for el in (0, 30, 60):
             rr = ow.dome_r(el, r)
             p.drawEllipse(QtCore.QPointF(cx, cy), rr, rr)
+        # each ring says its elevation (owner 2026-11-18: the dome did not explain itself)
+        p.setPen(QtGui.QPen(muted, 1))
+        th = p.fontMetrics().height() + 2
+        for el in (0, 30, 60):
+            x, y = self._project(45, el, cx, cy, r)
+            p.drawText(QtCore.QRectF(x + 3, y + 1, 48, th), QtCore.Qt.AlignLeft, "%d°" % el)
+        p.drawText(QtCore.QRectF(cx + 4, cy + 2, 48, th), QtCore.Qt.AlignLeft, "90°")
         # cardinal spokes + labels
         p.setPen(QtGui.QPen(muted, 1))
         for az, lab in ((0, "N"), (90, "E"), (180, "S"), (270, "W")):
@@ -307,10 +331,25 @@ class OverwatchApp(PalisadeApp):
         self.dome = SkyDome(self._tok)
         pl.addWidget(self.dome, 3)
         right = QtWidgets.QVBoxLayout()
+        right.setSpacing(6)
+        # owner 2026-11-18: "I'm not really sure what Sky Dome does or what it's showing me." The
+        # page now says it, and the dome carries a key and labelled elevation rings
+        right.addWidget(micro("SKY DOME · the sky above HOME, now"))
+        self.dome_help = note(DOME_HELP)
+        self.dome_help.setWordWrap(True)
+        right.addWidget(self.dome_help)
+        self.dome_key = QtWidgets.QLabel(dome_key_html(self._tok))
+        self.dome_key.setTextFormat(QtCore.Qt.RichText)
+        self.dome_key.setWordWrap(True)
+        right.addWidget(self.dome_key)
         self.sky_chip = note("")
         right.addWidget(self.sky_chip)
-        right.addWidget(micro("OVERHEAD"))
-        self.obj_feed = FeedTable([("name", "OBJECT"), ("el", "EL"), ("az", "AZ")])
+        self.dome_next = note("")
+        self.dome_next.setWordWrap(True)
+        right.addWidget(self.dome_next)
+        right.addWidget(micro("SKY OBJECTS · BELOW 0° = UNDER THE HORIZON"))
+        self.obj_feed = FeedTable([("name", "OBJECT"), ("el", "ELEVATION °"),
+                                   ("az", "BEARING °")])
         right.addWidget(self.obj_feed, 1)
         pl.addLayout(right, 2)
         return page
@@ -404,6 +443,8 @@ class OverwatchApp(PalisadeApp):
     def _on_passes(self, msg):
         import passsched
         passes, status = msg["passes"], msg["status"]
+        self.pass_state = status                 # OPS's NEXT PASS card says why it is empty
+        self.passes = list(passes or [])         # OPS's NEXT PASS card reads the real list (RA-S2 N1)
         sky = getattr(self, "_sky", None)
         if sky is not None:
             sky.set_passes(passes)           # feed the dome the pass arcs
@@ -415,6 +456,7 @@ class OverwatchApp(PalisadeApp):
         if status in standby:                  # surface a failure honestly, not as a clear sky
             self.pass_note.setStyleSheet("color:%s;" % self._tok["warn"])
             self.pass_note.setText(standby[status])
+            self.dome_next.setText("No pass tracks: " + standby[status])
             self.pass_feed.model.set_rows([])
             return
         rows = []
@@ -435,7 +477,12 @@ class OverwatchApp(PalisadeApp):
                                                     else self._tok["muted"]))
         self.pass_note.setText("%d passes in the next 24h%s%s%s" % (
             len(passes), tag, tle, " — update the TLE" if stale_tle else ""))
-        self._alert_next(passsched.next_pass(passes, time.time()), status)
+        nxt = passsched.next_pass(passes, time.time())
+        self.dome_next.setText(
+            "Next pass: %s at %s, up to %.0f° high, %.1f MHz%s" % (
+                nxt["sat"], zulu(nxt["aos"], secs=False), nxt.get("max", 0),
+                nxt.get("freq", 0), tag) if nxt else "No pass in the next 24 h")
+        self._alert_next(nxt, status)
 
     def _alert_next(self, nxt, status):
         if not nxt or status == "demo":                # real passes only to the OPS strip
