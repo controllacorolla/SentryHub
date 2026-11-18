@@ -347,7 +347,7 @@ class OverwatchApp(PalisadeApp):
         self.dome_next = note("")
         self.dome_next.setWordWrap(True)
         right.addWidget(self.dome_next)
-        right.addWidget(micro("ABOVE THE HORIZON"))
+        right.addWidget(micro("SKY OBJECTS · BELOW 0° = UNDER THE HORIZON"))
         self.obj_feed = FeedTable([("name", "OBJECT"), ("el", "ELEVATION °"),
                                    ("az", "BEARING °")])
         right.addWidget(self.obj_feed, 1)
@@ -444,6 +444,7 @@ class OverwatchApp(PalisadeApp):
         import passsched
         passes, status = msg["passes"], msg["status"]
         self.pass_state = status                 # OPS's NEXT PASS card says why it is empty
+        self.passes = list(passes or [])         # OPS's NEXT PASS card reads the real list (RA-S2 N1)
         sky = getattr(self, "_sky", None)
         if sky is not None:
             sky.set_passes(passes)           # feed the dome the pass arcs

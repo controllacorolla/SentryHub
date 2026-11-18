@@ -333,6 +333,11 @@ class OpsHome(PalisadeApp):
 
     def _pass_text(self):
         """NEXT PASS card: the next real pass OVERWATCH announced, else why there is none."""
+        p = self.next_pass() if callable(self.next_pass) else None
+        if p:                         # OVERWATCH's prediction list: the truth (RA-S2 N1)
+            if p["aos"] <= time.time():
+                return "%s NOW" % p.get("sat", "?")
+            return "%s %s" % (p.get("sat", "?"), zulu(p["aos"], secs=False))
         p = self._next_pass
         if p:
             return "%s %s" % (p["sat"], zulu(p["aos"], secs=False))
@@ -344,6 +349,7 @@ class OpsHome(PalisadeApp):
                 "live": "none in 24 h"}.get(st, "predicting…")
 
     pass_state = None             # the shell sets it: OVERWATCH's last prediction status
+    next_pass = None              # the shell sets it: the next not-over pass OVERWATCH predicted
 
     # the reason the map is empty comes from ATLAS's feed health (the shell sets this: a callable
     # returning ATLAS's layer summary, e.g. "ADS-B NO FEED · APRS —", or None when ATLAS is off)
