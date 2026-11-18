@@ -42,8 +42,8 @@ Status: open · in progress · done (PR). Keep this table current as items close
 
 | # | Item | Status | PR |
 |---|---|---|---|
-| 14 | PRISM gets the SDR++ set: click/drag VFO, direct frequency entry, AM/NFM/WFM/USB/LSB/CW with audio, bandwidth, squelch, gain/AGC, zoom, bookmarks, recording. | open | — |
-| 15 | PROWL scanner: preset banks (airband first), dwell/hold, resume delay, step, lockouts, priority channel, per-bank squelch, range scan. SCAN button green/red. | open | — |
+| 14 | PRISM gets the SDR++ set: click/drag VFO, direct frequency entry, AM/NFM/WFM/USB/LSB/CW with audio, bandwidth, squelch, gain/AGC, zoom, bookmarks, recording. | built, in audit | branch `claude/project-thread-z1copz`, RA-RADIO |
+| 15 | PROWL scanner: preset banks (airband first), dwell/hold, resume delay, step, lockouts, priority channel, per-bank squelch, range scan. SCAN button green/red. | built, in audit | branch `claude/project-thread-z1copz`, RA-RADIO |
 
 ## Needs Dalton before they're built
 
