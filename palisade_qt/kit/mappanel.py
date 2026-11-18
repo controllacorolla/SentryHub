@@ -80,6 +80,10 @@ class LegendRow(QtWidgets.QFrame):
             self.items.append(lab)
         self.adjustSize()
 
+    def text(self):
+        """The legend's entries as one string, like the QLabel legend (ATLAS) answers."""
+        return " ".join(lab.text() for lab in self.items)
+
 
 class BaseMap(QtCore.QObject):
     """The tinted satellite basemap behind a plot (ATLAS map, OPS scope). The image item is

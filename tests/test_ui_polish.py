@@ -315,7 +315,7 @@ def _fake_tiles(monkeypatch, tmp_path):
     from palisade_qt.kit import tiles
     seen = []
 
-    def fetch(url_tpl, z, tx, ty, cache_dir):
+    def fetch(url_tpl, z, tx, ty, cache_dir, why=None, granted=False):
         seen.append((url_tpl, z, tx, ty))
         return _tile_png(20 + 7 * (tx % 30), 20 + 7 * (ty % 30))
     monkeypatch.setattr(tiles, "_fetch_one", fetch)
@@ -391,7 +391,7 @@ def test_u5_imagery_under_a_contact_is_the_contacts_own_ground(monkeypatch, tmp_
     import math
     from palisade_qt import eventbus
     from palisade_qt.kit import tiles, mappanel
-    monkeypatch.setattr(tiles, "_fetch_one", lambda u, z, tx, ty, d: _coded_tile_png(tx, ty))
+    monkeypatch.setattr(tiles, "_fetch_one", lambda u, z, tx, ty, d, why=None, granted=False: _coded_tile_png(tx, ty))
     monkeypatch.setattr(tiles, "CACHE_ROOT", tmp_path)
     # the contact at true range / bearing from HOME (great circle)
     p1, b, d = math.radians(home[0]), math.radians(brg), rng / tiles.EARTH_NM
@@ -506,7 +506,7 @@ def test_u6_dark_and_light_tint_and_the_satellite_source_chain(monkeypatch, tmp_
     calls = []
 
 
-    def fetch(url_tpl, z, tx, ty, cache_dir):
+    def fetch(url_tpl, z, tx, ty, cache_dir, why=None, granted=False):
         calls.append(url_tpl)
         if "arcgisonline" in url_tpl:
             return None                                  # Esri down
@@ -975,7 +975,7 @@ def test_u6_placeholder_tile_is_never_shown_or_kept(monkeypatch, tmp_path):
         return bytes(buf.data())
     calls = []
 
-    def fetch(url_tpl, z, tx, ty, cache_dir):
+    def fetch(url_tpl, z, tx, ty, cache_dir, why=None, granted=False):
         name = cache_dir.parent.name
         calls.append(name)
         data = png(grey) if name == "esri" else png(sat)
