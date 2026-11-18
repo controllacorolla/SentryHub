@@ -281,6 +281,49 @@ class NavRail(QtWidgets.QFrame):
         self.subs[callsign] = widget
 
 
+class TitleLabel(QtWidgets.QLabel):
+    """The strip's "PALISADE · <page>" title. It asks for its full width but, when the status
+    slots are at their widest (long radio owner, PERMITTED, a long scope, 99+ alerts), it gives way
+    and elides ("PALISADE · ASSIS…") instead of pushing the window past 1280 px (Stage 1, the
+    BAT slot and UTC caption joined the strip). text() is always the full title."""
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self._full = text
+
+    def text(self):
+        return self._full
+
+    def set_full_text(self, text):
+        self._full = text
+        self.setToolTip("%s — click: what this page reports now" % text)
+        self.updateGeometry()
+        self._elide()
+
+    def _pad(self):
+        m = self.contentsMargins()
+        return m.left() + m.right() + 6
+
+    def sizeHint(self):
+        h = super().sizeHint()
+        return QtCore.QSize(self.fontMetrics().horizontalAdvance(self._full) + self._pad(),
+                            h.height())
+
+    def minimumSizeHint(self):
+        h = super().minimumSizeHint()
+        return QtCore.QSize(self.fontMetrics().horizontalAdvance("PALISADE ·…") + self._pad(),
+                            h.height())
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._elide()
+
+    def _elide(self):
+        w = self.contentsRect().width() - 4
+        QtWidgets.QLabel.setText(self, self.fontMetrics().elidedText(
+            self._full, QtCore.Qt.ElideRight, max(10, w)))
+
+
 class TopBar(QtWidgets.QFrame):
     nav_requested = QtCore.Signal(str)
     slot_clicked = QtCore.Signal(str)        # "mode" | "radio" | "tx" | "engagement" | "alerts" | "net"
@@ -292,7 +335,9 @@ class TopBar(QtWidgets.QFrame):
         self._tok = theme.tokens(mode)
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(2, 0, 6, 0)
-        lay.setSpacing(12)              # slots are separated by space, not divider lines (2026-11-17)
+        # slots are separated by space, not divider lines (2026-11-17); 9 px since the BAT slot and
+        # the UTC caption joined the strip (2026-11-18) and the worst case must still fit 1280
+        lay.setSpacing(9)
 
         # the page keys live in a vertical rail the shell puts down the left edge (NavRail); the
         # strip keeps only the wordmark and the shell-owned status. nav_keys keeps its name.
@@ -305,7 +350,7 @@ class TopBar(QtWidgets.QFrame):
             self.nav_rail.add_key(k)
         if self.nav_rail is not None:
             self.nav_rail.finish()
-        self.page_title = QtWidgets.QLabel("PALISADE")
+        self.page_title = TitleLabel("PALISADE")
         self.page_title.setObjectName("strip_title")
         self.page_title.setContentsMargins(8, 0, 0, 0)
         # click the page name: a short notice lists what the page reports (the bottom status bar
@@ -481,7 +526,8 @@ class TopBar(QtWidgets.QFrame):
         for name, key in self.nav_keys.items():
             key.set_on(name == callsign)
         key = self.nav_keys.get(callsign)
-        self.page_title.setText("PALISADE · %s" % callsign if key is not None else "PALISADE")
+        self.page_title.set_full_text("PALISADE · %s" % callsign if key is not None
+                                      else "PALISADE")
 
     def set_state(self, mode, radio, tx, engagement):
         self._last_state = (mode, radio, tx, engagement)
