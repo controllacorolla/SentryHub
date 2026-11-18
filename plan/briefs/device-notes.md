@@ -60,3 +60,35 @@ misalign; CL8 device-check test failure.
 - **[idea]** Owner requirement: "everything needs to be scanable". Every survey surface (Wi-Fi, BLE, and the other RECON/PROWL/SWEEP feeds) must do a real live scan on the device out of the box. No stubs, no "NOT IMPLEMENTED", no permission dead-ends. Treat as a v0.1-readiness bar for passive tools. Owner clarified (22:15): "no scan networks freqs etc". He couldn't find an obvious SCAN action for (a) networks: Wi-Fi/BLE lists and LAN host discovery under an engagement; (b) frequencies: SDR band/frequency scanning. Each needs a visible SCAN control that does a real scan on the device. Check whether PROWL's scanner (Space = hold/resume) is discoverable enough. (2026-11-16 22:15)
 - **[UI]** Top status strip colours: keep TX `UNLOCKED` red (as now), but "on" states for the SDR and ENGAGEMENT slots should read green. Today SDR held = accent colour, ENGAGEMENT active = amber diamond (`palisade_qt/kit/topbar.py` ~L404–430). Note: amber for an active engagement was a deliberate RA-CL1 choice; changing it is a design decision. (2026-11-16 22:02)
 - (Top-bar overlapping text: re-reported 2026-11-16 22:02; already logged elsewhere.)
+
+## Device run 2 (demo/v0.1 = main + #27 + #30 + #29, 2026-11-18)
+
+Owner's notes, verbatim in substance; plan and status in `device-fix-plan.md`.
+
+Batch 1 (02:19Z):
+- **[UI]** OPS legend is way too big: space it out across the bottom of the map, keep it tight. (plan 9)
+- **[UI]** Get rid of the numbers in the module titles. (plan 2)
+- **[UI]** If modules use tiles, they all need to be tiles: purple for modules, light purple for sub-modules. (plan 3)
+- **[bug]** OPS does nothing. (plan 8)
+- **[UI]** RECON right side: font is crazy, way too condensed; the panel is not collapsible. (plan 11)
+- **[idea]** Bluetooth is fine; he should be able to select a Wi-Fi network and do what he wants with it. (plan 12)
+- **[UI]** System settings should go last in the list. (plan 2)
+- **[bug]** There's no satellite map. (plan 7)
+- **[bug]** Going from full map back to regular knocks the window out of maximized and extends it beyond the screen. (plan 1)
+- **[UI]** Not sure what SKY DOME does or shows. (plan 10)
+- **[idea]** PRISM still missing many SDR++ features he asked for. (plan 14)
+- **[UI]** The entire RECON UI needs work. (plan 13)
+- **[UI]** Any start/stop button: red when stopped, green when on; especially PROWL SCAN. (plan 5, 15)
+- **[idea]** Not enough adjustments on the scanner. (plan 15)
+
+Batch 2 (02:22Z):
+- **[UI]** Left side too condensed: no numbers, space items evenly down to just above the bottom so nothing runs off. (plan 2)
+- **[bug]** The window keeps resizing itself; not the same size as the UI. (plan 1)
+- **[UI]** Volume slider far too small, barely any adjustability. (plan 6)
+- **[UI]** Unknown "0221Z" in the corner. (plan 4)
+- **[UI]** Power percentage in a random spot. (plan 4)
+- **[UI]** Unclear "logo" next to CONTACTS LIVE and the item to its left; no contacts on OPS. (plan 4, 8)
+- **[bug]** Maps don't load. (plan 7)
+- **[bug]** Nothing in RF. (plan 16, waiting on owner)
+- **[bug]** No model tied to ASSISTANT. (plan 17, waiting on owner)
+- **[UI]** MESH UI is boring. (plan 18)
