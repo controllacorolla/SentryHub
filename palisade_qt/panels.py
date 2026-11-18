@@ -777,19 +777,21 @@ class AlertsDrawer(Overlay):
 # ======================= key map =======================
 
 KEYMAP = [
-    ("1 – 7", "open a page"),
+    ("1 – 9", "open a page (keys down the left edge)"),
     ("← →", "previous / next sub-tab"),
     ("↑ ↓", "move in the list; the detail follows"),
     ("Enter", "primary action of the page"),
     ("Esc", "back: close a panel, else home (OPS)"),
     ("[  ]", "step band / channel down, up (PRISM, PROWL)"),
-    ("+  −", "span wider / narrower (PRISM)"),
+    ("+  −", "zoom in / out (ATLAS) · span (PRISM)"),
     ("Space", "hold / resume the scan (PROWL)"),
     ("/", "command palette: page, action, or a bare frequency"),
     ("R", "RADIOS panel"),
     ("E", "ENGAGEMENT panel"),
     ("A", "alerts drawer"),
     ("M", "mute"),
+    ("F", "full map: hide / show the side panels (OPS, ATLAS)"),
+    ("V", "ATLAS: next view (ALL · AIR · SEA · APRS · DRONES · DF · SONDE)"),
     ("?", "this key map"),
     ("Shift+Esc  (or F12)", "PANIC — disarm TX, end the engagement, kill child processes"),
     ("Tab", "move focus between controls"),

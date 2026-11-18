@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from .app import PalisadeApp, _retain
 from . import theme, eventbus, panels
@@ -134,13 +134,19 @@ class MeshWorker(Worker):
 # ======================= the app =======================
 
 class MoreApp(PalisadeApp):
+    """SYSTEM's settings / diagnostics (SETTINGS, DOCTOR, SITREP). ASSISTANT and MESH were tabs here
+    until the owner promoted them to pages of their own (2026-11-17): AssistantApp and MeshApp
+    below are this class showing one view each, so the code behind every view is unchanged."""
     TITLE = "MORE"
     LEASE = None
-    SUBTABS = SUBTABS
+    SUBTABS = ("SETTINGS", "DOCTOR", "SITREP")
 
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
-        self._subtab = "SETTINGS"
+        self._subtab = self.SUBTABS[0]
         super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
+
+    def subtabs(self):
+        return list(self.SUBTABS) if len(self.SUBTABS) > 1 else []     # one view: no sub-tabs
 
     def current_subtab(self):
         return self._subtab
@@ -154,6 +160,9 @@ class MoreApp(PalisadeApp):
         actions[self._subtab]()
         return True
 
+    def current_view(self):
+        return self._subtab
+
     def build_body(self):
         self._tok = theme.tokens(self.mode)
         body = QtWidgets.QWidget()
@@ -166,6 +175,7 @@ class MoreApp(PalisadeApp):
                        "SITREP": self._sitrep_page()}
         for t in SUBTABS:
             self.stack.addWidget(self._pages[t])
+        self.stack.setCurrentWidget(self._pages[self._subtab])
         lay.addWidget(self.stack, 1)
         self._sync_tabs()
         return body
@@ -180,9 +190,14 @@ class MoreApp(PalisadeApp):
         fl.setContentsMargins(14, 12, 14, 12)
         self.set_operator = QtWidgets.QLineEdit()
         self.set_home = QtWidgets.QLineEdit()
-        h = eventbus.home()
-        if h and eventbus.HOME_SOURCE != "demo":
+        # the field is the TYPED HOME (the fallback), never the GPS position: SAVE would otherwise
+        # pin a GPS fix the operator has since left as "typed", and persist it (RA-UIPc H1)
+        h = self._typed_home()
+        if h:
             self.set_home.setText("%.4f, %.4f" % h)
+        # what the field showed: SAVE with it untouched keeps the stored typed HOME at full precision
+        # instead of the 4-decimal text, and never moves HOME (RA-UIPd N3)
+        self._home_text_shown = self.set_home.text().strip()
         self.set_home.setPlaceholderText("HOME NOT SET — enter lat, lon (e.g. 47.6, -122.3)")
         self.set_theme = QtWidgets.QComboBox()
         self.set_theme.addItems(["dark", "light", "sun"])
@@ -192,7 +207,28 @@ class MoreApp(PalisadeApp):
         self.set_retention.setValue(eventbus.bus.retention())
         self._prefill_settings()
         fl.addRow(micro("Operator"), self.set_operator)
-        fl.addRow(micro("HOME (lat, lon)"), self.set_home)
+        home_row = QtWidgets.QHBoxLayout()
+        home_row.setSpacing(8)
+        home_row.addWidget(self.set_home, 1)
+        # owner 2026-11-17: location should be automatic. Minimal GPS path (the rest of GPS-fed
+        # HOME is CL6): read one gpsd fix and OFFER it in the field; SAVE still applies it, and
+        # typing a HOME by hand stays the fallback.
+        self.gps_btn = QtWidgets.QPushButton("USE GPS")
+        self.gps_btn.setToolTip("read one fix from gpsd and put it in HOME (press SAVE to use it)")
+        self.gps_btn.clicked.connect(lambda _=False: self.read_gps())
+        home_row.addWidget(self.gps_btn)
+        fl.addRow(micro("HOME (lat, lon)"), home_row)
+        # owner 2026-11-17 ("location should be automatic", v0.1): HOME follows gpsd when it has a
+        # trustworthy fix; the typed HOME above is the fallback (palisade_qt/gpshome.py)
+        from . import gpshome
+        self.set_follow = QtWidgets.QCheckBox("HOME follows GPS (typed HOME is the fallback)")
+        self.set_follow.setChecked(gpshome.follows_gps())
+        fl.addRow(micro("Location"), self.set_follow)
+        self.gps_status = QtWidgets.QLabel("")
+        self.gps_status.setProperty("class", "note")
+        self.gps_status.setWordWrap(True)
+        fl.addRow(self.gps_status)
+        QtCore.QTimer.singleShot(0, self._wire_gps_status)
         fl.addRow(micro("Theme"), self.set_theme)
         fl.addRow(micro("Event-bus retention"), self.set_retention)
         self.set_msg = QtWidgets.QLabel("")
@@ -204,7 +240,126 @@ class MoreApp(PalisadeApp):
         fl.addRow(save)
         pl.addWidget(c)
         pl.addStretch(1)
+        if not eventbus.home_set() and not self.demo and "SETTINGS" in self.SUBTABS \
+                and not self.set_follow.isChecked():     # following GPS sets HOME by itself
+            from .kit.seams import offscreen
+            if not offscreen():          # tests never touch a real gpsd
+                QtCore.QTimer.singleShot(0, lambda: self.read_gps(auto=True))
         return page
+
+    # ---- GPS -> HOME (minimal; device notes 2026-11-17) ----
+    _gps_done = QtCore.Signal(object, bool)      # (fix dict or None, auto) -> GUI thread
+    _gps_last = None                             # (lat, lon) of the last USE GPS fix
+    HEMI_MARGIN = 2.0                            # degrees: no sign check closer than this
+
+    @staticmethod
+    def _gps_reader():
+        """Seam: one gpsd TPV with a 2D/3D fix, or None. Tests replace it."""
+        import suite
+        return suite.gps_fix(timeout=3.0)
+
+    def read_gps(self, auto=False):
+        """Read one fix off the GUI thread; the result fills the HOME field (never saves it)."""
+        if getattr(self, "_gps_busy", False):
+            return
+        self._gps_busy = True
+        self.gps_btn.setEnabled(False)
+        self.gps_btn.setText("GPS …")
+        if not getattr(self, "_gps_wired", False):
+            self._gps_done.connect(self._on_gps)
+            self._gps_wired = True
+        reader = self._gps_reader
+
+        def run():
+            try:
+                fix = reader()
+            except Exception:
+                fix = None
+            self._gps_done.emit(fix, auto)
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_gps(self, fix, auto):
+        self._gps_busy = False
+        self.gps_btn.setEnabled(True)
+        self.gps_btn.setText("USE GPS")
+        lat = lon = None
+        if isinstance(fix, dict):
+            lat, lon = fix.get("lat"), fix.get("lon")
+        ok = (isinstance(lat, (int, float)) and isinstance(lon, (int, float))
+              and not isinstance(lat, bool) and not isinstance(lon, bool)
+              and -90 <= lat <= 90 and -180 <= lon <= 180)
+        if not ok:
+            if not auto:                 # the automatic read stays quiet when there is no fix
+                self.set_msg.setStyleSheet("color:%s;" % self._tok["warn"])
+                self.set_msg.setText("NO GPS FIX — gpsd is not running or has no 2D/3D fix. "
+                                     "Enter HOME by hand (west longitudes are negative).")
+            return
+        fix_ll = (float(lat), float(lon))
+        if auto and self.set_home.text().strip():
+            return                       # never overwrite what the operator typed
+        if not auto:
+            # only a fix the operator asked for (USE GPS) arms the hemisphere check: the silent read
+            # at launch could be a cold-start junk fix nobody saw (RA-UIP M3)
+            self._gps_last = fix_ll
+        self.set_home.setText("%.4f, %.4f" % fix_ll)
+        self.set_msg.setStyleSheet("color:%s;" % self._tok["text"])
+        self.set_msg.setText("HOME filled from GPS (%dD fix) — press SAVE SETTINGS to use it"
+                             % (fix.get("mode") if fix.get("mode") in (2, 3) else 2))
+
+    @staticmethod
+    def _saved_settings():
+        """Seam: the palisade_ui settings dict (tests replace it)."""
+        import suite
+        s, _p = suite.settings("palisade_ui", {})
+        return s
+
+    def _typed_home(self):
+        """The operator's typed HOME: the saved one, else a HOME set from SETTINGS this session.
+        Never a GPS or demo HOME."""
+        try:
+            v = self._saved_settings().get("home")
+            if v is not None:
+                lat, lon = float(v[0]), float(v[1])
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    return (lat, lon)
+        except Exception:
+            pass
+        return eventbus.home() if eventbus.HOME_SOURCE == "settings" else None
+
+    def _gps_follower(self):
+        w = self.window()
+        return getattr(w, "gpshome", None)
+
+    def _wire_gps_status(self):
+        g = self._gps_follower()
+        if g is not None and not getattr(self, "_gps_status_wired", False):
+            g.status_changed.connect(self._show_gps_status)
+            self._gps_status_wired = True
+        self._show_gps_status(*(g.status if g is not None else
+                                (("GPS follow: not available in demo" if self.demo else
+                                  "GPS follow: not running"), "neutral")))
+
+    def _show_gps_status(self, text, state):
+        tok = {"live": "live", "warn": "warn"}.get(state, "muted")
+        self.gps_status.setStyleSheet("color:%s;" % self._tok.get(tok, self._tok["text"]))
+        self.gps_status.setText(text)
+
+    def _hemisphere_mismatch(self, home):
+        """A typed HOME on the other side of the equator / prime meridian from the GPS fix the
+        operator read with USE GPS: almost always a dropped minus sign (39.7, 104.9 is in China,
+        not Denver). Only well clear of the equator / prime meridian (HEMI_MARGIN degrees on both
+        sides), and a warning, not a lock: SAVE again with the same HOME saves it (RA-UIP M3/L5)."""
+        g = self._gps_last
+        if g is None or home is None or home == getattr(self, "_hemi_confirm", None):
+            return None
+        m = self.HEMI_MARGIN
+        for i, axis, neg in ((1, "longitude", "west"), (0, "latitude", "south")):
+            if abs(g[i]) > m and abs(home[i]) > m and (g[i] < 0) != (home[i] < 0):
+                self._hemi_confirm = home
+                return ("HOME %s %+.4f is in the other hemisphere from your GPS fix (%+.4f); "
+                        "%s is negative — nothing saved. SAVE again to keep it as typed"
+                        % (axis, home[i], g[i], neg))
+        return None
 
     def _prefill_settings(self):
         try:
@@ -215,10 +370,11 @@ class MoreApp(PalisadeApp):
         except Exception:
             pass        # no suite/profile on the dev host — leave blank, never invent an identity
 
-    def _parse_home(self):
+    def _parse_home(self, text=None):
         """'lat, lon' -> (lat, lon) if valid, else None."""
         try:
-            lat, lon = [float(x.strip()) for x in self.set_home.text().split(",")]
+            raw = self.set_home.text() if text is None else text
+            lat, lon = [float(x.strip()) for x in raw.split(",")]
         except (ValueError, IndexError):
             return None
         return (lat, lon) if -90 <= lat <= 90 and -180 <= lon <= 180 else None
@@ -271,8 +427,28 @@ class MoreApp(PalisadeApp):
             self.set_msg.setStyleSheet("color:%s;" % self._tok["warn"])
             self.set_msg.setText("HOME must be 'lat, lon' (e.g. 47.6, -122.3) — nothing saved")
             return
+        why = self._hemisphere_mismatch(home)
+        if why:
+            self.set_msg.setStyleSheet("color:%s;" % self._tok["warn"])
+            self.set_msg.setText(why)
+            return
         live = []
-        if home is not None:
+        follow = self.set_follow.isChecked()
+        g = self._gps_follower()
+        following = follow and g is not None and eventbus.HOME_SOURCE == "gps"
+        typed_before = self._typed_home()
+        # changed = a different VALUE from what the field showed, not different text: retyping the
+        # same position as "39.6261,-104.9123" is not an edit (RA-UIPe E6)
+        shown = getattr(self, "_home_text_shown", "")
+        field_changed = (home != self._parse_home(shown)) if shown else bool(
+            self.set_home.text().strip())
+        cleared = not self.set_home.text().strip() and bool(shown)
+        if not field_changed and home is not None and typed_before is not None:
+            home = typed_before                  # untouched: the stored value, not its rounding
+        # RA-UIPc H1: the typed HOME goes live only when it is what HOME should be now. While HOME
+        # follows a GPS fix, an unchanged typed HOME is only the fallback: SAVE keeps it on disk and
+        # does not drag HOME back to it.
+        if home is not None and (not following or field_changed):
             eventbus.set_home(home, "settings")
             live.append("HOME")
         try:
@@ -284,12 +460,40 @@ class MoreApp(PalisadeApp):
         # engagement gate reads operator.json, never palisade_ui.json); HOME/theme/retention to
         # the UI store.
         op_ok, op_kind = self._write_operator(self.set_operator.text())
+        parts_note = None
+        if g is not None and g.enabled != follow:
+            g.set_enabled(follow)
+            if not follow and eventbus.HOME_SOURCE == "gps":
+                # follow turned off (RA-UIPc L2): HOME goes back to the typed one; with none typed it
+                # stays on the last GPS fix and says so (never saved, never called "typed")
+                if home is not None:
+                    eventbus.set_home(home, "settings")
+                    live.append("HOME (typed)")
+                else:
+                    parts_note = "HOME stays at the last GPS fix until you type one (not saved)"
+        if g is not None and not follow:
+            if eventbus.HOME_SOURCE == "gps":
+                g._set_status("GPS follow off — HOME is the last GPS fix until you type one",
+                              "warn")
+            else:
+                g._set_status("HOME: typed (GPS follow off)" if eventbus.home_set()
+                              else "GPS follow off — HOME NOT SET", "neutral")
+        if follow and home is not None and parts_note is None:
+            parts_note = "HOME follows GPS: a confirmed fix replaces the typed HOME"
         persisted = self._write_settings({
-            "home": list(home) if home else (list(eventbus.home()) if eventbus.HOME_SOURCE == "settings" else None),
+            "home_follows_gps": follow,
+            # only ever the TYPED HOME (the field), never a GPS position (RA-UIPc H1)
+            # clearing the field unsets the typed HOME (RA-UIPe E5); left empty, the old one stays
+            "home": list(home) if home else (
+                None if cleared or not typed_before else list(typed_before)),
             "theme": self.set_theme.currentText(),
             "retention": self.set_retention.value()})
+        if persisted:
+            self._home_text_shown = self.set_home.text().strip()
         theme_changed = self.set_theme.currentText() != self.mode
         parts = ["applied now: " + ", ".join(live)] if live else []
+        if parts_note:
+            parts.append(parts_note)
         warn = False
         if op_ok and op_kind == "callsign":
             parts.append("operator saved: callsign %s" % self.set_operator.text().strip().upper())
@@ -303,10 +507,10 @@ class MoreApp(PalisadeApp):
             parts.append("operator NOT saved (no operator profile store on this host)")
             warn = True
         if persisted:                               # theme takes effect via the store
-            parts.append("persisted: theme" +
+            parts.append("persisted: theme, location source" +
                          (" (theme applies on restart)" if theme_changed else ""))
         else:
-            parts.append("NOT persisted (no settings store on this host): theme")
+            parts.append("NOT persisted (no settings store on this host): theme, location source")
             warn = True
         # saved is not "receiving": plain text colour on success, warn on any loss
         self.set_msg.setStyleSheet("color:%s;" % self._tok["warn" if warn else "text"])
@@ -528,6 +732,8 @@ class MoreApp(PalisadeApp):
 
     # ---- switching + lifecycle ----
     def _switch(self, tab):
+        if tab not in self.SUBTABS:
+            return                      # a view this page does not show (ASSISTANT/MESH: own pages)
         self._subtab = tab
         self.stack.setCurrentWidget(self._pages[tab])
         self._sync_tabs()
@@ -540,11 +746,12 @@ class MoreApp(PalisadeApp):
             return
         super().start()
         self._workers = []
-        self._meshw = MeshWorker(demo=self.demo)
-        self._meshw.row.connect(self._on_mesh)
-        self._meshw.status.connect(self.on_status)
-        self._meshw.start()
-        self._workers.append(self._meshw)
+        if "MESH" in self.SUBTABS:          # only the MESH page runs the mesh worker
+            self._meshw = MeshWorker(demo=self.demo)
+            self._meshw.row.connect(self._on_mesh)
+            self._meshw.status.connect(self.on_status)
+            self._meshw.start()
+            self._workers.append(self._meshw)
 
     def stop(self):
         if self._stopped:
@@ -583,3 +790,15 @@ class MoreApp(PalisadeApp):
             m = msg["msg"]
             txt = m.get("decoded", {}).get("text", "")
             self.mesh_log.appendPlainText("%s: %s" % (m.get("fromId", "?"), txt))
+
+
+class AssistantApp(MoreApp):
+    """ASSISTANT as its own page (owner 2026-11-17: "assistant should be own tab")."""
+    TITLE = "ASSISTANT"
+    SUBTABS = ("ASSISTANT",)
+
+
+class MeshApp(MoreApp):
+    """MESH as its own page (owner 2026-11-17: "why is mesh buried in system settings")."""
+    TITLE = "MESH"
+    SUBTABS = ("MESH",)

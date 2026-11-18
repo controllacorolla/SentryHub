@@ -270,8 +270,9 @@ def test_every_nav_key_shows_its_function_label_beside_the_callsign(mode):
             for w in (key.call, lbl):
                 # what is ON SCREEN: the strip's pixels at the label's rect (parent clipping and
                 # the real background included; a label's own grab() would be transparent)
-                top_left = w.mapTo(hub.topbar, QtCore.QPoint(0, 0))
-                got = hub.topbar.grab(QtCore.QRect(top_left, w.size())).toImage()
+                # (UIP 2026-11-17: the keys live in the left page rail, not the top strip)
+                top_left = w.mapTo(hub.nav_rail, QtCore.QPoint(0, 0))
+                got = hub.nav_rail.grab(QtCore.QRect(top_left, w.size())).toImage()
                 bg = QtGui.QColor(got.pixel(0, 0))
                 # compare only this text's own ink rows: the two line boxes overlap (by design),
                 # but only where the other line has no ink

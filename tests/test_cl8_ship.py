@@ -792,7 +792,8 @@ def test_v01_sweep_is_hidden_from_strip_keys_palette_and_by_name(net, monkeypatc
             ev = QtGui.QKeyEvent(QtCore.QEvent.KeyPress, 0, QtCore.Qt.NoModifier, digit)
             hub.eventFilter(hub, ev)
         assert "SWEEP" not in hub.pages
-        assert len(hub.topbar.nav_keys) == 7
+        # 7 pages at CL8; UIP (owner, 2026-11-17) added ASSISTANT and MESH -> 9; still no SWEEP
+        assert len(hub.topbar.nav_keys) == 9
     finally:
         hub.close()
 
@@ -1196,7 +1197,7 @@ def test_ra_doctor_says_unavailable_when_libcrypt_cannot_hash_the_scheme(tmp_pat
 
 def test_ra_keymap_says_seven_pages_and_sky_menu_uses_the_root_launcher():
     from palisade_qt import panels
-    assert panels.KEYMAP[0][0] == "1 – 7"
+    assert panels.KEYMAP[0][0] == "1 – 9"          # UIP: 9 pages (ASSISTANT 8, MESH 9)
     tail = open(os.path.join(SUITE_DIR, "install_tail.sh")).read()
     assert "Exec=/usr/local/bin/sky" in tail and "Exec=$HOME/.local/bin/sky" not in tail
 

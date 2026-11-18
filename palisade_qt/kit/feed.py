@@ -131,6 +131,19 @@ class FeedTable(QtWidgets.QFrame):
             sig.connect(self._sync_empty)
         self._sync_empty()
 
+    def set_columns(self, columns):
+        """Swap the column set (ATLAS views: AIR shows FL + KT, SEA shows KT + COG …)."""
+        if list(columns) == list(self.model.columns):
+            return
+        self.model.beginResetModel()
+        self.model.columns = list(columns)
+        self.model.endResetModel()
+        hdr = self.view.horizontalHeader()
+        for i in range(len(columns)):
+            hdr.setSectionResizeMode(i, QtWidgets.QHeaderView.Stretch if i == len(columns) - 1
+                                     else QtWidgets.QHeaderView.Interactive)
+        self._fit.start()
+
     def set_empty(self, state, title, detail=""):
         """What this table says while it has no rows: state is offline / watching / stale."""
         self.empty.set_state(state, title, detail)

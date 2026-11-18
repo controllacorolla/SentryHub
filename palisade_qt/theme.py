@@ -168,6 +168,8 @@ QProgressBar::chunk {{ background: {accent}; border-radius: 3px; }}
 
 /* ---- the one top strip: nav keys + shell-owned status slots ---- */
 QFrame#top_bar {{ background: {p1}; border: none; border-bottom: {bw} solid {hairline}; }}
+QFrame#nav_rail {{ background: {p1}; border: none; border-right: {bw} solid {hairline}; }}
+QLabel#strip_title {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QPushButton.navkey {{ background: transparent; border: {bw} solid transparent; border-radius: 5px;
                       padding: 0; min-height: 0; text-align: left; }}
 QPushButton.navkey:hover {{ background: {row_hover}; }}
@@ -186,7 +188,7 @@ QLabel.navcall {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QLabel.navcall_on {{ color: {check_fg}; font-size: {status}px; font-weight: 600; }}
 QLabel.navlabel {{ color: {muted}; font-size: {status}px; }}
 QLabel.navlabel_on {{ color: {check_fg}; font-size: {status}px; }}
-QFrame.slot {{ background: transparent; border: none; border-left: {bw} solid {hairline}; }}
+QFrame.slot {{ background: transparent; border: none; }}  /* no dividers: spacing only (owner 2026-11-17) */
 QFrame.slot:focus {{ border: {focus_w} solid {focus}; }}
 QLabel.slotcap {{ color: {muted}; font-size: {status}px; letter-spacing: 1px; }}
 QLabel.slotval {{ color: {text}; font-size: {status}px; font-weight: 600; }}
