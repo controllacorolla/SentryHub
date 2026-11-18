@@ -759,6 +759,7 @@ class ReconApp(PalisadeApp):
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._subtab = "WIFI"
         self._open_alerted = set()
+        self._wifi_sel = None
         self._ble_published = set()                      # BLE decodes go on the bus once each
         self._chips = {}                                 # sub-tab -> (chip text, state)
         self.wifi_path = None
@@ -821,6 +822,18 @@ class ReconApp(PalisadeApp):
         self.wifi_feed = FeedTable([("ssid", "SSID"), ("bssid", "BSSID"),
                                     ("ch", "CH"), ("sig", "SIG"), ("sec", "SEC")])
         left.addWidget(self.wifi_feed, 1)
+        # Select a network, then act on it directly (device ask 2026-11-17): one menu, every item
+        # routed through the SAME engagement gate as the WIFIPENT card — an item the gate or the
+        # hardware refuses is shown greyed with the gate's own reason, never a new ungated path.
+        self.wifi_act_btn = QtWidgets.QPushButton("ACT ON SELECTED ▾")
+        self.wifi_act_btn.setEnabled(False)
+        self.wifi_act_btn.clicked.connect(
+            lambda: self._wifi_actions(self.wifi_act_btn.mapToGlobal(
+                self.wifi_act_btn.rect().bottomLeft())))
+        left.addWidget(self.wifi_act_btn)
+        self.wifi_feed.view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.wifi_feed.view.customContextMenuRequested.connect(
+            lambda pos: self._wifi_actions(self.wifi_feed.view.viewport().mapToGlobal(pos)))
         split.addLayout(left, 3)
         import wifipent
         # RX: the engine's further inputs. The interface defaults to one already in monitor mode
@@ -882,12 +895,133 @@ class ReconApp(PalisadeApp):
     def _wifi_pick(self, row):
         """A survey row fills the target BSSID and channel (the operator still presses the
         action; the engine still checks the BSSID against the engagement scope)."""
+        self._wifi_sel = row if row.get("bssid") else None
+        if hasattr(self, "wifi_act_btn"):
+            self.wifi_act_btn.setEnabled(self._wifi_sel is not None)
         if row.get("bssid"):
             self.wifi_gated.target.setText(row["bssid"])
         try:
             self.wifi_chan.setValue(int(row.get("ch")))
         except (TypeError, ValueError):
             pass
+
+    # ---- select-a-network-and-act (device ask) ----
+    def _associated_bssid(self):
+        """The BSSID this host is currently associated with, or None (seam: tests/offscreen -> None).
+        Read-only: `iw dev` to find the managed station, then its `link`."""
+        if _offscreen() or not shutil.which("iw"):
+            return None
+        try:
+            dev = subprocess.run(["iw", "dev"], capture_output=True, text=True, timeout=4)
+            sta = None
+            for ln in dev.stdout.splitlines():
+                ln = ln.strip()
+                if ln.startswith("Interface "):
+                    sta = ln.split(None, 1)[1]
+                elif ln.startswith("type ") and ln != "type managed":
+                    sta = None
+            if not sta:
+                return None
+            link = subprocess.run(["iw", "dev", sta, "link"], capture_output=True, text=True,
+                                  timeout=4)
+            for ln in link.stdout.splitlines():
+                ln = ln.strip()
+                if ln.lower().startswith("connected to "):
+                    return ln.split()[2].lower()
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return None
+
+    def _default_gateway(self):
+        """The IPv4 default-gateway address, or None (seam: tests/offscreen -> None)."""
+        if _offscreen() or not shutil.which("ip"):
+            return None
+        try:
+            r = subprocess.run(["ip", "-4", "route", "show", "default"], capture_output=True,
+                               text=True, timeout=4)
+            toks = r.stdout.split()
+            if "via" in toks:
+                return toks[toks.index("via") + 1]
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
+        return None
+
+    def _wifi_actions(self, global_pos):
+        """Open the per-network action menu for the selected AP at `global_pos`."""
+        menu = self._build_wifi_menu()
+        if menu is not None:
+            menu.exec(global_pos)
+
+    def _build_wifi_menu(self):
+        """Build (not show) the per-network action menu for the selected AP. Every gated item
+        reflects the engine's own check (engagement.check) and the monitor-mode hardware state; a
+        refused item is disabled and carries the gate's reason as its text and tooltip. Returns the
+        QMenu, or None when nothing is selected."""
+        import engagement
+        row = getattr(self, "_wifi_sel", None)
+        if not row or not row.get("bssid"):
+            return None
+        self._wifi_pick(row)                          # keep the card's target/channel in step
+        bssid = row["bssid"]
+        menu = QtWidgets.QMenu(self)
+        head = menu.addAction("%s  ·  %s  ·  ch %s  ·  %s dBm  ·  %s" % (
+            row.get("ssid") or "<hidden>", bssid, row.get("ch") or "?", row.get("sig") or "?",
+            row.get("sec") or "?"))
+        head.setEnabled(False)
+        menu.addSeparator()
+        assoc = self._associated_bssid()
+        gw = self._default_gateway()
+        on_this = bool(assoc) and assoc == bssid.lower()
+        gact = menu.addAction("Port-scan the gateway%s" % ((" (%s)" % gw) if gw else ""))
+        if on_this and gw:
+            gact.triggered.connect(lambda: self._scan_gateway(gw))
+        else:
+            gact.setEnabled(False)
+            gact.setText("Port-scan the gateway — %s" % (
+                "no default gateway" if on_this else "not associated with this network"))
+        menu.addSeparator()
+        mon = monitor_iface()
+        for action, label in (("handshake", "Capture WPA handshake"),
+                              ("pmkid", "Capture PMKID")):
+            a = menu.addAction(label)
+            ok, why, _b = engagement.check("wifi:" + action, bssid, kind="mac")
+            if ok and mon:
+                a.triggered.connect(lambda _=False, act=action: self._run_wifi_action(act))
+            else:
+                reason = why if not ok else "no monitor-mode interface"
+                a.setEnabled(False)
+                a.setText("%s — %s" % (label, reason))
+                a.setToolTip(reason)
+        da = menu.addAction("Deauth a client…")
+        ok, why, _b = engagement.check("wifi:deauth", bssid, kind="mac")
+        if ok and mon:
+            da.triggered.connect(self._deauth_prompt)
+        else:
+            reason = why if not ok else "no monitor-mode interface"
+            da.setEnabled(False)
+            da.setText("Deauth a client — %s" % reason)
+            da.setToolTip(reason)
+        return menu
+
+    def _run_wifi_action(self, action):
+        """Route a menu action through the SAME gated path the WIFIPENT buttons use."""
+        self.switch_subtab("WIFI")
+        self.wifi_gated._authorize(action)
+
+    def _deauth_prompt(self):
+        client, ok = QtWidgets.QInputDialog.getText(
+            self, "Deauth a client", "Client MAC (one in-scope station, never a broadcast):")
+        if not ok or not client.strip():
+            return
+        self.wifi_client.setText(client.strip())
+        self.wifi_gated._authorize("deauth")
+
+    def _scan_gateway(self, gw):
+        """Port-scan the default gateway via the NET card — the engine still checks the gateway is
+        inside the engagement scope; out of scope it is refused there, nothing is spawned."""
+        self.switch_subtab("NET")
+        self.net_gated.target.setText(gw)
+        self.net_gated._authorize("portscan")
 
     def _wifi_extra(self, action):
         """-> (kwargs for wifipent.prepare, error). Captures go under the suite data dir."""
