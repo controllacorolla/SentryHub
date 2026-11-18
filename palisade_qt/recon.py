@@ -176,6 +176,7 @@ class GatedTool(QtWidgets.QFrame):
         lay.setSpacing(6)
         lay.addWidget(micro("%s · gated" % title))
         self.state = QtWidgets.QLabel("")
+        self.state.setProperty("class", "note")       # readable at 720p (item 11)
         self.state.setWordWrap(True)
         lay.addWidget(self.state)
         row = QtWidgets.QHBoxLayout()
@@ -769,7 +770,23 @@ class ReconApp(PalisadeApp):
             self.stack.addWidget(self._pages[t])
         lay.addWidget(self.stack, 1)
         self._sync_tabs()
+        # item 11: the WIFI scan list can take the full width (F / corner toggle); only the WIFI
+        # right column collapses (NET is full-width, BLE is left as-is, "Bluetooth is fine").
+        self.make_collapsible(self._wifi_list, [self._wifi_side])
+        self._side_toggle.TEXT = {False: "WIDE LIST · F", True: "SHOW PANEL · F"}
+        self._side_toggle.set_hidden_state(False)
+        # the stylesheet padding is not counted by the button's sizeHint, so size it to the wider
+        # label explicitly (otherwise "WIDE LIST · F" is clipped at both ends).
+        _fm = self._side_toggle.fontMetrics()
+        self._side_toggle.setFixedWidth(
+            max(_fm.horizontalAdvance(t) for t in self._side_toggle.TEXT.values()) + 28)
         return body
+
+    def toggle_side(self, hide=None):
+        # the collapse belongs to the WIFI scan list; F does nothing on the other sub-tabs
+        if self._subtab != "WIFI":
+            return False
+        return super().toggle_side(hide)
 
     # a passive scan page: a feed + a worker started on show
     def _scan_page(self, columns, note):
@@ -793,7 +810,11 @@ class ReconApp(PalisadeApp):
         pl.setSpacing(10)
         split = QtWidgets.QHBoxLayout()
         split.setSpacing(10)
-        left = QtWidgets.QVBoxLayout()
+        # item 11: the WIFI scan list is the collapsible target; the F / corner toggle sits in a
+        # thin top strip so it never covers the table's first column header.
+        self._wifi_list = QtWidgets.QWidget()
+        left = QtWidgets.QVBoxLayout(self._wifi_list)
+        left.setContentsMargins(0, 34, 0, 0)
         self.wifi_mode = micro(WIFI_MODE[None])
         left.addWidget(self.wifi_mode)
         self.wifi_feed = FeedTable([("ssid", "SSID"), ("bssid", "BSSID"),
@@ -811,7 +832,7 @@ class ReconApp(PalisadeApp):
         self.wifi_feed.view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.wifi_feed.view.customContextMenuRequested.connect(
             lambda pos: self._wifi_actions(self.wifi_feed.view.viewport().mapToGlobal(pos)))
-        split.addLayout(left, 3)
+        split.addWidget(self._wifi_list, 3)
         import wifipent
         # RX: the engine's further inputs. The interface defaults to one already in monitor mode
         # (PALISADE never switches an adapter into monitor mode: that needs root — a system step)
@@ -831,7 +852,10 @@ class ReconApp(PalisadeApp):
                                             ("CLIENT", self.wifi_client)])
         self._gated.append(self.wifi_gated)
         self.wifi_feed.selected.connect(self._wifi_pick)
-        right = QtWidgets.QVBoxLayout()
+        self._wifi_side = QtWidgets.QWidget()
+        self._wifi_side.setMaximumWidth(420)           # item 11: never grows the window (<=420)
+        right = QtWidgets.QVBoxLayout(self._wifi_side)
+        right.setContentsMargins(0, 0, 0, 0)
         right.setSpacing(10)
         right.addWidget(self.wifi_gated)
         # honest hardware state: the onboard CM5 radio has no monitor mode, so capture tools need
@@ -843,7 +867,7 @@ class ReconApp(PalisadeApp):
         self.wifi_hw.setWordWrap(True)
         right.addWidget(self.wifi_hw)
         right.addWidget(self.wifi_run, 1)
-        split.addLayout(right, 2)
+        split.addWidget(self._wifi_side)
         pl.addLayout(split, 1)
         return page
 
@@ -1122,6 +1146,8 @@ class ReconApp(PalisadeApp):
 
     # ---- sub-tab switching ----
     def _switch(self, tab):
+        if tab != "WIFI" and self.side_hidden():
+            super().toggle_side(False)                 # never leave another sub-tab without its rail
         self._subtab = tab
         if tab == "WIFI" and hasattr(self, "wifi_hw"):
             self._sync_monitor_note()

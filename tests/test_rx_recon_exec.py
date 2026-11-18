@@ -831,3 +831,70 @@ def test_wifi_menu_gateway_out_of_scope_is_refused_not_spawned(monkeypatch):
         assert "DENIED" in p.net_gated.result.text()
     finally:
         _close(p)
+
+
+# ---- Stage 3 item 13: run-state colour on the output pane's STOP button ----
+
+def test_item13_stop_button_is_red_off_until_a_tool_runs_then_green_then_off(monkeypatch):
+    sp = Spawns("import time; time.sleep(30)")
+    info = _start(["10.0.0.0/24"])
+    p = _recon(monkeypatch, sp)
+    try:
+        assert p.net_run.stop_btn.property("run") == "off"      # nothing running: red/off (greyed)
+        assert not p.net_run.stop_btn.isEnabled()
+        p.net_gated.target.setText("10.0.0.5")
+        _press(p.net_gated, "portscan")
+        assert _wait(lambda: p.net_run.running())
+        assert p.net_run.stop_btn.property("run") == "on"       # running: green
+        assert p.net_run.stop_btn.isEnabled()
+        p.net_run.stop("test")
+        assert _wait(lambda: not p.net_run.running())
+        assert p.net_run.stop_btn.property("run") == "off"      # ended: back to red/off
+        assert not p.net_run.stop_btn.isEnabled()
+    finally:
+        _close(p)
+
+
+# ---- Stage 3 item 11: the WIFI right column collapses; only on WIFI; readable font ----
+
+def test_item11_f_collapses_only_the_wifi_right_column(monkeypatch):
+    p = _recon(monkeypatch, Spawns())
+    try:
+        assert p.current_subtab() == "WIFI"
+        assert not p._wifi_side.isHidden() and not p.side_hidden()
+        assert p.toggle_side(True) is True                      # F hides the panel on WIFI
+        assert p._wifi_side.isHidden() and p.side_hidden()
+        assert p.toggle_side(False) is True                     # F brings it back
+        assert not p._wifi_side.isHidden() and not p.side_hidden()
+    finally:
+        _close(p)
+
+
+def test_item11_f_is_a_noop_off_the_wifi_sub_tab(monkeypatch):
+    p = _recon(monkeypatch, Spawns())
+    try:
+        p.switch_subtab("NET")
+        assert p.current_subtab() == "NET"
+        assert p.toggle_side() is False                         # no collapse away from WIFI
+        assert not p._wifi_side.isHidden()
+    finally:
+        _close(p)
+
+
+def test_item11_leaving_wifi_while_collapsed_restores_the_panel_and_rail(monkeypatch):
+    p = _recon(monkeypatch, Spawns())
+    try:
+        assert p.toggle_side(True) is True and p.side_hidden()
+        p.switch_subtab("NET")                                  # must not strand NET without its rail
+        assert not p.side_hidden() and not p._wifi_side.isHidden()
+    finally:
+        _close(p)
+
+
+def test_item11_gated_card_status_uses_the_readable_note_class(monkeypatch):
+    p = _recon(monkeypatch, Spawns())
+    try:
+        assert p.net_gated.state.property("class") == "note"
+        assert p.net_gated.state.wordWrap()
+    finally:
+        _close(p)
