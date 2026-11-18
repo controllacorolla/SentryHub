@@ -336,3 +336,147 @@ def test_mesh_alerts_new_node_dm_and_low_battery():
         p.stop()
         p.deleteLater()
         _pump(50)
+
+
+# ================================================================ RA-MESH follow-ups
+def _live_page():
+    from palisade_qt.mesh import MeshPage, demo_mesh
+    p = MeshPage(demo=False)
+    nodes, _m, radio = demo_mesh()
+    p._on_link({"link": "connected", "text": "test"})
+    return p, nodes, radio
+
+
+def test_ra_mesh_m1_a_dm_never_falls_back_to_everyone():
+    import copy
+    p, nodes, radio = _live_page()
+    try:
+        p._on_row({"kind": "nodes", "nodes": nodes, "radio": radio})
+        i = p.chat_to.findData("!c3d4e5f6")
+        p.chat_to.setCurrentIndex(i)
+        gone = copy.deepcopy(nodes)
+        del gone["!c3d4e5f6"]
+        p._on_row({"kind": "nodes", "nodes": gone, "radio": radio})
+        assert p.chat_to.currentData() == "!c3d4e5f6"
+        assert "not in the node list" in p.chat_to.currentText()
+        p._on_row({"kind": "nodes", "nodes": {}, "radio": radio})     # list read failed / empty
+        assert p.chat_to.currentData() == "!c3d4e5f6"
+    finally:
+        p.stop()
+        p.deleteLater()
+        _pump(50)
+
+
+def test_ra_mesh_m2_the_map_says_which_nodes_it_cannot_place(monkeypatch):
+    import copy
+    from palisade_qt import eventbus
+    p, nodes, radio = _live_page()
+    try:
+        some = copy.deepcopy(nodes)
+        some["!c3d4e5f6"].pop("position", None)
+        p._on_row({"kind": "nodes", "nodes": some, "radio": radio})
+        assert "no position reported: BIKE" in p.map_where.text()
+        # no reference at all: this node has no position and HOME is unset
+        none = copy.deepcopy(nodes)
+        none[radio["my_id"]].pop("position", None)
+        monkeypatch.setattr(eventbus, "home", lambda: None)
+        p._on_row({"kind": "nodes", "nodes": none, "radio": radio})
+        assert "NOT ON THE MAP" in p.map_where.text() and p._map_cover.shown()
+    finally:
+        p.stop()
+        p.deleteLater()
+        _pump(50)
+
+
+def test_ra_mesh_l3_l4_l5_new_node_once_bytes_not_chars_dropped_link_reason():
+    import copy
+    from palisade_qt import eventbus
+    from palisade_qt.mesh import MeshLinkWorker
+    p, nodes, radio = _live_page()
+    try:
+        got = []
+        eventbus.bus.published.connect(lambda ev: got.append(ev))
+        first = {k: v for k, v in nodes.items() if k != "!d4e5f6a7"}
+        p._on_row({"kind": "nodes", "nodes": first, "radio": radio})
+        p._on_row({"kind": "nodes", "nodes": nodes, "radio": radio})
+        p._on_row({"kind": "nodes", "nodes": first, "radio": radio})      # it drops off …
+        p._on_row({"kind": "nodes", "nodes": copy.deepcopy(nodes), "radio": radio})   # … and back
+        _pump(50)
+        texts = [e["payload"]["text"] for e in got if e["type"] == "alert"
+                 and e["source"] == "MESH" and "new mesh node" in e["payload"]["text"]]
+        assert len(texts) == 1, texts
+        # 100 emoji = 400 bytes: refused, kept in the box
+        sent = []
+        p._link_w = type("W", (), {"send": lambda self, t, d: sent.append((t, d))})()
+        p.chat_input.setText("📡" * 100)
+        p._send()
+        assert not sent and "too long: 400 bytes" in p.chat_log.toPlainText()
+        assert p.chat_input.text() == "📡" * 100
+        p._link_w = None
+        # a send as the link drops: a readable reason
+        w = MeshLinkWorker(demo=False, settings={})
+        rows = []
+        w.row.connect(rows.append)
+        w._iface = None
+        w.send("hi", "^all")
+        w._drain_tx()
+        assert rows and "no mesh link" in rows[-1]["why"] and "NoneType" not in rows[-1]["why"]
+    finally:
+        p.stop()
+        p.deleteLater()
+        _pump(50)
+
+
+def test_ra_mesh_l2_stop_works_before_the_first_token(offline):
+    """STOP (and page close) break a read that is still waiting for the model's first token."""
+    from palisade_qt.system import AskWorker
+    import http.server
+
+    class Slow(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            self.send_response(200)
+            self.end_headers()
+            time.sleep(8)                              # no token for a long time
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Slow)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = "http://127.0.0.1:%d" % srv.server_address[1]
+    try:
+        w = AskWorker(settings={"hosts": [{"name": "me", "url": url, "model": "m"}],
+                                "system": "x"}, power=lambda: {"pct": 80, "charging": True})
+        w.find_model = lambda s: ((url, "m"), "")
+        rows = []
+        w.row.connect(rows.append)
+        threading.Timer(1.0, w.cancel).start()
+        t0 = time.time()
+        w.ask("q", "")
+        w.step()
+        _pump(50)
+        assert time.time() - t0 < 5, "STOP waited for the model"
+        assert rows and rows[-1]["kind"] == "done" and "[stopped]" in rows[-1]["text"]
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_ra_mesh_l9_l10_live_context_off_and_listen_address():
+    from palisade_qt.system import local_hosts
+    hs = local_hosts({"hosts": [{"name": "any", "url": "http://0.0.0.0:11434"}]})
+    assert hs and hs[0]["url"] == "http://127.0.0.1:11434"
+    from palisade_qt.system import AssistantApp
+    pg = AssistantApp(demo=True)
+    try:
+        class W:
+            def _s(self):
+                return {"live_context": False}
+        pg._askw = W()
+        assert pg._live_context() == ""
+    finally:
+        pg._askw = None
+        pg.stop()
+        pg.deleteLater()
+        _pump(50)

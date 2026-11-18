@@ -224,6 +224,10 @@ class MeshLinkWorker(Worker):
                 text, dest = self._txq.get_nowait()
             except queue.Empty:
                 return
+            if self._iface is None:            # the link dropped just now (RA-MESH L5)
+                self.row.emit({"kind": "refused", "text": text,
+                               "why": "no mesh link (it dropped): not sent"})
+                continue
             ok, why = mesh_dash.authorize_send(self.s(), self._iface)
             if not ok:
                 self.row.emit({"kind": "refused", "text": text, "why": why})
@@ -327,6 +331,9 @@ class MeshLinkWorker(Worker):
 
 # ---------------------------------------------------------------- pure helpers (tested)
 
+MAX_TEXT_BYTES = 200
+
+
 def node_rows(nodes, me_pos=None, now=None, warn="#E5A13A"):
     """Table rows for every node, newest first. Distance / bearing from this node's position."""
     import mesh_dash
@@ -380,6 +387,7 @@ class MeshPage(PalisadeApp):
         self._radio = {}
         self._link = ("connecting", "")
         self._seen_nodes = None              # node ids known before (None until the first list)
+        self._ever_seen = set()              # every node id heard this session (alerts once)
         self._low_alerted = set()
         self._msgs = []
         self._sel = None
@@ -434,6 +442,9 @@ class MeshPage(PalisadeApp):
                             "SNR) · dashed = relayed")
         self.map_key.setWordWrap(True)
         sv.addWidget(self.map_key)
+        self.map_where = note("")          # which nodes are on the map, and why the rest are not
+        self.map_where.setWordWrap(True)
+        sv.addWidget(self.map_where)
         sv.addWidget(micro("NODES"))
         self.map_nodes = FeedTable([("short", "NODE"), ("snr", "SNR"), ("hops", "HOP"),
                                     ("batt", "BATT"), ("heard", "HEARD")], fit_viewport=True)
@@ -452,7 +463,7 @@ class MeshPage(PalisadeApp):
         row.setSpacing(10)
         self.node_table = FeedTable([("short", "NODE"), ("long", "NAME"), ("snr", "SNR"),
                                      ("hops", "HOPS"), ("batt", "BATT"), ("heard", "LAST HEARD"),
-                                     ("dist", "DIST"), ("brg", "BRG")])
+                                     ("dist", "DIST"), ("brg", "BRG")], fit_viewport=True)
         self.node_table.selected.connect(self._select)
         row.addWidget(self.node_table, 1)
         self.node_card = DetailCard("NODE")
@@ -478,7 +489,7 @@ class MeshPage(PalisadeApp):
         row = QtWidgets.QHBoxLayout()
         self.chat_input = QtWidgets.QLineEdit()
         self.chat_input.setPlaceholderText("message…")
-        self.chat_input.setMaxLength(200)          # one Meshtastic text packet
+        self.chat_input.setMaxLength(1000)         # checked in bytes at SEND (RA-MESH L4)
         self.chat_input.returnPressed.connect(self._send)
         row.addWidget(self.chat_input, 1)
         self.send_btn = QtWidgets.QPushButton("SEND")
@@ -553,7 +564,9 @@ class MeshPage(PalisadeApp):
         me = self._radio.get("my_id")
         if self._seen_nodes is not None and not self.demo:
             for nid in nodes:
-                if nid not in self._seen_nodes and nid != me:
+                # once per node per session: a node that drops off the list and comes back is
+                # not "new" (RA-MESH L3)
+                if nid not in self._seen_nodes and nid not in self._ever_seen and nid != me:
                     eventbus.bus.publish(eventbus.alert(
                         "MESH", "new mesh node heard: %s" % self._name(nid, nodes),
                         severity="info"))
@@ -567,6 +580,7 @@ class MeshPage(PalisadeApp):
                         "MESH", "mesh node %s battery %d%%" % (self._name(nid, nodes), b),
                         severity="warn"))
         self._seen_nodes = set(nodes)
+        self._ever_seen |= set(nodes)
         self._nodes = nodes
         # DM targets
         cur = self.chat_to.currentData()
@@ -577,6 +591,11 @@ class MeshPage(PalisadeApp):
             if nid != me:
                 self.chat_to.addItem("DM %s" % self._name(nid), nid)
         i = self.chat_to.findData(cur)
+        if i < 0 and cur and cur != "^all":
+            # the DM target dropped off the node list: keep it, marked, never fall back to
+            # everyone (RA-MESH M1: a private message went to the whole mesh)
+            self.chat_to.addItem("DM %s (not in the node list now)" % self._name(cur), cur)
+            i = self.chat_to.count() - 1
         self.chat_to.setCurrentIndex(max(0, i))
         self.chat_to.blockSignals(False)
 
@@ -622,6 +641,11 @@ class MeshPage(PalisadeApp):
     def _send(self):
         text = self.chat_input.text().strip()
         if not text:
+            return
+        n = len(text.encode("utf-8"))
+        if n > MAX_TEXT_BYTES:              # one Meshtastic text packet; kept in the box to edit
+            self.chat_log.appendPlainText("✕ NOT SENT — too long: %d bytes, a mesh text is %d "
+                                          "bytes at most (emoji count 4)" % (n, MAX_TEXT_BYTES))
             return
         self._refresh_gate()
         if not self.send_btn.isEnabled():
@@ -696,7 +720,7 @@ class MeshPage(PalisadeApp):
         st = "warn" if link in ("none", "error") else "neutral"
         self.set_chip("mesh", ("MESH %s · %d nodes" % ("DEMO" if link == "demo" else "LINKED",
                                                         len(rows))) if linked else
-                      "MESH: " + (text or "no link"), state=st)
+                      "link: " + (text or "none"), state=st)
 
     def _draw_map(self, rows):
         for ln in self._lines:
@@ -726,6 +750,35 @@ class MeshPage(PalisadeApp):
             self._lines.append(ln)
         self.map.set_contacts(pts, labels=labels, colors=colors)
         self.map_points = pts
+        self._explain_map(rows, me, len(pts))
+
+    def _explain_map(self, rows, me, placed):
+        """Say what is on the map and what is not (RA-MESH M2): no reference position at all, or
+        the nodes that report none."""
+        my_id = self._radio.get("my_id")
+        others = [r for r in rows if r["id"] != my_id]
+        with_pos = [r for r in others if (r["_n"].get("position") or {}).get("latitude") is not None]
+        without = [r["short"] for r in others if r not in with_pos]
+        linked = self._link[0] in ("connected", "demo")
+        if linked and not me and with_pos:
+            text = ("NOT ON THE MAP: this node and HOME have no position, so %d node(s) that report "
+                    "one cannot be placed. Set HOME in SYSTEM › SETTINGS." % len(with_pos))
+            self._map_cover.show(True, title="NO REFERENCE POSITION",
+                                 detail="this radio reports no position and HOME is not set — "
+                                        "set HOME in SYSTEM › SETTINGS")
+            warn = True
+        elif linked and others:
+            text = "%d node(s) on the map" % placed
+            if without:
+                shown = ", ".join(without[:6]) + (" +%d more" % (len(without) - 6)
+                                                  if len(without) > 6 else "")
+                text += " · no position reported: %s" % shown
+            warn = bool(without)
+        else:
+            text, warn = "", False
+        self.map_where.setText(text)
+        self.map_where.setStyleSheet("color:%s;" % (self._tok["warn"] if warn
+                                                    else self._tok["muted"]))
 
     def _render_radio(self):
         link, text = self._link

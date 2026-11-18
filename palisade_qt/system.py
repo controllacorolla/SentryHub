@@ -98,7 +98,15 @@ def local_hosts(s):
     """Only Ollama servers on THIS device (owner 2026-11-18: "just use a local model"). A remote
     host in assistant.json is ignored here, so no question or live context leaves the device."""
     import assistant
-    return [h for h in (s or {}).get("hosts", []) if assistant.is_local(h.get("url", ""))]
+    out = []
+    for h in (s or {}).get("hosts", []):
+        url = h.get("url", "")
+        if not assistant.is_local(url):
+            continue
+        if "0.0.0.0" in url:          # a listen address, not a place to connect (RA-MESH L10)
+            h = dict(h, url=url.replace("0.0.0.0", "127.0.0.1"))
+        out.append(h)
+    return out
 
 
 class AskWorker(Worker):
@@ -128,7 +136,25 @@ class AskWorker(Worker):
 
     def cancel(self):
         self._cancel = True
+        self._abort()
         self.poke()
+
+    def stop(self):
+        super().stop()
+        self._abort()                 # the window closes now, not when the model's first token
+                                      # arrives (RA-MESH L2)
+
+    def _abort(self):
+        """Break a read that is waiting on the model: shut the socket under the open response."""
+        r = getattr(self, "_resp", None)
+        if r is None:
+            return
+        import socket
+        try:
+            sock = r.fp.raw._sock
+            sock.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
 
     def _s(self):
         import assistant
@@ -215,6 +241,9 @@ class AskWorker(Worker):
         full = ""
         try:
             with netpolicy.urlopen(req, timeout=180, purpose="assistant (local model)") as r:
+                self._resp = r
+                if self.stopping or self._cancel:
+                    self._abort()
                 for line in r:
                     if self.stopping or self._cancel:
                         full += " [stopped]"
@@ -229,11 +258,19 @@ class AskWorker(Worker):
                         self.row.emit({"kind": "tok", "text": tok})
                     if m.get("done"):
                         break
+                if (self.stopping or self._cancel) and not full.endswith("[stopped]"):
+                    full += " [stopped]"         # STOP broke the read (socket shut)
         except Exception as e:
+            self._resp = None
+            if self.stopping or self._cancel:    # STOP pressed before the first token
+                self._history.pop()
+                self.row.emit({"kind": "done", "text": full + " [stopped]"})
+                return
             self._history.pop()                  # the question was never answered
             self.row.emit({"kind": "error", "text": "local model failed: %s"
                            % " ".join(str(e).split())[:160]})
             return
+        self._resp = None
         self._history.append({"role": "assistant", "content": full})
         self.row.emit({"kind": "done", "text": full})
 
@@ -752,7 +789,15 @@ class MoreApp(PalisadeApp):
             w.cancel()
 
     def _live_context(self):
+        import assistant
         import netpolicy
+        w = getattr(self, "_askw", None)
+        try:                          # assistant.json "live_context": false -> send none (L9)
+            st = w._s() if w is not None else assistant.DEFAULTS
+            if not st.get("live_context", True):
+                return ""
+        except Exception:
+            pass
         return live_summary([a for a in panels.alert_store().items if not a["acked"]],
                             eventbus.bus.contacts(), self._recent_decodes(), eventbus.home_set(),
                             netpolicy.mode())
