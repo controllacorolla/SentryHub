@@ -13,22 +13,22 @@ Status: open · in progress · done (PR). Keep this table current as items close
 
 | # | Item | Status | PR |
 |---|---|---|---|
-| 1 | Window locks to 1280x720 maximized. Full-map toggle and every panel collapse never resize or push the window off-screen. Verified on a real window, not a render. | in progress | — |
-| 2 | Left rail: numbers removed, items spaced evenly down the full height, ending just above the bottom edge. System settings last. | in progress | — |
-| 3 | Tiles everywhere: purple for modules, light purple for sub-modules, same tile component across all pages. | in progress | — |
-| 4 | Status strip: "0221Z" gets a UTC label or goes. Power % moves to a fixed, labelled slot. The icon beside CONTACTS LIVE and the item left of it get names or tooltips. | in progress | — |
-| 5 | Every start/stop/scan button app-wide: green while running, red when stopped. One shared control (`kit.components.set_run`) so it can't drift per page. | in progress | — |
-| 6 | Volume slider: full-length with real travel. | in progress | — |
-| 26 | Remove the bottom status bar from every module (the line with "SDR present", a second power icon). The top strip carries status; anything that only lived in the bottom bar (SDR presence, power) is shown once in the strip, labelled. A transient message, if needed, goes somewhere unobtrusive, not a permanent bar. (Dalton 02:38Z) | in progress | — |
+| 1 | Window locks to 1280x720 maximized. Full-map toggle and every panel collapse never resize or push the window off-screen. Verified on a real window, not a render. | done, audited MERGE (RA-S1e), on demo/v0.3 | — |
+| 2 | Left rail: numbers removed, items spaced evenly down the full height, ending just above the bottom edge. System settings last. | done, audited MERGE (RA-S1e), on demo/v0.3 | — |
+| 3 | Tiles everywhere: purple for modules, light purple for sub-modules, same tile component across all pages. | done, audited MERGE (RA-S1e), on demo/v0.3 | — |
+| 4 | Status strip: "0221Z" gets a UTC label or goes. Power % moves to a fixed, labelled slot. The icon beside CONTACTS LIVE and the item left of it get names or tooltips. | done, audited MERGE (RA-S1e), on demo/v0.3 | — |
+| 5 | Every start/stop/scan button app-wide: green while running, red when stopped. One shared control (`kit.components.set_run`) so it can't drift per page. | done, audited MERGE (RA-S1e), on demo/v0.3 | — |
+| 6 | Volume slider: full-length with real travel. | done, audited MERGE (RA-S1e), on demo/v0.3 | — |
+| 26 | Remove the bottom status bar from every module (the line with "SDR present", a second power icon). The top strip carries status; anything that only lived in the bottom bar (SDR presence, power) is shown once in the strip, labelled. A transient message, if needed, goes somewhere unobtrusive, not a permanent bar. (Dalton 02:38Z) | done, audited MERGE (RA-S1e), on demo/v0.3 | — |
 
 ## Stage 2: OPS, ATLAS and maps — owner: UI thread
 
 | # | Item | Status | PR |
 |---|---|---|---|
-| 7 | Maps load on the device. Root-cause first (tile source vs network vs cache path), then satellite tiles actually appear offline and online. | in progress (cause: NET defaults OFFLINE, tile fetches refused silently. Fix: banner says why + one-tap DOWNLOAD MAP, Dalton's pick 02:51Z; refetch on NET change) | fix/ops-maps |
-| 8 | OPS: wire it to real contacts (readsb, gpsd, Wi-Fi/BLE sightings) so it shows something, with an honest reason when empty. | in progress (cards open their pages; empty reason from ATLAS feed health; NEXT PASS from OVERWATCH started at launch) | fix/ops-maps |
-| 9 | OPS legend: one tight row spread across the bottom of the map. | in progress | fix/ops-maps |
-| 10 | SKY DOME: title, legend and what's plotted so it explains itself. | in progress | fix/ops-maps |
+| 7 | Maps load on the device. Root-cause first (tile source vs network vs cache path), then satellite tiles actually appear offline and online. | done, audited MERGE (RA-S2c), on demo/v0.3 | fix/ops-maps |
+| 8 | OPS: wire it to real contacts (readsb, gpsd, Wi-Fi/BLE sightings) so it shows something, with an honest reason when empty. | done, audited MERGE (RA-S2c), on demo/v0.3 | fix/ops-maps |
+| 9 | OPS legend: one tight row spread across the bottom of the map. | done, audited MERGE (RA-S2c), on demo/v0.3 | fix/ops-maps |
+| 10 | SKY DOME: title, legend and what's plotted so it explains itself. | done, audited MERGE (RA-S2c), on demo/v0.3 | fix/ops-maps |
 
 ## Stage 3: RECON — owner: RECON thread
 
@@ -50,5 +50,5 @@ Status: open · in progress · done (PR). Keep this table current as items close
 | # | Item | Status |
 |---|---|---|
 | 16 | RF module is empty: what RF should show versus PRISM/PROWL. | parked (Dalton 04:14Z: no use case yet, leave as is) |
-| 17 | ASSISTANT has no model: Opus (cloud) or a local model for offline field use. | decided: LOCAL model (Dalton 04:17Z, reversing 04:14Z Opus cloud): Ollama on 127.0.0.1 via assistant.py backend, nothing leaves the device; UI thread, with the MESH PR |
-| 18 | MESH: UI thread proposes a real layout for his yes/no. | decided: full layout MAP/NODES/CHAT/RADIO (Dalton 02:51Z); UI thread, after Stage 2 |
+| 17 | ASSISTANT has no model: Opus (cloud) or a local model for offline field use. | decided: LOCAL model (Dalton 04:17Z, reversing 04:14Z Opus cloud): Ollama on 127.0.0.1 via assistant.py backend, nothing leaves the device; UI thread, with the MESH PR; done, audited MERGE (RA-MESHb), PR #35, on demo/v0.3 |
+| 18 | MESH: UI thread proposes a real layout for his yes/no. | decided: full layout MAP/NODES/CHAT/RADIO (Dalton 02:51Z); UI thread, after Stage 2; done, audited MERGE (RA-MESHb), PR #35, on demo/v0.3 |
