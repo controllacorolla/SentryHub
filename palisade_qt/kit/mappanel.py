@@ -232,8 +232,14 @@ class BaseMap(QtCore.QObject):
                                                     "OFFLINE" in text) or
                                                    "download failed" in text or
                                                    "some tiles failed" in text))
-        self.download_btn.setEnabled(True)
-        self.download_btn.setText("DOWNLOAD MAP" if "OFFLINE" in text else "RETRY")
+        if getattr(self, "_downloading", False) and not changed:
+            # folding / unfolding while a download runs: it stays "DOWNLOADING…" (RA-S2c N12)
+            self.download_btn.setEnabled(False)
+            self.download_btn.setText("DOWNLOADING…")
+        else:
+            self._downloading = False
+            self.download_btn.setEnabled(True)
+            self.download_btn.setText("DOWNLOAD MAP" if "OFFLINE" in text else "RETRY")
         if show:
             self._place_banner()
             self.banner.raise_()
@@ -248,6 +254,9 @@ class BaseMap(QtCore.QObject):
         """One tap: this view's tiles, once, despite NET OFFLINE (TileLayer.download)."""
         if not self.can_fetch:
             return
+        if getattr(self, "_downloading", False):
+            return
+        self._downloading = True
         self.download_btn.setEnabled(False)
         self.download_btn.setText("DOWNLOADING…")
         self.tiles.view = self.view()
