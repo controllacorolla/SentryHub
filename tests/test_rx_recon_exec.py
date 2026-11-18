@@ -689,3 +689,212 @@ def test_rx_n6_nothing_scanned_never_claims_results_saved(monkeypatch):
         assert p.net_run.saved is None and p.net_run.state.text() == "NOTHING SCANNED · exit 0"
     finally:
         _close(p)
+
+
+# ============================================================ Wi-Fi select-and-act (device ask 2026-11-17)
+
+def _menu_items(menu):
+    return [(a.text(), a.isEnabled()) for a in menu.actions() if not a.isSeparator()]
+
+
+def _find(menu, prefix):
+    for a in menu.actions():
+        if a.text().startswith(prefix):
+            return a
+    raise AssertionError("no menu item starting %r in %s" % (prefix, [a.text() for a in menu.actions()]))
+
+
+def test_wifi_act_button_enables_only_with_a_selection(monkeypatch):
+    p = _recon(monkeypatch, Spawns())
+    try:
+        assert not p.wifi_act_btn.isEnabled()
+        p._wifi_pick({"bssid": "AA:BB:CC:11:22:33", "ch": "6", "ssid": "x", "sig": "-50", "sec": "WPA2"})
+        assert p.wifi_act_btn.isEnabled()
+        p._wifi_pick({})                                  # a header/blank row
+        assert not p.wifi_act_btn.isEnabled()
+    finally:
+        _close(p)
+
+
+def test_wifi_menu_greys_gated_items_with_the_engine_reason_when_no_engagement(monkeypatch):
+    from palisade_qt import recon
+    monkeypatch.setattr(recon, "monitor_iface", lambda: "wlan1mon")
+    p = _recon(monkeypatch, Spawns())
+    try:
+        p._wifi_pick({"bssid": "AA:BB:CC:11:22:33", "ch": "6", "ssid": "Cafe", "sig": "-50", "sec": "WPA2"})
+        menu = p._build_wifi_menu()
+        for label in ("Capture WPA handshake", "Capture PMKID", "Deauth a client"):
+            a = _find(menu, label)
+            assert not a.isEnabled()
+            assert "no active engagement" in a.text()
+    finally:
+        _close(p)
+
+
+def test_wifi_menu_greys_everything_out_of_scope(monkeypatch):
+    from palisade_qt import recon
+    monkeypatch.setattr(recon, "monitor_iface", lambda: "wlan1mon")
+    _start(["AA:BB:CC:*"])
+    p = _recon(monkeypatch, Spawns())
+    try:
+        p._wifi_pick({"bssid": "99:99:99:99:99:99", "ch": "1", "ssid": "x", "sig": "-60", "sec": "WPA2"})
+        menu = p._build_wifi_menu()
+        a = _find(menu, "Capture WPA handshake")
+        assert not a.isEnabled() and "not in the engagement scope" in a.text()
+    finally:
+        _close(p)
+
+
+def test_wifi_menu_greys_capture_when_no_monitor_interface(monkeypatch):
+    from palisade_qt import recon
+    monkeypatch.setattr(recon, "monitor_iface", lambda: None)
+    _start(["AA:BB:CC:*"])
+    p = _recon(monkeypatch, Spawns())
+    try:
+        p._wifi_pick({"bssid": "AA:BB:CC:11:22:33", "ch": "6", "ssid": "x", "sig": "-50", "sec": "WPA2"})
+        menu = p._build_wifi_menu()
+        a = _find(menu, "Capture WPA handshake")
+        assert not a.isEnabled() and "no monitor-mode interface" in a.text()
+    finally:
+        _close(p)
+
+
+def test_wifi_menu_handshake_runs_through_the_gate(monkeypatch):
+    from palisade_qt import recon
+    monkeypatch.setattr(recon, "monitor_iface", lambda: "wlan1mon")
+    sp = Spawns("print('CH 6')")
+    info = _start(["AA:BB:CC:*"])
+    p = _recon(monkeypatch, sp)
+    try:
+        p._wifi_pick({"bssid": "AA:BB:CC:11:22:33", "ch": "6", "ssid": "x", "sig": "-50", "sec": "WPA2"})
+        menu = p._build_wifi_menu()
+        a = _find(menu, "Capture WPA handshake")
+        assert a.isEnabled()
+        a.trigger()
+        assert len(sp.calls) == 1 and sp.calls[0][0] == "airodump-ng"
+        assert "AA:BB:CC:11:22:33" in sp.calls[0]
+        assert _wait(lambda: not p.wifi_run.state.text().startswith("RUNNING"))
+        assert "spawn" in [r["event"] for r in _recs(info["path"])]
+    finally:
+        _close(p)
+
+
+def test_wifi_menu_gateway_scan_only_when_associated(monkeypatch):
+    from palisade_qt import recon
+    monkeypatch.setattr(recon, "monitor_iface", lambda: None)
+    _start(["AA:BB:CC:*", "192.168.1.0/24"])
+    p = _recon(monkeypatch, Spawns())
+    try:
+        p._wifi_pick({"bssid": "AA:BB:CC:11:22:33", "ch": "6", "ssid": "x", "sig": "-50", "sec": "WPA2"})
+        # not associated -> disabled
+        monkeypatch.setattr(p, "_associated_bssid", lambda: None)
+        monkeypatch.setattr(p, "_default_gateway", lambda: "192.168.1.1")
+        a = _find(p._build_wifi_menu(), "Port-scan the gateway")
+        assert not a.isEnabled() and "not associated" in a.text()
+        # associated + gateway -> enabled
+        monkeypatch.setattr(p, "_associated_bssid", lambda: "aa:bb:cc:11:22:33")
+        a = _find(p._build_wifi_menu(), "Port-scan the gateway")
+        assert a.isEnabled() and "192.168.1.1" in a.text()
+    finally:
+        _close(p)
+
+
+def test_wifi_menu_gateway_scan_runs_on_net_and_is_scope_checked(monkeypatch):
+    from palisade_qt import recon
+    monkeypatch.setattr(recon, "monitor_iface", lambda: None)
+    sp = Spawns("print('Nmap done')")
+    _start(["AA:BB:CC:*", "192.168.1.0/24"])
+    p = _recon(monkeypatch, sp)
+    try:
+        monkeypatch.setattr(p, "_associated_bssid", lambda: "aa:bb:cc:11:22:33")
+        monkeypatch.setattr(p, "_default_gateway", lambda: "192.168.1.1")
+        p._wifi_pick({"bssid": "AA:BB:CC:11:22:33", "ch": "6", "ssid": "x", "sig": "-50", "sec": "WPA2"})
+        _find(p._build_wifi_menu(), "Port-scan the gateway").trigger()
+        assert p._subtab == "NET"
+        assert len(sp.calls) == 1 and sp.calls[0][0] == "nmap" and "192.168.1.1" in sp.calls[0]
+    finally:
+        _close(p)
+
+
+def test_wifi_menu_gateway_out_of_scope_is_refused_not_spawned(monkeypatch):
+    from palisade_qt import recon
+    monkeypatch.setattr(recon, "monitor_iface", lambda: None)
+    sp = Spawns()
+    _start(["AA:BB:CC:*"])                             # gateway NOT in scope
+    p = _recon(monkeypatch, sp)
+    try:
+        monkeypatch.setattr(p, "_associated_bssid", lambda: "aa:bb:cc:11:22:33")
+        monkeypatch.setattr(p, "_default_gateway", lambda: "192.168.1.1")
+        p._wifi_pick({"bssid": "AA:BB:CC:11:22:33", "ch": "6", "ssid": "x", "sig": "-50", "sec": "WPA2"})
+        _find(p._build_wifi_menu(), "Port-scan the gateway").trigger()
+        assert sp.calls == []
+        assert "DENIED" in p.net_gated.result.text()
+    finally:
+        _close(p)
+
+
+# ---- Stage 3 item 13: run-state colour on the output pane's STOP button ----
+
+def test_item13_stop_button_is_red_off_until_a_tool_runs_then_green_then_off(monkeypatch):
+    sp = Spawns("import time; time.sleep(30)")
+    info = _start(["10.0.0.0/24"])
+    p = _recon(monkeypatch, sp)
+    try:
+        assert p.net_run.stop_btn.property("run") == "off"      # nothing running: red/off (greyed)
+        assert not p.net_run.stop_btn.isEnabled()
+        p.net_gated.target.setText("10.0.0.5")
+        _press(p.net_gated, "portscan")
+        assert _wait(lambda: p.net_run.running())
+        assert p.net_run.stop_btn.property("run") == "on"       # running: green
+        assert p.net_run.stop_btn.isEnabled()
+        p.net_run.stop("test")
+        assert _wait(lambda: not p.net_run.running())
+        assert p.net_run.stop_btn.property("run") == "off"      # ended: back to red/off
+        assert not p.net_run.stop_btn.isEnabled()
+    finally:
+        _close(p)
+
+
+# ---- Stage 3 item 11: the WIFI right column collapses; only on WIFI; readable font ----
+
+def test_item11_f_collapses_only_the_wifi_right_column(monkeypatch):
+    p = _recon(monkeypatch, Spawns())
+    try:
+        assert p.current_subtab() == "WIFI"
+        assert not p._wifi_side.isHidden() and not p.side_hidden()
+        assert p.toggle_side(True) is True                      # F hides the panel on WIFI
+        assert p._wifi_side.isHidden() and p.side_hidden()
+        assert p.toggle_side(False) is True                     # F brings it back
+        assert not p._wifi_side.isHidden() and not p.side_hidden()
+    finally:
+        _close(p)
+
+
+def test_item11_f_is_a_noop_off_the_wifi_sub_tab(monkeypatch):
+    p = _recon(monkeypatch, Spawns())
+    try:
+        p.switch_subtab("NET")
+        assert p.current_subtab() == "NET"
+        assert p.toggle_side() is False                         # no collapse away from WIFI
+        assert not p._wifi_side.isHidden()
+    finally:
+        _close(p)
+
+
+def test_item11_leaving_wifi_while_collapsed_restores_the_panel_and_rail(monkeypatch):
+    p = _recon(monkeypatch, Spawns())
+    try:
+        assert p.toggle_side(True) is True and p.side_hidden()
+        p.switch_subtab("NET")                                  # must not strand NET without its rail
+        assert not p.side_hidden() and not p._wifi_side.isHidden()
+    finally:
+        _close(p)
+
+
+def test_item11_gated_card_status_uses_the_readable_note_class(monkeypatch):
+    p = _recon(monkeypatch, Spawns())
+    try:
+        assert p.net_gated.state.property("class") == "note"
+        assert p.net_gated.state.wordWrap()
+    finally:
+        _close(p)

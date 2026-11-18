@@ -183,6 +183,7 @@ class GatedTool(QtWidgets.QFrame):
         lay.setSpacing(6)
         lay.addWidget(micro("%s · gated" % title))
         self.state = QtWidgets.QLabel("")
+        self.state.setProperty("class", "note")       # readable at 720p (item 11)
         self.state.setWordWrap(True)
         lay.addWidget(self.state)
         row = QtWidgets.QHBoxLayout()
@@ -191,11 +192,13 @@ class GatedTool(QtWidgets.QFrame):
         row.addWidget(self.target, 1)
         lay.addLayout(row)
         self._fields = list(fields or ())
-        # RA-DEAUTH N4: at most two label/field pairs per row, so a long value (the CLIENT MAC) is
-        # not squeezed into a third of the card and stays fully readable before a deauth.
+        # At most two label/field pairs per row, so a long value (IFACE "wlan0mon", or the CLIENT
+        # MAC) is not squeezed into a third of the ≤420px WIFI card and stays fully readable at
+        # 720p (item 11; shared with #30's RA-DEAUTH N4, which needs the CLIENT field legible).
         for i in range(0, len(self._fields), 2):
             frow = QtWidgets.QHBoxLayout()
             for label, w in self._fields[i:i + 2]:
+                w.setMaximumWidth(16777215)       # drop any inline width cap: two pairs per row is wide
                 frow.addWidget(micro(label))
                 frow.addWidget(w, 1)
             lay.addLayout(frow)
@@ -759,6 +762,7 @@ class ReconApp(PalisadeApp):
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._subtab = "WIFI"
         self._open_alerted = set()
+        self._wifi_sel = None
         self._ble_published = set()                      # BLE decodes go on the bus once each
         self._chips = {}                                 # sub-tab -> (chip text, state)
         self.wifi_path = None
@@ -791,7 +795,23 @@ class ReconApp(PalisadeApp):
             self.stack.addWidget(self._pages[t])
         lay.addWidget(self.stack, 1)
         self._sync_tabs()
+        # item 11: the WIFI scan list can take the full width (F / corner toggle); only the WIFI
+        # right column collapses (NET is full-width, BLE is left as-is, "Bluetooth is fine").
+        self.make_collapsible(self._wifi_list, [self._wifi_side])
+        self._side_toggle.TEXT = {False: "WIDE LIST · F", True: "SHOW PANEL · F"}
+        self._side_toggle.set_hidden_state(False)
+        # the stylesheet padding is not counted by the button's sizeHint, so size it to the wider
+        # label explicitly (otherwise "WIDE LIST · F" is clipped at both ends).
+        _fm = self._side_toggle.fontMetrics()
+        self._side_toggle.setFixedWidth(
+            max(_fm.horizontalAdvance(t) for t in self._side_toggle.TEXT.values()) + 28)
         return body
+
+    def toggle_side(self, hide=None):
+        # the collapse belongs to the WIFI scan list; F does nothing on the other sub-tabs
+        if self._subtab != "WIFI":
+            return False
+        return super().toggle_side(hide)
 
     # a passive scan page: a feed + a worker started on show
     def _scan_page(self, columns, note):
@@ -815,13 +835,29 @@ class ReconApp(PalisadeApp):
         pl.setSpacing(10)
         split = QtWidgets.QHBoxLayout()
         split.setSpacing(10)
-        left = QtWidgets.QVBoxLayout()
+        # item 11: the WIFI scan list is the collapsible target; the F / corner toggle sits in a
+        # thin top strip so it never covers the table's first column header.
+        self._wifi_list = QtWidgets.QWidget()
+        left = QtWidgets.QVBoxLayout(self._wifi_list)
+        left.setContentsMargins(0, 34, 0, 0)
         self.wifi_mode = micro(WIFI_MODE[None])
         left.addWidget(self.wifi_mode)
         self.wifi_feed = FeedTable([("ssid", "SSID"), ("bssid", "BSSID"),
                                     ("ch", "CH"), ("sig", "SIG"), ("sec", "SEC")])
         left.addWidget(self.wifi_feed, 1)
-        split.addLayout(left, 3)
+        # Select a network, then act on it directly (device ask 2026-11-17): one menu, every item
+        # routed through the SAME engagement gate as the WIFIPENT card — an item the gate or the
+        # hardware refuses is shown greyed with the gate's own reason, never a new ungated path.
+        self.wifi_act_btn = QtWidgets.QPushButton("ACT ON SELECTED ▾")
+        self.wifi_act_btn.setEnabled(False)
+        self.wifi_act_btn.clicked.connect(
+            lambda: self._wifi_actions(self.wifi_act_btn.mapToGlobal(
+                self.wifi_act_btn.rect().bottomLeft())))
+        left.addWidget(self.wifi_act_btn)
+        self.wifi_feed.view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.wifi_feed.view.customContextMenuRequested.connect(
+            lambda pos: self._wifi_actions(self.wifi_feed.view.viewport().mapToGlobal(pos)))
+        split.addWidget(self._wifi_list, 3)
         import wifipent
         # RX: the engine's further inputs. The interface defaults to one already in monitor mode
         # (PALISADE never switches an adapter into monitor mode: that needs root — a system step)
@@ -846,7 +882,10 @@ class ReconApp(PalisadeApp):
                                     runners={"deauth": self.wifi_deauth_run})
         self._gated.append(self.wifi_gated)
         self.wifi_feed.selected.connect(self._wifi_pick)
-        right = QtWidgets.QVBoxLayout()
+        self._wifi_side = QtWidgets.QWidget()
+        self._wifi_side.setMaximumWidth(420)           # item 11: never grows the window (<=420)
+        right = QtWidgets.QVBoxLayout(self._wifi_side)
+        right.setContentsMargins(0, 0, 0, 0)
         right.setSpacing(10)
         right.addWidget(self.wifi_gated)
         # honest hardware state: the onboard CM5 radio has no monitor mode, so capture tools need
@@ -858,8 +897,9 @@ class ReconApp(PalisadeApp):
         self.wifi_hw.setWordWrap(True)
         right.addWidget(self.wifi_hw)
         right.addWidget(self.wifi_run, 1)
+        # DEAUTH pane lives inside the collapsible _wifi_side panel (item 11 + #30)
         right.addWidget(self.wifi_deauth_run, 1)
-        split.addLayout(right, 2)
+        split.addWidget(self._wifi_side)
         pl.addLayout(split, 1)
         return page
 
@@ -882,12 +922,133 @@ class ReconApp(PalisadeApp):
     def _wifi_pick(self, row):
         """A survey row fills the target BSSID and channel (the operator still presses the
         action; the engine still checks the BSSID against the engagement scope)."""
+        self._wifi_sel = row if row.get("bssid") else None
+        if hasattr(self, "wifi_act_btn"):
+            self.wifi_act_btn.setEnabled(self._wifi_sel is not None)
         if row.get("bssid"):
             self.wifi_gated.target.setText(row["bssid"])
         try:
             self.wifi_chan.setValue(int(row.get("ch")))
         except (TypeError, ValueError):
             pass
+
+    # ---- select-a-network-and-act (device ask) ----
+    def _associated_bssid(self):
+        """The BSSID this host is currently associated with, or None (seam: tests/offscreen -> None).
+        Read-only: `iw dev` to find the managed station, then its `link`."""
+        if _offscreen() or not shutil.which("iw"):
+            return None
+        try:
+            dev = subprocess.run(["iw", "dev"], capture_output=True, text=True, timeout=4)
+            sta = None
+            for ln in dev.stdout.splitlines():
+                ln = ln.strip()
+                if ln.startswith("Interface "):
+                    sta = ln.split(None, 1)[1]
+                elif ln.startswith("type ") and ln != "type managed":
+                    sta = None
+            if not sta:
+                return None
+            link = subprocess.run(["iw", "dev", sta, "link"], capture_output=True, text=True,
+                                  timeout=4)
+            for ln in link.stdout.splitlines():
+                ln = ln.strip()
+                if ln.lower().startswith("connected to "):
+                    return ln.split()[2].lower()
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return None
+
+    def _default_gateway(self):
+        """The IPv4 default-gateway address, or None (seam: tests/offscreen -> None)."""
+        if _offscreen() or not shutil.which("ip"):
+            return None
+        try:
+            r = subprocess.run(["ip", "-4", "route", "show", "default"], capture_output=True,
+                               text=True, timeout=4)
+            toks = r.stdout.split()
+            if "via" in toks:
+                return toks[toks.index("via") + 1]
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
+        return None
+
+    def _wifi_actions(self, global_pos):
+        """Open the per-network action menu for the selected AP at `global_pos`."""
+        menu = self._build_wifi_menu()
+        if menu is not None:
+            menu.exec(global_pos)
+
+    def _build_wifi_menu(self):
+        """Build (not show) the per-network action menu for the selected AP. Every gated item
+        reflects the engine's own check (engagement.check) and the monitor-mode hardware state; a
+        refused item is disabled and carries the gate's reason as its text and tooltip. Returns the
+        QMenu, or None when nothing is selected."""
+        import engagement
+        row = getattr(self, "_wifi_sel", None)
+        if not row or not row.get("bssid"):
+            return None
+        self._wifi_pick(row)                          # keep the card's target/channel in step
+        bssid = row["bssid"]
+        menu = QtWidgets.QMenu(self)
+        head = menu.addAction("%s  ·  %s  ·  ch %s  ·  %s dBm  ·  %s" % (
+            row.get("ssid") or "<hidden>", bssid, row.get("ch") or "?", row.get("sig") or "?",
+            row.get("sec") or "?"))
+        head.setEnabled(False)
+        menu.addSeparator()
+        assoc = self._associated_bssid()
+        gw = self._default_gateway()
+        on_this = bool(assoc) and assoc == bssid.lower()
+        gact = menu.addAction("Port-scan the gateway%s" % ((" (%s)" % gw) if gw else ""))
+        if on_this and gw:
+            gact.triggered.connect(lambda: self._scan_gateway(gw))
+        else:
+            gact.setEnabled(False)
+            gact.setText("Port-scan the gateway — %s" % (
+                "no default gateway" if on_this else "not associated with this network"))
+        menu.addSeparator()
+        mon = monitor_iface()
+        for action, label in (("handshake", "Capture WPA handshake"),
+                              ("pmkid", "Capture PMKID")):
+            a = menu.addAction(label)
+            ok, why, _b = engagement.check("wifi:" + action, bssid, kind="mac")
+            if ok and mon:
+                a.triggered.connect(lambda _=False, act=action: self._run_wifi_action(act))
+            else:
+                reason = why if not ok else "no monitor-mode interface"
+                a.setEnabled(False)
+                a.setText("%s — %s" % (label, reason))
+                a.setToolTip(reason)
+        da = menu.addAction("Deauth a client…")
+        ok, why, _b = engagement.check("wifi:deauth", bssid, kind="mac")
+        if ok and mon:
+            da.triggered.connect(self._deauth_prompt)
+        else:
+            reason = why if not ok else "no monitor-mode interface"
+            da.setEnabled(False)
+            da.setText("Deauth a client — %s" % reason)
+            da.setToolTip(reason)
+        return menu
+
+    def _run_wifi_action(self, action):
+        """Route a menu action through the SAME gated path the WIFIPENT buttons use."""
+        self.switch_subtab("WIFI")
+        self.wifi_gated._authorize(action)
+
+    def _deauth_prompt(self):
+        client, ok = QtWidgets.QInputDialog.getText(
+            self, "Deauth a client", "Client MAC (one in-scope station, never a broadcast):")
+        if not ok or not client.strip():
+            return
+        self.wifi_client.setText(client.strip())
+        self.wifi_gated._authorize("deauth")
+
+    def _scan_gateway(self, gw):
+        """Port-scan the default gateway via the NET card — the engine still checks the gateway is
+        inside the engagement scope; out of scope it is refused there, nothing is spawned."""
+        self.switch_subtab("NET")
+        self.net_gated.target.setText(gw)
+        self.net_gated._authorize("portscan")
 
     def _wifi_extra(self, action):
         """-> (kwargs for wifipent.prepare, error). Captures go under the suite data dir."""
@@ -1017,6 +1178,8 @@ class ReconApp(PalisadeApp):
 
     # ---- sub-tab switching ----
     def _switch(self, tab):
+        if tab != "WIFI" and self.side_hidden():
+            super().toggle_side(False)                 # never leave another sub-tab without its rail
         self._subtab = tab
         if tab == "WIFI" and hasattr(self, "wifi_hw"):
             self._sync_monitor_note()

@@ -19,6 +19,7 @@ import shutil
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .kit import micro
+from .kit.components import set_run
 
 MAX_LINES = 2000
 LINE_SHOWN = 1000                  # characters of one output line the pane shows
@@ -44,13 +45,14 @@ class RunPane(QtWidgets.QFrame):
         lay.setSpacing(6)
         top = QtWidgets.QHBoxLayout()
         top.setSpacing(12)
-        top.addWidget(micro("%s · output" % title))
+        top.addWidget(micro(title))
         top.addStretch(1)
-        self.state = QtWidgets.QLabel("IDLE — nothing running")
+        self.state = QtWidgets.QLabel("IDLE")
         self.state.setProperty("class", "note")
         top.addWidget(self.state)
         self.stop_btn = QtWidgets.QPushButton("STOP")
         self.stop_btn.setEnabled(False)
+        set_run(self.stop_btn, False)          # red/off until a tool is running (item 13)
         self.stop_btn.clicked.connect(lambda: self.stop("operator STOP"))
         top.addWidget(self.stop_btn)
         lay.addLayout(top)
@@ -123,6 +125,7 @@ class RunPane(QtWidgets.QFrame):
         self._handle = h
         self._set_state("RUNNING · pid %s" % getattr(h.proc, "pid", "?"), "warn")
         self.stop_btn.setEnabled(True)
+        set_run(self.stop_btn, True)           # green while the tool runs (item 13)
         self._poll.start()
         return True, "running"
 
@@ -143,6 +146,7 @@ class RunPane(QtWidgets.QFrame):
             return
         self._poll.stop()
         self.stop_btn.setEnabled(False)
+        set_run(self.stop_btn, False)          # back to red/off once it has ended (item 13)
         code = h.exit_code
         if h.stopped:
             self._set_state("STOPPED (%s) · exit %s" % (h.stopped, code), "muted")

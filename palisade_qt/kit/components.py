@@ -304,6 +304,9 @@ class Cover(QtCore.QObject):
         self.empty.setVisible(bool(on))
         if on:
             self.empty.raise_()
+            for b in self._target.children():
+                if isinstance(b, SideToggle):
+                    b.raise_()                   # the full-map toggle stays usable over a cover
 
     def shown(self):
         return not self.empty.isHidden()
@@ -311,6 +314,49 @@ class Cover(QtCore.QObject):
     def eventFilter(self, obj, ev):
         if obj is self._target and ev.type() == QtCore.QEvent.Resize:
             self.empty.setGeometry(self._target.rect())
+        return False
+
+
+class SideToggle(QtWidgets.QPushButton):
+    """The full-map toggle (device notes 2026-11-17: "menus need to be collapsible on screens with
+    maps"). Laid over the top-left corner of a map / scope and kept there on resize. It only shows
+    and hides layout around the map (PalisadeApp.toggle_side); it never touches a feed or a radio.
+    Styled like the map's DARK/SAT box: the map is dark in every theme, so it is light-on-dark with
+    a white focus ring."""
+    TEXT = {False: "FULL MAP · F", True: "SHOW PANELS · F"}
+
+    def __init__(self, target):
+        super().__init__(self.TEXT[False], target)
+        self.setObjectName("side_toggle")
+        self._target = target
+        self.setCheckable(True)
+        self.setFocusPolicy(QtCore.Qt.TabFocus)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setStyleSheet(
+            "QPushButton#side_toggle { background: rgba(0,0,0,170); color: #DDD; "
+            "border: 1px solid #555; font-size: 16px; padding: 2px 8px; min-height: 0; }"
+            "QPushButton#side_toggle:checked { color: #FFF; border-color: #AAA; }"
+            "QPushButton#side_toggle:focus { border: 3px solid #FFFFFF; }")
+        target.installEventFilter(self)
+        self.set_hidden_state(False)
+
+    def set_hidden_state(self, hidden):
+        self.blockSignals(True)
+        self.setChecked(bool(hidden))
+        self.blockSignals(False)
+        self.setText(self.TEXT[bool(hidden)])
+        self.setToolTip("F — %s" % ("show the side panels again" if hidden
+                                    else "hide the side panels: the map takes the full width"))
+        self.adjustSize()
+        self._place()
+
+    def _place(self):
+        self.move(10, 10)
+        self.raise_()
+
+    def eventFilter(self, obj, ev):
+        if obj is self._target and ev.type() in (QtCore.QEvent.Resize, QtCore.QEvent.Show):
+            self._place()
         return False
 
 
@@ -325,3 +371,11 @@ def _tokens_for(widget):
                 return tok
     return theme.tokens("dark")
 
+
+def set_run(btn, on):
+    """Run-state colour for a start/stop/scan button: green while running, red while stopped
+    (QSS `QPushButton[run="on"|"off"]` in theme.qss). Sets the property and re-polishes."""
+    btn.setProperty("run", "on" if on else "off")
+    btn.style().unpolish(btn)
+    btn.style().polish(btn)
+    btn.update()

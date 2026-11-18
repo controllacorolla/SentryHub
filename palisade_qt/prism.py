@@ -374,7 +374,9 @@ class PrismApp(PalisadeApp):
         self.bar.add_stretch()
         self.readout = QtWidgets.QLabel("—")
         self.readout.setProperty("class", "value")
-        self.bar.lay.addWidget(micro("PEAK · dB (relative)"))    # H13: rtl_power is uncalibrated
+        # H13: rtl_power is uncalibrated; the value itself reads "dB rel". The caption was shortened
+        # from "PEAK · dB (relative)" so PRISM fits beside the left page rail (2026-11-17).
+        self.bar.lay.addWidget(micro("PEAK"))
         self.bar.lay.addWidget(self.readout)
         self.send_btn = QtWidgets.QPushButton("PEAK → PROWL FM")
         self.send_btn.setToolTip("Tune the PROWL FM receiver to the current peak (Enter)")

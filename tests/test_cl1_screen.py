@@ -158,13 +158,20 @@ def test_bench_long_reason_does_not_widen_the_window():
         _pump(150)
 
 
-def test_one_top_strip_no_rail_no_footer():
-    """D1/D3: the left nav rail and the footer are gone; chrome is one strip of at most 40 px."""
+def test_one_top_strip_one_left_page_rail_no_footer():
+    """D1/D3, revised by the owner 2026-11-17 (UIP): chrome is one status strip of at most 40 px
+    plus ONE left page rail (the page keys, with the current page's sub-tabs nested under its
+    key); no footer, no second rail beside the page."""
     hub = _hub()
     try:
         assert hub.topbar.height() <= 40
-        assert hub.findChild(QtWidgets.QFrame, "nav_rail") is None
+        rails = hub.findChildren(QtWidgets.QFrame, "nav_rail")
+        assert len(rails) == 1 and rails[0] is hub.nav_rail
+        assert hub.nav_rail.width() <= 128
         assert hub.findChild(QtWidgets.QFrame, "foot_bar") is None
+        for page in hub.pages.values():
+            r = getattr(page, "_rail", None)
+            assert r is None or r.parentWidget() is hub.nav_rail, "a sub-tab rail beside the page"
         # the page starts directly under the strip and runs to the bottom of the window
         page = hub.stack
         assert page.height() >= SCREEN_H - 40 - 2 * 6      # minus the DEMO border
@@ -404,12 +411,14 @@ def test_disabled_buttons_look_disabled():
 def test_eight_keys_in_order_with_function_labels():
     from palisade_qt.ops import ALL_CALLSIGNS, CALLSIGNS
     from palisade_qt.shell import QT_PAGES
+    # UIP (owner, 2026-11-17): ASSISTANT and MESH are pages of their own, after SYSTEM (8, 9)
     assert [n for n, _ in ALL_CALLSIGNS] == ["OPS", "ATLAS", "PRISM", "PROWL", "SWEEP", "RECON",
-                                             "FORGE", "SYSTEM"]
-    # v0.1 launch line (owner, 2026-11-16; CL8): SWEEP is hidden until CL7 — 7 keys, same order
+                                             "FORGE", "SYSTEM", "ASSISTANT", "MESH"]
+    # v0.1 launch line (owner, 2026-11-16; CL8): SWEEP is hidden until CL7 — same order
     assert [n for n, _ in CALLSIGNS] == ["OPS", "ATLAS", "PRISM", "PROWL", "RECON", "FORGE",
-                                         "SYSTEM"]
-    assert set(QT_PAGES) == {"ATLAS", "PRISM", "PROWL", "SWEEP", "RECON", "FORGE", "SYSTEM"}
+                                         "SYSTEM", "ASSISTANT", "MESH"]
+    assert set(QT_PAGES) == {"ATLAS", "PRISM", "PROWL", "SWEEP", "RECON", "FORGE", "SYSTEM",
+                             "ASSISTANT", "MESH"}
     hub = _hub()
     try:
         assert list(hub.topbar.nav_keys) == [n for n, _ in CALLSIGNS]
@@ -434,8 +443,8 @@ def test_folded_pages_live_where_the_brief_put_them():
     from palisade_qt.sweep import DETECTORS
     assert AtlasPage(demo=True).subtabs() == ["MAP", "SKY DOME", "PASSES"]
     assert ProwlPage(demo=True).subtabs() == ["SCAN", "FM", "NWR", "DECODE"]
-    assert SystemPage(demo=True).subtabs() == ["SETTINGS", "DOCTOR", "ASSISTANT", "MESH", "SITREP",
-                                               "BENCH"]
+    # UIP (owner, 2026-11-17): ASSISTANT and MESH left SYSTEM for pages of their own
+    assert SystemPage(demo=True).subtabs() == ["SETTINGS", "DOCTOR", "SITREP", "BENCH"]
     assert RECON_TABS == ("WIFI", "BLE", "NET", "RF"), "COUNTER and ENGAGE left RECON"
     assert DETECTORS == ("bugsweep", "jammer", "imsicatch", "gnss")
     hub = _hub()
@@ -1010,14 +1019,16 @@ def test_navigation_leaves_focus_on_the_page_not_on_a_nav_key():
 
 
 def test_maps_are_dark_or_satellite_only():
-    """Owner rule (2026-11-15): every map is DARK or SAT, in every theme; no light / plain tiles."""
+    """Owner rule (2026-11-15, revised 2026-11-17): every map is satellite imagery under a DARK or
+    a LIGHT tint, in every theme, DARK by default; no plain / street tiles."""
     _app()
     from palisade_qt.kit import mappanel
-    assert set(mappanel.STYLES) == {"dark", "satellite"}
+    assert set(mappanel.STYLES) == {"dark_sat", "light_sat"}
+    assert mappanel.FETCH_STYLE == "satellite"
     for mode in ("dark", "light", "sun"):
         m = mappanel.MapPanel(mode=mode)
-        assert m.current_style() == "dark"
-        assert [m._combo.itemText(i) for i in range(m._combo.count())] == ["DARK", "SAT"]
+        assert m.current_style() == "dark_sat"
+        assert [m._combo.itemText(i) for i in range(m._combo.count())] == ["DARK SAT", "LIGHT SAT"]
 
 
 def test_strip_has_no_text_under_16px_at_all():

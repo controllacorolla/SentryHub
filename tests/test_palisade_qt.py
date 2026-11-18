@@ -147,9 +147,10 @@ def test_hub_embeds_prism_as_qt_page():
     assert not (prism_worker and prism_worker.isRunning())
 
 
-# the seven page keys besides OPS, plus the four callsigns CL1 folded into them (still openable by
-# their old names: they land on their new page's sub-tab)
-PAGE_KEYS = ["ATLAS", "PRISM", "PROWL", "SWEEP", "RECON", "FORGE", "SYSTEM"]
+# the page keys besides OPS (ASSISTANT and MESH became their own pages, owner 2026-11-17), plus the
+# four callsigns CL1 folded into them (still openable by their old names: they land on their new
+# page's sub-tab)
+PAGE_KEYS = ["ATLAS", "PRISM", "PROWL", "SWEEP", "RECON", "FORGE", "SYSTEM", "ASSISTANT", "MESH"]
 FOLDED_CALLSIGNS = ["OVERWATCH", "BABEL", "BENCH", "MORE"]
 ALL_CALLSIGNS = PAGE_KEYS + FOLDED_CALLSIGNS
 
