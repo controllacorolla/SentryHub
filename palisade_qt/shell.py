@@ -203,7 +203,10 @@ class PageNotice(QtWidgets.QLabel):
         if restart:
             self._show(lines, worst, self.SHOW_MS)
         elif lines != self._lines or worst != self._worst:
-            self._show(lines, worst, max(1, self._timer.remainingTime()))
+            if callable(self.blocked) and self.blocked():
+                self.hide()            # never raised over an open drawer by an update (RA-S1e N16)
+            else:
+                self._show(lines, worst, max(1, self._timer.remainingTime()))
         self._lines, self._worst = lines, worst
 
     def forget(self, page):

@@ -518,3 +518,16 @@ def test_ra_s1d_n13_the_notice_never_grows_past_one_line_per_status_key():
     assert n.text().count("\n") == 0
     w.close()
     w.deleteLater()
+
+
+def test_ra_s1e_n16_an_update_never_raises_the_notice_over_an_open_drawer():
+    w, n = _shown_notice()
+    held = {"on": False}
+    n.blocked = lambda: held["on"]
+    n.consider("ATLAS", {"sdr": {"text": "ADS-B STALE 1s", "state": "alert"}})
+    assert n.isVisible()
+    held["on"] = True                       # a drawer opens over it
+    n.consider("ATLAS", {"sdr": {"text": "ADS-B STALE 2s", "state": "alert"}})
+    assert not n.isVisible()
+    w.close()
+    w.deleteLater()
