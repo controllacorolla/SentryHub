@@ -1,4 +1,4 @@
-"""SWEEP — counter-surveillance (key 5).
+"""SWEEP — counter-surveillance (a page key in the left rail).
 
 The safety-critical use gets its own key (D5/D7): the four passive / defensive detectors
 (bugsweep, jammer, imsicatch, gnss), the same DetectorWorker (defined in recon.py), and a findings

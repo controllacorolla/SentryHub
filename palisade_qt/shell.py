@@ -1,9 +1,9 @@
-"""PalisadeHub — the Qt Hub shell: one top strip, eight page keys, keyboard-first.
+"""PalisadeHub — the Qt Hub shell: one top strip, a left rail of page keys, keyboard-first.
 
-Structure (CL1, owner decision in plan/audit/AUDIT_INDEX.md):
+Structure (CL1; rail order from device run 2, 2026-11-18: SYSTEM last; keys 1-9 follow it):
 
     1 OPS home · 2 ATLAS map · 3 PRISM spectrum · 4 PROWL listen · 5 RECON survey + assess
-    6 FORGE hardware · 7 SYSTEM settings
+    6 FORGE hardware · 7 ASSISTANT ask · 8 MESH lora · 9 SYSTEM settings
     (SWEEP counter-surveillance is hidden in v0.1 — release.HIDDEN_PAGES; back with CL7.)
 
 There is no left rail and no footer: navigation and the four shell-owned status slots (MODE / RADIO /
@@ -106,8 +106,9 @@ class PageNotice(QtWidgets.QLabel):
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.hide)
-        self._seen = set()
+        self._active = {}              # page -> {key: state} of the warnings already shown
         self.anchor = None             # the widget whose bottom-right corner it sits in
+        self.blocked = None            # callable: True while a drawer / panel is open (RA-S1 F8)
         self.hide()
 
     def mousePressEvent(self, ev):
@@ -135,21 +136,25 @@ class PageNotice(QtWidgets.QLabel):
         self.move(max(0, br.x() - self.width() - 12), max(0, br.y() - self.height() - 12))
 
     def consider(self, page, status):
-        """Show the page's warnings that have not been shown before. Returns the lines shown."""
-        new, worst = [], "warn"
+        """Show the page's warnings that were not already showing. A warning is one (key, state):
+        a text that only changes (a counter, "(12s)") is the same warning and is not shown again
+        (RA-S1 F2); a warning that clears and comes back is new again (F4); warn -> alert is new.
+        Returns the lines shown."""
+        cur = {}
         for key, v in status.items():
-            text = (v or {}).get("text")
-            if not text or (v.get("state") not in self._STATES):
+            if (v or {}).get("text") and v.get("state") in self._STATES:
+                cur[key] = v
+        before = self._active.get(page, {})
+        self._active[page] = {k: v.get("state") for k, v in cur.items()}
+        new, worst = [], "warn"
+        for key, v in cur.items():
+            if before.get(key) == v.get("state") or (before.get(key) == "alert"):
                 continue
-            k = (page, key, text)
-            if k in self._seen:
-                continue
-            self._seen.add(k)
-            new.append(text)
+            new.append(v["text"])
             if v.get("state") == "alert":
                 worst = "alert"
-        if new:
-            self._show(new, worst, self.SHOW_MS)
+        if new and not (callable(self.blocked) and self.blocked()):
+            self._show(["%s · %s" % (page, t) for t in new], worst, self.SHOW_MS)
         return new
 
     def show_all(self, page, status):
@@ -241,6 +246,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.demo_border = panels.DemoBorder(mode, central) if demo else None
         self.notice = PageNotice(mode, central)
         self.notice.anchor = self.stack
+        self.notice.blocked = self._panel_open
 
         self.pages = {}
         self._current = None
@@ -284,6 +290,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
         w = self.pages.get(name)
         if w is None or self.stack.indexOf(w) < 0:
             return
+        if name != self._current and getattr(self, "notice", None) is not None:
+            self.notice.hide()        # a notice belongs to its page, never over the next one (F3)
         self._current = name
         self.stack.setCurrentWidget(w)
         self._page_status(name)
@@ -388,6 +396,15 @@ class PalisadeHub(QtWidgets.QMainWindow):
         if name == self._current and getattr(self, "notice", None) is not None:
             self.notice.consider(name, st)
 
+    def _panel_open(self):
+        """A drawer / panel is open: an automatic notice waits rather than draw over it."""
+        for n in ("radios_panel", "engage_panel", "tx_panel", "alerts_drawer", "keymap",
+                  "palette", "log_panel"):
+            p = getattr(self, n, None)
+            if p is not None and p.isVisible():
+                return True
+        return False
+
     def show_page_messages(self):
         page = self.pages.get(self._current)
         if page is not None and hasattr(page, "shown_status"):
@@ -479,6 +496,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
             ("Acknowledge all alerts", self.alerts_drawer.ack_all_seen),   # seen ones only
             ("Mute / unmute audio", self.topbar.toggle_mute),
             ("Key map", lambda: self.open_panel("keys")),
+            # RA-S1 F9: the page's messages (the old bottom bar) without a pointer
+            ("Page messages — what this page reports now", self.show_page_messages),
             ("PANIC — disarm TX, end engagement, kill child processes", self.panic),
         ]
         return cmds

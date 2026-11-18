@@ -23,7 +23,7 @@ from .kit.components import note, Cover
 from .kit import tracksym
 from .worker import Worker
 
-# The eight page keys, in key order (1-8), each with the function label shown beside the callsign
+# The page keys, in rail / digit-key order (SYSTEM last since 2026-11-18), each with the function label shown under the callsign
 # in the top strip (owner decision 2026-11-15, plan/audit/AUDIT_INDEX.md · D7). BABEL is folded into
 # PROWL, OVERWATCH's sky views into ATLAS, BENCH into SYSTEM; SWEEP is promoted from RECON/COUNTER.
 ALL_CALLSIGNS = [
@@ -93,6 +93,10 @@ def sdr_chip(sys_root="/sys"):
 
 class LiveStatusWorker(Worker):
     """Live mode: publish only real device telemetry; backends publish their own feeds."""
+
+    # the strip's BAT slot and SDR presence come from here on every page, not only OPS (RA-S1 F1):
+    # a sysfs read every 2 s, so it runs while OPS is hidden
+    PAUSE_WHEN_HIDDEN = False
 
     def __init__(self, parent=None, sys_root="/sys"):
         super().__init__(demo=False, interval_ms=2000, parent=parent)
