@@ -1058,6 +1058,12 @@ SPAWN_ALLOWLIST = {
     ("palisade_qt/recon.py", "_scan_bluetoothctl", "subprocess.Popen"):
         "SCAN-2 live BLE survey: fixed argv `bluetoothctl --timeout N scan on` (BlueZ active "
         "discovery: scan requests only, no connect/pair); no target contact, killed on stop",
+    ("palisade_qt/recon.py", "_associated_bssid", "subprocess.run"):
+        "`iw dev` / `iw dev <sta> link`: read-only own-host query (which interface, which BSSID "
+        "this host is associated to) for the Wi-Fi gateway action; no target contact, no TX",
+    ("palisade_qt/recon.py", "_default_gateway", "subprocess.run"):
+        "`ip -4 route show default`: reads this host's own default gateway for the gateway "
+        "port-scan action; no target contact, no device write",
     ("devterm.py", "ssh_open", "subprocess.Popen"):
         "opens an interactive terminal; the host passed devterm.authorize_ssh_host first",
 }

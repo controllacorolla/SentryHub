@@ -21,7 +21,30 @@ TILE_URLS = {
     "satellite": ("https://server.arcgisonline.com/ArcGIS/rest/services/"
                   "World_Imagery/MapServer/tile/{z}/{y}/{x}"),
 }
+# SAT: tried in order, per tile. Esri World Imagery first (it served "API KEY REQUIRED"
+# placeholders to the device once, 2026-11-17, then recovered). Where a source has no tile or a
+# blank one, the next is used: USGS National Map imagery (keyless, public domain, US only), then
+# EOX Sentinel-2 cloudless (keyless, world, CC BY-NC-SA 4.0).
+SAT_SOURCES = (
+    ("esri", TILE_URLS["satellite"]),
+    ("usgs", "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/"
+             "tile/{z}/{y}/{x}"),
+    ("eox", "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/"
+            "GoogleMapsCompatible/{z}/{y}/{x}.jpg"),
+)
+TILE_SOURCES = {"dark": (("carto", TILE_URLS["dark"]),),
+                "light": (("carto", TILE_URLS["light"]),),
+                "satellite": SAT_SOURCES}
+ATTRIBUTION = {"dark": "© OpenStreetMap contributors © CARTO",
+               "satellite": "Imagery: Esri World Imagery · USGS The National Map · "
+                            "Sentinel-2 cloudless by EOX (CC BY-NC-SA 4.0)"}
 TILE_SIZE = 256
+MAX_TILES = 48          # per view: a zoomed-out view drops a zoom level instead of fetching more
+MIN_ZOOM, MAX_ZOOM = 3, 16
+MARGIN = 0.25           # the resampled image covers the view plus this fraction on every side
+OUT_SCALE = 1.0         # output pixels per screen pixel
+MAX_OUT_PX = 2048
+GREY_SPREAD, GREY_FRACTION = 4, 0.97     # _placeholder: pixels with R/G/B within 4 counts
 CACHE_ROOT = Path.home() / ".cache" / "palisade" / "tiles"
 
 
@@ -42,12 +65,6 @@ def _tile_bounds(tx, ty, zoom):
     return n_lat, s_lat, w, e
 
 
-def _nm_from_home(home_lat, home_lon, lat, lon):
-    dy = (lat - home_lat) * 60
-    dx = (lon - home_lon) * 60 * math.cos(math.radians(home_lat))
-    return dx, dy
-
-
 def _pick_zoom(span_nm):
     deg_span = span_nm / 60 * 2
     for z in range(3, 16):
@@ -55,6 +72,106 @@ def _pick_zoom(span_nm):
         if deg_span / tile_deg >= 3:
             return z
     return 8
+
+
+def _pick_zoom_view(deg_w, px_w):
+    """The zoom whose tiles show about one tile pixel per screen pixel across deg_w degrees."""
+    deg_w = max(1e-6, float(deg_w))
+    z = round(math.log2(max(1e-9, 360.0 * max(64, px_w) / (TILE_SIZE * deg_w))))
+    return max(MIN_ZOOM, min(MAX_ZOOM, int(z)))
+
+
+EARTH_NM = 3440.065       # same sphere as eventbus.to_xy
+
+
+def aeqd_inverse(home_lat, home_lon, x, y):
+    """(lat, lon) for x east / y north nm from HOME in eventbus.to_xy's frame (azimuthal
+    equidistant: true range and bearing from HOME). Numpy arrays or scalars. lon is unwrapped
+    around home_lon (it may leave -180..180 across the antimeridian)."""
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    p1 = math.radians(home_lat)
+    rho = np.hypot(x, y) / EARTH_NM
+    az = np.arctan2(x, y)
+    sin_lat = np.sin(p1) * np.cos(rho) + np.cos(p1) * np.sin(rho) * np.cos(az)
+    lat = np.arcsin(np.clip(sin_lat, -1.0, 1.0))
+    dl = np.arctan2(np.sin(az) * np.sin(rho) * np.cos(p1), np.cos(rho) - np.sin(p1) * sin_lat)
+    return np.degrees(lat), home_lon + np.degrees(dl)
+
+
+def _view_bbox(home_lat, home_lon, x0, x1, y0, y1):
+    """North, south, west, east (degrees) of the ground under an nm rectangle of the AEQD frame."""
+    gx, gy = np.meshgrid(np.linspace(x0, x1, 9), np.linspace(y0, y1, 9))
+    lat, lon = aeqd_inverse(home_lat, home_lon, gx, gy)
+    north = float(np.clip(lat.max(), -85.0, 85.0))
+    south = float(np.clip(lat.min(), -85.0, 85.0))
+    west = float(np.clip(lon.min(), -180.0, 179.999))
+    east = float(np.clip(lon.max(), -180.0, 179.999))
+    if x0 <= 0 <= x1 and y0 <= 0 <= y1:          # a view over a pole: every longitude
+        if abs(home_lat) + math.degrees(max(abs(y0), abs(y1)) / EARTH_NM) >= 90:
+            west, east = -180.0, 179.999
+    return north, south, west, east
+
+
+def tile_span(home_lat, home_lon, view, zoom=None):
+    """The tile range covering a view. view = (x0, x1, y0, y1, px_w): nm east/north of HOME (the
+    eventbus.to_xy frame) and the map's width in pixels. Returns (zoom, tx0, ty0, tx1, ty1) with a
+    1-tile margin, at most MAX_TILES tiles. x is the tile column (west -> east), y the tile row
+    (north -> south)."""
+    x0, x1, y0, y1, px_w = view
+    north, south, west, east = _view_bbox(home_lat, home_lon, x0, x1, y0, y1)
+    z = _pick_zoom_view(east - west, px_w) if zoom is None else zoom
+    while True:
+        n = 2 ** z
+        tx0, ty0 = _tile_xy(north, west, z)
+        tx1, ty1 = _tile_xy(south, east, z)
+        tx0, tx1 = sorted((tx0, tx1))
+        ty0, ty1 = sorted((ty0, ty1))
+        tx0, ty0 = max(0, tx0 - 1), max(0, ty0 - 1)
+        tx1, ty1 = min(n - 1, tx1 + 1), min(n - 1, ty1 + 1)
+        if (tx1 - tx0 + 1) * (ty1 - ty0 + 1) <= MAX_TILES or z <= MIN_ZOOM:
+            return z, tx0, ty0, tx1, ty1
+        z -= 1
+
+
+def reproject(canvas, zoom, tx0, ty0, home_lat, home_lon, rect, out_w, out_h):
+    """Resample a stitched Web-Mercator canvas (row 0 = north, tile (tx0, ty0) at its corner)
+    onto an nm rectangle of the AEQD frame that contacts and range rings use (RA-UIP H1: the
+    imagery was equirectangular, so with zoom a contact sat over the wrong ground). Returns an
+    RGBA array, row 0 = NORTH; pixels with no tile under them are transparent."""
+    x0, x1, y0, y1 = rect
+    xs = x0 + (np.arange(out_w) + 0.5) / out_w * (x1 - x0)
+    ys = y1 - (np.arange(out_h) + 0.5) / out_h * (y1 - y0)       # north first
+    gx, gy = np.meshgrid(xs, ys)
+    lat, lon = aeqd_inverse(home_lat, home_lon, gx, gy)
+    lon = (lon + 180.0) % 360.0 - 180.0
+    n = 2 ** zoom
+    lat_r = np.radians(np.clip(lat, -85.05, 85.05))
+    px = (lon + 180.0) / 360.0 * n * TILE_SIZE - tx0 * TILE_SIZE
+    py = (1 - np.log(np.tan(lat_r) + 1 / np.cos(lat_r)) / math.pi) / 2 * n * TILE_SIZE \
+        - ty0 * TILE_SIZE
+    col = np.floor(px).astype(np.int64)
+    row = np.floor(py).astype(np.int64)
+    h, w = canvas.shape[:2]
+    ok = (col >= 0) & (col < w) & (row >= 0) & (row < h)
+    out = np.zeros((out_h, out_w, 4), dtype=np.uint8)
+    out[ok] = canvas[row[ok], col[ok]]
+    return out
+
+
+def _blank(tile):
+    """A tile with (almost) no detail: a source's 'no coverage here' answer. Try the next one."""
+    rgb = tile[..., :3]
+    return tile.size == 0 or float(rgb.std()) < 2.0 or int(tile[..., 3].max()) == 0
+
+
+def _placeholder(tile):
+    """A source's text-on-grey stand-in ("Map data not yet available", Esri's "API KEY REQUIRED"):
+    almost every pixel is colourless. Imagery, even snow or desert, has colour in far more pixels.
+    Such a tile is never shown and never kept in the cache (RA-UIP M1)."""
+    rgb = tile[..., :3].astype(np.int16)
+    spread = rgb.max(axis=-1) - rgb.min(axis=-1)
+    return float((spread <= GREY_SPREAD).mean()) >= GREY_FRACTION
 
 
 def _netpolicy():
@@ -94,7 +211,9 @@ def _qimg_to_rgb(data_bytes):
 class TileLayer(QtCore.QObject):
     """Fetches map tiles in a background thread, emits a stitched RGBA array + NM bounds."""
 
-    ready = QtCore.Signal(object, float, float, float, float)
+    # the stitched array, its nm rect, and the HOME it was built for: the receiver places it by
+    # that HOME, since HOME can move between this emit and its queued delivery (RA-UIPd N2)
+    ready = QtCore.Signal(object, float, float, float, float, object)
 
     def __init__(self, home_lat=47.6, home_lon=-122.3, span_nm=80, parent=None):
         super().__init__(parent)
@@ -104,6 +223,7 @@ class TileLayer(QtCore.QObject):
         self._lock = threading.Lock()
         self._busy = False
         self._pending = None
+        self.view = None            # (x0, x1, y0, y1, px_w) in nm from HOME; None = +-span_nm
 
     def fetch(self, style):
         # Never hit the network under the offscreen test platform or when asked to stay offline;
@@ -120,9 +240,12 @@ class TileLayer(QtCore.QObject):
 
     def _work(self, style):
         try:
+            home = (self.home_lat, self.home_lon)
             arr, x0, y0, x1, y1 = self._build(style)
-            if arr is not None:
-                self.ready.emit(arr, x0, y0, x1, y1)
+            # built for a HOME that has since moved (GPS follow): its nm rect is relative to the
+            # old HOME, so drop it; the move queued a re-fetch (RA-UIP L3 / RA-UIPc M4)
+            if arr is not None and (self.home_lat, self.home_lon) == home:
+                self.ready.emit(arr, x0, y0, x1, y1, home)
         except Exception:
             pass
         finally:
@@ -134,29 +257,12 @@ class TileLayer(QtCore.QObject):
                 self.fetch(nxt)
 
     def _build(self, style):
-        url_tpl = TILE_URLS.get(style)
-        if url_tpl is None:
+        sources = TILE_SOURCES.get(style)
+        if not sources:
             return None, 0, 0, 0, 0
-        zoom = _pick_zoom(self.span_nm)
-        cos_lat = math.cos(math.radians(self.home_lat))
-        north = self.home_lat + self.span_nm / 60
-        south = self.home_lat - self.span_nm / 60
-        west = self.home_lon - self.span_nm / (60 * cos_lat)
-        east = self.home_lon + self.span_nm / (60 * cos_lat)
-
-        tx0, ty0 = _tile_xy(north, west, zoom)
-        tx1, ty1 = _tile_xy(south, east, zoom)
-        if tx0 > tx1:
-            tx0, tx1 = tx1, tx0
-        if ty0 > ty1:
-            ty0, ty1 = ty1, ty0
-        tx0 -= 1
-        ty0 -= 1
-        tx1 += 1
-        ty1 += 1
-
-        cache_dir = CACHE_ROOT / style / str(zoom)
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        span = self.span_nm
+        view = self.view or (-span, span, -span, span, 800)
+        zoom, tx0, ty0, tx1, ty1 = tile_span(self.home_lat, self.home_lon, view)
 
         nx = tx1 - tx0 + 1
         ny = ty1 - ty0 + 1
@@ -164,23 +270,43 @@ class TileLayer(QtCore.QObject):
 
         for tx in range(tx0, tx1 + 1):
             for ty in range(ty0, ty1 + 1):
-                data = _fetch_one(url_tpl, zoom, tx, ty, cache_dir)
-                if data is None:
-                    continue
-                tile = _qimg_to_rgb(data)
-                if tile is None:
-                    continue
-                ix = tx - tx0
-                iy = ty - ty0
-                y_px = iy * TILE_SIZE
-                x_px = ix * TILE_SIZE
-                th, tw = tile.shape[:2]
-                canvas[y_px:y_px + th, x_px:x_px + tw] = tile
+                fallback = None
+                for name, url_tpl in sources:
+                    # per-source cache dir: an old cached placeholder (satellite/<z>/, before
+                    # 2026-11-17) is never read again
+                    cache_dir = CACHE_ROOT / style / name / str(zoom)
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    data = _fetch_one(url_tpl, zoom, tx, ty, cache_dir)
+                    tile = _qimg_to_rgb(data) if data is not None else None
+                    if tile is None:
+                        continue
+                    if _placeholder(tile):      # never shown, and not kept: the next fetch retries
+                        try:
+                            (cache_dir / ("%d_%d.png" % (tx, ty))).unlink()
+                        except OSError:
+                            pass
+                        continue
+                    if _blank(tile):            # e.g. open sea, or no coverage: try the next,
+                        fallback = fallback if fallback is not None else tile   # else keep it
+                        continue
+                    fallback = tile
+                    break
+                if fallback is not None:
+                    y_px = (ty - ty0) * TILE_SIZE
+                    x_px = (tx - tx0) * TILE_SIZE
+                    th, tw = fallback[:TILE_SIZE, :TILE_SIZE].shape[:2]
+                    canvas[y_px:y_px + th, x_px:x_px + tw] = fallback[:TILE_SIZE, :TILE_SIZE]
 
-        n_lat, _, w_lon, _ = _tile_bounds(tx0, ty0, zoom)
-        _, s_lat, _, e_lon = _tile_bounds(tx1, ty1, zoom)
-        nm_x0, nm_y0 = _nm_from_home(self.home_lat, self.home_lon, s_lat, w_lon)
-        nm_x1, nm_y1 = _nm_from_home(self.home_lat, self.home_lon, n_lat, e_lon)
-
-        canvas = canvas[::-1]
-        return canvas, nm_x0, nm_y0, nm_x1, nm_y1
+        # one projection for imagery, rings and contacts (RA-UIP H1): resample the Mercator mosaic
+        # onto the view (plus a margin, so a small pan shows imagery before the re-fetch lands)
+        # in eventbus.to_xy's frame.
+        x0, x1, y0, y1, px_w = view
+        mx, my = (x1 - x0) * MARGIN, (y1 - y0) * MARGIN
+        rect = (x0 - mx, x1 + mx, y0 - my, y1 + my)
+        out_w = int(min(MAX_OUT_PX, max(256, px_w * OUT_SCALE * (1 + 2 * MARGIN))))
+        out_h = int(min(MAX_OUT_PX, max(64, out_w * (rect[3] - rect[2]) / (rect[1] - rect[0]))))
+        out = reproject(canvas, zoom, tx0, ty0, self.home_lat, self.home_lon, rect, out_w, out_h)
+        # row 0 of `out` is the NORTH edge; the plot's y grows north, and the image item is
+        # row-major with row 0 at the rect's bottom (y0 = south), so flip the rows once here.
+        out = np.ascontiguousarray(out[::-1])
+        return out, rect[0], rect[2], rect[1], rect[3]

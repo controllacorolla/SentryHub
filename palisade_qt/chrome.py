@@ -14,7 +14,7 @@ nothing in any engine or gate.
                                                UNKNOWN if txguard cannot be read.
   ENGAGEMENT  NONE | <scope> | EXPIRED | UNKNOWN
                                                from engagement.info(); EXPIRED once past its expiry; the strip paints the scope
-                                               summary as the word (amber diamond = active);
+                                               summary as the word (green diamond = active);
                                                UNKNOWN if it cannot be read
 
 A reader that raises never falls back to the all-clear word (OFF / NONE): it reports UNKNOWN, which

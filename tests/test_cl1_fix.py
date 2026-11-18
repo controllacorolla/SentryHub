@@ -527,15 +527,19 @@ def test_feed_columns_get_real_widths_even_when_filled_while_hidden():
 
 
 # ================================================================ 11. D1 pins
-def test_no_rail_the_page_starts_at_the_window_edge():
+def test_only_the_page_rail_sits_beside_the_page():
+    """D1, revised by the owner 2026-11-17 (UIP): the page starts right of the ONE left page
+    rail and runs to the window edge; nothing else sits beside it."""
     from palisade_qt import panels
     for demo in (False, True):
         hub = _hub(demo=demo)
         try:
             b = panels.DemoBorder.WIDTH if demo else 0
             g = hub.stack.geometry()
-            assert g.x() == b and g.width() == hub.centralWidget().width() - 2 * b, \
-                "something sits beside the page (a rail?) at %r" % (g,)
+            rail = hub.nav_rail.geometry()
+            assert rail.x() == b and g.x() == rail.right() + 1, (g, rail)
+            assert g.right() == hub.centralWidget().width() - b - 1, \
+                "something sits beside the page at %r" % (g,)
         finally:
             hub.close()
             _pump(100)
@@ -634,7 +638,7 @@ def test_sub_tabs_are_a_vertical_rail_left_of_the_page():
 
 # ================================================================ 14. D9
 @pytest.mark.parametrize("mode", THEMES)
-def test_armed_and_active_slots_are_never_green(mode):
+def test_armed_tx_is_never_green_and_active_engagement_is_green(mode):
     import colorsys
     from palisade_qt import theme
     from palisade_qt.kit import TopBar
@@ -643,7 +647,10 @@ def test_armed_and_active_slots_are_never_green(mode):
     tb = TopBar(mode=mode)
     try:
         tb.set_state("LIVE", ("FREE", ""), "ARMED", ("ACTIVE", "10.0.0.*", "Op"))
-        for key, want in (("tx", t["alert"]), ("engagement", t["warn"])):
+        # UIP (owner, 2026-11-17): an ACTIVE engagement now reads green on the strip (the panel
+        # keeps amber); TX ARMED / UNLOCKED stay red and are never green — pinned here
+        assert t["live"].lower() in tb.slots["engagement"].value.styleSheet().lower()
+        for key, want in (("tx", t["alert"]),):
             css = tb.slots[key].value.styleSheet().lower()
             assert want.lower() in css, (key, css)
             if mode != "sun":

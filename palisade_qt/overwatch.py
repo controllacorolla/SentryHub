@@ -356,8 +356,19 @@ class OverwatchApp(PalisadeApp):
     def _on_home_changed(self):
         """H5: HOME set in SETTINGS -> predict for it now (it used to be copied once at import)."""
         w = getattr(self, "_passw", None)
-        if w is not None and not self._stopped:
-            w.repredict()
+        if w is None or self._stopped:
+            return
+        # HOME now follows GPS in small steps (gpshome.MOVE_NM); pass times do not change within a
+        # few miles, so a GPS re-home only re-predicts after REPREDICT_NM (a typed HOME always does)
+        h, last = eventbus.home(), getattr(self, "_predicted_at", None)
+        if eventbus.HOME_SOURCE == "gps" and h and last:
+            x, y = eventbus.to_xy(h[0], h[1], home=last)
+            if (x * x + y * y) ** 0.5 < self.REPREDICT_NM:
+                return
+        self._predicted_at = h
+        w.repredict()
+
+    REPREDICT_NM = 5.0
 
     def stop(self):
         if self._stopped:
