@@ -164,10 +164,11 @@ class IqWorker(Worker):
                 self._release(self._why)
             return False
         arb = radio_arbiter.arbiter
-        if not self._has_radio and self._fault is not None \
-                and time.monotonic() - self._fault[1] < self._retry_s():
+        f = self._fault                    # RA-RADIOd D1: read once; retry_now() clears it from
+        if not self._has_radio and f is not None \
+                and time.monotonic() - f[1] < self._retry_s():   # the GUI thread
             # RA-RADIOb B2: faulted -> the radio stays free until the retry is due
-            self._status(self._fault_text(), "alert", fault=self._fault[0], live=False)
+            self._status(self._fault_text(f), "alert", fault=f[0], live=False)
             return False
         if not self._has_radio:
             if arb.request(self.NAME):
@@ -191,8 +192,9 @@ class IqWorker(Worker):
         return True
 
     def _open(self):
-        if self._fault is not None and time.monotonic() - self._fault[1] < self._retry_s():
-            self._status(self._fault_text(), "alert", fault=self._fault[0], live=False)
+        f = self._fault                                  # D1: one read
+        if f is not None and time.monotonic() - f[1] < self._retry_s():
+            self._status(self._fault_text(f), "alert", fault=f[0], live=False)
             return False
         src = None
         try:
@@ -301,8 +303,7 @@ class IqWorker(Worker):
             except (RuntimeError, TypeError):
                 pass
 
-    def _fault_text(self):
-        f = self._fault
+    def _fault_text(self, f):
         left = max(0, int(math.ceil(self._retry_s() - (time.monotonic() - f[1]))))
         return ("%s FAULT — %s" % (self.LABEL, f[0]))[:80] + " · retry in %ds" % left
 

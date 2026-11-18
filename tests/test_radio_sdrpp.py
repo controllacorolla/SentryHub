@@ -1592,3 +1592,58 @@ def test_c4_a_cancelled_start_closes_the_half_open_source(arb):
     finally:
         w.stop()
         w.wait(3000)
+
+
+# ============================================================================ RA-RADIOd findings
+def test_d1_retry_now_clearing_the_fault_mid_check_is_safe(arb):
+    from palisade_qt.iqworker import TunerWorker
+    w = TunerWorker(source="rtl", audio=False, source_factory=lambda _w: None)
+
+    def clearing():                              # retry_now() lands between two reads
+        w._fault = None
+        return 5.0
+    for check in (w._ensure_radio, w._open):
+        w._fault = ("x", time.monotonic())
+        w._has_radio = False
+        w._retry_s = clearing
+        check()                                  # must not raise TypeError
+    w._release()
+
+
+def test_d2_prism_start_and_prowl_enter_wire_the_retry():
+    calls = []
+    p = _prism()
+    try:
+        p.start()
+        p.set_active(True)
+        _pump(200)
+        w = p._worker
+        w.retry_now = lambda: calls.append("prism")
+        w._fault = ("x", time.monotonic())
+        p.on_status({"sdr": {"text": "SDR FAULT", "state": "alert"}, "fault": "x"})
+        p.run_btn.click()                        # START on a faulted receiver
+        assert calls == ["prism"]
+    finally:
+        p.stop()
+    q = _prowl(demo=False, engine="fast")
+    try:
+        q.start()
+        q.set_active(True)
+        _pump(200)
+        w = q._worker
+        w.retry_now = lambda: calls.append("prowl")
+        w._fault = ("x", time.monotonic())
+        w.hold_off("radio given back")           # held off AND faulted: one Enter does both
+        assert q.primary_action()
+        assert calls[-1] == "prowl" and not w.held_off
+    finally:
+        q.stop()
+
+
+def test_d3_a_teardown_error_never_ends_the_worker(arb):
+    from palisade_qt.iqworker import TunerWorker
+    w = TunerWorker(source="rtl", audio=False, source_factory=lambda _w: None)
+    w._src = type("S", (), {"close": lambda s: None})()
+    w.on_source_closed = lambda: (_ for _ in ()).throw(RuntimeError("audio sink gone"))
+    w._close_source()                            # must not raise
+    assert w._src is None

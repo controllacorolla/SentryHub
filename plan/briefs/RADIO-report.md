@@ -126,3 +126,14 @@ test_audit_tiles, test_hwlab doctor, test_sstvdec). pyflakes clean.
 | C3 | back-off reset after a good block is tested | test_c3_back_off_resets… |
 | C4 | a cancelled start closes the half-open source; a setting whose value raises is dropped, only source failures re-queue | test_c4_a_cancelled_start…, test_b7_… (now through run()) |
 | B6 / B7 pins | B6 test now drives the real `open()` with a fake rtl_tcp printing non-UTF-8; B7 test goes through `run()`. Both fail with their fix removed. | test_b6_…, test_b7_… |
+
+## RA-RADIOd (verdict MERGE) follow-ups
+
+| ID | Fix | Regression test (fails with the fix removed) |
+|---|---|---|
+| D1 | `_ensure_radio` / `_open` read `_fault` once into a local, so `retry_now()` from the GUI thread can't race them | test_d1_retry_now_clearing_the_fault_mid_check_is_safe |
+| D2 | PROWL Enter on a held-off AND faulted scanner resumes and retries in one press | test_d2_prism_start_and_prowl_enter_wire_the_retry (also pins PRISM START → retry_now, M5/M6) |
+| D3a | teardown guard pinned (M8) | test_d3_a_teardown_error_never_ends_the_worker |
+| D3b | one bad queued value drops the keys queued with it: left as is (no UI path produces one), noted | — |
+
+Radio + CL5 tests after these: 191 passed, 1 skipped.

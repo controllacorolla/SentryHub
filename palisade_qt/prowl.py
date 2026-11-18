@@ -1477,6 +1477,8 @@ class ProwlApp(PalisadeApp):
             self.swap_worker()
             return True
         if w is not None and getattr(w, "held_off", False) and self._active:
+            if getattr(w, "faulted", False):
+                w.retry_now()            # RA-RADIOd D2: one Enter resumes AND retries
             w.set_active(True)
             self.busy.setText("")
             return True
