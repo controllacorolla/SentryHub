@@ -120,3 +120,25 @@ in 919.70s` — test_audit_tiles, test_hwlab doctor, 7 test_shell errors (no tki
 | N6 Low | NOTHING SCANNED prints `[nothing scanned — no results in …]`, never "results saved"; `RunPane.saved` reset per run | `test_rx_n6_nothing_scanned_never_claims_results_saved` |
 | RXb N2 Low | `_literal_targets` comment corrected (literals stop forward lookups; -n stops reverse) | — |
 | N3 | Open (wording in engagement.py, a gate file) — follow-up | — |
+
+## RX-fix4 — Wi-Fi select-and-act (device ask 2026-11-17: "select the Wi-Fi network and do what I want with it")
+
+A new entry point in RECON › WIFI: select a network, then **ACT ON SELECTED ▾** (or right-click the
+row) opens one menu for that BSSID. Every item routes through the SAME engagement gate as the
+WIFIPENT card — no new ungated path.
+
+| Item | Behaviour | File | Test |
+|---|---|---|---|
+| Header | SSID · BSSID · channel · signal · security of the selected AP (details), disabled | `recon._build_wifi_menu` | render |
+| Port-scan the gateway | Enabled only when this BSSID is the associated AP (`iw dev … link`, seam) and a default gateway exists; runs on the NET card so the engine still scope-checks the gateway (out of scope → DENIED, nothing spawned) | `recon._associated_bssid/_default_gateway/_scan_gateway` | `…gateway_scan_only_when_associated`, `…runs_on_net_and_is_scope_checked`, `…out_of_scope_is_refused` |
+| Capture WPA handshake / PMKID | Enabled only with an open, in-scope engagement AND a monitor-mode interface; otherwise greyed with the gate's own reason (`engagement.check`) or "no monitor-mode interface" | `recon._build_wifi_menu/_run_wifi_action` | `…greys_gated_items…no_engagement`, `…out_of_scope`, `…no_monitor_interface`, `…handshake_runs_through_the_gate` |
+| Deauth a client… | Same gating; prompts for the client MAC; routes through the deauth gate (client-in-scope, no broadcast — and #30's group/self refusal once stacked) | `recon._deauth_prompt` | covered by the gated-grey tests |
+| ACT button | Enabled only when a row is selected | `recon._wifi_pick` | `…act_button_enables_only_with_a_selection` |
+
+8 tests in `tests/test_rx_recon_exec.py` (`-k "wifi_act or wifi_menu"`). Render:
+`plan/briefs/rx/after-wifi-menu.png` (ACT ON SELECTED button; gated items greyed with reasons).
+
+**NOT in scope here (owned by the UI thread "Polish the UI from device testing"):** RECON right-panel
+font sizing, a collapsible panel, tile styling, and the module-number/legend/OPS items from Dalton's
+device note. This change touches only the Wi-Fi action menu + its seams, not the panel layout, to
+avoid colliding with that thread.
