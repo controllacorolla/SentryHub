@@ -570,6 +570,10 @@ def test_band_and_span_keys_in_prism():
         _key(hub, None, "3")
         _pump(200)
         prism = hub.pages["PRISM"]
+        # radio cluster: [ ] / + - keep stepping the band / span on the wide-sweep source; on the
+        # IQ receiver they step the VFO and zoom (tests/test_radio_sdrpp.py)
+        prism.source_combo.setCurrentIndex(2)
+        _pump(100)
         hub.setFocus()
         c0, s0 = prism.centre.value(), prism.span.value()
         _key(hub, None, "]")

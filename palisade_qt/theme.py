@@ -87,6 +87,11 @@ QPushButton:checked {{ background: {check_bg}; color: {check_fg}; border: {bw} s
                        font-weight: 600; }}
 QPushButton:focus {{ border: {focus_w} solid {focus}; }}
 QPushButton:disabled {{ color: {disabled}; border: {bw} dashed {disabled}; background: transparent; }}
+/* run state (set_run) */
+QPushButton[run="on"] {{ background: {live}; color: {bg}; border: {bw} solid {live}; font-weight: 600; }}
+QPushButton[run="off"] {{ background: {alert}; color: {bg}; border: {bw} solid {alert}; font-weight: 600; }}
+QPushButton[run="on"]:focus, QPushButton[run="off"]:focus {{ border: {focus_w} solid {focus}; }}
+QPushButton[run="off"]:disabled {{ background: transparent; color: {disabled}; border: {bw} dashed {disabled}; }}
 QPushButton.tile {{ background: {p1}; border-radius: 8px; padding: 10px; text-align: left; }}
 
 QCheckBox {{ font-size: {status}px; spacing: 8px; }}

@@ -325,3 +325,49 @@ def _tokens_for(widget):
                 return tok
     return theme.tokens("dark")
 
+
+
+class Section(QtWidgets.QWidget):
+    """A collapsible side-panel section: a header button that shows / hides its body."""
+
+    def __init__(self, title, open_=True, parent=None):
+        super().__init__(parent)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        self.title = title
+        self.head = QtWidgets.QPushButton()
+        self.head.setCheckable(True)
+        self.head.setChecked(open_)
+        self.head.setProperty("class", "section")
+        self.head.setStyleSheet("text-align:left; padding:4px 8px;")
+        self.head.toggled.connect(self._sync)
+        lay.addWidget(self.head)
+        self.body = QtWidgets.QWidget()
+        self.form = QtWidgets.QFormLayout(self.body)
+        self.form.setContentsMargins(6, 2, 2, 6)
+        self.form.setHorizontalSpacing(8)
+        self.form.setVerticalSpacing(5)
+        self.form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+        lay.addWidget(self.body)
+        self._sync(open_)
+
+    def _sync(self, on):
+        self.head.setText(("▾ " if on else "▸ ") + self.title)
+        self.body.setVisible(bool(on))
+
+    def row(self, label, widget):
+        if label:
+            self.form.addRow(micro(label), widget)
+        else:
+            self.form.addRow(widget)
+        return widget
+
+
+def set_run(btn, on):
+    """Run-state colour for a start/stop/scan button: green while running, red while stopped
+    (QSS `QPushButton[run="on"|"off"]` in theme.qss). Sets the property and re-polishes."""
+    btn.setProperty("run", "on" if on else "off")
+    btn.style().unpolish(btn)
+    btn.style().polish(btn)
+    btn.update()
