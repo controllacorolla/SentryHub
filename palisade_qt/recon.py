@@ -40,7 +40,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-SUBTABS = ("WIFI", "BLE", "NET", "CAPTURE", "ENUM", "RF")
+SUBTABS = ("WIFI", "BLE", "NET", "RF")
 SYS_NET = "/sys/class/net"
 
 
@@ -786,10 +786,8 @@ class ReconApp(PalisadeApp):
         lay.setSpacing(10)
 
         self.stack = QtWidgets.QStackedWidget()
-        from . import recon_tools
         self._pages = {
             "WIFI": self._wifi_page(), "BLE": self._ble_page(), "NET": self._net_page(),
-            "CAPTURE": recon_tools.capture_page(self), "ENUM": recon_tools.enum_page(self),
             "RF": self._rf_page()}
         for t in SUBTABS:
             self.stack.addWidget(self._pages[t])
@@ -1068,12 +1066,17 @@ class ReconApp(PalisadeApp):
         return page
 
     def _net_page(self):
-        page = QtWidgets.QWidget()
-        pl = QtWidgets.QVBoxLayout(page)
-        pl.setContentsMargins(0, 0, 0, 0)
-        pl.setSpacing(10)
+        # NET is the network-assessment surface: nmap + PASSAUDIT, LAN discovery, passive capture,
+        # and AD/SMB + web/TLS + Responder (TOOLKIT items 1-5). It carries more tools than fit 720px
+        # tall, so the column is wrapped in a scroll area (SUBTABS stay WIFI/BLE/NET/RF — a pinned
+        # invariant; the RECON layout pass owns turning this into tiles). min size hint stays small.
         import netpent
         import passaudit
+        from . import recon_tools
+        inner = QtWidgets.QWidget()
+        pl = QtWidgets.QVBoxLayout(inner)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.setSpacing(10)
         self.net_run = RunPane("NETPENT", self._tok)
         self.net_gated = GatedTool("NETPENT", "target", netpent.prepare,
                                    ["discover", "portscan", "services"], self, self._tok,
@@ -1099,12 +1102,21 @@ class ReconApp(PalisadeApp):
         top.addWidget(self.net_gated, 1)
         top.addWidget(self.pass_gated, 1)
         pl.addLayout(top)
-        pl.addWidget(self.net_run, 1)
+        pl.addWidget(self.net_run)
         mid = QtWidgets.QHBoxLayout()
         mid.addWidget(self.disc_gated, 1)
         pl.addLayout(mid)
-        pl.addWidget(self.disc_run, 1)
-        return page
+        pl.addWidget(self.disc_run)
+        # TOOLKIT items 1, 3, 4, 5: passive capture + Responder analyze, then the gated enum tools.
+        pl.addWidget(recon_tools.capture_group(self))
+        pl.addWidget(recon_tools.enum_group(self))
+        pl.addStretch(1)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(inner)
+        return scroll
 
     def _disc_extra(self, action):
         """-> (kwargs for netpent.discover_prepare, error). Passes the optional interface through;

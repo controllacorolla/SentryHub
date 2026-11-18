@@ -255,9 +255,9 @@ def test_capture_page_runs_a_passive_capture_and_logs_it(monkeypatch):
     info = _start(["10.0.0.0/24"])
     p = _recon(monkeypatch, sp)
     try:
-        page = p._pages["CAPTURE"]
-        # drive the capture card's PCAP button
-        btns = page.findChildren(QtWidgets.QPushButton)
+        # the capture group lives on the NET sub-tab (SUBTABS stay WIFI/BLE/NET/RF)
+        net = p._pages["NET"]
+        btns = net.findChildren(QtWidgets.QPushButton)
         pcap = [b for b in btns if b.text() == "PCAP"][0]
         pcap.click()
         _app().processEvents()

@@ -220,8 +220,8 @@ def _kill_group(proc, grace=1.0):
 
 # ============================ CAPTURE page ============================
 
-def capture_page(app):
-    """CAPTURE sub-tab: passive packet capture + Responder analyze. All panes are registered on the
+def capture_group(app):
+    """CAPTURE group (on NET): passive packet capture + Responder analyze. All panes are registered on the
     app (app._tool_panes) so RECON.stop() / PANIC stop them."""
     tok = app._tok
     page = QtWidgets.QWidget()
@@ -338,8 +338,8 @@ def capture_page(app):
 
 # ============================ ENUM page ============================
 
-def enum_page(app):
-    """ENUM sub-tab: AD/SMB enumeration + web/TLS triage + Responder poison. Every card is
+def enum_group(app):
+    """ENUM group (on NET): AD/SMB enumeration + web/TLS triage + Responder poison. Every card is
     engagement-gated (GatedTool + the executor). Panes register on the app for stop()/PANIC."""
     from .recon import GatedTool          # lazy: avoids the recon <-> recon_tools import cycle
     tok = app._tok
