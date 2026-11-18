@@ -32,7 +32,11 @@ def pipeline(freq, mode, gain, squelch, rds=False):
     if not (0 < freq < 6000) or not (0 <= gain <= 60):   # L4: also refuses nan/inf from settings
         raise ValueError("bad FM settings: freq %r gain %r" % (freq, gain))
     mid = None
-    if mode == "nbfm":
+    if mode == "am":                       # radio cluster: direct AM tune (airband, CB)
+        rate = 24000
+        rtl = ["rtl_fm", "-d", "0", "-M", "am", "-f", "%.4fM" % freq, "-s", str(rate), "-r", str(rate),
+               "-g", "%g" % gain, "-l", str(squelch), "-E", "dc", "-"]
+    elif mode == "nbfm":
         rate = 24000
         rtl = ["rtl_fm", "-d", "0", "-M", "fm", "-f", "%.4fM" % freq, "-s", str(rate), "-r", str(rate),
                "-g", "%g" % gain, "-l", str(squelch), "-E", "dc", "-"]

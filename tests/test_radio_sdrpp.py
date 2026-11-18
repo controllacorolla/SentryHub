@@ -89,7 +89,7 @@ def _signal(mode, off, n=FS // 2, seed=0):
         s = np.exp(1j * (2 * np.pi * off * t + 50.0 * np.sin(2 * np.pi * 1000 * t)))
     elif mode == "AM":
         s = (1 + 0.5 * np.sin(2 * np.pi * 1000 * t)) * np.exp(2j * np.pi * off * t)
-    elif mode == "USB":
+    elif mode in ("USB", "RAW"):             # RAW: the I channel of a carrier 1 kHz up
         s = np.exp(2j * np.pi * (off + 1000) * t)
     elif mode == "LSB":
         s = np.exp(2j * np.pi * (off - 1000) * t)
@@ -101,7 +101,8 @@ def _signal(mode, off, n=FS // 2, seed=0):
 
 
 @pytest.mark.parametrize("mode,want", [("NFM", 1000), ("WFM", 1000), ("AM", 1000),
-                                       ("USB", 1000), ("LSB", 1000), ("CW", dsp.CW_PITCH)])
+                                       ("USB", 1000), ("LSB", 1000), ("CW", dsp.CW_PITCH),
+                                       ("RAW", 1000)])
 def test_every_demod_mode_recovers_the_audio(mode, want):
     off = -310000.0                          # VFO well away from the centre, like a real tune
     d = dsp.Demodulator(FS, mode, offset_hz=off)
@@ -956,10 +957,133 @@ def test_prowl_fast_demo_scans_the_synthetic_airband():
     try:
         p.engine_combo.setCurrentIndex(0)                 # FAST in demo: synthetic IQ
         p.bank_combo.setCurrentText("Airband (full)")
+        p.heard_only.setChecked(False)
         p.start()
         p.set_active(True)
         assert _until(lambda: p.feed.model.rowCount() >= 760, 4000)
+        p.heard_only.setChecked(True)
+        assert _until(lambda: 0 < p.feed.model.rowCount() < 100, 3000), "named + heard only"
         assert _until(lambda: "LISTEN" in p.scan_info.text() or "SEARCH" in p.scan_info.text(),
                       3000)
+    finally:
+        p.stop()
+
+
+# ============================================================================ backcheck gaps
+@pytest.mark.parametrize("pos,hz", [(0, 100_000_000), (2, 1_000_000), (3, 100_000),
+                                    (4, 100_000), (6, 1000), (7, 100), (8, 100), (10, 1)])
+def test_digit_under_the_wheel_maps_to_its_place_value(pos, hz):
+    from palisade_qt.kit.tuner import digit_step_hz
+    assert digit_step_hz("121.500 000", pos) == hz      # pos 7 is the space -> next digit
+
+
+def test_prism_wheel_over_a_frequency_digit_steps_that_digit():
+    from PySide6 import QtCore, QtGui
+    p = _prism()
+    try:
+        p._tune(121_500_000, recentre=True)
+        p.resize(1280, 720)
+        p.show()
+        _pump(50)
+        e = p.freq_edit
+        e.setCursorPosition(6)                            # the 1 kHz digit
+        pt = QtCore.QPointF(e.cursorRect().center()) + QtCore.QPointF(4, 0)
+        ev = QtGui.QWheelEvent(pt, e.mapToGlobal(pt), QtCore.QPoint(0, 0),
+                               QtCore.QPoint(0, 120), QtCore.Qt.NoButton,
+                               QtCore.Qt.NoModifier, QtCore.Qt.NoScrollPhase, False)
+        QtWidgets_app = _app()
+        QtWidgets_app.sendEvent(e, ev)
+        assert p._vfo_hz == 121_501_000, p._vfo_hz
+        e.digit_step.emit(-1_000_000)                     # wheel down over the MHz digit
+        assert p._vfo_hz == 120_501_000 and e.text() == "120.501 000"
+    finally:
+        p.stop()
+
+
+def test_prism_dragging_a_passband_edge_sets_the_bandwidth():
+    p = _prism()
+    try:
+        p._tune(121_500_000, recentre=True)
+        p.mode_combo.setCurrentText("AM")
+        p.bw_spin.setValue(8.33)
+        sc = p.scope
+        sc.push(np.full(8192, -80.0), 120_476_000, 122_524_000)
+        a, b = sc._passband()
+        sc.band.setRegion((a / 1e6, (b + 2000) / 1e6))   # upper edge out by 2 kHz
+        assert abs(p.bw_spin.value() * 1000 - (8330 + 4000)) < 20, "symmetric: +2 kHz each side"
+        assert p._vfo_hz == 121_500_000, "an edge drag never moves the VFO"
+        a, b = sc._passband()
+        assert abs((b - a) - p.bw_spin.value() * 1000) < 20, "region snapped to the new bw"
+        p.mode_combo.setCurrentText("USB")
+        p.bw_spin.setValue(2.8)
+        a, b = sc._passband()
+        sc.band.setRegion((a / 1e6, (b - 600) / 1e6))
+        assert abs(p.bw_spin.value() * 1000 - 2200) < 20, "USB is one-sided"
+        a, b = sc._passband()
+        sc.band.setRegion(((a + 25000) / 1e6, (b + 25000) / 1e6))   # whole band dragged
+        assert p._vfo_hz == 121_525_000
+        sc.band.setRegion((a / 1e6, (b + 10_000_000) / 1e6))         # absurd -> clamped
+        assert p.bw_spin.value() * 1000 <= dsp.BW_LIMITS["USB"][1]
+    finally:
+        p.stop()
+
+
+def test_prism_fft_smoothing_averages_the_line_not_the_waterfall():
+    import suite
+    p = _prism(demo=False)
+    try:
+        sc = p.scope
+        p.smooth_combo.setCurrentIndex(3)                  # heavy
+        assert json.load(open(os.path.join(suite.CFG, "prism.json")))["smooth"] == 0.9
+        sc.push(np.full(4096, -80.0), 118e6, 120e6)
+        sc.push(np.full(4096, -40.0), 118e6, 120e6)
+        y = sc.curve.getData()[1]
+        assert abs(float(np.median(y)) - (-76.0)) < 0.5, "0.9*-80 + 0.1*-40"
+        assert float(sc.buf[-1].max()) == -40.0, "waterfall keeps the raw frame"
+        p.smooth_combo.setCurrentIndex(0)
+        sc.push(np.full(4096, -40.0), 118e6, 120e6)
+        assert abs(float(np.median(sc.curve.getData()[1])) + 40.0) < 0.1
+    finally:
+        p.stop()
+
+
+def test_prowl_scans_the_prism_bookmarks():
+    import suite
+    os.makedirs(suite.CFG, exist_ok=True)
+    path = os.path.join(suite.CFG, "prism.json")
+    try:
+        cfg = json.load(open(path))
+    except (OSError, ValueError):
+        cfg = {}
+    cfg["bookmarks"] = [{"hz": 146_520_000, "label": "2m calling", "mode": "NFM", "bw": 12500},
+                        {"hz": 50_125_000, "label": "6m SSB", "mode": "USB", "bw": 2800},
+                        {"hz": "junk"}]
+    json.dump(cfg, open(path, "w"))
+    p = _prowl(demo=False, engine="fast")
+    try:
+        from palisade_qt.prowl import MY_BOOKMARKS
+        p.bank_combo.setCurrentText(MY_BOOKMARKS)
+        ch = p._scan_channels()
+        assert [(c[0], c[1], c[2]) for c in ch] == [(50.125, "6m SSB", "USB"),
+                                                     (146.52, "2m calling", "NFM")]
+        assert "2 bookmarks" in p.scan_info.text()
+    finally:
+        p.stop()
+
+
+def test_prowl_fm_tab_tunes_am_and_keeps_am_in_the_weather_band():
+    import fm
+    rtl, _mid, _sink = fm.pipeline(121.5, "am", 30, 0)
+    assert rtl[rtl.index("-M") + 1] == "am" and "121.5000M" in rtl
+    p = _prowl(demo=True, engine="classic")
+    try:
+        assert p.fm_mode.findText("am") >= 0
+        p.fm_mode.setCurrentText("am")
+        p.fm_freq.setValue(162.55)
+        p._fm_retune()
+        assert p.fm_mode.currentText() == "am", "only WFM is forced to NFM in the NWR band"
+        p.fm_mode.setCurrentText("wbfm")
+        p._fm_retune()
+        assert p.fm_mode.currentText() == "nbfm"
     finally:
         p.stop()

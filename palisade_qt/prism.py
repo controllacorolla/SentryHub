@@ -33,7 +33,7 @@ from .app import PalisadeApp
 from . import theme, radio_arbiter
 from .kit import ControlBar, micro
 from .kit.components import Section, note, set_run
-from .kit.tuner import TunerScope
+from .kit.tuner import FreqEdit, TunerScope
 from .iqworker import TunerWorker
 from .worker import Worker
 from .kit.seams import offscreen as _seam_offscreen
@@ -324,10 +324,11 @@ SOURCES = (("RTL-SDR (live)", "rtl"), ("IQ file playback", "file"),
 STEPS = ((("8.33 kHz", 8333.33), ("12.5 kHz", 12500), ("25 kHz", 25000), ("5 kHz", 5000),
           ("100 kHz", 100000), ("1 kHz", 1000), ("100 Hz", 100), ("10 Hz", 10)))
 FFT_SIZES = (2048, 4096, 8192, 16384, 32768)
+SMOOTHING = (("off", 0.0), ("light", 0.5), ("medium", 0.75), ("heavy", 0.9))
 PRISM_DEFAULTS = {"vfo_hz": 119_100_000, "mode": "AM", "bw": 8330, "step": 25000,
                   "rate": 2048000, "gain_db": 33.8, "auto_gain": False, "rtl_agc": False,
                   "ppm": 0, "squelch_on": False, "squelch_db": -60.0, "audio_agc": True,
-                  "audio": True, "deemph_us": 75, "nfft": 8192, "wf_lo": -85.0, "wf_hi": -25.0,
+                  "audio": True, "deemph_us": 75, "nfft": 8192, "smooth": 0.0, "wf_lo": -85.0, "wf_hi": -25.0,
                   "source": "rtl", "file": "", "bookmarks": []}
 
 
@@ -431,14 +432,15 @@ class PrismApp(PalisadeApp):
         self.run_btn.setMinimumWidth(92)
         self.run_btn.clicked.connect(lambda: self._set_running(not self._running()))
         bar.lay.addWidget(self.run_btn)
-        self.freq_edit = QtWidgets.QLineEdit(iqsource.fmt_freq(self._vfo_hz))
+        self.freq_edit = FreqEdit(iqsource.fmt_freq(self._vfo_hz))
         self.freq_edit.setProperty("class", "freq")
         self.freq_edit.setStyleSheet("font-size:26px; font-weight:600; padding:2px 6px;")
         self.freq_edit.setMinimumWidth(215)
         self.freq_edit.setMaximumWidth(260)
         self.freq_edit.setToolTip("Type a frequency and press Enter: 121.5  ·  446.0M  ·  "
-                                  "7030k  ·  162550000")
+                                  "7030k  ·  162550000\nWheel over a digit steps that digit")
         self.freq_edit.returnPressed.connect(self._typed_freq)
+        self.freq_edit.digit_step.connect(self._digit_step)
         bar.add_field("freq", self.freq_edit, "VFO · MHz")
         self.down_btn = bar.add_button("◀", lambda: self._step_vfo(-1))
         self.up_btn = bar.add_button("▶", lambda: self._step_vfo(1))
@@ -493,6 +495,7 @@ class PrismApp(PalisadeApp):
         self.scope = TunerScope(mode=self.mode)
         self.scope.vfo_requested.connect(lambda hz: self._tune(hz))
         self.scope.wheel_step.connect(self._step_vfo)
+        self.scope.bw_requested.connect(self._bw_dragged)
         mid.addWidget(self.scope, 1)
         self.side = self._build_side(c)
         mid.addWidget(self.side)
@@ -538,6 +541,7 @@ class PrismApp(PalisadeApp):
         self._mode_changed(self.mode_combo.currentText(), bw=c["bw"], initial=True)
         self._step_changed()
         self.scope.set_levels(c["wf_lo"], c["wf_hi"])
+        self.scope.set_smoothing(float(c["smooth"]))
         self._sync_source_rows()
         self._refresh_bookmarks()
         self._sync_run_btn()
@@ -684,6 +688,14 @@ class PrismApp(PalisadeApp):
             lambda _i: self._queue(nfft=self.fft_combo.currentData(),
                                    _save={"nfft": self.fft_combo.currentData()}))
         d.row("FFT size", self.fft_combo)
+        self.smooth_combo = QtWidgets.QComboBox()
+        for label, w in SMOOTHING:
+            self.smooth_combo.addItem(label, w)
+        idx = [w for _l, w in SMOOTHING].index(c["smooth"]) if c["smooth"] in \
+            [w for _l, w in SMOOTHING] else 0
+        self.smooth_combo.setCurrentIndex(idx)
+        self.smooth_combo.currentIndexChanged.connect(self._smooth_changed)
+        d.row("FFT smoothing", self.smooth_combo)
         self.wf_lo = QtWidgets.QSpinBox()
         self.wf_lo.setRange(-150, 0)
         self.wf_lo.setValue(int(c["wf_lo"]))
@@ -810,6 +822,22 @@ class PrismApp(PalisadeApp):
         step = self._step_hz()
         hz = round((self._vfo_hz + n * step) / step) * step
         self._tune(int(round(hz)))
+
+    def _digit_step(self, delta_hz):
+        if self._source == "sweep":
+            return
+        self._tune(int(self._vfo_hz + delta_hz))
+
+    def _bw_dragged(self, hz):
+        if self._source == "sweep":
+            return
+        mode = self.mode_combo.currentText()
+        self.bw_spin.setValue(dsp.clamp_bw(mode, hz) / 1000.0)   # bw_spin handler queues + saves
+
+    def _smooth_changed(self, *_):
+        w = float(self.smooth_combo.currentData())
+        self.scope.set_smoothing(w)
+        self._save(smooth=w)
 
     def _typed_freq(self):
         try:

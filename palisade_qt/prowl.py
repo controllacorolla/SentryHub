@@ -38,6 +38,7 @@ import banks  # noqa: E402
 import dsp  # noqa: E402
 
 CUSTOM_RANGE = "Custom range"
+MY_BOOKMARKS = "My bookmarks"     # the bookmarks saved in PRISM (prism.json)
 SCAN_STEPS = (("5 kHz", 5000), ("6.25 kHz", 6250), ("7.5 kHz", 7500), ("8.33 kHz", 8333.33),
               ("10 kHz", 10000), ("12.5 kHz", 12500), ("15 kHz", 15000), ("20 kHz", 20000),
               ("25 kHz", 25000), ("50 kHz", 50000), ("100 kHz", 100000), ("200 kHz", 200000))
@@ -54,6 +55,27 @@ def _load_scan_cfg():
         return suite.settings("prowl_scan", SCAN_DEFAULTS)
     except Exception:
         return dict(SCAN_DEFAULTS), None
+
+
+def prism_bookmarks():
+    """PRISM's saved bookmarks as scan channels [(MHz, label, MODE, bw_hz)], read-only (the file
+    is not created when PRISM has never run)."""
+    try:
+        import suite
+        cfg = suite.load_json(os.path.join(suite.CFG, "prism.json"), {}) or {}
+    except Exception:
+        return []
+    out = []
+    for b in cfg.get("bookmarks") or []:
+        try:
+            hz = int(b["hz"])
+            mode = b.get("mode") if b.get("mode") in dsp.MODES else "NFM"
+            bw = float(b.get("bw") or 0) or dsp.DEFAULT_BW[mode]
+            out.append((round(hz / 1e6, 6), str(b.get("label", ""))[:40], mode,
+                        dsp.clamp_bw(mode, bw)))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sorted(out)
 
 
 def _default_engine(demo):
@@ -1051,8 +1073,9 @@ class ProwlApp(PalisadeApp):
         self.engine_combo.setCurrentIndex(0 if self._engine == "fast" else 1)
         self.bar.add_field("engine", self.engine_combo, "Engine")
         self.bank_combo = QtWidgets.QComboBox()
-        self.bank_combo.addItems(list(banks.BANK_ORDER) + [CUSTOM_RANGE])
-        bank = c["bank"] if c["bank"] in banks.BANK_ORDER + [CUSTOM_RANGE] else banks.BANK_ORDER[0]
+        self.bank_combo.addItems(list(banks.BANK_ORDER) + [MY_BOOKMARKS, CUSTOM_RANGE])
+        bank = c["bank"] if c["bank"] in banks.BANK_ORDER + [MY_BOOKMARKS, CUSTOM_RANGE] \
+            else banks.BANK_ORDER[0]
         self.bank_combo.setCurrentText(bank)
         self.bar.add_field("bank", self.bank_combo, "Bank")
         # classic engine squelch (rtl_fm -l, or the demo's synthetic %) — B2, unchanged
@@ -1107,6 +1130,11 @@ class ProwlApp(PalisadeApp):
         self.scan_info.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
                                      QtWidgets.QSizePolicy.Preferred)
         info.addWidget(self.scan_info, 1)
+        self.heard_only = QtWidgets.QCheckBox("Named + heard only")
+        self.heard_only.setToolTip("Hide range steps that have never broken squelch "
+                                   "(a full airband range is 760 rows)")
+        self.heard_only.setChecked(True)
+        info.addWidget(self.heard_only)
         lay.addLayout(info)
 
         split = QtWidgets.QHBoxLayout()
@@ -1293,7 +1321,7 @@ class ProwlApp(PalisadeApp):
         bar.add_button("−", lambda: self._fm_step(-self.fm_step.currentData()))
         bar.add_button("+", lambda: self._fm_step(self.fm_step.currentData()))
         self.fm_mode = QtWidgets.QComboBox()
-        self.fm_mode.addItems(["wbfm", "nbfm"])
+        self.fm_mode.addItems(["wbfm", "nbfm", "am"])   # am: airband direct tune
         self.fm_mode.currentTextChanged.connect(lambda _=None: self._fm_retune())
         bar.add_field("mode", self.fm_mode, "Mode")
         self.fm_gain = QtWidgets.QSpinBox()
@@ -1523,6 +1551,8 @@ class ProwlApp(PalisadeApp):
             bw = dsp.DEFAULT_BW[mode] if mode != "AM" else 8330
             for f in banks.range_channels(self.range_lo.value(), self.range_hi.value(), step):
                 out.append((f, "", mode, bw))
+        elif bank == MY_BOOKMARKS:
+            out = prism_bookmarks()
         else:
             b = banks.BANKS[bank]
             named = list(b["channels"])
@@ -1584,6 +1614,10 @@ class ProwlApp(PalisadeApp):
         b = banks.BANKS.get(bank)
         if b and b.get("note"):
             self.scan_info.setText(b["note"])
+        elif bank == MY_BOOKMARKS:
+            n = len(prism_bookmarks())
+            self.scan_info.setText("%d bookmark%s from PRISM." % (n, "" if n == 1 else "s")
+                                   if n else "No bookmarks yet: add them in PRISM (BOOKMARKS).")
         elif bank == CUSTOM_RANGE:
             self.scan_info.setText("Custom range: set start / stop / mode in RANGE SCAN.")
         else:
@@ -1749,8 +1783,12 @@ class ProwlApp(PalisadeApp):
                 r["_colors"]["freq"] = self._hot_color()
             if fast:
                 r["hits"] = r.get("hits") or ""
+        total = len(rows)
+        if fast and self.heard_only.isChecked():
+            rows = [r for r in rows if r.get("_hot") or r.get("hits")
+                    or (r.get("label") or "").strip()]
         self.feed.model.set_rows(rows)
-        self.header.set_chip("sdr", "%d CH" % len(rows), state="neutral")
+        self.header.set_chip("sdr", "%d CH" % total, state="neutral")
         act = msg.get("active")
         if fast:
             state = msg.get("state", "SEARCH")
@@ -1816,7 +1854,7 @@ class ProwlApp(PalisadeApp):
     def _fm_retune(self):
         freq = self.fm_freq.value()
         # auto narrowband in the NOAA weather band, like the Tk fm app
-        if 162.3 < freq < 162.6 and self.fm_mode.currentText() != "nbfm":
+        if 162.3 < freq < 162.6 and self.fm_mode.currentText() == "wbfm":
             self.fm_mode.blockSignals(True)
             self.fm_mode.setCurrentText("nbfm")
             self.fm_mode.blockSignals(False)

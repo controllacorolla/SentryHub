@@ -5,7 +5,7 @@ two consumers, the way SDR++ works:
 
   * Spectrum   — windowed FFT, averaged per frame, in dBFS (a full-scale tone reads ~0 dB).
   * Demodulator — the VFO: shift the channel to DC, decimate, channel-filter, demodulate
-                  (NFM / WFM / AM / USB / LSB / CW), squelch on channel power, optional audio
+                  (NFM / WFM / AM / USB / LSB / CW / RAW), squelch on channel power, optional audio
                   AGC, int16 audio out at `audio_rate`.
 
 Everything here is block-in / block-out with carried state, so a stream cut into arbitrary blocks
@@ -16,13 +16,15 @@ import math
 
 import numpy as np
 
-MODES = ("NFM", "WFM", "AM", "USB", "LSB", "CW")
+MODES = ("NFM", "WFM", "AM", "USB", "LSB", "CW", "RAW")
 
 # default / minimum / maximum channel bandwidth per mode, Hz (SDR++-like defaults)
-DEFAULT_BW = {"NFM": 12500, "WFM": 200000, "AM": 10000, "USB": 2800, "LSB": 2800, "CW": 500}
+DEFAULT_BW = {"NFM": 12500, "WFM": 200000, "AM": 10000, "USB": 2800, "LSB": 2800, "CW": 500,
+              "RAW": 10000}
 BW_LIMITS = {"NFM": (3000, 38000), "WFM": (50000, 250000), "AM": (1000, 38000),
-             "USB": (500, 5000), "LSB": (500, 5000), "CW": (50, 3000)}
-DEFAULT_STEP = {"NFM": 12500, "WFM": 100000, "AM": 25000, "USB": 100, "LSB": 100, "CW": 10}
+             "USB": (500, 5000), "LSB": (500, 5000), "CW": (50, 3000), "RAW": (1000, 38000)}
+DEFAULT_STEP = {"NFM": 12500, "WFM": 100000, "AM": 25000, "USB": 100, "LSB": 100, "CW": 10,
+                "RAW": 1000}
 CW_PITCH = 700.0            # Hz: a CW carrier at the VFO is heard as this tone
 SSB_LOW_CUT = 50.0          # Hz: SSB passband starts this far from the carrier
 SAMPLE_RATES = (250000, 1024000, 1400000, 1800000, 2048000, 2400000)
@@ -223,7 +225,7 @@ class Demodulator:
             bw = DEFAULT_BW[mode] if mode != getattr(self, "mode", None) else self.bw
         self.mode = mode
         self.bw = clamp_bw(mode, bw)
-        self.agc = (mode in ("AM", "USB", "LSB", "CW")) if agc is None else bool(agc)
+        self.agc = (mode in ("AM", "USB", "LSB", "CW", "RAW")) if agc is None else bool(agc)
         fs = self.fs
         if mode == "WFM":
             d1 = max(1, fs // 240000)
@@ -318,7 +320,9 @@ class Demodulator:
             mean = float(np.mean(env))
             self._dc = mean if self._dc is None else 0.9 * self._dc + 0.1 * mean
             return (env - self._dc) / max(self._dc, 1e-6)
-        return x.real.astype(np.float32)            # USB / LSB / CW: the filter did the work
+        # USB / LSB / CW: the complex filter did the work. RAW: the in-phase channel of the
+        # filtered baseband (SDR++ RAW is stereo I/Q; this sink is mono, so I only)
+        return x.real.astype(np.float32)
 
     AGC_TARGET = 0.3           # RMS the AGC aims for
     AGC_MAX_GAIN = 2000.0      # +66 dB

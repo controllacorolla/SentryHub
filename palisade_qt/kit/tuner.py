@@ -6,9 +6,10 @@ waterfall history at full resolution, so zooming in or out redraws from what is 
 Interaction (all emit `vfo_requested(hz)`; the app decides what tuning means):
   * click anywhere on the spectrum or waterfall  -> VFO to that frequency (snapped to the step)
   * drag the VFO line / passband on the spectrum -> VFO follows
+  * drag a passband edge                         -> `bw_requested(hz)` (filter width)
   * mouse wheel over either view                 -> VFO up / down one step
 The passband (VFO +/- bandwidth, SSB one-sided) is shaded on both views. Bookmarks in view are
-drawn as labelled ticks. No threads here.
+drawn as labelled ticks. set_smoothing() averages the spectrum line. No threads here.
 """
 import numpy as np
 import pyqtgraph as pg
@@ -53,6 +54,7 @@ class _View(pg.ViewBox):
 class TunerScope(QtWidgets.QFrame):
     vfo_requested = QtCore.Signal(int)     # Hz
     wheel_step = QtCore.Signal(int)        # +1 / -1
+    bw_requested = QtCore.Signal(int)      # Hz, from dragging a passband edge
 
     def __init__(self, history=140, mode="dark", parent=None):
         super().__init__(parent)
@@ -75,6 +77,9 @@ class TunerScope(QtWidgets.QFrame):
         self.bookmarks = []                # [(hz, label)]
         self._bm_items = []
         self.can_drag = True
+        self.smooth = 0.0                  # FFT line averaging: weight on the previous frame
+        self.avg = None
+        self._placing = False
 
         self.glw = pg.GraphicsLayoutWidget()
         self.glw.setBackground(tok["well"])
@@ -115,7 +120,7 @@ class TunerScope(QtWidgets.QFrame):
         self.wf.invertY(True)
 
         live = tuple(int(tok["live"][i:i + 2], 16) for i in (1, 3, 5))
-        self.band = pg.LinearRegionItem(movable=False,
+        self.band = pg.LinearRegionItem(movable=True,
                                         brush=pg.mkBrush(live[0], live[1], live[2], 45),
                                         pen=pg.mkPen(None))
         self.band_wf = pg.LinearRegionItem(movable=False,
@@ -127,6 +132,10 @@ class TunerScope(QtWidgets.QFrame):
         self.vline_wf = pg.InfiniteLine(angle=90, movable=False,
                                         pen=pg.mkPen(tok["live"], width=1))
         self.vline.sigDragged.connect(lambda l: self._clicked(l.value()))
+        self.band.sigRegionChanged.connect(self._band_dragged)
+        for ln in self.band.lines:         # edges: thin, visible on hover, grab to set bandwidth
+            ln.setPen(pg.mkPen(None))
+            ln.setHoverPen(pg.mkPen(tok["text"], width=3))
         self.spec.addItem(self.band)
         self.spec.addItem(self.vline)
         self.wf.addItem(self.band_wf)
@@ -160,6 +169,13 @@ class TunerScope(QtWidgets.QFrame):
 
     def set_step(self, hz):
         self.step_hz = max(1.0, float(hz))
+
+    def set_smoothing(self, w):
+        """0 = off. Otherwise the spectrum line is an exponential average with this weight on
+        the previous frame (SDR++ "FFT smoothing"); the waterfall stays raw."""
+        self.smooth = float(min(0.95, max(0.0, w)))
+        self.avg = None
+        self._redraw()
 
     def set_zoom(self, z):
         self.zoom = int(min(ZOOMS[-1], max(1, z)))
@@ -205,6 +221,7 @@ class TunerScope(QtWidgets.QFrame):
         self.buf = None
         self.last = None
         self.peak_hold = None
+        self.avg = None
         self.curve.setData([], [])
         self.peak.setData([], [])
 
@@ -216,10 +233,15 @@ class TunerScope(QtWidgets.QFrame):
             self.buf = np.full((self.history, db.size), self.levels[0], dtype=np.float32)
             self.lo_hz, self.hi_hz = float(lo_hz), float(hi_hz)
             self.peak_hold = None
+            self.avg = None
             self._draw_bookmarks()
         self.buf = np.roll(self.buf, -1, axis=0)
         self.buf[-1] = db
         self.last = db
+        if self.smooth <= 0 or self.avg is None:
+            self.avg = db.copy()
+        else:
+            self.avg = self.smooth * self.avg + (1.0 - self.smooth) * db
         self.peak_hold = db.copy() if self.peak_hold is None else np.maximum(
             db, self.peak_hold - 0.5)
         self._redraw()
@@ -241,6 +263,29 @@ class TunerScope(QtWidgets.QFrame):
         hz = min(max(hz, lo), hi)
         self.vfo_requested.emit(int(round(hz)))
 
+    def _band_dragged(self, item):
+        """User dragged the passband: an edge sets the bandwidth (symmetric for AM/FM/CW/RAW,
+        one-sided for USB/LSB, like SDR++); dragging the whole band moves the VFO."""
+        if self._placing:
+            return
+        a, b = (x * 1e6 for x in item.getRegion())
+        oa, ob = self._passband()
+        da, db_ = abs(a - oa), abs(b - ob)
+        if da > 1 and db_ > 1 and abs((a - oa) - (b - ob)) < 2:      # whole band moved
+            self._place_vfo()
+            self._clicked((self.vfo_hz + (a - oa)) / 1e6)
+            return
+        v = self.vfo_hz
+        if self.mode == "USB":
+            bw = b - v
+        elif self.mode == "LSB":
+            bw = v - a
+        else:
+            edge = a if da >= db_ else b
+            bw = 2 * abs(edge - v)
+        self.bw_requested.emit(int(round(max(100.0, bw))))
+        self._place_vfo()                  # snap back; the owner sets the clamped bw
+
     def _passband(self):
         v, bw = self.vfo_hz, self.bw_hz
         if self.mode == "USB":
@@ -251,8 +296,12 @@ class TunerScope(QtWidgets.QFrame):
 
     def _place_vfo(self):
         a, b = self._passband()
-        self.band.setRegion((a / 1e6, b / 1e6))
-        self.band_wf.setRegion((a / 1e6, b / 1e6))
+        self._placing = True
+        try:
+            self.band.setRegion((a / 1e6, b / 1e6))
+            self.band_wf.setRegion((a / 1e6, b / 1e6))
+        finally:
+            self._placing = False
         self.vline.setValue(self.vfo_hz / 1e6)
         self.vline_wf.setValue(self.vfo_hz / 1e6)
 
@@ -282,7 +331,14 @@ class TunerScope(QtWidgets.QFrame):
             return
         rows, lo, hi, i0, k = self._cols()
         x = np.linspace(lo, hi, rows.shape[1], endpoint=False) / 1e6 + (hi - lo) / rows.shape[1] / 2e6
-        self.curve.setData(x, rows[-1])
+        line = rows[-1]
+        if self.avg is not None and self.smooth > 0:
+            av = self.avg[i0:i0 + rows.shape[1] * k]
+            if k > 1:
+                av = av.reshape(-1, k).max(axis=1)
+            if av.size == x.size:
+                line = av
+        self.curve.setData(x, line)
         if self.peak_hold is not None:
             ph = self.peak_hold[i0:i0 + rows.shape[1] * k]
             if k > 1:
@@ -308,3 +364,38 @@ class TunerScope(QtWidgets.QFrame):
                                             "anchors": [(0, 0), (0, 0)]})
             self.spec.addItem(ln)
             self._bm_items.append(ln)
+
+
+def digit_step_hz(text, pos):
+    """SDR++ digit tuning: the digit at character `pos` of a '121.500 000' readout -> its place
+    value in Hz (the last digit is 1 Hz, the one before 10 Hz, ...). Separators take the next
+    digit to their right. None when there is no digit there."""
+    text = str(text)
+    if not text:
+        return None
+    pos = int(min(max(pos, 0), len(text) - 1))
+    while pos < len(text) and not text[pos].isdigit():
+        pos += 1
+    if pos >= len(text):
+        return None
+    right = sum(1 for ch in text[pos + 1:] if ch.isdigit())
+    return 10 ** right
+
+
+class FreqEdit(QtWidgets.QLineEdit):
+    """Frequency entry: type and Enter, or roll the mouse wheel over a digit to step that digit
+    (over the kHz digits = 1 kHz steps, over the MHz digits = 1 MHz steps)."""
+    digit_step = QtCore.Signal(int)        # signed Hz
+
+    def wheelEvent(self, ev):
+        d = ev.angleDelta().y()
+        if not d:
+            ev.ignore()
+            return
+        pos = self.cursorPositionAt(ev.position().toPoint())
+        hz = digit_step_hz(self.text(), pos)
+        if hz is None:
+            ev.ignore()
+            return
+        self.digit_step.emit(hz if d > 0 else -hz)
+        ev.accept()
