@@ -36,17 +36,49 @@ def tint(arr, style):
     return out
 
 
-def make_legend(parent, per_row=4):
+def make_legend(parent, per_row=4, row=False):
     """The track-type legend overlay (ATLAS map and OPS scope): fixed colours on a dark plate, so it
-    reads on DARK SAT and LIGHT SAT alike. The parent places it (bottom-left) on resize."""
+    reads on DARK SAT and LIGHT SAT alike. The parent places it (bottom-left) on resize. row=True:
+    one row of equal cells; the parent gives it the map's width (OPS strip along the bottom)."""
     from . import tracksym
-    lab = QtWidgets.QLabel(tracksym.legend_html(per_row), parent)
+    if row:
+        return LegendRow(parent)
+    html = tracksym.legend_html(per_row)
+    lab = QtWidgets.QLabel(html, parent)
     lab.setObjectName("track_legend")
     lab.setTextFormat(QtCore.Qt.RichText)
     lab.setStyleSheet("QLabel#track_legend { background: rgba(0,0,0,170); "
-                      "border: 1px solid #555; font-size: 16px; padding: 2px 6px; }")
+                      "border: 1px solid #555; font-size: %dpx; padding: 2px 6px; }"
+                      % (14 if row else 16))
     lab.adjustSize()
     return lab
+
+
+class LegendRow(QtWidgets.QFrame):
+    """The legend as one tight row of evenly spread items (OPS, owner 2026-11-18: "legend way too
+    big, space it out across the bottom of the map, keep it tight"). The parent sets its width."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from . import tracksym
+        self.setObjectName("track_legend")
+        self.setStyleSheet("QFrame#track_legend { background: rgba(0,0,0,170); "
+                           "border: 1px solid #555; }")
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(6, 1, 6, 1)
+        lay.setSpacing(4)
+        self.items = []
+        for i, (k, name) in enumerate(tracksym.LEGEND):
+            if i:
+                lay.addStretch(1)
+            lab = QtWidgets.QLabel('<span style="color:%s; font-weight:600;">&#9632;</span>'
+                                   '<span style="color:#DDD;">&nbsp;%s</span>'
+                                   % (tracksym.CLASS_COLOR[k], name))
+            lab.setTextFormat(QtCore.Qt.RichText)
+            lab.setStyleSheet("font-size: 13px; background: transparent; border: none;")
+            lay.addWidget(lab)
+            self.items.append(lab)
+        self.adjustSize()
 
 
 class BaseMap(QtCore.QObject):
@@ -67,6 +99,31 @@ class BaseMap(QtCore.QObject):
                                home_lon=home_lon if self.can_fetch else 0.0,
                                span_nm=span_nm, parent=self)
         self.tiles.ready.connect(self._on_tiles)
+        self.tiles.imagery.connect(self._on_imagery)
+        self.imagery = ("none", "")
+        # device run 2026-11-18 ("maps don't load"): when imagery cannot be had, the map says why,
+        # on the map, instead of staying black
+        self.banner = QtWidgets.QLabel(plot)
+        self.banner.setObjectName("map_banner")
+        self.banner.setWordWrap(True)
+        self.banner.setAlignment(QtCore.Qt.AlignCenter)
+        self.banner.setStyleSheet("QLabel#map_banner { background: rgba(0,0,0,190); color: #F0C674;"
+                                  " border: 1px solid #F0C674; border-radius: 6px;"
+                                  " padding: 6px 10px; font-size: 16px; }")
+        self.banner.hide()
+        # owner 2026-11-18 (decision: "one-tap download on the map"): fetch this view's imagery
+        # once while NET stays OFFLINE; logged as a granted request
+        self.download_btn = QtWidgets.QPushButton("DOWNLOAD MAP", plot)
+        self.download_btn.setObjectName("map_download")
+        self.download_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self.download_btn.setToolTip("download the satellite tiles for this view once and keep "
+                                     "them (NET stays OFFLINE; the download is logged)")
+        self.download_btn.setStyleSheet(
+            "QPushButton#map_download { background: #F0C674; color: #111; border: none;"
+            " border-radius: 6px; padding: 6px 14px; font-size: 16px; font-weight: 600; }")
+        self.download_btn.clicked.connect(self.download)
+        self.download_btn.hide()
+        plot.installEventFilter(self)
         self.style = style
         self._raw = None
         self.shown_rect = None
@@ -76,6 +133,45 @@ class BaseMap(QtCore.QObject):
         self._timer.timeout.connect(self.refresh)
         plot.getViewBox().sigRangeChanged.connect(lambda *_: self._timer.start())
         self.on_shown = None
+
+    def eventFilter(self, obj, ev):
+        if obj is self.plot and ev.type() == QtCore.QEvent.Resize:
+            self._place_banner()
+        return False
+
+    def _place_banner(self):
+        w = self.plot.width()
+        bw = max(200, min(560, w - 40))
+        self.banner.setFixedWidth(bw)
+        self.banner.setFixedHeight(self.banner.heightForWidth(bw))
+        self.banner.move((w - bw) // 2, max(8, self.plot.height() // 2 - self.banner.height() - 40))
+        self.download_btn.adjustSize()
+        self.download_btn.move((w - self.download_btn.width()) // 2,
+                               self.banner.y() + self.banner.height() + 8)
+
+    def _on_imagery(self, state, text):
+        self.imagery = (state, text)
+        show = state in ("offline", "failed", "partial") and bool(text) and self.can_fetch
+        self.banner.setText(text)
+        self.banner.setVisible(show)
+        # the button only where a tap can help: tiles the NET mode refused
+        self.download_btn.setVisible(show and state in ("offline", "partial") and
+                                     "OFFLINE" in text)
+        self.download_btn.setEnabled(True)
+        self.download_btn.setText("DOWNLOAD MAP")
+        if show:
+            self._place_banner()
+            self.banner.raise_()
+            self.download_btn.raise_()
+
+    def download(self):
+        """One tap: this view's tiles, once, despite NET OFFLINE (TileLayer.download)."""
+        if not self.can_fetch:
+            return
+        self.download_btn.setEnabled(False)
+        self.download_btn.setText("DOWNLOADING…")
+        self.tiles.view = self.view()
+        self.tiles.download(FETCH_STYLE)
 
     def view(self):
         vb = self.plot.getViewBox()

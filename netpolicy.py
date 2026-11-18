@@ -207,8 +207,21 @@ def check(url_or_host, purpose=""):
     return host
 
 
-def urlopen(req, timeout=10, purpose="", **kw):
-    """urllib.request.urlopen behind the mode check. `req` is a URL or a Request."""
+def grant(url, purpose):
+    """An operator's one-tap exception to the mode for ONE request (owner 2026-11-18: "one-tap
+    download on the map" while NET stays OFFLINE). Only an explicit operator action may pass this
+    (never a background fetch); it is logged as 'granted' with the mode it overrode."""
+    host = _host_of(url)
+    m = mode()
+    with _lock:
+        _log.append((time.time(), m, "granted", host, purpose))
+    _notify(("granted", m, host, purpose))
+    return host
+
+
+def urlopen(req, timeout=10, purpose="", granted=False, **kw):
+    """urllib.request.urlopen behind the mode check. `req` is a URL or a Request. granted=True:
+    the operator explicitly asked for this one request (see grant()); it is logged, not checked."""
     url = req.full_url if isinstance(req, urllib.request.Request) else str(req)
     scheme = urllib.parse.urlsplit(url).scheme.lower()
     if scheme not in ("http", "https"):
@@ -219,7 +232,10 @@ def urlopen(req, timeout=10, purpose="", **kw):
             purpose = sys._getframe(1).f_globals.get("__name__", "")
         except Exception:
             purpose = ""
-    check(url, purpose)
+    if granted:
+        grant(url, purpose)
+    else:
+        check(url, purpose)
     _install_opener()
     return urllib.request.urlopen(req, timeout=timeout, **kw)
 
