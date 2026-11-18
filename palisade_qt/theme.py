@@ -31,7 +31,7 @@ DARK = {
     # rail tiles (owner 2026-11-18): pages purple, sub-pages light purple; the open one is solid
     "tile_bg": "rgba(164,146,218,0.26)", "tile_bd": "#A492DA", "tile_fg": "#E6E9EE",
     "tile_on_bg": "#A492DA", "tile_on_fg": "#0C0F13",
-    "sub_bg": "rgba(201,188,242,0.24)", "sub_bd": "#C9BCF2", "sub_fg": "#E6E9EE",
+    "sub_bg": "rgba(201,188,242,0.36)", "sub_bd": "#C9BCF2", "sub_fg": "#E6E9EE",
     "sub_on_bg": "#C9BCF2", "sub_on_fg": "#0C0F13",
 }
 LIGHT = {
@@ -189,7 +189,7 @@ QPushButton.navkey {{ background: {tile_bg}; border: {bw} solid {tile_bd}; borde
 QPushButton.navkey:hover {{ border-width: 2px; }}
 /* focus: a heavier over- and underline in the focus colour, sides unchanged (RA-CL1c F1) */
 QPushButton.navkey:focus {{ border-style: solid; border-color: {focus} {tile_bd};
-                            border-width: {bw} {bw} {focus_under} {bw}; }}
+                            border-width: {focus_w} {bw} {focus_w} {bw}; }}
 QPushButton.navkey_on {{ background: {tile_on_bg}; border: 2px solid {tile_on_bg}; border-radius: 6px;
                          padding: 0; min-height: 0; text-align: left; }}
 QPushButton.navkey_on:focus {{ border-style: solid solid double solid; border-color: {focus_on} {tile_on_bg};
@@ -204,6 +204,8 @@ QWidget[nested="true"] QPushButton.subtab {{ background: {sub_bg}; color: {sub_f
 QWidget[nested="true"] QPushButton.subtab:checked {{ background: {sub_on_bg}; color: {sub_on_fg};
                                                      border: 2px solid {sub_on_bg}; font-weight: 600; }}
 QWidget[nested="true"] QPushButton.subtab:focus {{ border: {focus_w} solid {focus}; }}
+/* the open sub-page is solid: its focus ring is the on-colour, or it vanishes in SUN (RA-S1 F5) */
+QWidget[nested="true"] QPushButton.subtab:checked:focus {{ border: {focus_w} solid {focus_on}; }}
 /* run state (set_run) */
 QPushButton[run="on"] {{ background: {live}; color: {bg}; border: {bw} solid {live}; font-weight: 600; }}
 QPushButton[run="off"] {{ background: {alert}; color: {bg}; border: {bw} solid {alert}; font-weight: 600; }}
@@ -220,7 +222,9 @@ QSlider#vol::handle:horizontal {{ width: 20px; height: 20px; margin: -6px 0;
                                   border-radius: 10px; background: {accent}; }}
 QSlider#vol::sub-page:horizontal {{ background: {accent}; border-radius: 4px; }}
 QSlider#vol:focus {{ border: {focus_w} solid {focus}; }}
-QSlider#vol:disabled::handle:horizontal {{ background: {disabled}; }}
+/* no audio sink: the slider must LOOK off (RA-S1 F7: the old selector never matched) */
+QSlider#vol::handle:horizontal:disabled {{ background: transparent; border: {bw} dashed {disabled}; }}
+QSlider#vol::sub-page:horizontal:disabled {{ background: transparent; }}
 
 /* ---- vertical sub-tab rail at the page's left edge ---- */
 QFrame#subtab_rail {{ background: transparent; border: none; }}

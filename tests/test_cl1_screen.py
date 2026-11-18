@@ -411,12 +411,13 @@ def test_disabled_buttons_look_disabled():
 def test_eight_keys_in_order_with_function_labels():
     from palisade_qt.ops import ALL_CALLSIGNS, CALLSIGNS
     from palisade_qt.shell import QT_PAGES
-    # UIP (owner, 2026-11-17): ASSISTANT and MESH are pages of their own, after SYSTEM (8, 9)
+    # UIP (owner, 2026-11-17): ASSISTANT and MESH are pages of their own; device run 2
+    # (2026-11-18): "System settings should go last on the list"
     assert [n for n, _ in ALL_CALLSIGNS] == ["OPS", "ATLAS", "PRISM", "PROWL", "SWEEP", "RECON",
-                                             "FORGE", "SYSTEM", "ASSISTANT", "MESH"]
+                                             "FORGE", "ASSISTANT", "MESH", "SYSTEM"]
     # v0.1 launch line (owner, 2026-11-16; CL8): SWEEP is hidden until CL7 — same order
     assert [n for n, _ in CALLSIGNS] == ["OPS", "ATLAS", "PRISM", "PROWL", "RECON", "FORGE",
-                                         "SYSTEM", "ASSISTANT", "MESH"]
+                                         "ASSISTANT", "MESH", "SYSTEM"]
     assert set(QT_PAGES) == {"ATLAS", "PRISM", "PROWL", "SWEEP", "RECON", "FORGE", "SYSTEM",
                              "ASSISTANT", "MESH"}
     hub = _hub()
@@ -424,7 +425,8 @@ def test_eight_keys_in_order_with_function_labels():
         assert list(hub.topbar.nav_keys) == [n for n, _ in CALLSIGNS]
         for i, (name, label) in enumerate(CALLSIGNS, start=1):
             key = hub.topbar.nav_keys[name]
-            assert key.call.text() == "%d %s" % (i, name)
+            assert key.call.text() == name                  # no numbers (device run 2)
+            assert "key %d" % i in key.toolTip()
             # D7 (owner, 2026-11-15): the function word is drawn under the callsign, at 16 px
             assert key.function == label and key.label.text() == label and label in key.toolTip()
     finally:
