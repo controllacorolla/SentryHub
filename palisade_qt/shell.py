@@ -1,13 +1,13 @@
-"""PalisadeHub — the Qt Hub shell: one top strip, eight page keys, keyboard-first.
+"""PalisadeHub — the Qt Hub shell: one top strip, a left rail of page keys, keyboard-first.
 
-Structure (CL1, owner decision in plan/audit/AUDIT_INDEX.md):
+Structure (CL1; rail order from device run 2, 2026-11-18: SYSTEM last; keys 1-9 follow it):
 
     1 OPS home · 2 ATLAS map · 3 PRISM spectrum · 4 PROWL listen · 5 RECON survey + assess
-    6 FORGE hardware · 7 SYSTEM settings
+    6 FORGE hardware · 7 ASSISTANT ask · 8 MESH lora · 9 SYSTEM settings
     (SWEEP counter-surveillance is hidden in v0.1 — release.HIDDEN_PAGES; back with CL7.)
 
-There is no left rail and no footer: navigation and the four shell-owned status slots (MODE / RADIO /
-TX / ENGAGEMENT) share one ≤ 40 px strip, and the page gets everything below it. The shell owns the
+There is no footer: the rail holds the page keys, the four shell-owned status slots (MODE / RADIO /
+TX / ENGAGEMENT) share one ≤ 40 px strip, and the page gets everything else. The shell owns the
 global panels (RADIOS, ENGAGEMENT, alerts, key map, command palette), routes the keyboard, and draws
 a hatched border round the window in DEMO.
 
@@ -16,7 +16,9 @@ unlock_session from the TX panel, engagement.end(), executor.kill_all()); it add
 gate, and touches no decode path. The four slots follow the engines through chrome.gate_signals().
 """
 import os
+import re
 import sys
+import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -32,7 +34,8 @@ from .atlas import AtlasApp
 from .overwatch import OverwatchApp
 from .prowl import ProwlApp
 from .babel import BabelApp
-from .system import MoreApp, AssistantApp, MeshApp
+from .system import MoreApp, AssistantApp
+from .mesh import MeshApp          # MAP / NODES / CHAT / RADIO (owner 2026-11-18)
 from .bench_app import BenchApp
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -94,6 +97,7 @@ class PageNotice(QtWidgets.QLabel):
     the operator clicks the page name in the strip (then it lists everything the page reports)."""
     SHOW_MS = 7000
     LONG_MS = 12000
+    REMIND_S = 60
     _STATES = ("warn", "alert")
 
     def __init__(self, mode, parent):
@@ -106,8 +110,17 @@ class PageNotice(QtWidgets.QLabel):
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.hide)
-        self._seen = set()
+        self._active = {}              # page -> {key: _sig} of the warnings already shown
+        self._left = {}                # page -> monotonic time the operator left it
+        self._page, self._keys = None, []    # the page and status keys the notice shows now
+        self._lines, self._worst = [], "warn"
         self.anchor = None             # the widget whose bottom-right corner it sits in
+        self.blocked = None            # callable: True while a drawer / panel is open (RA-S1 F8)
+        self.refresh = None            # callable: re-read the page on screen (after a panel closes)
+        self._retry = QtCore.QTimer(self)
+        self._retry.setSingleShot(True)
+        self._retry.setInterval(700)
+        self._retry.timeout.connect(self._on_retry)
         self.hide()
 
     def mousePressEvent(self, ev):
@@ -134,23 +147,86 @@ class PageNotice(QtWidgets.QLabel):
         self.adjustSize()
         self.move(max(0, br.x() - self.width() - 12), max(0, br.y() - self.height() - 12))
 
+    @staticmethod
+    def _sig(v):
+        """What makes a warning the same warning: its state and the words of its text, without the
+        numbers and dashes. A counter or "(12s)" ticking, or an ATLAS layer count going "—" <-> 1, is
+        the same warning (RA-S1 F2, RA-S1c N6); a different message on the same key is new
+        (RA-S1b N1: RECON WIFI STANDBY -> BLE STANDBY on the shared sdr key)."""
+        return (v.get("state"), tuple(re.findall(r"[A-Za-z]+", str(v.get("text") or "").upper())))
+
     def consider(self, page, status):
-        """Show the page's warnings that have not been shown before. Returns the lines shown."""
-        new, worst = [], "warn"
+        """Show the page's warnings that were not already shown. A warning that clears and comes
+        back is new again (F4); warn -> alert is new; alert -> warn with the same message is not.
+        While a panel is open nothing is shown and nothing is marked as shown: the retry timer
+        shows it once the panel closes (RA-S1b N2). Returns the lines shown."""
+        cur = {}
         for key, v in status.items():
-            text = (v or {}).get("text")
-            if not text or (v.get("state") not in self._STATES):
+            if (v or {}).get("text") and v.get("state") in self._STATES:
+                cur[key] = v
+        left = self._left.pop(page, None)
+        if left is not None and time.monotonic() - left >= self.REMIND_S:
+            self._active.pop(page, None)          # away a while: remind once on return (N3/N10)
+        before = self._active.get(page, {})
+        sigs = {k: self._sig(v) for k, v in cur.items()}
+        newk = []
+        for key, v in cur.items():
+            was = before.get(key)
+            if was == sigs[key] or (was and was[0] == "alert" and was[1] == sigs[key][1]):
                 continue
-            k = (page, key, text)
-            if k in self._seen:
-                continue
-            self._seen.add(k)
-            new.append(text)
-            if v.get("state") == "alert":
-                worst = "alert"
-        if new:
-            self._show(new, worst, self.SHOW_MS)
-        return new
+            newk.append(key)
+        if newk and callable(self.blocked) and self.blocked():
+            # keep only what was already shown and is unchanged; try again shortly
+            self._active[page] = {k: s for k, s in sigs.items() if before.get(k) == s}
+            self._retry.start()
+            return []
+        self._active[page] = sigs
+        showing = self.isVisible() and self._page == page
+        if newk:
+            # a second warning moments later joins the one showing instead of replacing it
+            keys = [k for k in self._keys if k in cur and k not in newk] if showing else []
+            self._show_keys(page, cur, keys + newk, restart=True)
+        elif showing:
+            # the notice only ever says what the page reports NOW (RA-S1d N12): a line whose
+            # warning cleared goes, a line whose text changed is rewritten, the timer runs on
+            keys = [k for k in self._keys if k in cur]
+            if keys:
+                self._show_keys(page, cur, keys, restart=False)
+            else:
+                self.hide()
+                self._page, self._keys = None, []
+        return [cur[k]["text"] for k in newk]
+
+    def _show_keys(self, page, cur, keys, restart):
+        lines = ["%s · %s" % (page, cur[k]["text"]) for k in keys]
+        worst = "alert" if any(cur[k].get("state") == "alert" for k in keys) else "warn"
+        self._page, self._keys = page, list(keys)
+        if restart:
+            self._show(lines, worst, self.SHOW_MS)
+        elif lines != self._lines or worst != self._worst:
+            if callable(self.blocked) and self.blocked():
+                self.hide()            # never raised over an open drawer by an update (RA-S1e N16)
+            else:
+                self._show(lines, worst, max(1, self._timer.remainingTime()))
+        self._lines, self._worst = lines, worst
+
+    def forget(self, page):
+        """The operator left the page. If they come back after REMIND_S, its still-active warnings
+        show once more (RA-S1b N3); a quick flip between pages does not re-show them (RA-S1c N10)."""
+        self._left[page] = time.monotonic()
+
+    def stop(self):
+        """Window closing: no timer fires afterwards (RA-S1c N8)."""
+        self._retry.stop()
+        self._timer.stop()
+        self.refresh = None
+        self.blocked = None
+
+    def _on_retry(self):
+        if callable(self.blocked) and self.blocked():
+            self._retry.start()
+        elif callable(self.refresh):
+            self.refresh()
 
     def show_all(self, page, status):
         lines, worst = [], "neutral"
@@ -159,6 +235,7 @@ class PageNotice(QtWidgets.QLabel):
                 lines.append(v["text"])
                 if v.get("state") == "alert" or (v.get("state") == "warn" and worst != "alert"):
                     worst = v["state"]
+        self._page = None              # the full list stands on its own; nothing merges into it
         self._show(lines or ["%s: nothing to report" % page], worst, self.LONG_MS)
         return lines
 
@@ -241,10 +318,15 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.demo_border = panels.DemoBorder(mode, central) if demo else None
         self.notice = PageNotice(mode, central)
         self.notice.anchor = self.stack
+        self.notice.blocked = self._panel_open
+        self.notice.refresh = lambda: self._page_status(self._current)
 
         self.pages = {}
         self._current = None
         self.ops = OpsHome(demo=demo, mode=mode)
+        self.ops.feed_summary = self._atlas_feed_summary
+        self.ops.pass_state = self._pass_state
+        self.ops.next_pass = self._next_pass
         self._add_page("OPS", self.ops)
         self.show_page("OPS")
         self._on_state()
@@ -284,6 +366,9 @@ class PalisadeHub(QtWidgets.QMainWindow):
         w = self.pages.get(name)
         if w is None or self.stack.indexOf(w) < 0:
             return
+        if name != self._current and getattr(self, "notice", None) is not None:
+            self.notice.hide()        # a notice belongs to its page, never over the next one (F3)
+            self.notice.forget(self._current)   # its warnings show again on return (RA-S1b N3)
         self._current = name
         self.stack.setCurrentWidget(w)
         self._page_status(name)
@@ -306,8 +391,36 @@ class PalisadeHub(QtWidgets.QMainWindow):
             self.nav_rail.attach_sub(n, rail)
             rail.setVisible(page is cur and not page.side_hidden())
 
+    def _atlas_feed_summary(self):
+        """ATLAS's per-layer feed health (its "sdr" chip), for OPS's empty-map reason; None while
+        ATLAS has not started."""
+        app = self.pages.get("ATLAS:inner")
+        if app is None or not getattr(app, "_started", False):
+            return None
+        fh = getattr(app, "feed_health", None)
+        return fh[0] if fh else None
+
+    def _overwatch(self):
+        atlas = self.pages.get("ATLAS")
+        if atlas is None or not hasattr(atlas, "children_apps"):
+            return None
+        return next((c for c in atlas.children_apps() if isinstance(c, OverwatchApp)), None)
+
+    def _pass_state(self):
+        return getattr(self._overwatch(), "pass_state", None)
+
+    def _next_pass(self, now=None):
+        """The next pass that is not over yet, from OVERWATCH's own prediction list (RA-S2 N1: the
+        hourly alert alone left OPS saying "none in 24 h" while passes were still predicted)."""
+        import time as _t
+        now = _t.time() if now is None else now
+        passes = getattr(self._overwatch(), "passes", None) or []
+        live = [p for p in passes if p.get("los", p.get("aos", 0)) >= now and p.get("aos")]
+        return min(live, key=lambda p: p["aos"]) if live else None
+
     def start_background_feeds(self):
-        """Build ATLAS (not shown) and start its worker, so OPS gets contacts from launch."""
+        """Build ATLAS (not shown) and start its worker, so OPS gets contacts from launch. Pass
+        prediction (OVERWATCH) starts too, so OPS's NEXT PASS card is real (owner 2026-11-18)."""
         if self.release_hidden("ATLAS"):
             return False
         if "ATLAS" not in self.pages:
@@ -319,6 +432,10 @@ class PalisadeHub(QtWidgets.QMainWindow):
         app.start()
         if hasattr(app, "set_background"):
             app.set_background(True)
+        try:
+            self.pages["ATLAS"].child(OverwatchApp).start()
+        except Exception:
+            pass                       # passes stay "predicting…" on OPS; ATLAS still runs
         return True
 
     @staticmethod
@@ -356,7 +473,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
         return self.pages.get(name + ":inner", self.pages.get(name))
 
     def set_nav_hidden(self, hidden):
-        """F on a map page: the page rail goes with the side panels (1-7 still switch pages)."""
+        """F on a map page: the page rail goes with the side panels (the number keys still switch pages)."""
         self.nav_rail.setVisible(not hidden)
 
     # ------------------------------------------------------------------ shell-owned chrome
@@ -388,6 +505,15 @@ class PalisadeHub(QtWidgets.QMainWindow):
         if name == self._current and getattr(self, "notice", None) is not None:
             self.notice.consider(name, st)
 
+    def _panel_open(self):
+        """A drawer / panel is open: an automatic notice waits rather than draw over it."""
+        for n in ("radios_panel", "engage_panel", "tx_panel", "alerts_drawer", "keymap",
+                  "palette", "log_panel"):
+            p = getattr(self, n, None)
+            if p is not None and p.isVisible():
+                return True
+        return False
+
     def show_page_messages(self):
         page = self.pages.get(self._current)
         if page is not None and hasattr(page, "shown_status"):
@@ -417,6 +543,11 @@ class PalisadeHub(QtWidgets.QMainWindow):
     def _on_net(self, *_):
         import netpolicy
         self.topbar.set_net(netpolicy.mode())
+        # a map that had no imagery because NET was OFFLINE fetches again as soon as it can
+        from .kit.mappanel import BaseMap
+        for b in self.findChildren(BaseMap):
+            if b.imagery[0] in ("offline", "partial", "failed"):
+                b.refresh()
 
     def open_panel(self, which):
         panel = {"radios": self.radios_panel, "engagement": self.engage_panel,
@@ -440,7 +571,10 @@ class PalisadeHub(QtWidgets.QMainWindow):
         return None
 
     def _on_request(self, what, arg):
-        if what == "tune_fm":
+        if what == "open":                         # an OPS card: (callsign, sub-tab or None)
+            cs, sub = arg
+            self.open_callsign(cs, sub)
+        elif what == "tune_fm":
             self.tune_fm(arg)
         elif what == "open_panel":
             self.open_panel(arg)
@@ -479,6 +613,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
             ("Acknowledge all alerts", self.alerts_drawer.ack_all_seen),   # seen ones only
             ("Mute / unmute audio", self.topbar.toggle_mute),
             ("Key map", lambda: self.open_panel("keys")),
+            # RA-S1 F9: the page's messages (the old bottom bar) without a pointer
+            ("Page messages — what this page reports now", self.show_page_messages),
             ("PANIC — disarm TX, end engagement, kill child processes", self.panic),
         ]
         return cmds
@@ -760,6 +896,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
         return self.gpshome
 
     def closeEvent(self, ev):
+        if getattr(self, "notice", None) is not None:
+            self.notice.stop()
         if getattr(self, "gpshome", None) is not None:
             self.gpshome.stop()
         app = QtWidgets.QApplication.instance()

@@ -22,8 +22,9 @@ from .kit import card, micro, PpiScope
 from .kit.components import note, Cover
 from .kit import tracksym
 from .worker import Worker
+from .timebase import zulu
 
-# The eight page keys, in key order (1-8), each with the function label shown beside the callsign
+# The page keys, in rail / digit-key order (SYSTEM last since 2026-11-18), each with the function label shown under the callsign
 # in the top strip (owner decision 2026-11-15, plan/audit/AUDIT_INDEX.md · D7). BABEL is folded into
 # PROWL, OVERWATCH's sky views into ATLAS, BENCH into SYSTEM; SWEEP is promoted from RECON/COUNTER.
 ALL_CALLSIGNS = [
@@ -70,7 +71,7 @@ class DemoFeedWorker(Worker):
             "batt": batt, "gps": 9}, severity="info", demo=True))
         self.status.emit({"sdr": {"text": "SDR DEMO", "state": "neutral"},
                           "gps": {"text": "GPS 9 SV", "state": "neutral"}})
-        # battery: the top strip's BAT slot (shell), not a bare PWR in this footer (2026-11-18)
+        # battery: the top strip's BAT slot (shell), not a bare PWR on the page (2026-11-18)
 
 
 def sdr_chip(sys_root="/sys"):
@@ -93,6 +94,10 @@ def sdr_chip(sys_root="/sys"):
 
 class LiveStatusWorker(Worker):
     """Live mode: publish only real device telemetry; backends publish their own feeds."""
+
+    # the strip's BAT slot and SDR presence come from here on every page, not only OPS (RA-S1 F1):
+    # a sysfs read every 2 s, so it runs while OPS is hidden
+    PAUSE_WHEN_HIDDEN = False
 
     def __init__(self, parent=None, sys_root="/sys"):
         super().__init__(demo=False, interval_ms=2000, parent=parent)
@@ -133,6 +138,33 @@ def _read_gps_sats():
 
 
 # ---------------------------------------------------------------- rail card
+class _ClickFilter(QtCore.QObject):
+    """Makes a card a button: a left click anywhere on it (its labels included) calls fn."""
+
+    def __init__(self, target, fn):
+        super().__init__(target)
+        self._fn = fn
+        target.installEventFilter(self)
+        for w in target.findChildren(QtWidgets.QWidget):
+            w.installEventFilter(self)
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QtCore.QEvent.MouseButtonRelease and \
+                ev.button() == QtCore.Qt.LeftButton:
+            self._fn()
+            return True
+        return False
+
+
+def make_clickable(widget, fn, tip):
+    """Owner 2026-11-18 ("OPS does nothing"): every OPS card opens the page it summarises."""
+    widget.setCursor(QtCore.Qt.PointingHandCursor)
+    widget.setToolTip(tip)
+    widget.setProperty("clickable", True)
+    widget._click = _ClickFilter(widget, fn)
+    return widget
+
+
 class RailCard(QtWidgets.QFrame):
     """A titled rail card with a content area that can fall back to a STANDBY state."""
 
@@ -161,6 +193,10 @@ class RailCard(QtWidgets.QFrame):
         self.note.setText(text)
 
     def clear_body(self):
+        click = getattr(self, "_click", None)
+        if click is not None:            # new body labels are part of the button too
+            QtCore.QTimer.singleShot(0, lambda: [w.installEventFilter(click) for w in
+                                                 self.findChildren(QtWidgets.QWidget)])
         while self.body.count():
             it = self.body.takeAt(0)
             w = it.widget()
@@ -258,11 +294,24 @@ class OpsHome(PalisadeApp):
         two = QtWidgets.QHBoxLayout()
         two.setSpacing(9)
         self.mini_pass = self._mini("NEXT PASS", "—")
+        self._next_pass = None
         # POWER moved to the strip's BAT slot; this card says where HOME (the map centre) comes from
         self.mini_pwr = self._mini("HOME", self._home_text())
         two.addWidget(self.mini_pass[0])
         two.addWidget(self.mini_pwr[0])
         rv.addLayout(two)
+        # owner 2026-11-18 ("OPS does nothing"): each card is the way into its page
+        go = self._go
+        make_clickable(self.card_prism, lambda: go("PRISM"), "open PRISM (spectrum)")
+        make_clickable(self.card_babel, lambda: go("PROWL", "DECODE"), "open PROWL › DECODE")
+        make_clickable(self.card_alert, lambda: self.request.emit("open_panel", "alerts"),
+                       "open the alert history (acknowledge there)")
+        make_clickable(self.mini_pass[0], lambda: go("ATLAS", "PASSES"),
+                       "open ATLAS › PASSES (satellite passes for HOME)")
+        make_clickable(self.mini_pwr[0], lambda: go("SYSTEM", "SETTINGS"),
+                       "where the map centre (HOME) comes from — set it in SYSTEM › SETTINGS")
+        make_clickable(self.big, lambda: go("ATLAS"), "open ATLAS (the full contact map)")
+        self.mini_pass[1].setText(self._pass_text())
         row.addWidget(rail)
         self._rail_w = rail
         # F / the corner toggle hides the rail: the scope then runs the full width (more of the
@@ -278,6 +327,48 @@ class OpsHome(PalisadeApp):
         self._prune.timeout.connect(self._refresh_ppi)
         self._prune.start(700)
         return body
+
+    def _go(self, callsign, subtab=None):
+        self.request.emit("open", (callsign, subtab))
+
+    def _pass_text(self):
+        """NEXT PASS card: the next real pass OVERWATCH announced, else why there is none."""
+        p = self.next_pass() if callable(self.next_pass) else None
+        if p:                         # OVERWATCH's prediction list: the truth (RA-S2 N1)
+            if p["aos"] <= time.time():
+                return "%s NOW" % p.get("sat", "?")
+            return "%s %s" % (p.get("sat", "?"), zulu(p["aos"], secs=False))
+        st = self.pass_state() if callable(self.pass_state) else None
+        # the alert only while OVERWATCH has no prediction of its own here: a later NO TLE / HOME
+        # NOT SET / empty list wins over an old announcement (RA-S2b N9)
+        p = self._next_pass if st is None else None
+        if p:
+            if p["aos"] <= time.time():
+                return "%s NOW" % p["sat"]
+            return "%s %s" % (p["sat"], zulu(p["aos"], secs=False))
+        if self.demo:
+            return "demo"
+        st = self.pass_state() if callable(self.pass_state) else None
+        return {"no-tle": "NO TLE", "no-home": "HOME NOT SET", "no-skyfield": "no skyfield",
+                "error": "predict failed", "offscreen": "—",
+                "live": "none in 24 h"}.get(st, "predicting…")
+
+    pass_state = None             # the shell sets it: OVERWATCH's last prediction status
+    next_pass = None              # the shell sets it: the next not-over pass OVERWATCH predicted
+
+    # the reason the map is empty comes from ATLAS's feed health (the shell sets this: a callable
+    # returning ATLAS's layer summary, e.g. "ADS-B NO FEED · APRS —", or None when ATLAS is off)
+    feed_summary = None
+
+    def _empty_reason(self):
+        if self.demo:
+            return "standby"
+        if not eventbus.home_set():
+            return "no contacts · HOME NOT SET"
+        fs = self.feed_summary() if callable(self.feed_summary) else None
+        if not fs:
+            return "no contacts · contact feeds not running (open ATLAS)"
+        return "no contacts · %s" % fs
 
     def _mini(self, label, value):
         f = card(2)
@@ -308,6 +399,10 @@ class OpsHome(PalisadeApp):
                 "dbflags": pl.get("dbflags"), "trust": pl.get("trust"),
                 "course": pl.get("course"), "emergency": pl.get("emergency")}
             tracksym.push_trail(self._trails, pl["id"], x, y)
+        elif et == "alert" and src == "OVERWATCH" and pl.get("aos"):
+            # the next real pass (OVERWATCH announces it on the bus; demo passes never are)
+            self._next_pass = {"sat": pl.get("sat", "?"), "aos": pl["aos"]}
+            self.mini_pass[1].setText(self._pass_text())
         elif et == "decode" and pl.get("kind") == "telemetry":
             self._telemetry(pl)
         elif et == "decode":
@@ -380,7 +475,10 @@ class OpsHome(PalisadeApp):
             self.sub.setText(" · ".join(parts))
         else:
             self.big.setText("0")
-            self.sub.setText("no contacts" if not self.demo else "standby")
+            self.sub.setText(self._empty_reason())       # owner 2026-11-18: say WHY it is empty
+        if self._next_pass and self._next_pass["aos"] < now - 900:     # that pass is over
+            self._next_pass = None
+        self.mini_pass[1].setText(self._pass_text())
 
     def decode_rate(self, now=None):
         """H14: decodes actually received in the last 60 s (it was min(60, n * 6): one decode

@@ -8,6 +8,7 @@ unless a contact moved.
 import math
 
 import pyqtgraph as pg
+from shiboken6 import isValid as shiboken_valid
 from PySide6 import QtCore, QtWidgets
 
 from .. import theme
@@ -19,10 +20,23 @@ class PpiScope(QtWidgets.QFrame):
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
-        if getattr(self, "legend", None) is not None:      # bottom-left, like the ATLAS map
-            self.legend.move(10, self.height() - self.legend.height() - 10)
-            self.legend.raise_()
+        if getattr(self, "legend", None) is not None:
+            self.place_legend()
         self.resized.emit()
+        if getattr(self, "legend", None) is not None:
+            # again once the host has re-fitted the scope square (_fit_scope resizes it again
+            # from inside this event): read the size as it stands now, after the re-fit
+            self.place_legend()
+
+    def place_legend(self):
+        """One tight row across the bottom of the scope (see __init__)."""
+        if not shiboken_valid(self):
+            return
+        w = max(120, self.width() - 16)
+        self.legend.setFixedWidth(w)
+        self.legend.setFixedHeight(self.legend.sizeHint().height())
+        self.legend.move(8, self.height() - self.legend.height() - 8)
+        self.legend.raise_()
 
     def __init__(self, span_nm=80, mode="dark", parent=None):
         super().__init__(parent)
@@ -48,7 +62,9 @@ class PpiScope(QtWidgets.QFrame):
         self._base = BaseMap(self.plot, None, None, span_nm, style="dark_sat", parent=self)
         # the track-type legend on OPS too (device notes: symbols + legend on ATLAS and OPS)
         from .mappanel import make_legend
-        self.legend = make_legend(self, per_row=2)
+        # owner 2026-11-18 ("legend way too big, space it out across the bottom of the map, keep
+        # it tight"): one row, as wide as the scope, on its bottom edge
+        self.legend = make_legend(self, row=True)
 
         for r in (span_nm / 3, span_nm * 2 / 3, span_nm):
             c = pg.QtWidgets.QGraphicsEllipseItem(-r, -r, 2 * r, 2 * r)

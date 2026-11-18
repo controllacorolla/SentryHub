@@ -36,17 +36,53 @@ def tint(arr, style):
     return out
 
 
-def make_legend(parent, per_row=4):
+def make_legend(parent, per_row=4, row=False):
     """The track-type legend overlay (ATLAS map and OPS scope): fixed colours on a dark plate, so it
-    reads on DARK SAT and LIGHT SAT alike. The parent places it (bottom-left) on resize."""
+    reads on DARK SAT and LIGHT SAT alike. The parent places it (bottom-left) on resize. row=True:
+    one row of equal cells; the parent gives it the map's width (OPS strip along the bottom)."""
     from . import tracksym
-    lab = QtWidgets.QLabel(tracksym.legend_html(per_row), parent)
+    if row:
+        return LegendRow(parent)
+    html = tracksym.legend_html(per_row)
+    lab = QtWidgets.QLabel(html, parent)
     lab.setObjectName("track_legend")
     lab.setTextFormat(QtCore.Qt.RichText)
     lab.setStyleSheet("QLabel#track_legend { background: rgba(0,0,0,170); "
-                      "border: 1px solid #555; font-size: 16px; padding: 2px 6px; }")
+                      "border: 1px solid #555; font-size: %dpx; padding: 2px 6px; }"
+                      % (14 if row else 16))
     lab.adjustSize()
     return lab
+
+
+class LegendRow(QtWidgets.QFrame):
+    """The legend as one tight row of evenly spread items (OPS, owner 2026-11-18: "legend way too
+    big, space it out across the bottom of the map, keep it tight"). The parent sets its width."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from . import tracksym
+        self.setObjectName("track_legend")
+        self.setStyleSheet("QFrame#track_legend { background: rgba(0,0,0,170); "
+                           "border: 1px solid #555; }")
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(6, 1, 6, 1)
+        lay.setSpacing(4)
+        self.items = []
+        for i, (k, name) in enumerate(tracksym.LEGEND):
+            if i:
+                lay.addStretch(1)
+            lab = QtWidgets.QLabel('<span style="color:%s; font-weight:600;">&#9632;</span>'
+                                   '<span style="color:#DDD;">&nbsp;%s</span>'
+                                   % (tracksym.CLASS_COLOR[k], name))
+            lab.setTextFormat(QtCore.Qt.RichText)
+            lab.setStyleSheet("font-size: 16px; background: transparent; border: none;")  # CL1 16 px floor
+            lay.addWidget(lab)
+            self.items.append(lab)
+        self.adjustSize()
+
+    def text(self):
+        """The legend's entries as one string, like the QLabel legend (ATLAS) answers."""
+        return " ".join(lab.text() for lab in self.items)
 
 
 class BaseMap(QtCore.QObject):
@@ -67,6 +103,33 @@ class BaseMap(QtCore.QObject):
                                home_lon=home_lon if self.can_fetch else 0.0,
                                span_nm=span_nm, parent=self)
         self.tiles.ready.connect(self._on_tiles)
+        self.tiles.imagery.connect(self._on_imagery)
+        self.imagery = ("none", "")
+        # device run 2026-11-18 ("maps don't load"): when imagery cannot be had, the map says why,
+        # on the map, instead of staying black
+        self.banner = QtWidgets.QLabel(plot)
+        self.banner.setObjectName("map_banner")
+        self.banner.setAlignment(QtCore.Qt.AlignCenter)
+        self.banner.setCursor(QtCore.Qt.PointingHandCursor)
+        self.banner.installEventFilter(self)
+        self.banner.setStyleSheet("QLabel#map_banner { background: rgba(0,0,0,190); color: #F0C674;"
+                                  " border: 1px solid #F0C674; border-radius: 6px;"
+                                  " padding: 4px 10px; font-size: 16px; }")
+        self.banner.hide()
+        self._dismissed = False
+        # owner 2026-11-18 (decision: "one-tap download on the map"): fetch this view's imagery
+        # once while NET stays OFFLINE; logged as a granted request
+        self.download_btn = QtWidgets.QPushButton("DOWNLOAD MAP", plot)
+        self.download_btn.setObjectName("map_download")
+        self.download_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self.download_btn.setToolTip("download the satellite tiles for this view once and keep "
+                                     "them (NET stays OFFLINE; the download is logged)")
+        self.download_btn.setStyleSheet(
+            "QPushButton#map_download { background: #F0C674; color: #111; border: none;"
+            " border-radius: 6px; padding: 4px 12px; font-size: 16px; font-weight: 600; }")
+        self.download_btn.clicked.connect(self.download)
+        self.download_btn.hide()
+        plot.installEventFilter(self)
         self.style = style
         self._raw = None
         self.shown_rect = None
@@ -76,6 +139,128 @@ class BaseMap(QtCore.QObject):
         self._timer.timeout.connect(self.refresh)
         plot.getViewBox().sigRangeChanged.connect(lambda *_: self._timer.start())
         self.on_shown = None
+
+    def eventFilter(self, obj, ev):
+        if obj is self.plot and ev.type() == QtCore.QEvent.Resize:
+            self._place_banner()
+        elif obj is self.banner and ev.type() == QtCore.QEvent.MouseButtonPress:
+            self.dismiss()                    # tap the strip to put it away (RA-S2 N2)
+            return True
+        return False
+
+    @staticmethod
+    def short_text(state, text):
+        """One line for the strip; the full reason is its tooltip (RA-S2 N2/N3/N6)."""
+        offline = "OFFLINE" in (text or "")
+        if state == "offline":
+            return "NO IMAGERY · NET OFFLINE"
+        if state == "partial":
+            return "PART IMAGERY · NET OFFLINE" if offline else "PART IMAGERY · SOME TILES FAILED"
+        if "download failed" in (text or ""):
+            return "NO IMAGERY · DOWNLOAD FAILED"
+        return "NO IMAGERY FOR THIS AREA"
+
+    def _place_banner(self):
+        """A small strip in a corner of the map, never over its centre where HOME and the nearest
+        contacts are (RA-S2 N2): the reason, and the button beside it. Top-right, else
+        bottom-right, else top-left, whichever does not cover the map's own controls (OPS: FULL
+        MAP + legend row; ATLAS: style, zoom and HOME at the top right, legend bottom-left)."""
+        w, ph = self.plot.width(), self.plot.height()
+        self.banner.adjustSize()
+        self.download_btn.adjustSize()
+        h = max(self.banner.sizeHint().height(), self.download_btn.sizeHint().height())
+        self.banner.setFixedHeight(h)
+        self.download_btn.setFixedHeight(h)
+        btn = not self.download_btn.isHidden()
+        total = self.banner.width() + ((self.download_btn.width() + 6) if btn else 0)
+        busy = self._overlay_rects()
+        # the outer bands only (top and bottom 30 %), right then left, nearest the edge first
+        tops = list(range(8, max(9, int(ph * 0.3)), 6))
+        bottoms = list(range(ph - 8 - h, int(ph * 0.7), -6))
+        spots = [(w - 8 - total, y) for y in tops] + [(w - 8 - total, y) for y in bottoms] + \
+                [(8, y) for y in tops] + [(8, y) for y in bottoms]
+        x, y = w - 8 - total, 8
+        for sx, sy in spots:
+            r = QtCore.QRect(max(0, sx), sy, total, h).adjusted(-4, -4, 4, 4)
+            if not any(r.intersects(b) for b in busy):
+                x, y = sx, sy
+                break
+        x = max(8, x)
+        self.banner.move(x, y)
+        self.download_btn.move(x + self.banner.width() + 6, y)
+
+    def _overlay_rects(self):
+        """Rects (plot coordinates) of the small controls drawn over the map: its own children and
+        the page's overlays that sit on top of it (ATLAS style / zoom / HOME, legends)."""
+        host = self.plot.parentWidget() or self.plot
+        g0 = self.plot.mapToGlobal(QtCore.QPoint(0, 0))
+        area = self.plot.rect()
+        out = []
+        for c in host.findChildren(QtWidgets.QWidget):
+            if c in (self.banner, self.download_btn, self.plot) or not c.isVisible():
+                continue
+            if c.isAncestorOf(self.plot):
+                continue
+            if self.plot.isAncestorOf(c) and c.parentWidget() is not self.plot:
+                continue
+            if c.width() * c.height() > area.width() * area.height() // 3:
+                continue                          # a backdrop / the plot's own viewport
+            r = QtCore.QRect(c.mapToGlobal(QtCore.QPoint(0, 0)) - g0, c.size())
+            if r.intersects(area):
+                out.append(r)
+        return out
+
+    def _on_imagery(self, state, text):
+        changed = (state, text) != self.imagery
+        self.imagery = (state, text)
+        if changed:
+            self._dismissed = False
+        show = state in ("offline", "failed", "partial") and bool(text) and self.can_fetch
+        self.banner.setVisible(show)
+        if self._dismissed:
+            # put away = folded to a small chip in the corner, never gone: a new blank area still
+            # shows that the map has no imagery and a tap brings DOWNLOAD MAP back (RA-S2b N8)
+            self.banner.setText("NO IMAGERY ▸")
+            self.banner.setToolTip(text + "\n(tap to show DOWNLOAD MAP)")
+            self.download_btn.setVisible(False)
+        else:
+            self.banner.setText(self.short_text(state, text) + "  ✕")
+            self.banner.setToolTip(text + "\n(tap to fold away)")
+            # the button where a tap can help: tiles the NET mode refused (DOWNLOAD MAP), or a
+            # failed download (RETRY: the same one-shot, logged grant; RA-S2 N6)
+            self.download_btn.setVisible(show and ((state in ("offline", "partial") and
+                                                    "OFFLINE" in text) or
+                                                   "download failed" in text or
+                                                   "some tiles failed" in text))
+        if getattr(self, "_downloading", False) and not changed:
+            # folding / unfolding while a download runs: it stays "DOWNLOADING…" (RA-S2c N12)
+            self.download_btn.setEnabled(False)
+            self.download_btn.setText("DOWNLOADING…")
+        else:
+            self._downloading = False
+            self.download_btn.setEnabled(True)
+            self.download_btn.setText("DOWNLOAD MAP" if "OFFLINE" in text else "RETRY")
+        if show:
+            self._place_banner()
+            self.banner.raise_()
+            self.download_btn.raise_()
+
+    def dismiss(self):
+        """Tap: fold the strip to a small "NO IMAGERY ▸" chip; tap the chip to unfold it."""
+        self._dismissed = not self._dismissed
+        self._on_imagery(*self.imagery)
+
+    def download(self):
+        """One tap: this view's tiles, once, despite NET OFFLINE (TileLayer.download)."""
+        if not self.can_fetch:
+            return
+        if getattr(self, "_downloading", False):
+            return
+        self._downloading = True
+        self.download_btn.setEnabled(False)
+        self.download_btn.setText("DOWNLOADING…")
+        self.tiles.view = self.view()
+        self.tiles.download(FETCH_STYLE)
 
     def view(self):
         vb = self.plot.getViewBox()

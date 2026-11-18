@@ -207,6 +207,9 @@ def watch_network():
             record("info", "NET", "network mode set to %s" % mode)
         elif kind == "blocked":
             record("warn", "NET", "blocked %s (%s) — mode %s" % (host, purpose or "request", mode))
+        elif kind == "granted":
+            record("warn", "NET", "operator-granted %s (%s) despite mode %s"
+                   % (host, purpose or "request", mode))
         else:
             record("net", "NET", "%s (%s)" % (host, purpose or "request"))
     netpolicy.add_listener(_on)

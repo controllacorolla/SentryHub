@@ -6,7 +6,7 @@ its behaviour; only the page that hosts it changed:
   ATLAS  (2 · map)       MAP <- AtlasApp · SKY DOME, PASSES <- OverwatchApp (OVERWATCH retired as a page)
   PROWL  (4 · listen)    SCAN, FM, NWR <- ProwlApp · DECODE <- BabelApp (BABEL folded in)
   SYSTEM (7 · settings)  SETTINGS, DOCTOR, SITREP <- MoreApp · BENCH <- BenchApp
-  ASSISTANT (8), MESH (9) are pages of their own since 2026-11-17 (system.AssistantApp / MeshApp)
+  ASSISTANT (8), MESH (9) are pages of their own since 2026-11-17 (system.AssistantApp / mesh.MeshPage)
 """
 from .app import CompositeApp
 from .atlas import AtlasApp

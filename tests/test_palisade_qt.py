@@ -1763,20 +1763,20 @@ def test_more_doctor_runs_checks_and_skips_network_offscreen(monkeypatch):
 
 
 def test_more_mesh_demo_nodes_and_live_standby():
-    from palisade_qt import system
-    w = system.MeshWorker(demo=True)
+    from palisade_qt import mesh
+    w = mesh.MeshLinkWorker(demo=True)
     rows = []
     w.row.connect(lambda m: rows.append(m))
     w.step()
     nodes = [m for m in rows if m["kind"] == "nodes"]
     assert nodes and len(nodes[0]["nodes"]) >= 3
     w.stop()
-    w2 = system.MeshWorker(demo=False)
+    w2 = mesh.MeshLinkWorker(demo=False)
     seen, rows2 = [], []
     w2.status.connect(lambda s: seen.append(s))
     w2.row.connect(lambda m: rows2.append(m))
     w2.step()
-    assert rows2 == [] and any(s.get("standby") for s in seen)
+    assert rows2 == [] and seen[-1]["link"] == "none"
 
 
 def test_more_assistant_answers_from_bus_and_offline_llm():
@@ -1791,8 +1791,8 @@ def test_more_assistant_answers_from_bus_and_offline_llm():
     p = system.MoreApp(demo=True, mode="dark")
     assert "1 unacknowledged alert" in p._answer("any alerts?")
     assert "aircraft" in p._answer("what's on the map?")
-    # CL4 H18: free-form is NOT IMPLEMENTED here (no LLM probe from the GUI thread)
-    assert p._answer("write me a sonnet").startswith("NOT IMPLEMENTED")
+    # free-form goes to the local model worker, never answered (or probed) on the GUI thread
+    assert p._answer("write me a sonnet") is None
     panels.reset_alert_store()
 
 

@@ -269,3 +269,265 @@ def test_s1_26_no_bottom_status_bar_warnings_become_a_notice_sdr_presence_in_the
         assert hub.topbar.slots["radio"].text() == "FREE"
     finally:
         _close(hub)
+
+
+# ---------------------------------------------------------------- RA-S1 follow-ups
+def test_ra_s1_f1_live_telemetry_keeps_running_off_ops():
+    """F1: the strip's BAT and SDR slots are fed by OPS's live status worker: it must not pause
+    when another page is on screen."""
+    from palisade_qt.ops import LiveStatusWorker, DemoFeedWorker
+    assert LiveStatusWorker.PAUSE_WHEN_HIDDEN is False
+    w = LiveStatusWorker()
+    w.pause(False)
+    hub = _big_hub()
+    try:
+        hub.open_callsign("PRISM")
+        _pump(100)
+        if isinstance(hub.ops._worker, LiveStatusWorker):
+            assert not hub.ops._worker.paused
+    finally:
+        _close(hub)
+    assert DemoFeedWorker.PAUSE_WHEN_HIDDEN is True       # demo traffic still rests while hidden
+
+
+def test_ra_s1_f2_f4_a_counter_is_not_a_new_warning_but_a_returning_one_is():
+    from palisade_qt.shell import PageNotice
+    w = QtWidgets.QWidget()
+    n = PageNotice("dark", w)
+    shown = []
+    for s in range(12):                     # PROWL NWR: "no audio reaching the decoder (Ns)"
+        shown += n.consider("PROWL", {"audio": {"text": "no audio (%ds)" % s, "state": "warn"}})
+    assert len(shown) == 1, shown
+    assert n.consider("PROWL", {}) == []                        # it clears …
+    assert n.consider("PROWL", {"audio": {"text": "no audio (1s)", "state": "warn"}})  # … and returns
+    assert n.consider("PROWL", {"audio": {"text": "no audio", "state": "alert"}}), "escalation shows"
+    w.deleteLater()
+
+
+def test_ra_s1_f3_the_notice_never_follows_you_to_another_page():
+    hub = _big_hub()
+    try:
+        hub.open_callsign("ATLAS")
+        _pump(100)
+        hub.page_app("ATLAS").set_chip("probe2", "ATLAS PROBLEM", state="warn")
+        _pump(50)
+        assert hub.notice.isVisible() and hub.notice.text().startswith("ATLAS · ")
+        hub.open_callsign("SYSTEM")
+        _pump(50)
+        assert not hub.notice.isVisible()
+    finally:
+        _close(hub)
+
+
+def test_ra_s1_f8_no_automatic_notice_over_an_open_drawer_and_f9_palette_path():
+    hub = _big_hub()
+    try:
+        hub.open_callsign("ATLAS")
+        _pump(100)
+        hub.open_panel("alerts")
+        _pump(80)
+        hub.notice.hide()
+        hub.page_app("ATLAS").set_chip("probe3", "ANOTHER PROBLEM", state="warn")
+        _pump(50)
+        assert not hub.notice.isVisible()
+        hub.open_panel("alerts")                      # close it again
+        _pump(80)
+        names = [c[0] for c in hub._commands()]
+        cmd = next(c for c in hub._commands() if c[0].startswith("Page messages"))
+        assert cmd and any("Page messages" in n for n in names)
+        cmd[1]()
+        _pump(50)
+        assert hub.notice.isVisible() and "ANOTHER PROBLEM" in hub.notice.text()
+    finally:
+        _close(hub)
+
+
+def test_ra_s1_f5_f7_focus_on_open_sub_tile_and_disabled_volume_rules():
+    from palisade_qt import theme
+    for mode in ("dark", "light", "sun"):
+        q = theme.qss(mode)
+        tok = theme.tokens(mode)
+        assert ('QPushButton.subtab:checked:focus {{ border: {} solid {}; }}'.format(
+            tok["focus_w"], tok["focus_on"])).replace("{{", "{").replace("}}", "}") in q
+        assert "QSlider#vol::handle:horizontal:disabled" in q
+    hub = _big_hub()
+    try:
+        v = hub.topbar.volume
+        v.setEnabled(True)
+        _pump(30)
+        on = v.grab().toImage()
+        v.setEnabled(False)
+        _pump(30)
+        off = v.grab().toImage()
+        diff = sum(1 for x in range(0, on.width(), 2) for y in range(0, on.height(), 2)
+                   if on.pixelColor(x, y) != off.pixelColor(x, y))
+        assert diff > 20, "a disabled volume slider must look different"
+    finally:
+        _close(hub)
+
+
+# ---------------------------------------------------------------- RA-S1b follow-ups
+def test_ra_s1b_n1_a_different_warning_on_the_same_key_shows():
+    from palisade_qt.shell import PageNotice
+    w = QtWidgets.QWidget()
+    n = PageNotice("dark", w)
+    assert n.consider("RECON", {"sdr": {"text": "WIFI STANDBY", "state": "warn"}})
+    assert n.consider("RECON", {"sdr": {"text": "WIFI STANDBY", "state": "warn"}}) == []
+    assert n.consider("RECON", {"sdr": {"text": "BLE STANDBY", "state": "warn"}}) == ["BLE STANDBY"]
+    # the same message dropping from alert to warn is not news
+    assert n.consider("RECON", {"sdr": {"text": "BLE STANDBY", "state": "alert"}})
+    assert n.consider("RECON", {"sdr": {"text": "BLE STANDBY", "state": "warn"}}) == []
+    w.deleteLater()
+
+
+def test_ra_s1b_n2_a_warning_held_back_by_a_panel_shows_once_it_closes():
+    hub = _big_hub()
+    try:
+        hub.open_callsign("ATLAS")
+        _pump(100)
+        hub.open_panel("alerts")
+        _pump(80)
+        hub.notice.hide()
+        hub.page_app("ATLAS").set_chip("probe4", "HELD BACK", state="warn")
+        _pump(50)
+        assert not hub.notice.isVisible()
+        hub.open_panel("alerts")                      # close it
+        _pump(1200)                                   # the retry runs (700 ms)
+        assert hub.notice.isVisible() and "HELD BACK" in hub.notice.text()
+    finally:
+        _close(hub)
+
+
+def test_ra_s1b_n3_a_still_active_warning_shows_again_on_return():
+    hub = _big_hub()
+    try:
+        hub.open_callsign("ATLAS")
+        _pump(100)
+        hub.page_app("ATLAS").set_chip("probe5", "STILL BROKEN", state="warn")
+        _pump(50)
+        assert "STILL BROKEN" in hub.notice.text()
+        hub.open_callsign("SYSTEM")
+        _pump(50)
+        assert not hub.notice.isVisible()
+        hub.open_callsign("ATLAS")                    # a quick flip back: no repeat (RA-S1c N10)
+        _pump(80)
+        assert "STILL BROKEN" not in hub.notice.text() or not hub.notice.isVisible()
+        hub.notice.REMIND_S = 0                       # away long enough: reminded once on return
+        hub.open_callsign("SYSTEM")
+        _pump(50)
+        hub.open_callsign("ATLAS")
+        _pump(80)
+        assert hub.notice.isVisible() and "STILL BROKEN" in hub.notice.text()
+    finally:
+        _close(hub)
+
+
+def test_ra_s1b_n4_open_nav_key_focus_is_a_full_ring():
+    from palisade_qt import theme
+    for mode in ("dark", "light", "sun"):
+        tok = theme.tokens(mode)
+        assert "QPushButton.navkey_on:focus { border: %s solid %s; }" % (
+            tok["focus_w"], tok["focus_on"]) in theme.qss(mode)
+
+
+# ---------------------------------------------------------------- RA-S1c follow-ups
+def test_ra_s1c_n6_atlas_layer_counts_moving_do_not_re_pop_the_adsb_warning():
+    from types import SimpleNamespace
+    from palisade_qt.atlas import AtlasApp, KINDS
+    from palisade_qt.shell import PageNotice
+    stub = SimpleNamespace(_layers={k for k, _l, _t in KINDS}, demo=False,
+                           _adsb_health={"state": "none"})
+    kinds = [k for k, _l, _t in KINDS if k not in ("aircraft", "operator")]
+    w = QtWidgets.QWidget()
+    n = PageNotice("dark", w)
+    shown = []
+    for i in range(7):                      # a layer flickers between 0 and 1 contact
+        pts = [{"kind": kinds[0]}] if i % 2 else []
+        text, st = AtlasApp._layer_summary(stub, pts)
+        assert st == "warn" and "ADS-B NO FEED" in text
+        shown += n.consider("ATLAS", {"sdr": {"text": text, "state": st}})
+    assert len(shown) == 1, shown
+    w.deleteLater()
+
+
+def test_ra_s1c_n8_notice_timers_stop_with_the_window():
+    hub = _big_hub()
+    hub.open_callsign("ATLAS")
+    _pump(100)
+    hub.notice._retry.start()
+    n = hub.notice
+    hub.close()
+    assert not n._retry.isActive() and not n._timer.isActive() and n.refresh is None
+    _pump(150)
+
+
+def test_ra_s1c_a_second_warning_joins_the_notice_showing():
+    from palisade_qt.shell import PageNotice
+    w = QtWidgets.QWidget()
+    w.resize(800, 600)
+    w.show()
+    n = PageNotice("dark", w)
+    n.consider("ATLAS", {"a": {"text": "FIRST", "state": "warn"}})
+    n.consider("ATLAS", {"a": {"text": "FIRST", "state": "warn"},
+                         "b": {"text": "SECOND", "state": "warn"}})
+    assert "FIRST" in n.text() and "SECOND" in n.text()
+    w.close()
+    w.deleteLater()
+
+
+# ---------------------------------------------------------------- RA-S1d follow-ups
+def _shown_notice():
+    from palisade_qt.shell import PageNotice
+    w = QtWidgets.QWidget()
+    w.resize(800, 600)
+    w.show()
+    return w, PageNotice("dark", w)
+
+
+def test_ra_s1d_n12_the_notice_only_says_what_the_page_reports_now():
+    w, n = _shown_notice()
+    # a replaced warning on the same key (RECON WIFI -> BLE) does not keep the old line
+    n.consider("RECON", {"sdr": {"text": "WIFI STANDBY — offline", "state": "warn"}})
+    n.consider("RECON", {"sdr": {"text": "BLE STANDBY — offline", "state": "warn"}})
+    assert "BLE STANDBY" in n.text() and "WIFI" not in n.text()
+    # a cleared warning goes when a second one joins
+    n.consider("ATLAS", {"a": {"text": "FIRST PROBLEM", "state": "warn"}})
+    n.consider("ATLAS", {"b": {"text": "SECOND PROBLEM", "state": "warn"}})
+    assert "SECOND" in n.text() and "FIRST" not in n.text()
+    # … and goes on its own; the notice hides once nothing it showed is still reported
+    n.consider("ATLAS", {"a": {"text": "FIRST PROBLEM", "state": "warn"},
+                         "b": {"text": "SECOND PROBLEM", "state": "warn"}})
+    assert "FIRST" in n.text() and "SECOND" in n.text()
+    n.consider("ATLAS", {"b": {"text": "SECOND PROBLEM", "state": "warn"}})
+    assert "FIRST" not in n.text() and n.isVisible()
+    n.consider("ATLAS", {})
+    assert not n.isVisible()
+    # ADS-B NO FEED -> STALE on the same key: one line, the current one
+    n.consider("ATLAS", {"sdr": {"text": "ADS-B NO FEED", "state": "warn"}})
+    n.consider("ATLAS", {"sdr": {"text": "ADS-B STALE 12s", "state": "alert"}})
+    assert n.text().count("\n") == 0 and "STALE" in n.text()
+    w.close()
+    w.deleteLater()
+
+
+def test_ra_s1d_n13_the_notice_never_grows_past_one_line_per_status_key():
+    w, n = _shown_notice()
+    for i in range(60):
+        n.consider("RECON", {"sdr": {"text": ("WIFI" if i % 2 else "BLE") + " STANDBY",
+                                     "state": "warn"}})
+    assert n.text().count("\n") == 0
+    w.close()
+    w.deleteLater()
+
+
+def test_ra_s1e_n16_an_update_never_raises_the_notice_over_an_open_drawer():
+    w, n = _shown_notice()
+    held = {"on": False}
+    n.blocked = lambda: held["on"]
+    n.consider("ATLAS", {"sdr": {"text": "ADS-B STALE 1s", "state": "alert"}})
+    assert n.isVisible()
+    held["on"] = True                       # a drawer opens over it
+    n.consider("ATLAS", {"sdr": {"text": "ADS-B STALE 2s", "state": "alert"}})
+    assert not n.isVisible()
+    w.close()
+    w.deleteLater()
