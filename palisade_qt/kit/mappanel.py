@@ -143,7 +143,8 @@ class BaseMap(QtCore.QObject):
         w = self.plot.width()
         bw = max(200, min(560, w - 40))
         self.banner.setFixedWidth(bw)
-        self.banner.setFixedHeight(self.banner.heightForWidth(bw))
+        hfw = self.banner.heightForWidth(bw)
+        self.banner.setFixedHeight(hfw if hfw > 0 else self.banner.sizeHint().height())
         self.banner.move((w - bw) // 2, max(8, self.plot.height() // 2 - self.banner.height() - 40))
         self.download_btn.adjustSize()
         self.download_btn.move((w - self.download_btn.width()) // 2,
