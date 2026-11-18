@@ -1036,8 +1036,8 @@ GATED_MODULES = [
     "flipper.py", "hwlab.py", "scout.py", "devterm.py", "passaudit.py", "digimodes.py",
     "loopback.py", "radio.py", "mesh_dash.py", "cw.py", "rtty.py", "opprofile.py", "gatestate.py",
     "rfemit.py",
-    "palisade_qt/forge.py", "palisade_qt/recon.py", "palisade_qt/bench_app.py",
-    "palisade_qt/panels.py", "palisade_qt/chrome.py",
+    "palisade_qt/forge.py", "palisade_qt/recon.py", "palisade_qt/recon_tools.py",
+    "palisade_qt/bench_app.py", "palisade_qt/panels.py", "palisade_qt/chrome.py",
 ]
 
 # Reviewed exceptions: (file, enclosing function, call) -> justification. A new entry needs a line,
@@ -1066,6 +1066,10 @@ SPAWN_ALLOWLIST = {
     ("palisade_qt/recon.py", "_default_gateway", "subprocess.run"):
         "RX-fix4 select-a-network: `ip -4 route show default` reads this host's own routing "
         "table (fixed argv, read-only); no target contact, no TX",
+    ("palisade_qt/recon_tools.py", "_spawn_passive", "subprocess.Popen"):
+        "TOOLKIT: the passive-capture runner spawns a RECEIVE-ONLY tool (tcpdump/tshark/Responder "
+        "-A) whose argv was built + validated by capture.py/responder.py; ungated by design "
+        "(passive), logged to the chain, and killed on close/PANIC. Not a gated action — no ticket",
 }
 WRITE_ALLOWLIST = {
     ("txguard.py", "log_tx", "f.write"): "append to the local TX log file",
