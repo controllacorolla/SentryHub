@@ -241,7 +241,6 @@ class AskWorker(Worker):
         netpolicy's check and log), so STOP and page close can shut it at any moment, even while
         the model is still loading and has sent nothing yet (RA-MESHb N2); and no proxy from the
         environment ever sees the request (RA-MESH L1: it is loopback only)."""
-        import http.client
         import json
         import urllib.parse
         import assistant
@@ -249,9 +248,9 @@ class AskWorker(Worker):
         body = json.dumps(assistant.chat_body(s, url, model, msgs)).encode()
         full = ""
         try:
-            netpolicy.check(url + "/api/chat", "assistant (local model)")
             u = urllib.parse.urlsplit(url)
-            conn = http.client.HTTPConnection(u.hostname, u.port or 11434, timeout=180)
+            conn = netpolicy.connect(url + "/api/chat", timeout=180,
+                                     purpose="assistant (local model)")
             self._conn = conn
             if self.stopping or self._cancel:
                 raise ConnectionAbortedError("stopped")
