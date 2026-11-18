@@ -1159,8 +1159,9 @@ class PrismApp(PalisadeApp):
         self._set_peak(float(np.max(power)), float(freqs[int(np.argmax(power))]))
         return None
 
-    def _set_peak(self, peak_db, peak_mhz):
-        self.readout.setText("%.0f dB @ %.4f MHz" % (peak_db, peak_mhz))   # H13: uncalibrated
+    def _set_peak(self, peak_db, peak_mhz, unit="dB rel"):
+        # H13: no absolute power units (uncalibrated). rtl_power sweep = uncalibrated "dB rel"; IQ receiver = dBFS
+        self.readout.setText("%.0f %s @ %.4f MHz" % (peak_db, unit, peak_mhz))
         self._peak_mhz = peak_mhz
         self.send_btn.setEnabled(True)
 
@@ -1179,7 +1180,8 @@ class PrismApp(PalisadeApp):
             self.freq_edit.setText(iqsource.fmt_freq(self._vfo_hz))
             self.scope.set_vfo(self._vfo_hz)
         k = int(np.argmax(db))
-        self._set_peak(float(db[k]), (centre + (k - db.size // 2) * rate / db.size) / 1e6)
+        self._set_peak(float(db[k]), (centre + (k - db.size // 2) * rate / db.size) / 1e6,
+                       unit="dBFS")
         lvl = float(row["level"])
         self.meter.setValue(int(max(-100, min(0, lvl))))
         self.level_lbl.setText("%.1f dBFS" % lvl)
