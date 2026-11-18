@@ -261,6 +261,20 @@ def urlopen(req, timeout=10, purpose="", granted=False, **kw):
     return urllib.request.urlopen(req, timeout=timeout, **kw)
 
 
+def connect(url, timeout=10, purpose=""):
+    """An http.client connection to the URL's host, behind the same mode check and log as
+    urlopen(). For a caller that must be able to cut the request at any moment (the local model:
+    STOP while the model is still loading, before any reply). No environment proxy is used: the
+    connection goes exactly where the URL says, which the check just allowed."""
+    import http.client
+    u = urllib.parse.urlsplit(url)
+    if u.scheme.lower() not in ("http", "https"):
+        raise NetBlocked(_host_of(url), mode(), "scheme %s refused" % u.scheme)
+    check(url, purpose)
+    cls = http.client.HTTPSConnection if u.scheme.lower() == "https" else http.client.HTTPConnection
+    return cls(u.hostname, u.port, timeout=timeout)
+
+
 class _NoCrossModeRedirect(urllib.request.HTTPRedirectHandler):
     """A redirect is a new request: it goes through the mode check too (a LAN host may not
     bounce the client to the internet)."""
