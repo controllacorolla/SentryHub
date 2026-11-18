@@ -1,15 +1,16 @@
 """MORE / SYSTEM — the settings + utility overflow.
 
-Sub-tabs: SETTINGS / DOCTOR / ASSISTANT / MESH / SITREP. Backends reused AS-IS; every sub-feature
+Sub-tabs: SETTINGS / DOCTOR / ASSISTANT / SITREP (MESH: palisade_qt/mesh.py since 2026-11-18).
+Backends reused AS-IS; every sub-feature
 shows an honest standby when its backend (network / LLM / Meshtastic node / TTS) is absent.
 
   * SETTINGS — operator identity (opprofile), HOME position, theme, event-bus retention, lease
     override note. Persisted through the suite settings function when available.
   * DOCTOR  — doctor.run_all() health checks with honest pass / fail / info (network checks are
     skipped offscreen so tests never hit the network).
-  * ASSISTANT — answers from the live event-bus context (contacts / alerts / decodes). A full LLM
-    reply needs a reachable Ollama host (assistant.pick_host); with none it says so honestly.
-  * MESH — Meshtastic node list + message log. Demo uses mesh_dash.FakeIface; no node -> standby.
+  * ASSISTANT — free-form questions to a LOCAL model (Ollama on this device, owner 2026-11-18) with
+    the live picture as context; with no model it says why and still answers alerts / map /
+    decodes from the bus.
   * SITREP — a plain-language situation report from the current bus state, with an optional spoken
     read-out (sitrep.speak); no TTS -> the text stands on its own.
 """
@@ -30,7 +31,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-SUBTABS = ("SETTINGS", "DOCTOR", "ASSISTANT", "MESH", "SITREP")
+SUBTABS = ("SETTINGS", "DOCTOR", "ASSISTANT", "SITREP")       # MESH: palisade_qt/mesh.py
 DECODE_WINDOW_S = 600                 # decodes "recent" = the last 10 minutes (H17)
 
 
@@ -87,48 +88,186 @@ class DoctorWorker(Worker):
         return ok, detail
 
 
-def _demo_mesh():
-    """Static demo nodes + messages mirroring mesh_dash.FakeIface's data shape (its live chatter
-    uses an unstoppable daemon thread, unsuitable for a Qt worker — so we use the shape, not it)."""
-    now = time.time()
+# ======================= ASSISTANT: a local model =======================
 
-    def mk(sid, short, long_, snr, batt, heard):
-        return {"user": {"id": sid, "shortName": short, "longName": long_},
-                "snr": snr, "deviceMetrics": {"batteryLevel": batt}, "lastHeard": now - heard}
-    nodes = {
-        "!00000001": mk("!00000001", "DLTN", "uConsole (me)", None, 82, 0),
-        "!a1b2c3d4": mk("!a1b2c3d4", "KAPA", "Centennial Roof", 6.25, 100, 40),
-        "!b2c3d4e5": mk("!b2c3d4e5", "GLDN", "Golden Ridge Rptr", -4.5, 64, 300),
-        "!c3d4e5f6": mk("!c3d4e5f6", "BIKE", "Trail bike node", 2.0, 31, 1500),
-    }
-    msgs = [{"fromId": "!a1b2c3d4", "decoded": {"text": "Anyone on the south mesh tonight?"}},
-            {"fromId": "!b2c3d4e5", "decoded": {"text": "Copy, solid signal from Centennial"}}]
-    return nodes, msgs
+INSTALL_HINT = ("Install it once (needs internet): curl -fsSL https://ollama.com/install.sh | sh  "
+                "then: ollama pull llama3.2:3b")
 
 
-class MeshWorker(Worker):
-    """Meshtastic node list + messages. Demo -> a static mirror of mesh_dash.FakeIface's data; live
-    needs a real node (device-only) -> honest standby. Receive-only here (send is a separate action)."""
+def local_hosts(s):
+    """Only Ollama servers on THIS device (owner 2026-11-18: "just use a local model"). A remote
+    host in assistant.json is ignored here, so no question or live context leaves the device."""
+    import assistant
+    return [h for h in (s or {}).get("hosts", []) if assistant.is_local(h.get("url", ""))]
 
-    def __init__(self, demo=False, parent=None):
-        super().__init__(demo=demo, interval_ms=2000, parent=parent)
-        self._iface = None
-        self._emitted = False
+
+class AskWorker(Worker):
+    """Free-form questions to a local model (Ollama on 127.0.0.1), streamed back token by token.
+    Owner 2026-11-18. Reuses the assistant.py backend (host pick, model choice, CPU-thread cap,
+    power warning, system prompt). Off the GUI thread; loopback only, so NET OFFLINE allows it.
+
+    Rows: {"kind": "model", "text"} | {"kind": "meta", "text"} | {"kind": "tok", "text"} |
+    {"kind": "done", "text"} | {"kind": "no_model", "text", "q"} | {"kind": "error", "text"}."""
+
+    PAUSE_WHEN_HIDDEN = False        # an answer keeps streaming while another page is open
+    HISTORY = 8                      # turns of chat history sent back to the model
+
+    def __init__(self, demo=False, parent=None, settings=None, power=None):
+        super().__init__(demo=demo, interval_ms=250, parent=parent)
+        import queue
+        self._q = queue.Queue()
+        self._settings = settings
+        self._power = power
+        self._history = []
+        self._cancel = False
+
+    def ask(self, question, context=""):
+        self._cancel = False
+        self._q.put((question, context))
+        self.poke()
+
+    def cancel(self):
+        self._cancel = True
+        self.poke()
+
+    def _s(self):
+        import assistant
+        if self._settings is not None:
+            return self._settings
+        try:
+            import suite as S
+            return S.settings("assistant", assistant.DEFAULTS)[0]
+        except Exception:
+            return dict(assistant.DEFAULTS)
+
+    def find_model(self, s):
+        """(url, model) of a reachable local Ollama with a chat model, or (None, reason)."""
+        import assistant
+        hosts = local_hosts(s)
+        if not hosts:
+            return None, "NO LOCAL MODEL — no Ollama server on this device is configured. " + \
+                INSTALL_HINT
+        reason = "NO LOCAL MODEL — Ollama is not running on this device. " + INSTALL_HINT
+        for h in hosts:
+            url = h["url"].rstrip("/")
+            try:
+                tags = assistant.http_json(url + "/api/tags", timeout=1.5)
+            except Exception:
+                continue
+            models = [m["name"] for m in tags.get("models", [])]
+            if not models:
+                reason = ("NO LOCAL MODEL — Ollama is running but has no model. Run once: "
+                          "ollama pull %s" % (h.get("model") or "llama3.2:3b"))
+                continue
+            return (url, assistant.best_model(models, h.get("model") or "")), ""
+        return None, reason
 
     def step(self):
-        if not self.demo:
-            self.status.emit({"standby": True,
-                              "sdr": {"text": "MESH NOT IMPLEMENTED — the Meshtastic link is not wired"
-                                              " into this screen", "ok": False}})
-            self._stop = True                   # live + no device: standby once, nothing to poll
+        import queue
+        try:
+            q, ctx = self._q.get_nowait()
+        except queue.Empty:
             return
-        if self._emitted:
+        try:
+            self._answer(q, ctx)
+        except Exception as e:                   # the page's ASK must never stay greyed
+            self.row.emit({"kind": "error", "text": "assistant failed: %s"
+                           % " ".join(str(e).split())[:160]})
+
+    def _answer(self, q, ctx):
+        if self.demo:
+            self.row.emit({"kind": "model", "text": "DEMO — no model is asked in demo mode"})
+            self.row.emit({"kind": "no_model", "q": q,
+                           "text": "DEMO — in live mode this goes to the local model."})
             return
-        self._emitted = True
-        nodes, msgs = _demo_mesh()
-        self.row.emit({"kind": "nodes", "nodes": nodes})
-        for m in msgs:
-            self.row.emit({"kind": "msg", "msg": m})
+        import assistant
+        s = self._s()
+        found, why = self.find_model(s)
+        if found is None:
+            self.row.emit({"kind": "model", "text": why})
+            self.row.emit({"kind": "no_model", "q": q, "text": why})
+            return
+        url, model = found
+        self.row.emit({"kind": "model", "text": "LOCAL MODEL · %s on this device" % model})
+        try:
+            p = self._power() if self._power else None
+            if p is None:
+                import suite as S
+                p = S.power_status()
+            warn = assistant.power_warning(p, True)
+        except Exception:
+            warn = ""
+        if warn:
+            self.row.emit({"kind": "meta", "text": warn})
+        self._history.append({"role": "user", "content": q})
+        msgs = [{"role": "system", "content": assistant.system_prompt(
+            dict(s, system=CHAT_SYSTEM), ctx)}] + self._history[-self.HISTORY:]
+        self._stream(s, url, model, msgs)
+
+    def _stream(self, s, url, model, msgs):
+        import json
+        import urllib.request
+        import assistant
+        import netpolicy
+        req = urllib.request.Request(url + "/api/chat", data=json.dumps(
+            assistant.chat_body(s, url, model, msgs)).encode(),
+            headers={"Content-Type": "application/json"})
+        full = ""
+        try:
+            with netpolicy.urlopen(req, timeout=180, purpose="assistant (local model)") as r:
+                for line in r:
+                    if self.stopping or self._cancel:
+                        full += " [stopped]"
+                        break
+                    try:
+                        m = json.loads(line)
+                    except ValueError:
+                        continue
+                    tok = (m.get("message") or {}).get("content", "")
+                    if tok:
+                        full += tok
+                        self.row.emit({"kind": "tok", "text": tok})
+                    if m.get("done"):
+                        break
+        except Exception as e:
+            self._history.pop()                  # the question was never answered
+            self.row.emit({"kind": "error", "text": "local model failed: %s"
+                           % " ".join(str(e).split())[:160]})
+            return
+        self._history.append({"role": "assistant", "content": full})
+        self.row.emit({"kind": "done", "text": full})
+
+
+# the on-screen assistant answers in text (the Tk push-to-talk one reads aloud)
+CHAT_SYSTEM = ("You are the assistant inside PALISADE, an SDR and field-signals suite on a handheld "
+               "Linux computer (ClockworkPi uConsole). Answer briefly and plainly; use short lists "
+               "only when they help. If you are unsure, say so. Never invent readings: only the "
+               "live status below is real.")
+
+
+def live_summary(alerts, contacts, decodes, home_set, net_mode):
+    """The live picture the local model may use, in plain sentences: counts and open alert texts,
+    nothing else (no engagement scope or targets)."""
+    out = []
+    kinds = {}
+    for c in contacts:
+        k = c["payload"].get("kind", "?")
+        kinds[k] = kinds.get(k, 0) + 1
+    out.append("Contacts on the map: %s." % (", ".join("%d %s" % (n, k) for k, n in
+                                                        sorted(kinds.items())) or "none"))
+    if alerts:
+        out.append("Unacknowledged alerts: %s." % "; ".join(a["text"] for a in alerts[:5]))
+    else:
+        out.append("No unacknowledged alerts.")
+    srcs = {}
+    for d in decodes:
+        srcs[d["source"]] = srcs.get(d["source"], 0) + 1
+    out.append("Decodes in the last %d minutes: %s." % (
+        DECODE_WINDOW_S // 60, ", ".join("%d from %s" % (n, k) for k, n in sorted(srcs.items()))
+        or "none"))
+    out.append("HOME position is %s." % ("set" if home_set else "not set"))
+    out.append("Network mode: %s." % net_mode)
+    return " ".join(out)
 
 
 # ======================= the app =======================
@@ -156,7 +295,7 @@ class MoreApp(PalisadeApp):
 
     def primary_action(self):
         actions = {"SETTINGS": self._save_settings, "DOCTOR": self._run_doctor,
-                   "ASSISTANT": self._ask, "MESH": self._mesh_send, "SITREP": self._gen_sitrep}
+                   "ASSISTANT": self._ask, "SITREP": self._gen_sitrep}
         actions[self._subtab]()
         return True
 
@@ -171,7 +310,7 @@ class MoreApp(PalisadeApp):
         lay.setSpacing(10)
         self.stack = QtWidgets.QStackedWidget()
         self._pages = {"SETTINGS": self._settings_page(), "DOCTOR": self._doctor_page(),
-                       "ASSISTANT": self._assistant_page(), "MESH": self._mesh_page(),
+                       "ASSISTANT": self._assistant_page(),
                        "SITREP": self._sitrep_page()}
         for t in SUBTABS:
             self.stack.addWidget(self._pages[t])
@@ -560,29 +699,97 @@ class MoreApp(PalisadeApp):
         pl = QtWidgets.QVBoxLayout(page)
         pl.setContentsMargins(0, 0, 0, 0)
         pl.setSpacing(10)
+        # owner 2026-11-18: "just use a local model" — free-form questions go to Ollama on this
+        # device; nothing leaves it. The line says which model answers, or why none can.
+        self.asst_model = QtWidgets.QLabel("LOCAL MODEL · checking on the first question")
+        self.asst_model.setProperty("class", "note")
+        self.asst_model.setWordWrap(True)
+        self.asst_model.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        pl.addWidget(self.asst_model)
         self.asst_log = QtWidgets.QPlainTextEdit()
         self.asst_log.setReadOnly(True)
-        self.asst_log.setPlainText("Ask about the live picture: 'what's on the map?', 'any alerts?',"
-                                   " 'recent decodes?'. Free-form questions: NOT IMPLEMENTED here.")
+        self.asst_log.setPlainText(
+            "Ask anything. Answers come from a model running on this uConsole (Ollama), and it "
+            "knows the live picture: contacts, open alerts, recent decodes. Nothing you ask "
+            "leaves the device.")
         pl.addWidget(self.asst_log, 1)
         row = QtWidgets.QHBoxLayout()
         self.asst_input = QtWidgets.QLineEdit()
         self.asst_input.setPlaceholderText("ask…")
         self.asst_input.returnPressed.connect(self._ask)
         row.addWidget(self.asst_input, 1)
-        ask = QtWidgets.QPushButton("ASK")
-        ask.clicked.connect(self._ask)
-        row.addWidget(ask)
+        self.asst_ask = QtWidgets.QPushButton("ASK")
+        self.asst_ask.clicked.connect(self._ask)
+        row.addWidget(self.asst_ask)
+        self.asst_stop = QtWidgets.QPushButton("STOP")
+        self.asst_stop.setToolTip("stop the answer being written")
+        self.asst_stop.setEnabled(False)
+        self.asst_stop.clicked.connect(self._stop_answer)
+        row.addWidget(self.asst_stop)
         pl.addLayout(row)
+        self._asking = False
         return page
 
     def _ask(self):
         q = self.asst_input.text().strip()
-        if not q:
+        if not q or self._asking:
             return
         self.asst_input.clear()
         self.asst_log.appendPlainText("\n> %s" % q)
-        self.asst_log.appendPlainText(self._answer(q))
+        w = getattr(self, "_askw", None)
+        if w is None:                         # a page that never started (tests): built-ins only
+            self.asst_log.appendPlainText(self._answer(q) or "NO LOCAL MODEL — page not started")
+            return
+        self._asking = True
+        self.asst_ask.setEnabled(False)
+        self.asst_stop.setEnabled(True)
+        self._asst_started = False
+        w.ask(q, self._live_context())
+
+    def _stop_answer(self):
+        w = getattr(self, "_askw", None)
+        if w is not None:
+            w.cancel()
+
+    def _live_context(self):
+        import netpolicy
+        return live_summary([a for a in panels.alert_store().items if not a["acked"]],
+                            eventbus.bus.contacts(), self._recent_decodes(), eventbus.home_set(),
+                            netpolicy.mode())
+
+    def _on_ask(self, r):
+        k = r["kind"]
+        if k == "model":
+            self.asst_model.setText(r["text"])
+            warn = r["text"].startswith("NO LOCAL MODEL")
+            self.asst_model.setStyleSheet("color:%s;" % (self._tok["warn"] if warn
+                                                         else self._tok["muted"]))
+        elif k == "meta":
+            self.asst_log.appendPlainText("(%s)" % r["text"])
+        elif k == "tok":
+            if not self._asst_started:
+                self._asst_started = True
+                self.asst_log.appendPlainText("")
+            cur = self.asst_log.textCursor()
+            cur.movePosition(cur.MoveOperation.End)
+            cur.insertText(r["text"])
+            self.asst_log.setTextCursor(cur)
+            self.asst_log.ensureCursorVisible()
+        elif k == "no_model":
+            # no model: the built-in answers still work for the live picture
+            built = self._answer(r["q"])
+            self.asst_log.appendPlainText(built if built else r["text"])
+            self._ask_done()
+        elif k == "error":
+            self.asst_log.appendPlainText(r["text"])
+            self._ask_done()
+        elif k == "done":
+            self._ask_done()
+
+    def _ask_done(self):
+        self._asking = False
+        self.asst_ask.setEnabled(True)
+        self.asst_stop.setEnabled(False)
 
     def _answer(self, q):
         """Answers from the live state only (H17/H18): contacts from the latest-state store,
@@ -614,9 +821,7 @@ class MoreApp(PalisadeApp):
             return ("%d decodes in the last %d min from %s" % (
                 len(decodes), DECODE_WINDOW_S // 60, ", ".join(srcs))) if decodes \
                 else "No decodes in the last %d min." % (DECODE_WINDOW_S // 60) + self._feed_note()
-        return ("NOT IMPLEMENTED — free-form questions are not wired into this screen. I answer "
-                "from the live state only: try 'any alerts?', 'what's on the map?', or "
-                "'recent decodes?'.")
+        return None              # free-form: the local model answers (AskWorker), not this
 
     @staticmethod
     def _recent_decodes():
@@ -628,44 +833,6 @@ class MoreApp(PalisadeApp):
     def _feed_note():
         return "" if eventbus.bus.feeds() else \
             " No feed is running, so nothing is being watched."
-
-    # ---- MESH ----
-    def _mesh_page(self):
-        page = QtWidgets.QWidget()
-        pl = QtWidgets.QVBoxLayout(page)
-        pl.setContentsMargins(0, 0, 0, 0)
-        pl.setSpacing(10)
-        split = QtWidgets.QHBoxLayout()
-        split.setSpacing(10)
-        left = QtWidgets.QVBoxLayout()
-        left.addWidget(micro("MESH NODES"))
-        self.mesh_nodes = FeedTable([("short", "NODE"), ("long", "NAME"),
-                                     ("snr", "SNR"), ("batt", "BATT")])
-        left.addWidget(self.mesh_nodes, 1)
-        split.addLayout(left, 2)
-        right = QtWidgets.QVBoxLayout()
-        right.addWidget(micro("MESSAGES"))
-        self.mesh_log = QtWidgets.QPlainTextEdit()
-        self.mesh_log.setReadOnly(True)
-        right.addWidget(self.mesh_log, 1)
-        srow = QtWidgets.QHBoxLayout()
-        self.mesh_input = QtWidgets.QLineEdit()
-        self.mesh_input.setPlaceholderText("send to the mesh…")
-        self.mesh_input.returnPressed.connect(self._mesh_send)
-        srow.addWidget(self.mesh_input, 1)
-        right.addLayout(srow)
-        split.addLayout(right, 3)
-        pl.addLayout(split, 1)
-        return page
-
-    def _mesh_send(self):
-        text = self.mesh_input.text().strip()
-        if not text:
-            return
-        # live would hand this to the Meshtastic iface; in demo/no-node it is a local echo only
-        tail = "" if self.demo else " (NOT IMPLEMENTED — not transmitted)"
-        self.mesh_log.appendPlainText("→ (me) %s%s" % (text, tail))
-        self.mesh_input.clear()
 
     # ---- SITREP ----
     def _sitrep_page(self):
@@ -746,12 +913,11 @@ class MoreApp(PalisadeApp):
             return
         super().start()
         self._workers = []
-        if "MESH" in self.SUBTABS:          # only the MESH page runs the mesh worker
-            self._meshw = MeshWorker(demo=self.demo)
-            self._meshw.row.connect(self._on_mesh)
-            self._meshw.status.connect(self.on_status)
-            self._meshw.start()
-            self._workers.append(self._meshw)
+        if "ASSISTANT" in self.SUBTABS:     # only the ASSISTANT page runs the model worker
+            self._askw = AskWorker(demo=self.demo)
+            self._askw.row.connect(self._on_ask)
+            self._askw.start()
+            self._workers.append(self._askw)
 
     def stop(self):
         if self._stopped:
@@ -771,34 +937,8 @@ class MoreApp(PalisadeApp):
         self._workers = []
         super().stop()
 
-    def on_status(self, status):
-        super().on_status(status)
-        if status.get("standby"):
-            self.mesh_log.setPlainText(status.get("sdr", {}).get("text", "NO NODE"))
-
-    def _on_mesh(self, msg):
-        if msg["kind"] == "nodes":
-            rows = []
-            for n in msg["nodes"].values():
-                u = n.get("user", {})
-                dm = n.get("deviceMetrics", {})
-                rows.append({"short": u.get("shortName", "?"), "long": u.get("longName", ""),
-                             "snr": "%.1f" % n["snr"] if n.get("snr") is not None else "—",
-                             "batt": "%d%%" % dm.get("batteryLevel", 0)})
-            self.mesh_nodes.model.set_rows(rows)
-        elif msg["kind"] == "msg":
-            m = msg["msg"]
-            txt = m.get("decoded", {}).get("text", "")
-            self.mesh_log.appendPlainText("%s: %s" % (m.get("fromId", "?"), txt))
-
 
 class AssistantApp(MoreApp):
     """ASSISTANT as its own page (owner 2026-11-17: "assistant should be own tab")."""
     TITLE = "ASSISTANT"
     SUBTABS = ("ASSISTANT",)
-
-
-class MeshApp(MoreApp):
-    """MESH as its own page (owner 2026-11-17: "why is mesh buried in system settings")."""
-    TITLE = "MESH"
-    SUBTABS = ("MESH",)

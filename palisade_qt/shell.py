@@ -32,7 +32,8 @@ from .atlas import AtlasApp
 from .overwatch import OverwatchApp
 from .prowl import ProwlApp
 from .babel import BabelApp
-from .system import MoreApp, AssistantApp, MeshApp
+from .system import MoreApp, AssistantApp
+from .mesh import MeshApp          # MAP / NODES / CHAT / RADIO (owner 2026-11-18)
 from .bench_app import BenchApp
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
