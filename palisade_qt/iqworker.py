@@ -59,6 +59,7 @@ class IqWorker(Worker):
         self._fault = None
         self._last_data = None
         self._last_status = 0.0
+        self._fault_n = 0            # faults in a row without a good block: retry backs off
         radio_arbiter.arbiter.revoked.connect(self._on_revoked)
 
     # ---------------- GUI-thread entry points: flags + poke only
@@ -150,6 +151,12 @@ class IqWorker(Worker):
                 self._release(self._why)
             return False
         arb = radio_arbiter.arbiter
+        if not self._has_radio and self._fault is not None \
+                and time.monotonic() - self._fault[1] < self._retry_s():
+            # RA-RADIOb B2: faulted -> the radio stays free until the retry is due
+            self._status(("%s FAULT — %s" % (self.LABEL, self._fault[0]))[:90], "alert",
+                         fault=self._fault[0], live=False)
+            return False
         if not self._has_radio:
             if arb.request(self.NAME):
                 self._has_radio = True
@@ -172,10 +179,11 @@ class IqWorker(Worker):
         return True
 
     def _open(self):
-        if self._fault is not None and time.monotonic() - self._fault[1] < FAULT_RETRY_S:
+        if self._fault is not None and time.monotonic() - self._fault[1] < self._retry_s():
             self._status(("%s FAULT — %s" % (self.LABEL, self._fault[0]))[:90], "alert",
                          fault=self._fault[0], live=False)
             return False
+        src = None
         try:
             src = self._make_source()
             if src is None:
@@ -188,15 +196,23 @@ class IqWorker(Worker):
                     self.needs_radio() and not radio_arbiter.arbiter.held_by(self.NAME)))
             else:
                 src.open()
-        except iqsource.SourceError as e:
+        except Exception as e:                           # B3: FileNotFoundError, OSError, bugs
             if self._stop or not self._active:
                 return False                             # cancelled, not a fault
+            if not isinstance(e, iqsource.SourceError):
+                e = "%s: %s" % (type(e).__name__, e)
+            if src is not None:
+                try:
+                    src.close()                          # never leave a half-open rtl_tcp
+                except Exception:
+                    pass
+            self._fault_n += 1
             self._fault = (str(e)[:120], time.monotonic())
+            if self.needs_radio():
+                self._release()                          # radio back while faulted
             self.fault.emit("FAULT: %s %s" % (self.LABEL, e))
             self._status(("%s FAULT — %s" % (self.LABEL, e))[:90], "alert", fault=str(e),
                          live=False)
-            if self.needs_radio():
-                self._release()                          # radio back while faulted
             return False
         if self.needs_radio() and (self._stop or not self._active
                                    or not radio_arbiter.arbiter.held_by(self.NAME)):
@@ -208,7 +224,11 @@ class IqWorker(Worker):
         self.centre_hz = int(getattr(src, "centre_hz", self.centre_hz))
         self.rate = int(getattr(src, "rate", self.rate))
         self._last_data = time.monotonic()
-        self.on_source_opened(src)
+        try:
+            self.on_source_opened(src)
+        except Exception as e:
+            self._block_fault("internal error %s: %s" % (type(e).__name__, e))
+            return False
         return True
 
     def run(self):
@@ -220,25 +240,34 @@ class IqWorker(Worker):
                 if self._src is None and not self._open():
                     self.sleep(300)
                     continue
+                p = self._take_pending()
                 try:
-                    self._apply(self._take_pending())
+                    self._apply(p)
+                except Exception as e:
+                    # RA-RADIOb B7: a failed apply keeps the queued settings (newer queued values
+                    # win) so they are applied once the source is back
+                    self._requeue(p)
+                    self._block_fault(e if isinstance(e, (iqsource.SourceError, OSError))
+                                      else "internal error %s: %s" % (type(e).__name__, e))
+                    continue
+                try:
                     raw, iq = self._src.read(BLOCK_S)
-                except (iqsource.SourceError, OSError) as e:
-                    self._block_fault(e)
+                except Exception as e:
+                    self._block_fault(e if isinstance(e, (iqsource.SourceError, OSError))
+                                      else "internal error %s: %s" % (type(e).__name__, e))
                     continue
                 now = time.monotonic()
                 if iq.size == 0:
                     if self._src is not None and not self._src.alive():
-                        self._fault = ("source ended" if self.source_kind == "file"
-                                       else "radio stream stopped", now)
-                        self._close_source()
+                        self._block_fault("source ended" if self.source_kind == "file"
+                                          else "radio stream stopped")
                     elif now - (self._last_data or now) > NO_DATA_FAULT_S:
-                        self._fault = ("no samples for %ds" % int(now - self._last_data), now)
-                        self._close_source()
+                        self._block_fault("no samples for %ds" % int(now - self._last_data))
                     continue
                 self._last_data = now
                 try:
                     self.process_block(raw, iq)
+                    self._fault_n = 0
                 except (iqsource.SourceError, OSError) as e:
                     self._block_fault(e)
                 except Exception as e:                   # RA-RADIO N2: a bug must not kill the
@@ -255,16 +284,30 @@ class IqWorker(Worker):
             except (RuntimeError, TypeError):
                 pass
 
+    def _requeue(self, p):
+        """Put settings that could not be applied back in the queue; newer queued values win."""
+        with self._lock:
+            merged = dict(p)
+            merged.update(self._pending)
+            self._pending = merged
+
+    def _retry_s(self):
+        """RA-RADIOb B2: 5 s, then 10, 20, 40, at most 60 s between retries while the same
+        fault repeats, so a persistent fault does not keep taking the shared radio (and stopping
+        readsb) every few seconds. Any good block resets it."""
+        return min(60.0, FAULT_RETRY_S * 2 ** max(0, self._fault_n - 1))
+
     def _block_fault(self, e):
         """Any failure while running: FAULT status (buttons go red), source closed, radio given
         back, retried after FAULT_RETRY_S by _open()."""
         msg = str(e)[:120]
+        self._fault_n += 1
         self._fault = (msg, time.monotonic())
+        self._close_source()                             # B4: closed + released before anyone
+        if self.needs_radio():                           # is told about the fault
+            self._release()
         self.fault.emit("FAULT: %s %s" % (self.LABEL, msg))
         self._status(("%s FAULT — %s" % (self.LABEL, msg))[:90], "alert", fault=msg, live=False)
-        self._close_source()
-        if self.needs_radio():
-            self._release()
 
     # ---------------- subclass hooks
     def on_source_opened(self, src):

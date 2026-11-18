@@ -989,13 +989,18 @@ class PrismApp(PalisadeApp):
     def _running(self):
         w = self._worker
         return (w is not None and not self._user_stopped and not getattr(w, "held_off", False)
-                and not getattr(self, "_faulted", False))
+                and not getattr(self, "_faulted", False)
+                and not (w.isFinished() and not self.swapping()))   # B3: a dead thread is off
 
     def _set_running(self, on):
         w = self._worker
         self._user_stopped = not on
         if w is not None:
-            if on:
+            if on and w.isFinished() and self._active and not self.swapping():
+                self._faulted = False            # RA-RADIOb B3: START restarts a dead worker
+                self.swap_worker()
+                self.busy.hide()
+            elif on:
                 self._faulted = False
                 if hasattr(w, "set_active"):
                     w.set_active(self._active)

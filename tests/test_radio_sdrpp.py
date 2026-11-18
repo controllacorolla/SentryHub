@@ -1327,3 +1327,168 @@ def test_n11_prowl_hold_does_not_write_the_worker_flag_from_the_gui():
         assert p.hold_btn.text() == "SCAN" and _until(lambda: not w.hold, 2000)
     finally:
         p.stop()
+
+
+# ============================================================================ RA-RADIOb findings
+class _NoProc:
+    stdout = None
+
+    def poll(self):
+        return None
+
+    def terminate(self):
+        pass
+
+
+def _pair_source():
+    import socket
+    a, b = socket.socketpair()
+    b.sendall(b"RTL0" + struct.pack(">II", 5, 29))
+    s = iqsource.RtlTcpSource(121_500_000, FS, spawn=lambda av: _NoProc(), port=1,
+                              connect=lambda p: a).open()
+    return s, b
+
+
+@pytest.mark.parametrize("split", [100000, 100001, 100002, 100003])
+def test_b1_dropping_stale_iq_keeps_i_and_q_aligned(split):
+    """A retune can land mid-sample (TCP splits anywhere): the tone must stay on its side."""
+    s, b = _pair_source()
+    try:
+        n = np.arange(400_000)
+        z = 0.5 * np.exp(2j * np.pi * 200_000.0 * n / FS)
+        data = dsp.iq_to_cu8(z)
+        b.sendall(data[:split])                # (socketpair buffer: keep sends < ~200 KB)
+        time.sleep(0.1)
+        s.set_freq(122_000_000)                # -> drop_buffered()
+        b.sendall(data[split:split + 200_000])
+        time.sleep(0.1)
+        _raw, iq = s.read(0.05)
+        sp = np.fft.fftshift(np.abs(np.fft.fft(iq[:65536])))
+        fr = np.fft.fftshift(np.fft.fftfreq(65536, 1 / FS))
+        assert abs(fr[np.argmax(sp)] - 200_000) < 2000, "spectrum mirrored: I/Q swapped"
+    finally:
+        s.close()
+        b.close()
+
+
+def test_b2_a_repeating_fault_leaves_the_radio_free_and_backs_off(arb):
+    from palisade_qt.iqworker import TunerWorker
+    srv = FakeRtlTcp(signals=[(119.1, "AM", lambda t: True)])
+    opens = []
+
+    def factory(w):
+        opens.append(time.monotonic())
+        return iqsource.RtlTcpSource(w.centre_hz, w.rate, spawn=FakeProc, port=srv.port)
+    w = TunerWorker(source="rtl", centre_hz=119_000_000, mode="AM", source_factory=factory,
+                    audio=False)
+    w.process_block = lambda raw, iq: (_ for _ in ()).throw(ValueError("bug"))
+    held_idle = []
+    w.start()
+    try:
+        t_end = time.monotonic() + 9
+        while time.monotonic() < t_end:
+            _pump(50)
+            held_idle.append(arb.arbiter.held_by("PRISM") and w._src is None)
+        assert sum(held_idle) / len(held_idle) < 0.15, "radio kept while faulted"
+        assert len(opens) <= 2, "retry backs off (5 s, then 10 s)"
+        assert w._retry_s() >= 10
+    finally:
+        w.stop()
+        w.wait(4000)
+        srv.close()
+
+
+def test_b3_a_missing_iq_file_is_a_fault_and_start_restarts(arb, tmp_path):
+    from palisade_qt.iqworker import TunerWorker
+    missing = str(tmp_path / "iq_20261118-000000Z_121500000Hz_2048000sps.cu8")
+    w = TunerWorker(source="file", file_path=missing, audio=False)
+    st = []
+    w.status.connect(st.append)
+    w.start()
+    try:
+        assert _until(lambda: any("FileNotFoundError" in str(s.get("fault")) for s in st), 3000)
+        assert w.isRunning(), "the thread survives an open error"
+    finally:
+        w.stop()
+        w.wait(3000)
+    # PRISM: a finished worker reads red, and START makes a new one
+    p = _prism()
+    try:
+        p.start()
+        p.set_active(True)
+        _pump(200)
+        old = p._worker
+        old.stop()
+        old.wait(3000)
+        p._sync_run_btn()
+        assert p.run_btn.property("run") == "off"
+        p.run_btn.click()
+        assert _until(lambda: p._worker is not None and p._worker is not old
+                      and p._worker.isRunning(), 3000)
+        assert _until(lambda: p.run_btn.property("run") == "on", 2000)
+    finally:
+        p.stop()
+
+
+def test_b3_prowl_enter_restarts_a_finished_fast_scanner():
+    p = _prowl(demo=False, engine="fast")
+    try:
+        p.start()
+        p.set_active(True)
+        _pump(200)
+        old = p._worker
+        old.stop()
+        old.wait(3000)
+        assert p.primary_action()
+        assert _until(lambda: p._worker is not None and p._worker is not old, 3000)
+    finally:
+        p.stop()
+
+
+def test_b5_rtl_tcp_closing_during_the_header_is_an_error_not_a_spin():
+    import socket
+    a, b = socket.socketpair()
+    b.sendall(b"RTL0")
+    b.close()
+    t = time.monotonic()
+    with pytest.raises(iqsource.SourceError):
+        iqsource.RtlTcpSource(121_500_000, FS, spawn=lambda av: _NoProc(), port=1,
+                              connect=lambda p: a).open()
+    assert time.monotonic() - t < 0.5
+
+
+def test_b6_the_output_drain_survives_undecodable_bytes(tmp_path):
+    import subprocess
+    from palisade_qt.kit.procs import Pipeline
+    script = tmp_path / "noisy.py"
+    script.write_text("import sys,time\n"
+                      "sys.stdout.buffer.write(b'\\xff\\xfe bad\\n' * 50); sys.stdout.flush()\n"
+                      "for i in range(3000): print('set freq %d' % i, flush=True)\n"
+                      "print('END', flush=True)\n")
+    s = iqsource.RtlTcpSource(121_500_000, FS)
+    s.proc = Pipeline([[sys.executable, str(script)]], stderr_last=subprocess.STDOUT,
+                      text=False, bufsize=0)
+    s._read_err()                                       # drains to EOF (the thread's body)
+    assert s.err_tail[-1] == "END"
+    s.proc.terminate()
+
+
+def test_b7_settings_queued_when_the_source_fails_are_kept_for_the_reopen():
+    from palisade_qt.iqworker import FastScanWorker
+    b = banks.BANKS["NOAA Wx"]
+    noaa = [(f, lb, b["mode"], b["bw"]) for f, lb in banks.expand(b)]
+    w = FastScanWorker(demo=True, channels=AIR[:10])
+
+    class Dead:
+        def set_gain(self, g):
+            raise iqsource.SourceError("rtl_tcp control socket: broken pipe")
+    w._src = Dead()
+    w.queue(gain_db=20.0, channels=noaa)
+    p = w._take_pending()
+    with pytest.raises(iqsource.SourceError):
+        w._apply(p)
+    w.queue(squelch_db=7.0)                    # queued meanwhile: kept too
+    w._requeue(p)                              # what run() does on a failed apply
+    w._src = None
+    w._apply(w._take_pending())
+    assert [c[0] for c in w.channels] == [c[0] for c in noaa] and w.squelch_db == 7.0

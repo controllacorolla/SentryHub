@@ -101,3 +101,18 @@ dongle: FM band sweep, 5 s of the strongest station on the speaker + WAV, timed 
 | N10 Low | pass-time claim corrected to ~3 s | this report | — |
 | N11 Low | lockout ends the listen only if it names the channel being heard; PROWL keeps its own HOLD flag, worker's written only on its thread | iqworker.py `_apply`, prowl.py `_toggle_hold`, `_held` | test_n11_* |
 | device risk | after every retune, IQ already buffered in the socket (old frequency) is dropped before the settle count starts | iqsource.py `drop_buffered` | covered by the live backcheck; confirm on the uConsole with device_check_radio.py |
+
+## RA-RADIOb fixes (re-audit verdict DO NOT MERGE: B1 High, N2 partial)
+
+| ID | Fix | Where | Regression test |
+|---|---|---|---|
+| B1 High | `drop_buffered` keeps I/Q byte pairs aligned (carry + dropped bytes parity) | iqsource.py `drop_buffered` | test_b1_dropping_stale_iq_keeps_i_and_q_aligned[4 splits] (fails on the old code: 2 of 4) |
+| B2 Med | while faulted the radio is not re-requested until the retry is due; retry backs off 5, 10, 20, 40, 60 s, reset by any good block; no-data / stream-ended faults also release | iqworker.py `_ensure_radio`, `_retry_s`, `run` | test_b2_a_repeating_fault_leaves_the_radio_free_and_backs_off |
+| B3 / N2 | any exception opening the source, in `on_source_opened`, applying settings or reading is a FAULT (thread lives); PRISM shows a finished worker red and START builds a new one; PROWL Enter restarts a finished FAST scanner | iqworker.py `_open`, `run`; prism.py `_running`, `_set_running`; prowl.py `_resume_radio` | test_b3_a_missing_iq_file…, test_b3_prowl_enter_restarts… |
+| B4 Low | source closed and radio released before the FAULT is announced | iqworker.py `_block_fault`, `_open` | test_n2_worker_survives… (was flaky) |
+| B5 Low | peer closing during the header is a SourceError, no spin | iqsource.py `_recv_exact` | test_b5_… |
+| B6 Low | rtl_tcp output drained in bytes mode, decoded with replace | iqsource.py `open` | test_b6_… |
+| B7 Low | settings that failed to apply are re-queued (newer values win) | iqworker.py `_requeue` | test_b7_… |
+
+After the RA-RADIOb fixes: full suite 1887 passed, 17 skipped, 3 failed (the container baseline:
+test_audit_tiles, test_hwlab doctor, test_sstvdec). pyflakes clean.

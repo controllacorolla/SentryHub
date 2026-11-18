@@ -114,7 +114,7 @@ class RtlTcpSource:
             # RA-RADIO N1: rtl_tcp prints a line on EVERY retune. stdout+stderr go to one pipe
             # that a thread always drains; an unread pipe fills (~64 KB) and rtl_tcp then blocks
             # on the write and stops applying retunes while IQ keeps flowing.
-            self.proc = Pipeline([argv], stderr_last=subprocess.STDOUT)
+            self.proc = Pipeline([argv], stderr_last=subprocess.STDOUT, text=False, bufsize=0)
         if getattr(self.proc, "stdout", None) is not None:
             threading.Thread(target=self._read_err, daemon=True).start()
         deadline = time.monotonic() + self.CONNECT_TIMEOUT_S
@@ -187,7 +187,7 @@ class RtlTcpSource:
             except socket.timeout:
                 break
             if not d:
-                break
+                raise SourceError("rtl_tcp closed the connection")   # B5: never spin
             out += d
         return out
 
@@ -210,6 +210,7 @@ class RtlTcpSource:
         if s is None:
             return 0
         n = 0
+        last = b""
         try:
             s.setblocking(False)
             while n < (8 << 20):
@@ -217,6 +218,7 @@ class RtlTcpSource:
                 if not d:
                     break
                 n += len(d)
+                last = d
         except (BlockingIOError, InterruptedError):
             pass
         except OSError as e:
@@ -226,7 +228,12 @@ class RtlTcpSource:
                 s.settimeout(0.5)
             except OSError:
                 pass
-        self._carry = b""
+        # RA-RADIOb B1: keep I/Q byte pairs aligned. The carry byte plus everything dropped is
+        # the stream consumed so far; if that is odd, the last dropped byte starts a pair.
+        if (len(self._carry) + n) % 2:
+            self._carry = last[-1:] if n else self._carry
+        else:
+            self._carry = b""
         return n
 
     def set_rate(self, rate):
