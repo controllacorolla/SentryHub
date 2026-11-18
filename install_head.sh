@@ -74,11 +74,14 @@ done
 # fatal. Source-build / pip / go tools are NOT auto-built here (see the "[2c]" notes below).
 # Verified against Debian trixie arm64 (2026-11-17). See FEATURE_MAP.md "Tool scope" for the matrix.
 echo "[1b/8] Pentest + SIGINT tools (optional, engagement-gated)"
-# tshark is intentionally omitted: its package asks a debconf question (wireshark-group) that an
-# unattended install cannot answer; tcpdump covers pcap capture. nikto lives in non-free and is
-# skipped automatically if that component is not enabled.
+# nikto lives in non-free and is skipped automatically if that component is not enabled.
+# tshark is installed non-interactively by preseeding wireshark-common: install-setuid=true lets the
+# package give /usr/bin/dumpcap the capture capabilities (restricted to the 'wireshark' group), so
+# tshark captures without full root. We add you to that group below (owner-authorized capabilities,
+# 2026-11-18). tcpdump still covers pcap on its own.
+echo "wireshark-common wireshark-common/install-setuid boolean true" | sudo debconf-set-selections 2>/dev/null || true
 for pkg in \
-  arp-scan tcpdump nbtscan netdiscover masscan smbmap python3-impacket hydra bettercap \
+  arp-scan tcpdump tshark nbtscan netdiscover masscan smbmap python3-impacket hydra bettercap \
   sqlmap whatweb gobuster ffuf nikto testssl.sh \
   aircrack-ng hcxdumptool hcxtools \
   gqrx-sdr inspectrum rtl-433 dsdcc \
@@ -88,10 +91,94 @@ for pkg in \
   rc=0; safe_apt "$pkg" >/dev/null 2>&1 || rc=$?
   case $rc in 0) echo "      ok  $pkg";; 2) echo "      --  $pkg (not in your apt sources - optional)";; *) echo "      --  $pkg (skipped)";; esac
 done
-echo "[2c/8] Tools that are NOT in Debian apt (install by hand if your engagement needs them):"
-echo "      pip  : mitmproxy · netexec · enum4linux-ng · urh · btlejack · bluing"
+
+# --- [1c] Privileges for the passive capture / discovery tools + Responder (owner decision
+# 2026-11-18, "Capabilities + Responder rule"). These are the ONLY privileged changes PALISADE
+# makes, each narrow and named: file capabilities on specific capture binaries, one 'wireshark'
+# group add, and a single NOPASSWD sudoers rule for exactly the Responder launcher. No firewall,
+# kernel, SSH or full-system change. Every one is best-effort and skipped cleanly if it can't run.
+echo "[1c/8] Capture/discovery capabilities + Responder launcher (owner-authorized)"
+if command -v setcap >/dev/null 2>&1; then
+  for b in tcpdump arp-scan netdiscover; do
+    p="$(command -v "$b" 2>/dev/null || true)"
+    if [ -n "$p" ]; then
+      if sudo setcap cap_net_raw,cap_net_admin+eip "$p" 2>/dev/null; then
+        echo "      ok  cap_net_raw on $b ($p) — runs from PALISADE without sudo"
+      else
+        echo "      --  could not set caps on $b — it will say 'requires root' until you do"
+      fi
+    fi
+  done
+else
+  echo "      --  setcap not present (install libcap2-bin) — capture tools will need root"
+fi
+# add you to the 'wireshark' group so dumpcap/tshark may capture (takes effect after re-login)
+if getent group wireshark >/dev/null 2>&1; then
+  sudo usermod -aG wireshark "$USER" 2>/dev/null \
+    && echo "      ok  added $USER to the 'wireshark' group (re-login to take effect)" \
+    || echo "      --  could not add $USER to 'wireshark' (tshark capture may need root)"
+fi
+# Responder: clone it (source-only) and install a bare 'responder' launcher on PATH that escalates
+# ONLY itself via a dedicated NOPASSWD sudoers rule, so the engagement gate still sees a plain
+# program name (it refuses 'sudo ...' as argv[0]). Analyze mode is passive; poisoning is gated.
+TOOLS="$HOME/.local/share/uconsole-suite/tools"
+RESP_DIR="$TOOLS/Responder"
+RESP_PY="$RESP_DIR/Responder.py"
+if command -v git >/dev/null 2>&1; then
+  mkdir -p "$TOOLS"
+  if [ ! -f "$RESP_PY" ]; then
+    git clone --depth 1 https://github.com/lgandx/Responder "$RESP_DIR" >/dev/null 2>&1 \
+      && echo "      ok  cloned Responder to $RESP_DIR" \
+      || echo "      --  could not clone Responder (no network?) — RESPONDER stays unavailable"
+  else
+    echo "      ok  Responder already present in $RESP_DIR"
+  fi
+fi
+PY3="$(command -v python3 || echo /usr/bin/python3)"
+if [ -f "$RESP_PY" ]; then
+  mkdir -p "$HOME/.local/bin"
+  cat > "$HOME/.local/bin/responder" <<SHIM
+#!/bin/sh
+# PALISADE Responder launcher: escalates only this script via the dedicated NOPASSWD sudoers rule.
+exec sudo -n "$PY3" "$RESP_PY" "\$@"
+SHIM
+  chmod +x "$HOME/.local/bin/responder"
+  echo "      ok  installed 'responder' launcher ($HOME/.local/bin/responder)"
+  case ":$PATH:" in *":$HOME/.local/bin:"*) : ;; *)
+    echo "      note: add \$HOME/.local/bin to PATH so PALISADE can find 'responder'";; esac
+  # the single NOPASSWD rule, validated before it is installed (never write a broken sudoers file)
+  RULE="$USER ALL=(root) NOPASSWD: $PY3 $RESP_PY *"
+  TMP_SUDO="$(mktemp)"
+  printf '%s\n' "$RULE" > "$TMP_SUDO"
+  if sudo visudo -cf "$TMP_SUDO" >/dev/null 2>&1; then
+    sudo install -m 0440 "$TMP_SUDO" /etc/sudoers.d/palisade-responder 2>/dev/null \
+      && echo "      ok  sudoers rule for the Responder launcher (/etc/sudoers.d/palisade-responder)" \
+      || echo "      --  could not install the Responder sudoers rule — run Responder as root yourself"
+  else
+    echo "      --  Responder sudoers rule failed validation — not installed"
+  fi
+  rm -f "$TMP_SUDO"
+fi
+# --------------------------------------------------------------------------------------------------
+echo "[2c/8] Non-apt enumeration tools (best-effort; your engagement tools, engagement-gated)"
+# The internal-pentest workhorses the coordinator asked to wire now: netexec + enum4linux-ng (pip)
+# and nuclei (go). Best-effort and non-fatal — a failure just leaves that tool 'not installed' in
+# the UI. The rest below stay as notes (install by hand if an engagement needs them).
+for pp in netexec enum4linux-ng; do
+  python3 -m pip install --user --break-system-packages --quiet "$pp" >/dev/null 2>&1 \
+    && echo "      ok  $pp (pip)" || echo "      --  $pp (pip failed — install by hand if needed)"
+done
+if command -v go >/dev/null 2>&1; then
+  GOBIN="$HOME/go/bin" go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest >/dev/null 2>&1 \
+    && echo "      ok  nuclei (go; in ~/go/bin — add it to PATH)" \
+    || echo "      --  nuclei (go install failed)"
+else
+  echo "      --  nuclei needs Go (apt install golang) — skipped"
+fi
+echo "      more by hand if needed:"
+echo "      pip  : mitmproxy · urh · btlejack · bluing"
 echo "             (python3 -m pip install --user --break-system-packages <name>)"
-echo "      go   : rtlamr (github.com/bemasher/rtlamr) · nuclei (github.com/projectdiscovery/nuclei/v3)"
+echo "      go   : rtlamr (github.com/bemasher/rtlamr)"
 echo "      cargo: feroxbuster  (or grab the arm64 GitHub release binary)"
 echo "      apt repo: kismet — add the official repo at kismetwireless.net/repos (trixie arm64)"
 echo "      source : Responder (github.com/lgandx/Responder) · OP25 (github.com/boatbod/op25) ·"

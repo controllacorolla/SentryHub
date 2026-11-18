@@ -393,14 +393,14 @@ def test_g5_pmkid_command_carries_the_bssid_filter_poc():
 
 def test_g5_deauth_requires_and_scope_checks_the_client_poc():
     import wifipent
-    E.start("job", "ROE-1", ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"], OP)
+    E.start("job", "ROE-1", ["AA:BB:CC:DD:EE:FF", "12:22:33:44:55:66"], OP)
     G.arm(True)                      # CL2-fix N2: an RF emitter also needs the kill switch armed
     ok, why, t = wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF")
     assert not ok and t is None and "client" in why.lower()            # no broadcast
     ok, why, t = wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF", client="99:99:99:99:99:99")
     assert not ok and t is None
-    ok, why, t = wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF", client="11:22:33:44:55:66")
-    assert ok and "-c" in t.argv and "11:22:33:44:55:66" in t.argv
+    ok, why, t = wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF", client="12:22:33:44:55:66")
+    assert ok and "-c" in t.argv and "12:22:33:44:55:66" in t.argv
 
 
 def test_g5_can_scope_is_interface_plus_id_range():
@@ -1036,8 +1036,8 @@ GATED_MODULES = [
     "flipper.py", "hwlab.py", "scout.py", "devterm.py", "passaudit.py", "digimodes.py",
     "loopback.py", "radio.py", "mesh_dash.py", "cw.py", "rtty.py", "opprofile.py", "gatestate.py",
     "rfemit.py",
-    "palisade_qt/forge.py", "palisade_qt/recon.py", "palisade_qt/bench_app.py",
-    "palisade_qt/panels.py", "palisade_qt/chrome.py",
+    "palisade_qt/forge.py", "palisade_qt/recon.py", "palisade_qt/recon_tools.py",
+    "palisade_qt/bench_app.py", "palisade_qt/panels.py", "palisade_qt/chrome.py",
 ]
 
 # Reviewed exceptions: (file, enclosing function, call) -> justification. A new entry needs a line,
@@ -1060,6 +1060,16 @@ SPAWN_ALLOWLIST = {
         "discovery: scan requests only, no connect/pair); no target contact, killed on stop",
     ("devterm.py", "ssh_open", "subprocess.Popen"):
         "opens an interactive terminal; the host passed devterm.authorize_ssh_host first",
+    ("palisade_qt/recon.py", "_associated_bssid", "subprocess.run"):
+        "RX-fix4 select-a-network: `iw dev` / `iw dev <sta> link` read THIS host's own "
+        "association (fixed argv, read-only); no target contact, no TX",
+    ("palisade_qt/recon.py", "_default_gateway", "subprocess.run"):
+        "RX-fix4 select-a-network: `ip -4 route show default` reads this host's own routing "
+        "table (fixed argv, read-only); no target contact, no TX",
+    ("palisade_qt/recon_tools.py", "_spawn_passive", "subprocess.Popen"):
+        "TOOLKIT: the passive-capture runner spawns a RECEIVE-ONLY tool (tcpdump/tshark/Responder "
+        "-A) whose argv was built + validated by capture.py/responder.py; ungated by design "
+        "(passive), logged to the chain, and killed on close/PANIC. Not a gated action — no ticket",
 }
 WRITE_ALLOWLIST = {
     ("txguard.py", "log_tx", "f.write"): "append to the local TX log file",

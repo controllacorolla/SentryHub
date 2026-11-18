@@ -136,7 +136,7 @@ def test_r1_every_shipped_module_real_commands_still_issue(monkeypatch, tmp_path
     import wifipent
     import zigbee
     import zwave
-    assert E.start("job", "ROE-1", ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66", "pan:0x1A2B@15",
+    assert E.start("job", "ROE-1", ["AA:BB:CC:DD:EE:FF", "12:22:33:44:55:66", "pan:0x1A2B@15",
                                     "NODE-5", "uid:DEADBEEF", "10.0.0.0/24", "can0:0x700-0x7FF",
                                     "ROUTER-1", "LAB-CAP"], OP)[0]
     _arm()
@@ -146,7 +146,7 @@ def test_r1_every_shipped_module_real_commands_still_issue(monkeypatch, tmp_path
         "wifipent pmkid": lambda: wifipent.prepare("pmkid", "AA:BB:CC:DD:EE:FF",
                                                    out=str(tmp_path / "cap")),
         "wifipent deauth": lambda: wifipent.prepare("deauth", "AA:BB:CC:DD:EE:FF",
-                                                    client="11:22:33:44:55:66"),
+                                                    client="12:22:33:44:55:66"),
         "blepent write": lambda: blepent.prepare("write", "AA:BB:CC:DD:EE:FF", handle="0x1",
                                                  value="ff"),
         "zigbee discover": lambda: zigbee.prepare("discover", channel=15),
@@ -275,11 +275,11 @@ def test_r2_scope_refusals_hold_when_armed_and_unlocked():
     import proxmark
     import wifipent
     import zigbee
-    assert E.start("job", "ROE-1", ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66", "pan:0x1A2B@15",
+    assert E.start("job", "ROE-1", ["AA:BB:CC:DD:EE:FF", "12:22:33:44:55:66", "pan:0x1A2B@15",
                                     "uid:2006F623AE"], OP)[0]
     _arm()
     for ok, why, t in (
-            wifipent.prepare("deauth", "99:99:99:99:99:99", client="11:22:33:44:55:66"),
+            wifipent.prepare("deauth", "99:99:99:99:99:99", client="12:22:33:44:55:66"),
             blepent.prepare("write", "99:99:99:99:99:99", handle="0x1", value="ff"),
             zigbee.prepare("inject", pan=0x9999, channel=15),
             proxmark.prepare("hf_mf_sim", "uid:DEADBEEF", uid="DEADBEEF",

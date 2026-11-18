@@ -66,7 +66,9 @@ Locked: **name = PALISADE**, accent = violet `#A492DA` + green live, both light/
 
 - Receive-first; any TX stays behind `txguard` (ham/ISM/conducted only, protected bands denied).
 - `jammer.py` and `imsicatch.py` are **detectors** (defensive), not weapons — keep.
-- No over-the-air attack/jam/deauth tooling built or extended.
+- Targeted Wi-Fi deauth (`aireplay-ng --deauth`) is a **gated capability**: active engagement,
+  AP and client in scope, TX armed, issue/spawn/exit in the chain (owner, 2026-11-17; CLAUDE.md).
+  Broadband RF jamming is not built.
 - No kernel-hold / firewall / SSH / sudoers changes; no full-system apt upgrades.
 
 ---
@@ -88,8 +90,8 @@ executor cluster):
       existing engagement scope checks, one refusal test per entry.
 - [ ] Executor wiring per tool (separate cluster, after PR #27).
 
-**Owner's call, flagged not decided:** (1) capped targeted deauth (`aireplay-ng --deauth`) vs the
-CLAUDE.md "no deauth/jamming" guardrail; (2) Responder poisoning (broadcast-scope, un-targetable) —
+**Owner's calls:** (1) DECIDED 2026-11-17 — targeted deauth (`aireplay-ng --deauth`) is in, as a
+gated capability (see Guardrails / CLAUDE.md); (2) still open — Responder poisoning (broadcast-scope, un-targetable) —
 analyze/passive only until the owner rules.
 
 **Hardware the toolkit still needs** (no buy yet — owner): USB monitor-mode Wi-Fi adapter (unlocks

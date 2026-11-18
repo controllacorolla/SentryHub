@@ -72,6 +72,13 @@ def prepare(action, bssid, client=None, evidence_chain=None, iface="wlan0mon", c
     ok, why = engagement.require_active()
     if not ok:
         return False, why, None
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,14}", str(iface or "")):
+        # RX: the interface is an argv token of a tool run through the executor; a value that
+        # starts with "-" (or carries a path) would be read as an option, so it is refused here
+        return False, "interface %r is not a network interface name" % (iface,), None
+    if not str(out or "") or str(out).startswith("-"):
+        return False, "capture path %r is not a file path" % (out,), None
     ap = _mac(bssid)
     if ap is None:
         return False, "BSSID %r is not a MAC address" % (bssid,), None
@@ -91,6 +98,14 @@ def prepare(action, bssid, client=None, evidence_chain=None, iface="wlan0mon", c
         if cl is None:
             return False, ("deauth needs a target client MAC (no broadcast deauth) — "
                            "refusing"), None
+        # RA-DEAUTH N1/N3: the target must be one real station. A group address (LSB of the first
+        # octet set — covers ff:ff:ff:ff:ff:ff and any multicast) would detach every client, and a
+        # client equal to the AP is not a station. Refuse both, even if they sit in scope.
+        if int(cl[:2], 16) & 1:
+            return False, ("deauth target %s is a broadcast/multicast address — a deauth must name "
+                           "one client station, never a group" % cl), None
+        if cl == ap:
+            return False, "deauth client cannot be the AP itself — name a client station", None
         ok, why, _b = engagement.check("wifi:deauth", cl, kind="mac")
         if not ok:
             return False, "client: " + why, None

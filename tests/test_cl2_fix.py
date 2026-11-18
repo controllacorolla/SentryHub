@@ -23,7 +23,7 @@ import txguard as G  # noqa: E402
 
 OP = "KD0ABC"
 TXS = {"tx_enabled": True, "callsign": OP, "bench_conducted_ack": True}
-AP, CL = "AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"
+AP, CL = "AA:BB:CC:DD:EE:FF", "12:22:33:44:55:66"   # CL is a unicast station (I/G bit clear)
 HACKRF_1090 = ["hackrf_transfer", "-t", "/tmp/x.iq", "-f", "1090000000", "-s", "2000000",
                "-x", "47"]
 

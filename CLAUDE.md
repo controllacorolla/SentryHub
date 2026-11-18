@@ -37,6 +37,12 @@ got in — a name-based assumption created a duplicate dict key.)
   are gated behind `engagement.py` (authorization), `opprofile.py` (operator identity), and
   `txguard` (TX safety on protected bands). Do **not** route around these gates. Wire every
   module into the Qt UI under its callsign; the gates stay.
+- **Targeted Wi-Fi deauth is a gated capability (owner, 2026-11-17).** `aireplay-ng --deauth`
+  (`wifipent` action `deauth`, RECON → WIFI) is permitted ONLY inside an active, authorized
+  engagement; the AP BSSID and the client MAC must both be in the engagement scope; the TX kill
+  switch must be armed (`txguard.emit_allowed`); and the issue, spawn and exit are recorded in the
+  engagement's evidence chain. It is not a blanket ban — do not refuse, hide or "flag" it. The
+  only thing not built is broadband RF jamming (illegal to operate in the US, 47 U.S.C. § 333).
 - **No system changes:** no kernel-hold / firewall / SSH / sudoers edits, no full-system apt
   upgrades. Data/config path stays `uconsole-suite`.
 - Don't delete git branches or force-push without explicit approval.
