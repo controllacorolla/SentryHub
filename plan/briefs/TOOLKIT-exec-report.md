@@ -48,3 +48,11 @@ commit. Pre-existing baseline failures (main/branch, not this cluster): `test_au
 test_undecodable_tile_is_marked_failed`, `test_hwlab::test_doctor_hwbench_check`, `test_shell.py`
 errors (no tkinter in the container), the 3.13 `test_all_callsigns` segfault. `test_cl2_gates` was
 red on the #27 merge (RX-fix4 passive reads un-allowlisted) and is **fixed** here.
+
+## Final suite result (2026-11-18, container venv, Python 3.13)
+`QT_QPA_PLATFORM=offscreen xvfb-run -a python3 -m pytest -q tests` →
+**2 failed, 1874 passed, 7 skipped, 7 errors**. The 2 failures (`test_audit_tiles::
+test_undecodable_tile_is_marked_failed`, `test_hwlab::test_doctor_hwbench_check`) and the 7
+`test_shell` errors (no tkinter in the container) are the documented baseline, present on main.
+**This cluster adds zero new failures.** `test_cl2_gates` is green (the #27 RX-fix4 allowlist + the
+F-1 recon_tools entry). Cold audit RA-TOOLKITX: **MERGE** (one Low/hygiene finding F-1, now closed).
