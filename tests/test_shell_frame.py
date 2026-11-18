@@ -269,3 +269,98 @@ def test_s1_26_no_bottom_status_bar_warnings_become_a_notice_sdr_presence_in_the
         assert hub.topbar.slots["radio"].text() == "FREE"
     finally:
         _close(hub)
+
+
+# ---------------------------------------------------------------- RA-S1 follow-ups
+def test_ra_s1_f1_live_telemetry_keeps_running_off_ops():
+    """F1: the strip's BAT and SDR slots are fed by OPS's live status worker: it must not pause
+    when another page is on screen."""
+    from palisade_qt.ops import LiveStatusWorker, DemoFeedWorker
+    assert LiveStatusWorker.PAUSE_WHEN_HIDDEN is False
+    w = LiveStatusWorker()
+    w.pause(False)
+    hub = _big_hub()
+    try:
+        hub.open_callsign("PRISM")
+        _pump(100)
+        if isinstance(hub.ops._worker, LiveStatusWorker):
+            assert not hub.ops._worker.paused
+    finally:
+        _close(hub)
+    assert DemoFeedWorker.PAUSE_WHEN_HIDDEN is True       # demo traffic still rests while hidden
+
+
+def test_ra_s1_f2_f4_a_counter_is_not_a_new_warning_but_a_returning_one_is():
+    from palisade_qt.shell import PageNotice
+    w = QtWidgets.QWidget()
+    n = PageNotice("dark", w)
+    shown = []
+    for s in range(12):                     # PROWL NWR: "no audio reaching the decoder (Ns)"
+        shown += n.consider("PROWL", {"audio": {"text": "no audio (%ds)" % s, "state": "warn"}})
+    assert len(shown) == 1, shown
+    assert n.consider("PROWL", {}) == []                        # it clears …
+    assert n.consider("PROWL", {"audio": {"text": "no audio (1s)", "state": "warn"}})  # … and returns
+    assert n.consider("PROWL", {"audio": {"text": "no audio", "state": "alert"}}), "escalation shows"
+    w.deleteLater()
+
+
+def test_ra_s1_f3_the_notice_never_follows_you_to_another_page():
+    hub = _big_hub()
+    try:
+        hub.open_callsign("ATLAS")
+        _pump(100)
+        hub.page_app("ATLAS").set_chip("probe2", "ATLAS PROBLEM", state="warn")
+        _pump(50)
+        assert hub.notice.isVisible() and hub.notice.text().startswith("ATLAS · ")
+        hub.open_callsign("SYSTEM")
+        _pump(50)
+        assert not hub.notice.isVisible()
+    finally:
+        _close(hub)
+
+
+def test_ra_s1_f8_no_automatic_notice_over_an_open_drawer_and_f9_palette_path():
+    hub = _big_hub()
+    try:
+        hub.open_callsign("ATLAS")
+        _pump(100)
+        hub.open_panel("alerts")
+        _pump(80)
+        hub.notice.hide()
+        hub.page_app("ATLAS").set_chip("probe3", "ANOTHER PROBLEM", state="warn")
+        _pump(50)
+        assert not hub.notice.isVisible()
+        hub.open_panel("alerts")                      # close it again
+        _pump(80)
+        names = [c[0] for c in hub._commands()]
+        cmd = next(c for c in hub._commands() if c[0].startswith("Page messages"))
+        assert cmd and any("Page messages" in n for n in names)
+        cmd[1]()
+        _pump(50)
+        assert hub.notice.isVisible() and "ANOTHER PROBLEM" in hub.notice.text()
+    finally:
+        _close(hub)
+
+
+def test_ra_s1_f5_f7_focus_on_open_sub_tile_and_disabled_volume_rules():
+    from palisade_qt import theme
+    for mode in ("dark", "light", "sun"):
+        q = theme.qss(mode)
+        tok = theme.tokens(mode)
+        assert ('QPushButton.subtab:checked:focus {{ border: {} solid {}; }}'.format(
+            tok["focus_w"], tok["focus_on"])).replace("{{", "{").replace("}}", "}") in q
+        assert "QSlider#vol::handle:horizontal:disabled" in q
+    hub = _big_hub()
+    try:
+        v = hub.topbar.volume
+        v.setEnabled(True)
+        _pump(30)
+        on = v.grab().toImage()
+        v.setEnabled(False)
+        _pump(30)
+        off = v.grab().toImage()
+        diff = sum(1 for x in range(0, on.width(), 2) for y in range(0, on.height(), 2)
+                   if on.pixelColor(x, y) != off.pixelColor(x, y))
+        assert diff > 20, "a disabled volume slider must look different"
+    finally:
+        _close(hub)

@@ -1,4 +1,4 @@
-"""TopBar — the ONE chrome strip (≤ 40 px): numbered nav keys + shell-owned status slots.
+"""TopBar — the ONE chrome strip (≤ 40 px) + the left rail of page keys + shell-owned status slots.
 
 Left: one key per page, callsign with its function label beside it (D7). Right: four fixed status
 slots — MODE, RADIO, TX, ENGAGEMENT — each a word + a colour + a shape, drawn by the shell from engine
@@ -140,7 +140,8 @@ class StatusSlot(QtWidgets.QFrame):
 
 
 class NavKey(QtWidgets.QPushButton):
-    """A numbered page key: '<n> CALLSIGN' over its function label ('map', 'listen' …), both at
+    """A page key: 'CALLSIGN' over its function label ('map', 'listen' …), its digit key in the
+    tooltip only (no numbers on the key since 2026-11-18), both at
     status size (16 px) — owner decision D7, 2026-11-15: the function is visible beside every key.
 
     Two 16 px lines are 2 × 20 px line boxes, more than the key's 36 px. But the callsign line is
@@ -237,7 +238,7 @@ class NavKey(QtWidgets.QPushButton):
 class NavRail(QtWidgets.QFrame):
     """The page keys, stacked down the left edge (owner decision 2026-11-17, device run: "I would
     rather have OPS, RECON etc. vertically stacked on the left side"). Replaces the keys across the
-    top strip, which ran together at 1280 px. Same NavKey widgets, same 1-7 shortcuts; each key is
+    top strip, which ran together at 1280 px. Same NavKey widgets, same digit shortcuts (1-9, rail order); each key is
     a tall, touch-sized target. F on a map page hides it with the page's side panels."""
     KEY_H = 48
     WIDTH = 128          # fits 'ASSISTANT' and a nested 'SKY DOME' at 16 px
