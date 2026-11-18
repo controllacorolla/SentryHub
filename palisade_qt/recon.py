@@ -185,15 +185,15 @@ class GatedTool(QtWidgets.QFrame):
         row.addWidget(self.target, 1)
         lay.addLayout(row)
         self._fields = list(fields or ())
-        if self._fields:
-            # one field per row (label left, field fills the width) so values are never clipped
-            # in the ≤420px WIFI panel at 720p (e.g. "wlan0mon" was shown as "l0mon" in a row).
-            frow = QtWidgets.QFormLayout()
-            frow.setContentsMargins(0, 0, 0, 0)
-            frow.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
-            for label, w in self._fields:
-                w.setMaximumWidth(16777215)       # drop any inline-row width cap: the row is wide now
-                frow.addRow(micro(label), w)
+        # At most two label/field pairs per row, so a long value (IFACE "wlan0mon", or the CLIENT
+        # MAC) is not squeezed into a third of the ≤420px WIFI card and stays fully readable at
+        # 720p (item 11; shared with #30's RA-DEAUTH N4, which needs the CLIENT field legible).
+        for i in range(0, len(self._fields), 2):
+            frow = QtWidgets.QHBoxLayout()
+            for label, w in self._fields[i:i + 2]:
+                w.setMaximumWidth(16777215)       # drop any inline width cap: two pairs per row is wide
+                frow.addWidget(micro(label))
+                frow.addWidget(w, 1)
             lay.addLayout(frow)
         self._btns = []
         brow = QtWidgets.QHBoxLayout()
