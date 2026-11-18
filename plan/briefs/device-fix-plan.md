@@ -50,5 +50,5 @@ Status: open · in progress · done (PR). Keep this table current as items close
 | # | Item | Status |
 |---|---|---|
 | 16 | RF module is empty: what RF should show versus PRISM/PROWL. | parked (Dalton 04:14Z: no use case yet, leave as is) |
-| 17 | ASSISTANT has no model: Opus (cloud) or a local model for offline field use. | decided: Opus cloud (Dalton 04:14Z); UI thread, with the MESH PR. Egress through NET + session log; engagement details not sent |
+| 17 | ASSISTANT has no model: Opus (cloud) or a local model for offline field use. | decided: LOCAL model (Dalton 04:17Z, reversing 04:14Z Opus cloud): Ollama on 127.0.0.1 via assistant.py backend, nothing leaves the device; UI thread, with the MESH PR |
 | 18 | MESH: UI thread proposes a real layout for his yes/no. | decided: full layout MAP/NODES/CHAT/RADIO (Dalton 02:51Z); UI thread, after Stage 2 |
