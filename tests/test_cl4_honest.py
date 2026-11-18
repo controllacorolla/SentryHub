@@ -520,13 +520,17 @@ def test_h18_no_default_remote_host():
         assert assistant.is_local(h["url"]), h
 
 
-def test_h18_freeform_is_not_implemented_and_probes_nothing(monkeypatch):
+def test_h18_freeform_goes_to_the_worker_and_probes_nothing_on_the_gui_thread(monkeypatch):
+    """Since 2026-11-18 free-form questions go to a LOCAL model (AskWorker, off the GUI thread);
+    the GUI-thread built-in answer path still probes nothing."""
     import assistant
     from palisade_qt.system import MoreApp
     monkeypatch.setattr(assistant, "pick_host",
                         lambda *a, **k: pytest.fail("no network probe on the GUI thread"))
+    monkeypatch.setattr(assistant, "http_json",
+                        lambda *a, **k: pytest.fail("no network probe on the GUI thread"))
     p = MoreApp(demo=False)
-    assert p._answer("what's the weather like?").startswith("NOT IMPLEMENTED")
+    assert p._answer("what's the weather like?") is None
     _close(p)
 
 
@@ -586,14 +590,16 @@ def test_e4_can_and_sensors_present_say_not_implemented(monkeypatch):
         assert "NOT IMPLEMENTED" in st[-1]["sdr"]["text"], cls.__name__
 
 
-def test_e4_mesh_and_detectors_say_not_implemented():
-    from palisade_qt.system import MeshWorker
+def test_e4_mesh_without_a_link_says_so_and_detectors_say_not_implemented():
+    """MESH is wired since 2026-11-18 (palisade_qt/mesh.py): with no link it says NO link and
+    why, never a live mesh."""
+    from palisade_qt.mesh import MeshLinkWorker
     from palisade_qt.recon import DetectorWorker
-    w = MeshWorker(demo=False)
+    w = MeshLinkWorker(demo=False)
     st = []
     w.status.connect(st.append)
     w.step()
-    assert "NOT IMPLEMENTED" in st[-1]["sdr"]["text"]
+    assert st[-1]["link"] == "none" and st[-1]["text"]
     assert DetectorWorker(kind="imsicatch").offline_reason().startswith("NOT IMPLEMENTED")
 
 
