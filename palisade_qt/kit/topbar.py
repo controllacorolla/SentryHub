@@ -145,19 +145,28 @@ class NavKey(QtWidgets.QPushButton):
 
     Two 16 px lines are 2 × 20 px line boxes, more than the key's 36 px. But the callsign line is
     caps and digits (no descender) and the label line is lower case, so the INK of both is about
-    12 + 17 rows. The two labels are therefore placed by their measured ink (tightBoundingRect),
-    overlapping only in empty line-box space, with a 2 px gap between the glyphs. Nothing is shrunk
-    and nothing is clipped (the test compares painted pixels with the text drawn unclipped)."""
-    GAP = 2            # px between the callsign's baseline ink and the label's tallest ascender
-    SIDE = 1           # px left/right inside the key
+    12 + 17 rows. The two lines are therefore placed by ink, overlapping only in empty line-box
+    space, with a 2 px gap between the glyphs. Nothing is shrunk and nothing is clipped (the test
+    compares painted pixels with the text drawn unclipped).
 
-    def __init__(self, number, callsign, label, parent=None):
+    N-ui1 (device, 2026-11-17): the ink is measured on REFERENCE strings (every caps letter and
+    digit; every lower-case letter), not on each key's own text, so all keys share one callsign
+    baseline and one label baseline ('map' and 'spectrum' sit on the same line), and each key has
+    SIDE px of air left and right, so adjacent callsigns never run together ('4 PROWL5 RECON')."""
+    GAP = 2            # px between the callsign's baseline ink and the label's tallest ascender
+    SIDE = 5           # px left/right inside the key: the visible gap between two keys' text
+    REF_CALL = "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    REF_LABEL = "abcdefghijklmnopqrstuvwxyz"
+
+    def __init__(self, number, callsign, label, parent=None, height=STRIP_H - 4):
         super().__init__(parent)
         self.callsign = callsign
         self.setProperty("class", "navkey")
         self.setFocusPolicy(QtCore.Qt.TabFocus)
-        self.setFixedHeight(STRIP_H - 4)
-        self.call = QtWidgets.QLabel("%d %s" % (number, callsign), self)
+        self.setFixedHeight(height)
+        # no number in the title (owner, device run 2026-11-18); the digit key still works and
+        # the tooltip says which one
+        self.call = QtWidgets.QLabel(callsign, self)
         self.call.setProperty("class", "navcall")
         self.label = QtWidgets.QLabel(label, self)
         self.label.setProperty("class", "navlabel")
@@ -165,14 +174,21 @@ class NavKey(QtWidgets.QPushButton):
             w.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
             w.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop)
         self.function = label
-        self.setToolTip("%d — %s: %s" % (number, callsign, label))
+        self._bases = (None, None)
+        self.number = number
+        self.setToolTip("%s — %s (key %d)" % (callsign, label, number))
         self.setAccessibleName("%s %s" % (callsign, label))
 
-    def _ink(self, w):
-        """(top, bottom) of the text's painted pixels relative to its baseline, at the polished font."""
+    def _ink(self, w, ref):
+        """(top, bottom) of the painted pixels of the reference string relative to the baseline, at
+        the label's polished font. The same for every key, so every key's baselines line up."""
         w.ensurePolished()
-        r = w.fontMetrics().tightBoundingRect(w.text())
+        r = w.fontMetrics().tightBoundingRect(ref)
         return r.top(), r.bottom()
+
+    def baselines(self):
+        """(callsign baseline, label baseline) in key coordinates — the row tests compare."""
+        return self._bases
 
     def _text_w(self):
         return max(w.fontMetrics().horizontalAdvance(w.text()) for w in (self.call, self.label))
@@ -180,14 +196,14 @@ class NavKey(QtWidgets.QPushButton):
     def sizeHint(self):
         for w in (self.call, self.label):
             w.ensurePolished()
-        return QtCore.QSize(self._text_w() + 2 * self.SIDE, STRIP_H - 4)
+        return QtCore.QSize(self._text_w() + 2 * self.SIDE, self.height())
 
     def minimumSizeHint(self):
         return self.sizeHint()
 
     def _place(self):
-        c_top, c_bot = self._ink(self.call)
-        l_top, l_bot = self._ink(self.label)
+        c_top, c_bot = self._ink(self.call, self.REF_CALL)
+        l_top, l_bot = self._ink(self.label, self.REF_LABEL)
         ink_h = (c_bot - c_top + 1) + self.GAP + (l_bot - l_top + 1)
         y0 = (self.height() - ink_h) // 2              # top row of the callsign's ink
         fm_c, fm_l = self.call.fontMetrics(), self.label.fontMetrics()
@@ -197,6 +213,7 @@ class NavKey(QtWidgets.QPushButton):
         self.call.setGeometry(self.SIDE, c_base - fm_c.ascent(), w, fm_c.height())
         self.label.setGeometry(self.SIDE, l_base - fm_l.ascent(), w, fm_l.height())
         self.label.raise_()
+        self._bases = (c_base, l_base)
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
@@ -217,6 +234,53 @@ class NavKey(QtWidgets.QPushButton):
         self._place()
 
 
+class NavRail(QtWidgets.QFrame):
+    """The page keys, stacked down the left edge (owner decision 2026-11-17, device run: "I would
+    rather have OPS, RECON etc. vertically stacked on the left side"). Replaces the keys across the
+    top strip, which ran together at 1280 px. Same NavKey widgets, same 1-7 shortcuts; each key is
+    a tall, touch-sized target. F on a map page hides it with the page's side panels."""
+    KEY_H = 48
+    WIDTH = 128          # fits 'ASSISTANT' and a nested 'SKY DOME' at 16 px
+    BOTTOM = 18          # px kept free under the last key, so nothing runs off the screen
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("nav_rail")
+        self.setFixedWidth(self.WIDTH)
+        self.lay = QtWidgets.QVBoxLayout(self)
+        self.lay.setContentsMargins(6, 8, 6, self.BOTTOM)
+        self.lay.setSpacing(6)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Ignored)
+
+    def add_key(self, key):
+        # owner 2026-11-18 ("why are you condensing the left side so much"): the keys are spread
+        # evenly down the full height, a stretch between each, instead of packed at the top
+        if getattr(self, "_keys", None):
+            self.lay.addStretch(1)
+        self.lay.addWidget(key)
+        self._keys = getattr(self, "_keys", []) + [key]
+        self.subs = getattr(self, "subs", {})
+
+    def finish(self):
+        pass
+
+    def attach_sub(self, callsign, widget):
+        """Nest a page's sub-tab list under its key (owner 2026-11-17: one navigation column
+        instead of a page rail beside a sub-tab rail beside the content)."""
+        if self.subs.get(callsign) is widget:
+            return
+        key = next(k for k in self._keys if k.callsign == callsign)
+        widget.setParent(self)
+        widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum)
+        widget.setProperty("nested", True)
+        if widget.layout() is not None:
+            widget.layout().setContentsMargins(8, 0, 0, 6)        # indented under its page key
+            widget.layout().setSpacing(4)
+        widget.setStyleSheet("QPushButton.subtab { padding: 4px 6px; min-height: 26px; }")
+        self.lay.insertWidget(self.lay.indexOf(key) + 1, widget)
+        self.subs[callsign] = widget
+
+
 class TopBar(QtWidgets.QFrame):
     nav_requested = QtCore.Signal(str)
     slot_clicked = QtCore.Signal(str)        # "mode" | "radio" | "tx" | "engagement" | "alerts" | "net"
@@ -227,15 +291,29 @@ class TopBar(QtWidgets.QFrame):
         self.setFixedHeight(STRIP_H)
         self._tok = theme.tokens(mode)
         lay = QtWidgets.QHBoxLayout(self)
-        lay.setContentsMargins(2, 0, 3, 0)
-        lay.setSpacing(1)
+        lay.setContentsMargins(2, 0, 6, 0)
+        lay.setSpacing(12)              # slots are separated by space, not divider lines (2026-11-17)
 
+        # the page keys live in a vertical rail the shell puts down the left edge (NavRail); the
+        # strip keeps only the wordmark and the shell-owned status. nav_keys keeps its name.
+        self.nav_rail = NavRail() if nav else None
         self.nav_keys = {}
         for i, (callsign, label) in enumerate(nav, start=1):
-            k = NavKey(i, callsign, label)
+            k = NavKey(i, callsign, label, height=NavRail.KEY_H)
             k.clicked.connect(lambda _=False, c=callsign: self.nav_requested.emit(c))
             self.nav_keys[callsign] = k
-            lay.addWidget(k)
+            self.nav_rail.add_key(k)
+        if self.nav_rail is not None:
+            self.nav_rail.finish()
+        self.page_title = QtWidgets.QLabel("PALISADE")
+        self.page_title.setObjectName("strip_title")
+        self.page_title.setContentsMargins(8, 0, 0, 0)
+        # click the page name: a short notice lists what the page reports (the bottom status bar
+        # is gone, owner 2026-11-18)
+        self.page_title.setCursor(QtCore.Qt.PointingHandCursor)
+        self.page_title.setToolTip("click: what this page reports now")
+        self.page_title.mousePressEvent = lambda ev: self.slot_clicked.emit("page")
+        lay.addWidget(self.page_title)
         lay.addStretch(1)
 
         # the four fixed, shell-owned status slots
@@ -245,7 +323,7 @@ class TopBar(QtWidgets.QFrame):
             s.clicked.connect(lambda k=key: self.slot_clicked.emit(k))
             self.slots[key] = s
             lay.addWidget(s)
-        self.alerts = StatusSlot("")
+        self.alerts = StatusSlot("ALERTS")       # a bare "○ 0" read as nothing (2026-11-18)
         self.alerts.clicked.connect(lambda: self.slot_clicked.emit("alerts"))
         lay.addWidget(self.alerts)
 
@@ -272,8 +350,11 @@ class TopBar(QtWidgets.QFrame):
         lay.addWidget(self.mute)
         self.volume = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.volume.setObjectName("vol")
-        self.volume.setFixedWidth(40)
+        # 40 px gave almost no travel (owner, device run 2026-11-18): a real slider, 2 % steps
+        self.volume.setFixedWidth(130)
         self.volume.setRange(0, 100)
+        self.volume.setSingleStep(2)
+        self.volume.setPageStep(10)
         self.volume.setFocusPolicy(QtCore.Qt.TabFocus)
         lay.addWidget(self.volume)
         self._vol_timer = QtCore.QTimer(self)        # debounce: one mixer call per drag pause
@@ -283,8 +364,22 @@ class TopBar(QtWidgets.QFrame):
         self._init_audio()
         self.volume.valueChanged.connect(self._volume_moved)
 
+        # battery: one labelled place for it, in the strip (it was a bare "PWR 95%" in the OPS
+        # footer and a POWER card; owner 2026-11-18 "power percentage in some random spot")
+        self.battery = StatusSlot("BAT")
+        self.battery.clicked.connect(lambda: self.slot_clicked.emit("battery"))
+        lay.addWidget(self.battery)
+        self.set_battery(None)
+
+        # the clock is Zulu (UTC) time and says so ("I don't know what the 0221Z reads")
+        self.clock_cap = QtWidgets.QLabel("UTC")
+        self.clock_cap.setProperty("class", "slotcap")
+        lay.addWidget(self.clock_cap)
+        lay.addSpacing(-8)
         self.clock = QtWidgets.QLabel("—")
         self.clock.setObjectName("dtg")
+        self.clock.setToolTip("UTC (Zulu) time, hours and minutes: 0221Z = 02:21 UTC")
+        self.clock_cap.setToolTip(self.clock.toolTip())
         lay.addWidget(self.clock)
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -385,6 +480,8 @@ class TopBar(QtWidgets.QFrame):
     def set_active_page(self, callsign):
         for name, key in self.nav_keys.items():
             key.set_on(name == callsign)
+        key = self.nav_keys.get(callsign)
+        self.page_title.setText("PALISADE · %s" % callsign if key is not None else "PALISADE")
 
     def set_state(self, mode, radio, tx, engagement):
         self._last_state = (mode, radio, tx, engagement)
@@ -401,9 +498,21 @@ class TopBar(QtWidgets.QFrame):
         else:
             self.slots["mode"].set("LIVE", "dot", t["text"])
         word, owner = radio
-        if word == "HELD":
+        pres = getattr(self, "_sdr_presence", None)
+        if word == "FREE" and pres in ("ABSENT", "BLOCKED"):
+            # the SDR presence, which only the OPS footer used to show ("SDR PRESENT"), lives in
+            # this one labelled slot now (owner 2026-11-18)
+            self.slots["radio"].set(pres, "tri" if pres == "BLOCKED" else "ring",
+                                    t["alert"] if pres == "BLOCKED" else t["warn"])
+            self.slots["radio"].setToolTip("SDR: %s" % (self._sdr_presence_text or pres))
+            word = None
+        if word is None:
+            pass
+        elif word == "HELD":
             # the owner IS the state word (8 chars max: OWNER_LABELS); HELD is in the tooltip
-            self.slots["radio"].set(owner or "HELD", "dot", t["accent"])
+            # owner request (device notes 2026-11-17): an SDR in use reads green ("on"), like
+            # every other live/OK state in the theme; FREE stays a muted ring.
+            self.slots["radio"].set(owner or "HELD", "dot", t["live"])
             self.slots["radio"].setToolTip("SDR: HELD by %s" % owner)
         elif word == "ACQUIRING":
             self.slots["radio"].set("ACQUIR…", "half", t["warn"])
@@ -425,9 +534,11 @@ class TopBar(QtWidgets.QFrame):
         name = engagement[2] if len(engagement) > 2 else ""
         if eword == "ACTIVE":
             # the scope IS the state word (as the owner is for SDR): "ENG ◆ 10.0.0.*" / "ENG ◆ 6
-            # targets", amber diamond = active. "ACTIVE · <scope>" did not fit the strip, and the
+            # targets", diamond = active. "ACTIVE · <scope>" did not fit the strip, and the
             # scope is the part an operator needs to read (RA-CL1). Full detail: tooltip + panel.
-            self.slots["engagement"].set(scope or "ACTIVE", "diamond", t["warn"])
+            # Green, not amber: owner decision 2026-11-17 (device notes) — an open engagement is
+            # the authorised "on" state; amber/red stay for EXPIRED/UNKNOWN and for TX.
+            self.slots["engagement"].set(scope or "ACTIVE", "diamond", t["live"])
             self.slots["engagement"].setToolTip("ENGAGEMENT: ACTIVE · %s · scope %s" % (name, scope))
         elif eword == "EXPIRED":
             self.slots["engagement"].set("EXPIRED", "tri", t["alert"])
@@ -460,6 +571,37 @@ class TopBar(QtWidgets.QFrame):
         else:
             self.net.set("OFF", "ring", t["muted"])
             self.net.setToolTip("NET: OFFLINE — nothing leaves the device")
+
+    def set_sdr_presence(self, text):
+        """OPS's SDR chip text ('SDR PRESENT' / 'SDR ABSENT' / 'SDR BLOCKED — dvb bound' / 'SDR ?' /
+        'SDR HELD · x' / 'SDR DEMO'). Only ABSENT and BLOCKED change the slot; held/free come from
+        the arbiter as before."""
+        t = (text or "").upper()
+        pres = "ABSENT" if "ABSENT" in t else "BLOCKED" if "BLOCKED" in t else None
+        if (pres, text) == (getattr(self, "_sdr_presence", None),
+                            getattr(self, "_sdr_presence_text", None)):
+            return
+        self._sdr_presence, self._sdr_presence_text = pres, text
+        st = getattr(self, "_last_state", None)
+        if st is not None:
+            self.set_state(*st)
+
+    def set_battery(self, pct):
+        """The device battery, from the OPS telemetry. None = no battery sensor read."""
+        t = self._tok
+        if pct is None:
+            self.battery.set("—", "unknown", t["muted"])
+            self.battery.setToolTip("BATTERY: not read — no battery sensor found "
+                                    "(/sys/class/power_supply)")
+            return
+        pct = max(0, min(100, int(pct)))
+        if pct <= 10:
+            self.battery.set("%d%%" % pct, "tri", t["alert"])
+        elif pct <= 20:
+            self.battery.set("%d%%" % pct, "half", t["warn"])
+        else:
+            self.battery.set("%d%%" % pct, "dot", t["text"])
+        self.battery.setToolTip("BATTERY: %d%%" % pct)
 
     def set_alerts(self, unacked):
         t = self._tok

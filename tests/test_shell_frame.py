@@ -1,0 +1,271 @@
+"""Stage 1 of the device-run-2 fix plan (plan/briefs/device-fix-plan.md, 2026-11-18): the frame.
+
+1 the window never grows past the screen (pages, F, side panels) and opens maximized on a
+1280x720 screen · 2 rail: no numbers, keys spread down the full height, SYSTEM last · 3 tiles:
+purple pages, light purple sub-pages · 4 strip: UTC clock label, labelled BAT slot fed by the
+telemetry, ALERTS caption; OPS count named · 5 shared green/red run control · 6 volume slider.
+Headless (Qt offscreen), real hub at 1280x720.
+"""
+import os
+import sys
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6")
+pytest.importorskip("pyqtgraph")
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SUITE_DIR = os.path.dirname(HERE)
+for p in (SUITE_DIR, HERE):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+from PySide6 import QtCore, QtWidgets  # noqa: E402
+
+from test_cl1_screen import _pump, _hub, _isolate, THEMES  # noqa: E402
+
+_isolate = _isolate
+
+
+def _big_hub(mode="dark", demo=False):
+    hub = _hub(mode=mode, demo=demo)
+    hub.resize(1280, 720)
+    hub.show()
+    _pump(200)
+    return hub
+
+
+def _close(hub):
+    hub.close()
+    _pump(150)
+
+
+# ---------------------------------------------------------------- 1 window
+def test_s1_1_no_page_or_panel_toggle_grows_the_window():
+    """Device: opening RECON, or leaving full-map mode, grew the window past 1280 px (a page's
+    minimum width propagated through the stack) and knocked it out of maximized."""
+    hub = _big_hub(demo=True)
+    try:
+        from palisade_qt import shell
+        assert isinstance(hub.stack, shell.PageStack)
+        assert hub.stack.minimumSizeHint().width() <= 400
+        for cs in ("RECON", "PRISM", "PROWL", "FORGE", "SYSTEM", "ASSISTANT", "MESH", "ATLAS"):
+            hub.open_callsign(cs)
+            _pump(150)
+            assert hub.size().toTuple() == (1280, 720), (cs, hub.size().toTuple())
+            assert hub.minimumSizeHint().width() <= 1280 and hub.minimumSizeHint().height() <= 720
+        atlas = hub.page_app("ATLAS")
+        for _ in range(3):
+            atlas.handle_key("f")
+            _pump(80)
+            atlas.handle_key("f")
+            _pump(80)
+            assert hub.size().toTuple() == (1280, 720)
+        hub.open_callsign("OPS")
+        hub.ops.handle_key("f")
+        _pump(80)
+        hub.ops.handle_key("f")
+        _pump(80)
+        assert hub.size().toTuple() == (1280, 720)
+    finally:
+        _close(hub)
+
+
+def test_s1_1_opens_maximized_on_a_uconsole_sized_screen():
+    from palisade_qt import shell
+
+    class Scr:
+        def __init__(self, w, h):
+            self._g = QtCore.QRect(0, 0, w, h)
+
+        def availableGeometry(self):
+            return self._g
+    hub = shell.PalisadeHub(demo=True)
+    try:
+        calls = []
+        hub.showMaximized = lambda: calls.append("max")
+        hub.show = lambda: calls.append("show")
+        assert shell.show_fitted(hub, Scr(1280, 720)) == "maximized" and calls == ["max"]
+        assert hub.maximumSize().toTuple() == (1280, 720)
+        hub.setMaximumSize(16777215, 16777215)
+        assert shell.show_fitted(hub, Scr(2560, 1440)) == "window"
+    finally:
+        hub.close()
+        _pump(100)
+
+
+# ---------------------------------------------------------------- 2 rail
+def test_s1_2_rail_has_no_numbers_system_last_and_spreads_down_the_height():
+    hub = _big_hub()
+    try:
+        keys = list(hub.topbar.nav_keys.values())
+        assert all(not any(ch.isdigit() for ch in k.call.text()) for k in keys)
+        assert [k.callsign for k in keys][-1] == "SYSTEM"
+        from palisade_qt.ops import CALLSIGNS
+        assert CALLSIGNS[-1][0] == "SYSTEM"
+        rail = hub.nav_rail
+        first, last = keys[0], keys[-1]
+        top = first.mapTo(rail, QtCore.QPoint(0, 0)).y()
+        bottom = last.mapTo(rail, QtCore.QPoint(0, last.height())).y()
+        assert top < 20
+        assert rail.height() - 60 <= bottom <= rail.height() - rail.BOTTOM + 1, \
+            (bottom, rail.height())
+        gaps = [keys[i + 1].y() - keys[i].y() for i in range(len(keys) - 1)]
+        assert max(gaps) - min(gaps) <= 2, gaps          # evenly spaced
+        # the digit hotkey follows the new order: the last key opens SYSTEM
+        assert "key %d" % len(keys) in last.toolTip()
+    finally:
+        _close(hub)
+
+
+# ---------------------------------------------------------------- 3 tiles
+@pytest.mark.parametrize("mode", THEMES)
+def test_s1_3_pages_are_purple_tiles_sub_pages_light_purple(mode):
+    from palisade_qt import theme
+    tok = theme.tokens(mode)
+    q = theme.qss(mode)
+    assert "QPushButton.navkey {" in q and tok["tile_bg"] in q and tok["tile_bd"] in q
+    assert 'QWidget[nested="true"] QPushButton.subtab' in q and tok["sub_bg"] in q
+    hub = _big_hub(mode)
+    try:
+        hub.open_callsign("ATLAS")
+        _pump(200)
+        sub = hub.nav_rail.subs.get("ATLAS")
+        assert sub is not None and sub.property("nested") is True
+        btns = [b for b in sub.findChildren(QtWidgets.QPushButton) if b.property("class") == "subtab"]
+        assert btns and any(b.isChecked() for b in btns)
+        on = next(k for k in hub.topbar.nav_keys.values() if k.callsign == "ATLAS")
+        assert on.property("class") == "navkey_on"
+        if mode != "sun":
+            # rendered: an unselected page tile is not the rail's background (it IS a tile)
+            img = hub.nav_rail.grab().toImage()
+            k = next(k for k in hub.topbar.nav_keys.values() if k.callsign == "OPS")
+            c = img.pixelColor(k.x() + 8, k.y() + k.height() // 2)
+            bg = img.pixelColor(2, hub.nav_rail.height() - 4)
+            assert c != bg
+    finally:
+        _close(hub)
+
+
+# ---------------------------------------------------------------- 4 strip + OPS labels
+def test_s1_4_clock_says_utc_battery_has_a_slot_alerts_are_named():
+    from palisade_qt import eventbus
+    hub = _big_hub()
+    try:
+        tb = hub.topbar
+        assert tb.clock_cap.text() == "UTC" and "UTC" in tb.clock.toolTip()
+        assert tb.alerts.cap.text() == "ALERTS"
+        assert tb.battery.cap.text() == "BAT"
+        eventbus.bus.publish(eventbus.make_event("decode", "OPS", {"kind": "telemetry",
+                                                                   "batt": 57}))
+        _pump(50)
+        assert tb.battery.text() == "57%"
+        eventbus.bus.publish(eventbus.make_event("decode", "OPS", {"kind": "telemetry",
+                                                                   "batt": None}))
+        _pump(50)
+        assert tb.battery.text() == "—" and "no battery sensor" in tb.battery.toolTip()
+        # no strip item runs off the 1280 px strip
+        for w in tb.findChildren(QtWidgets.QWidget):
+            if w.isVisible() and w.parent() is tb:
+                assert w.geometry().right() <= tb.width(), w
+        # power is no longer a bare footer chip on OPS
+        assert "pwr" not in hub.ops._last_status
+    finally:
+        _close(hub)
+
+
+def test_s1_4_ops_count_is_named_not_a_bare_numeral():
+    hub = _big_hub(demo=True)
+    try:
+        ops = hub.ops
+        assert ops.big_cap.text().upper() == "CONTACTS ON MAP"
+        assert ops.big_cap.x() < ops.big.x(), "the caption comes first and names the number"
+        assert ops.big.toolTip()
+        assert ops.mini_pwr[1].text() in ("demo", "GPS fix", "typed", "NOT SET")
+    finally:
+        _close(hub)
+
+
+# ---------------------------------------------------------------- 5 run state
+def test_s1_5_run_controls_are_green_when_running_red_when_stopped():
+    from palisade_qt.kit.components import set_run
+    from palisade_qt import theme
+    q = theme.qss("dark")
+    assert 'QPushButton[run="on"]' in q and 'QPushButton[run="off"]' in q
+    b = QtWidgets.QPushButton("RUN")
+    set_run(b, False)
+    assert b.property("run") == "off"
+    set_run(b, True)
+    assert b.property("run") == "on"
+    hub = _big_hub()
+    try:
+        hub.open_callsign("PROWL", "DECODE")
+        _pump(200)
+        babel = next(w for w in hub.findChildren(QtWidgets.QWidget)
+                     if type(w).__name__ == "BabelApp")
+        assert babel.run_btn.property("run") == "off" and babel.run_btn.text() == "RUN"
+        babel._toggle_run(True)
+        assert babel.run_btn.property("run") == "on" and babel.run_btn.text() == "STOP"
+        babel._untick_run()
+        babel.run_btn.setChecked(True)
+        babel._untick_run()
+        assert babel.run_btn.property("run") == "off"
+    finally:
+        _close(hub)
+
+
+# ---------------------------------------------------------------- 6 volume
+def test_s1_6_volume_slider_has_real_travel():
+    hub = _big_hub()
+    try:
+        v = hub.topbar.volume
+        assert v.width() >= 120 and v.singleStep() <= 2 and v.maximum() - v.minimum() == 100
+    finally:
+        _close(hub)
+
+
+# ---------------------------------------------------------------- 26 no bottom status bar
+def test_s1_26_no_bottom_status_bar_warnings_become_a_notice_sdr_presence_in_the_strip():
+    """Owner 2026-11-18: 'get rid of that status bar at the bottom of all the modules'. Its content
+    is still reported: SDR presence in the strip's SDR slot, a new warning as a short notice, and
+    everything on a click of the page name."""
+    hub = _big_hub()
+    try:
+        for cs in ("OPS", "ATLAS", "PRISM", "PROWL", "RECON", "FORGE", "SYSTEM", "ASSISTANT",
+                   "MESH"):
+            hub.open_callsign(cs)
+            _pump(100)
+            rows = [w for w in hub.findChildren(QtWidgets.QFrame)
+                    if w.objectName() == "page_status" and w.isVisible()]
+            assert rows == [], cs
+        hub.open_callsign("ATLAS")
+        _pump(100)
+        app = hub.page_app("ATLAS")
+        hub.notice.hide()
+        app.set_chip("probe", "PROBE WARNING — something to fix", state="warn")
+        _pump(50)
+        assert hub.notice.isVisible() and "PROBE WARNING" in hub.notice.text()
+        hub.notice.hide()
+        app.set_chip("probe", "PROBE WARNING — something to fix", state="warn")
+        _pump(50)
+        assert not hub.notice.isVisible(), "the same warning is not repeated"
+        app.set_chip("calm", "all good", state="neutral")
+        _pump(50)
+        assert not hub.notice.isVisible(), "only warnings pop up"
+        lines = hub.show_page_messages()
+        assert hub.notice.isVisible() and any("all good" in ln for ln in lines)
+        # the notice sits inside the page area, bottom right, never over the strip or the rail
+        r = hub.notice.geometry()
+        sr = QtCore.QRect(hub.stack.mapTo(hub.centralWidget(), QtCore.QPoint(0, 0)),
+                          hub.stack.size())
+        assert sr.contains(r), (r, sr)
+        # SDR presence from OPS reaches the strip's SDR slot, once and labelled
+        hub.ops.set_chip("sdr", "SDR ABSENT", state="warn")
+        _pump(50)
+        assert hub.topbar.slots["radio"].text() == "ABSENT"
+        hub.ops.set_chip("sdr", "SDR PRESENT", state="neutral")
+        _pump(50)
+        assert hub.topbar.slots["radio"].text() == "FREE"
+    finally:
+        _close(hub)

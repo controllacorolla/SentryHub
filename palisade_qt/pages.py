@@ -5,7 +5,8 @@ its behaviour; only the page that hosts it changed:
 
   ATLAS  (2 · map)       MAP <- AtlasApp · SKY DOME, PASSES <- OverwatchApp (OVERWATCH retired as a page)
   PROWL  (4 · listen)    SCAN, FM, NWR <- ProwlApp · DECODE <- BabelApp (BABEL folded in)
-  SYSTEM (8 · settings)  SETTINGS, DOCTOR, ASSISTANT, MESH, SITREP <- MoreApp · BENCH <- BenchApp
+  SYSTEM (7 · settings)  SETTINGS, DOCTOR, SITREP <- MoreApp · BENCH <- BenchApp
+  ASSISTANT (8), MESH (9) are pages of their own since 2026-11-17 (system.AssistantApp / MeshApp)
 """
 from .app import CompositeApp
 from .atlas import AtlasApp
@@ -34,6 +35,5 @@ class ProwlPage(CompositeApp):
 
 class SystemPage(CompositeApp):
     TITLE = "SYSTEM"
-    PARTS = ((MoreApp, (("SETTINGS", "SETTINGS"), ("DOCTOR", "DOCTOR"), ("ASSISTANT", "ASSISTANT"),
-                        ("MESH", "MESH"), ("SITREP", "SITREP"))),
+    PARTS = ((MoreApp, (("SETTINGS", "SETTINGS"), ("DOCTOR", "DOCTOR"), ("SITREP", "SITREP"))),
              (BenchApp, (("BENCH", None),)))
