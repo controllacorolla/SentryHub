@@ -1470,14 +1470,18 @@ class ProwlApp(PalisadeApp):
                 and not self.swapping():
             self.swap_worker()           # PANIC cancelled a switch: start the shown sub-mode now
             return True
+        if w is not None and not self.demo and self._active and not self.swapping() \
+                and isinstance(w, (ScanWorker, FastScanWorker)) and w.isFinished():
+            # RA-CL8d NEW-O: SCAN stopped on a fault or refused settings; Enter starts it again
+            # (checked before held-off: a finished worker cannot resume, RA-RADIOc C2)
+            self.swap_worker()
+            return True
         if w is not None and getattr(w, "held_off", False) and self._active:
             w.set_active(True)
             self.busy.setText("")
             return True
-        if w is not None and not self.demo and self._active and not self.swapping() \
-                and isinstance(w, (ScanWorker, FastScanWorker)) and w.isFinished():
-            # RA-CL8d NEW-O: SCAN stopped on a fault or refused settings; Enter starts it again
-            self.swap_worker()
+        if isinstance(w, FastScanWorker) and w.faulted and self._active:
+            w.retry_now()                # RA-RADIOc C1: Enter retries a faulted scanner now
             return True
         return False
 

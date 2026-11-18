@@ -116,3 +116,13 @@ dongle: FM band sweep, 5 s of the strongest station on the speaker + WAV, timed 
 
 After the RA-RADIOb fixes: full suite 1887 passed, 17 skipped, 3 failed (the container baseline:
 test_audit_tiles, test_hwlab doctor, test_sstvdec). pyflakes clean.
+
+## RA-RADIOc (verdict MERGE) follow-ups, done before handing to the owner
+
+| ID | Fix | Regression test |
+|---|---|---|
+| C1 | `IqWorker.retry_now()`: PRISM START and PROWL Enter on a faulted worker skip the back-off; FAULT text ends "retry in N s" | test_c1_start_and_enter_retry… |
+| C2 | `on_source_closed` errors can't end the thread; PROWL Enter checks "finished" before "held off" | test_c2_prowl_enter_restarts… |
+| C3 | back-off reset after a good block is tested | test_c3_back_off_resets… |
+| C4 | a cancelled start closes the half-open source; a setting whose value raises is dropped, only source failures re-queue | test_c4_a_cancelled_start…, test_b7_… (now through run()) |
+| B6 / B7 pins | B6 test now drives the real `open()` with a fake rtl_tcp printing non-UTF-8; B7 test goes through `run()`. Both fail with their fix removed. | test_b6_…, test_b7_… |

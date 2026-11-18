@@ -6,6 +6,8 @@ a = sys.argv; port = int(a[a.index("-p")+1])
 state = os.environ["FAKE_STATE"]
 srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 srv.bind(("127.0.0.1", port)); srv.listen(1)
+if os.environ.get("FAKE_GARBAGE"):             # bytes that are not UTF-8 (RA-RADIOc B6 pin)
+    sys.stdout.buffer.write(b"\xff\xfe\xfd tuner\n" * 20); sys.stdout.buffer.flush()
 print("listening..."); sys.stdout.flush()
 c, _ = srv.accept()
 c.sendall(b"RTL0" + struct.pack(">II", 5, 29))

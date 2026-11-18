@@ -1457,38 +1457,138 @@ def test_b5_rtl_tcp_closing_during_the_header_is_an_error_not_a_spin():
     assert time.monotonic() - t < 0.5
 
 
-def test_b6_the_output_drain_survives_undecodable_bytes(tmp_path):
-    import subprocess
-    from palisade_qt.kit.procs import Pipeline
-    script = tmp_path / "noisy.py"
-    script.write_text("import sys,time\n"
-                      "sys.stdout.buffer.write(b'\\xff\\xfe bad\\n' * 50); sys.stdout.flush()\n"
-                      "for i in range(3000): print('set freq %d' % i, flush=True)\n"
-                      "print('END', flush=True)\n")
-    s = iqsource.RtlTcpSource(121_500_000, FS)
-    s.proc = Pipeline([[sys.executable, str(script)]], stderr_last=subprocess.STDOUT,
-                      text=False, bufsize=0)
-    s._read_err()                                       # drains to EOF (the thread's body)
-    assert s.err_tail[-1] == "END"
-    s.proc.terminate()
+def test_b6_the_output_drain_survives_undecodable_bytes(tmp_path, monkeypatch):
+    """rtl_tcp printing non-UTF-8 must not stop the drain (else N1's stall comes back)."""
+    monkeypatch.setenv("PATH", FAKE_BIN + os.pathsep + os.environ["PATH"])
+    monkeypatch.setenv("FAKE_GARBAGE", "1")
+    state = tmp_path / "state"
+    monkeypatch.setenv("FAKE_STATE", str(state))
+    s = iqsource.RtlTcpSource(121_500_000, 2048000).open()
+    try:
+        last = None
+        for n in range(5000):
+            last = 118_000_000 + (n % 760) * 25_000
+            s.set_freq(last)
+            if n % 500 == 499:
+                s.read(0.02)
+        assert _until(lambda: state.exists() and state.read_text() == str(last), 5000)
+        assert any("tuner" in ln for ln in s.err_tail) or s.err_tail[-1].startswith("set freq")
+    finally:
+        s.close()
 
 
-def test_b7_settings_queued_when_the_source_fails_are_kept_for_the_reopen():
+def test_b7_settings_queued_when_the_source_fails_are_applied_after_the_reopen(arb):
+    """Through run(): a bank change queued with a gain change that hits a dead rtl_tcp is not
+    lost; a setting whose VALUE raises is dropped instead of looping (RA-RADIOc C4)."""
     from palisade_qt.iqworker import FastScanWorker
+    srv = FakeRtlTcp(signals=[])
     b = banks.BANKS["NOAA Wx"]
     noaa = [(f, lb, b["mode"], b["bw"]) for f, lb in banks.expand(b)]
-    w = FastScanWorker(demo=True, channels=AIR[:10])
+    made = []
 
-    class Dead:
+    class Src(iqsource.RtlTcpSource):
         def set_gain(self, g):
-            raise iqsource.SourceError("rtl_tcp control socket: broken pipe")
-    w._src = Dead()
-    w.queue(gain_db=20.0, channels=noaa)
-    p = w._take_pending()
-    with pytest.raises(iqsource.SourceError):
-        w._apply(p)
-    w.queue(squelch_db=7.0)                    # queued meanwhile: kept too
-    w._requeue(p)                              # what run() does on a failed apply
-    w._src = None
-    w._apply(w._take_pending())
-    assert [c[0] for c in w.channels] == [c[0] for c in noaa] and w.squelch_db == 7.0
+            if made.index(self) == 0 and g == 20.0:
+                raise iqsource.SourceError("rtl_tcp control socket: broken pipe")
+            super().set_gain(g)
+
+    def factory(w):
+        made.append(Src(w.centre_hz, w.rate, spawn=FakeProc, port=srv.port))
+        return made[-1]
+    w = FastScanWorker(source="rtl", channels=AIR[:10], source_factory=factory, audio=False)
+    w.start()
+    try:
+        assert _until(lambda: made and w._src is not None, 4000)
+        w.queue(gain_db=20.0, channels=noaa)
+        assert _until(lambda: w.faulted, 3000)
+        w.retry_now()
+        assert _until(lambda: len(made) == 2 and [c[0] for c in w.channels] ==
+                      [c[0] for c in noaa], 6000), "the bank change survived the fault"
+        assert _until(lambda: srv.gain == 200, 3000)
+        w.queue(squelch_db="not a number")       # a VALUE that raises: dropped, not looped
+        assert _until(lambda: w.faulted, 3000)
+        assert "squelch_db" not in w._pending
+        w.retry_now()
+        assert _until(lambda: not w.faulted and len(made) == 3, 6000)
+    finally:
+        w.stop()
+        w.wait(4000)
+        srv.close()
+
+
+def test_c1_start_and_enter_retry_a_faulted_worker_at_once_and_say_when(arb):
+    from palisade_qt.iqworker import TunerWorker
+    opens, st = [], []
+    w = TunerWorker(source="file", file_path="/nonexistent/x_121500000Hz_2048000sps.cu8",
+                    audio=False, source_factory=lambda w: opens.append(1) or (_ for _ in ()
+                                                                            ).throw(OSError("x")))
+    w.status.connect(st.append)
+    w.start()
+    try:
+        assert _until(lambda: w.faulted and len(opens) == 1, 3000)
+        assert _until(lambda: any("retry in" in (s.get("sdr") or {}).get("text", "")
+                                  for s in st), 2000)
+        w._fault_n = 6                            # deep in the back-off: 60 s
+        w.retry_now()
+        assert _until(lambda: len(opens) == 2, 1500), "START / Enter skips the wait"
+    finally:
+        w.stop()
+        w.wait(3000)
+
+
+def test_c2_prowl_enter_restarts_a_finished_scanner_even_if_it_was_held_off():
+    p = _prowl(demo=False, engine="fast")
+    try:
+        p.start()
+        p.set_active(True)
+        _pump(200)
+        old = p._worker
+        old.hold_off("radio given back")
+        old.stop()
+        old.wait(3000)
+        assert p.primary_action()
+        assert _until(lambda: p._worker is not None and p._worker is not old, 3000)
+    finally:
+        p.stop()
+
+
+def test_c3_back_off_resets_after_a_good_block(arb):
+    from palisade_qt.iqworker import TunerWorker
+    srv = FakeRtlTcp(signals=[(119.1, "AM", lambda t: True)])
+    w = TunerWorker(source="rtl", centre_hz=119_000_000, mode="AM", audio=False,
+                    source_factory=lambda w: iqsource.RtlTcpSource(w.centre_hz, w.rate,
+                                                                   spawn=FakeProc,
+                                                                   port=srv.port))
+    rows = []
+    w.row.connect(rows.append)
+    w._fault_n = 5                               # earlier faults this session
+    w.start()
+    try:
+        assert _until(lambda: rows, 4000)
+        assert w._fault_n == 0 and w._retry_s() == 5.0
+    finally:
+        w.stop()
+        w.wait(4000)
+        srv.close()
+
+
+def test_c4_a_cancelled_start_closes_the_half_open_source(arb):
+    from palisade_qt.iqworker import TunerWorker
+    closed = []
+
+    class Half:
+        kind = "rtl"
+
+        def open(self, abort=None):
+            w.set_active(False)                  # page hidden at the instant it fails
+            raise iqsource.SourceError("rtl_tcp exited")
+
+        def close(self):
+            closed.append(1)
+    w = TunerWorker(source="rtl", audio=False, source_factory=lambda _w: Half())
+    w.start()
+    try:
+        assert _until(lambda: closed, 3000), "half-open rtl_tcp closed on cancel"
+    finally:
+        w.stop()
+        w.wait(3000)

@@ -1002,6 +1002,8 @@ class PrismApp(PalisadeApp):
                 self.busy.hide()
             elif on:
                 self._faulted = False
+                if getattr(w, "faulted", False):
+                    w.retry_now()                # RA-RADIOc C1: START retries at once
                 if hasattr(w, "set_active"):
                     w.set_active(self._active)
                 self.busy.hide()

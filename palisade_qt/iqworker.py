@@ -77,6 +77,16 @@ class IqWorker(Worker):
             self._why = "page hidden"
         self.poke()
 
+    def retry_now(self):
+        """Operator START / Enter on a faulted worker (RA-RADIOc C1): skip the back-off wait."""
+        self._fault_n = 0
+        self._fault = None
+        self.poke()
+
+    @property
+    def faulted(self):
+        return self._fault is not None
+
     def _on_revoked(self, name):
         if name == self.NAME:
             self.hold_off("radio given back")
@@ -130,7 +140,10 @@ class IqWorker(Worker):
                 src.close()                              # rtl_tcp: terminate + wait (no zombie)
             except Exception:
                 pass
-        self.on_source_closed()
+        try:
+            self.on_source_closed()
+        except Exception:                                # RA-RADIOc C2: teardown never kills
+            pass                                         # the thread
 
     def _release(self, why=None):
         self._close_source()
@@ -154,8 +167,7 @@ class IqWorker(Worker):
         if not self._has_radio and self._fault is not None \
                 and time.monotonic() - self._fault[1] < self._retry_s():
             # RA-RADIOb B2: faulted -> the radio stays free until the retry is due
-            self._status(("%s FAULT — %s" % (self.LABEL, self._fault[0]))[:90], "alert",
-                         fault=self._fault[0], live=False)
+            self._status(self._fault_text(), "alert", fault=self._fault[0], live=False)
             return False
         if not self._has_radio:
             if arb.request(self.NAME):
@@ -180,8 +192,7 @@ class IqWorker(Worker):
 
     def _open(self):
         if self._fault is not None and time.monotonic() - self._fault[1] < self._retry_s():
-            self._status(("%s FAULT — %s" % (self.LABEL, self._fault[0]))[:90], "alert",
-                         fault=self._fault[0], live=False)
+            self._status(self._fault_text(), "alert", fault=self._fault[0], live=False)
             return False
         src = None
         try:
@@ -198,6 +209,11 @@ class IqWorker(Worker):
                 src.open()
         except Exception as e:                           # B3: FileNotFoundError, OSError, bugs
             if self._stop or not self._active:
+                if src is not None:                      # RA-RADIOc C4: never leave a
+                    try:                                 # half-open rtl_tcp on the dongle
+                        src.close()
+                    except Exception:
+                        pass
                 return False                             # cancelled, not a fault
             if not isinstance(e, iqsource.SourceError):
                 e = "%s: %s" % (type(e).__name__, e)
@@ -244,9 +260,10 @@ class IqWorker(Worker):
                 try:
                     self._apply(p)
                 except Exception as e:
-                    # RA-RADIOb B7: a failed apply keeps the queued settings (newer queued values
-                    # win) so they are applied once the source is back
-                    self._requeue(p)
+                    # RA-RADIOb B7: when the SOURCE failed, keep the queued settings (newer
+                    # values win) for the reopen; a setting that itself raises is dropped (C4)
+                    if isinstance(e, (iqsource.SourceError, OSError)):
+                        self._requeue(p)
                     self._block_fault(e if isinstance(e, (iqsource.SourceError, OSError))
                                       else "internal error %s: %s" % (type(e).__name__, e))
                     continue
@@ -283,6 +300,11 @@ class IqWorker(Worker):
                 radio_arbiter.arbiter.revoked.disconnect(self._on_revoked)
             except (RuntimeError, TypeError):
                 pass
+
+    def _fault_text(self):
+        f = self._fault
+        left = max(0, int(math.ceil(self._retry_s() - (time.monotonic() - f[1]))))
+        return ("%s FAULT — %s" % (self.LABEL, f[0]))[:80] + " · retry in %ds" % left
 
     def _requeue(self, p):
         """Put settings that could not be applied back in the queue; newer queued values win."""
