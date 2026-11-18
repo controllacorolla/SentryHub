@@ -473,3 +473,48 @@ def test_ra_s1c_a_second_warning_joins_the_notice_showing():
     assert "FIRST" in n.text() and "SECOND" in n.text()
     w.close()
     w.deleteLater()
+
+
+# ---------------------------------------------------------------- RA-S1d follow-ups
+def _shown_notice():
+    from palisade_qt.shell import PageNotice
+    w = QtWidgets.QWidget()
+    w.resize(800, 600)
+    w.show()
+    return w, PageNotice("dark", w)
+
+
+def test_ra_s1d_n12_the_notice_only_says_what_the_page_reports_now():
+    w, n = _shown_notice()
+    # a replaced warning on the same key (RECON WIFI -> BLE) does not keep the old line
+    n.consider("RECON", {"sdr": {"text": "WIFI STANDBY — offline", "state": "warn"}})
+    n.consider("RECON", {"sdr": {"text": "BLE STANDBY — offline", "state": "warn"}})
+    assert "BLE STANDBY" in n.text() and "WIFI" not in n.text()
+    # a cleared warning goes when a second one joins
+    n.consider("ATLAS", {"a": {"text": "FIRST PROBLEM", "state": "warn"}})
+    n.consider("ATLAS", {"b": {"text": "SECOND PROBLEM", "state": "warn"}})
+    assert "SECOND" in n.text() and "FIRST" not in n.text()
+    # … and goes on its own; the notice hides once nothing it showed is still reported
+    n.consider("ATLAS", {"a": {"text": "FIRST PROBLEM", "state": "warn"},
+                         "b": {"text": "SECOND PROBLEM", "state": "warn"}})
+    assert "FIRST" in n.text() and "SECOND" in n.text()
+    n.consider("ATLAS", {"b": {"text": "SECOND PROBLEM", "state": "warn"}})
+    assert "FIRST" not in n.text() and n.isVisible()
+    n.consider("ATLAS", {})
+    assert not n.isVisible()
+    # ADS-B NO FEED -> STALE on the same key: one line, the current one
+    n.consider("ATLAS", {"sdr": {"text": "ADS-B NO FEED", "state": "warn"}})
+    n.consider("ATLAS", {"sdr": {"text": "ADS-B STALE 12s", "state": "alert"}})
+    assert n.text().count("\n") == 0 and "STALE" in n.text()
+    w.close()
+    w.deleteLater()
+
+
+def test_ra_s1d_n13_the_notice_never_grows_past_one_line_per_status_key():
+    w, n = _shown_notice()
+    for i in range(60):
+        n.consider("RECON", {"sdr": {"text": ("WIFI" if i % 2 else "BLE") + " STANDBY",
+                                     "state": "warn"}})
+    assert n.text().count("\n") == 0
+    w.close()
+    w.deleteLater()
