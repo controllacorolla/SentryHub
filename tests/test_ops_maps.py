@@ -361,11 +361,14 @@ def test_ra_s2_n2_imagery_strip_stays_out_of_the_map_centre_and_can_be_put_away(
                     assert not g.intersects(r), (page, g, r)
             assert base.banner.height() <= 48                   # one line (RA-S2 N3)
             QtTest.QTest.mouseClick(base.banner, QtCore.Qt.LeftButton)
-            assert not base.banner.isVisible() and not base.download_btn.isVisible()
-            base._on_imagery(*imagery_state({"tiles": 6, "shown": 0, "blocked": 6}))
-            assert not base.banner.isVisible(), "put away until the state changes"
-            base._on_imagery(*imagery_state({"tiles": 6, "shown": 3, "blocked": 3}))
-            assert base.banner.isVisible()
+            # folded to a small chip, never gone (RA-S2b N8)
+            assert base.banner.isVisible() and base.banner.text() == "NO IMAGERY ▸"
+            assert not base.download_btn.isVisible()
+            # a new blank area with the same reason (HOME moved, zoomed): still says so
+            base._on_imagery(*imagery_state({"tiles": 9, "shown": 0, "blocked": 9}))
+            assert base.banner.isVisible() and "NO IMAGERY" in base.banner.text()
+            QtTest.QTest.mouseClick(base.banner, QtCore.Qt.LeftButton)       # unfold
+            assert "NET OFFLINE" in base.banner.text() and base.download_btn.isVisible()
     finally:
         _close(hub)
 
@@ -387,3 +390,45 @@ def test_ra_s2_n7_sky_table_does_not_claim_everything_is_above_the_horizon():
     src = inspect.getsource(overwatch)
     assert 'micro("ABOVE THE HORIZON")' not in src
     assert "BELOW 0° = UNDER THE HORIZON" in src
+
+
+
+# ---------------------------------------------------------------- RA-S2b follow-ups
+def test_ra_s2b_n9_an_old_alert_never_overrides_the_prediction_list(home):
+    hub = _big_hub()
+    try:
+        now = time.time()
+        hub.ops._next_pass = {"sat": "NOAA-19", "aos": now + 60}
+        hub.ops.next_pass = lambda: None
+        hub.ops.pass_state = lambda: "no-home"
+        assert hub.ops._pass_text() == "HOME NOT SET"
+    finally:
+        _close(hub)
+
+
+def test_ra_s2b_n10_refused_grants_are_logged_https_only_and_only_tiles_use_grants(offline,
+                                                                                     monkeypatch):
+    import re
+    import urllib.request
+    from palisade_qt.kit import tiles
+    tiles._netpolicy()
+    calls = []
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, **kw: calls.append(req))
+    for url in ("https://example.com/x", "http://server.arcgisonline.com/x"):
+        with pytest.raises(offline.NetBlocked):
+            offline.urlopen(url, purpose="p", granted=True)
+    assert not calls
+    assert sum(1 for e in offline.log() if e[2] == "blocked" and "grant refused" in e[4]) == 2
+    # only the map tiles may ask for a grant
+    root = os.path.dirname(HERE) if "HERE" in globals() else os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))
+    users = []
+    for d, _dirs, files in os.walk(root):
+        if any(x in d for x in (".git", "tests", "plan", "venv")):
+            continue
+        for f in files:
+            if f.endswith(".py"):
+                src = open(os.path.join(d, f), encoding="utf-8", errors="ignore").read()
+                if re.search(r"granted\s*=\s*(True|getattr)|allow_grant\(", src):
+                    users.append(os.path.relpath(os.path.join(d, f), root))
+    assert sorted(users) == ["netpolicy.py", os.path.join("palisade_qt", "kit", "tiles.py")], users

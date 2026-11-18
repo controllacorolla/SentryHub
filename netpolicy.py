@@ -246,8 +246,14 @@ def urlopen(req, timeout=10, purpose="", granted=False, **kw):
             purpose = ""
     if granted:
         host = (_host_of(url) or "").lower()
-        if host not in GRANTABLE:
-            raise NetBlocked(host, mode(), "no operator grant for this host")
+        if host not in GRANTABLE or scheme != "https":
+            m = mode()
+            why = "grant refused: %s" % ("not a grantable host" if host not in GRANTABLE
+                                         else "https only")
+            with _lock:                          # logged like any blocked request (RA-S2b N10)
+                _log.append((time.time(), m, "blocked", host, why))
+            _notify(("blocked", m, host, why))
+            raise NetBlocked(host, m, why)
         grant(url, purpose)
     else:
         check(url, purpose)
