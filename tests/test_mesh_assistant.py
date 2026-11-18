@@ -22,7 +22,6 @@ for p in (SUITE_DIR, HERE):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from PySide6 import QtWidgets  # noqa: E402
 
 from test_cl1_screen import _pump, _hub, _isolate  # noqa: E402
 
