@@ -25,13 +25,41 @@ from PySide6 import QtCore, QtWidgets
 from .app import PalisadeApp
 from . import theme, radio_arbiter, eventbus
 from .timebase import zulu
-from .kit import ControlBar, FeedTable, DetailCard, micro, card
+from .kit import ControlBar, FeedTable, DetailCard, micro
 from .worker import Worker
-from .kit.components import StatusLine
+from .kit.components import Section, StatusLine, set_run
+from .iqworker import FastScanWorker
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
+
+import banks  # noqa: E402
+import dsp  # noqa: E402
+
+CUSTOM_RANGE = "Custom range"
+SCAN_STEPS = (("5 kHz", 5000), ("6.25 kHz", 6250), ("7.5 kHz", 7500), ("8.33 kHz", 8333.33),
+              ("10 kHz", 10000), ("12.5 kHz", 12500), ("15 kHz", 15000), ("20 kHz", 20000),
+              ("25 kHz", 25000), ("50 kHz", 50000), ("100 kHz", 100000), ("200 kHz", 200000))
+SCAN_DEFAULTS = {"engine": "", "bank": "Airband (full)", "bank_squelch": {}, "dwell": 0.15,
+                 "resume": 2.0, "max_hold": 30.0, "audio": True, "include_ranges": True,
+                 "range_lo": 118.0, "range_hi": 136.975, "range_step": 25000.0,
+                 "range_mode": "AM", "priority_on": False, "priority_mhz": 121.5,
+                 "priority_mode": "AM", "priority_every": 2.0, "lockouts": []}
+
+
+def _load_scan_cfg():
+    try:
+        import suite
+        return suite.settings("prowl_scan", SCAN_DEFAULTS)
+    except Exception:
+        return dict(SCAN_DEFAULTS), None
+
+
+def _default_engine(demo):
+    """FAST (rtl_tcp IQ) when rtl_tcp is installed; CLASSIC (rtl_fm per channel) otherwise and
+    in demo (the demo channel list)."""
+    return "fast" if (not demo and shutil.which("rtl_tcp")) else "classic"
 
 DEMO_CHANNELS = [
     ("162.400", "NOAA WX1"), ("154.265", "Fire Disp"), ("155.340", "EMS"),
@@ -224,20 +252,34 @@ class ScanWorker(_RadioWorker):
     NAME = "PROWL-SCAN"
     LABEL = "SCAN"
 
-    def __init__(self, demo=False, bank="NOAA Wx", squelch=30, parent=None):
+    def __init__(self, demo=False, bank="NOAA Wx", squelch=30, channels=None, timing=None,
+                 lockouts=(), parent=None):
         super().__init__(demo=demo, interval_ms=350, parent=parent)
         self.squelch = squelch
         self.hold = False
         self._bank = bank
+        # radio cluster: the page's bank / range list and its dwell / resume delay / max hold
+        # ({"dwell", "hold", "max_active"} in the engine's own keys) override scanner.json
+        self._channels_override = [tuple(c[:3]) for c in channels] if channels else None
+        self._timing = dict(timing or {})
         self._scan = None          # live scan state dict; kept on self so stop() can break the
         self._fatal = False        # blocking listen_channel (scan["on"]=False) — else it hangs
-        self._skip = set()         # E2: locked-out channels (MHz)
+        self._skip = set(round(float(f), 4) for f in lockouts)   # E2: locked-out channels (MHz)
         self._nfm_sq = None        # B2: live NFM squelch (rtl_fm -l units) set from the page
         self._settings = None
 
-    def set_bank(self, bank):
+    def set_bank(self, bank, channels=None, lockouts=()):
         self._bank = bank
-        self._skip.clear()
+        self._channels_override = [tuple(c[:3]) for c in channels] if channels else None
+        self._skip = set(round(float(f), 4) for f in lockouts)
+        if self._scan is not None:
+            self._scan["pause"] = True          # break the current listen; the loop re-reads
+
+    def set_timing(self, **kw):
+        """dwell / hold (resume delay) / max_active, in scanner.json units (seconds)."""
+        self._timing.update({k: float(v) for k, v in kw.items()})
+        if self._settings is not None:
+            self._settings.update(self._timing)
 
     def skip_current(self):
         """E2: lock out the channel the scanner is on right now (SCAN resumes elsewhere)."""
@@ -282,8 +324,7 @@ class ScanWorker(_RadioWorker):
         """Live mode without rtl_fm: list the bank's channels all-quiet and publish NO fake hits."""
         import scanner as engine
         s, _ = _load_scanner_settings(engine)
-        channels = (engine.bank_channels(self._bank, s.get("custom", []))
-                    or engine.bank_channels(engine.DEFAULTS["bank"], []))
+        channels = self._bank_list(engine, s)
         self._channels = channels
         scan = {"on": False, "pause": False, "idx": 0, "rms": 0.0}
         while not self._stop:
@@ -307,6 +348,13 @@ class ScanWorker(_RadioWorker):
             if not active:
                 self.status.emit({"sdr": {"text": "SCAN DEMO", "state": "neutral"}})
             self.sleep(self.interval_ms)
+
+    def _bank_list(self, engine, s):
+        if self._channels_override:
+            return [(float(f), str(lb), "am" if str(m).upper() == "AM" else "nfm")
+                    for f, lb, m in self._channels_override]
+        return (engine.bank_channels(self._bank, s.get("custom", []))
+                or engine.bank_channels(engine.DEFAULTS["bank"], []))
 
     def _check_scanner_settings(self, s):
         """RA-CL8b NEW-D: a malformed scanner.json crashed the worker with only 'SCAN OFF'. Check
@@ -332,9 +380,9 @@ class ScanWorker(_RadioWorker):
         except argsafe.SettingsRefused as e:
             self._refuse_settings(e)
             return
+        s.update(self._timing)
         self._settings = s
-        channels = (engine.bank_channels(self._bank, s.get("custom", []))
-                    or engine.bank_channels(engine.DEFAULTS["bank"], []))
+        channels = self._bank_list(engine, s)
         self._channels = channels
         self._scan = {"on": True, "pause": False, "idx": 0, "rms": 0.0}
         scan = self._scan
@@ -354,6 +402,13 @@ class ScanWorker(_RadioWorker):
                     continue
                 if scan.get("pause") and self._active:
                     scan["pause"] = False       # a skip broke the listen; carry on scanning
+                    if self._channels_override is not None or self._bank:
+                        nl = self._bank_list(engine, s)
+                        if nl != channels:      # the page changed the bank / range
+                            channels = nl
+                            self._channels = channels
+                            hits = {}
+                            scan["idx"] = 0
                 idx = scan["idx"] % len(channels)
                 if channels[idx][0] in self._skip and len(self._skip) < len(channels):
                     scan["idx"] = (idx + 1) % len(channels)
@@ -897,6 +952,10 @@ class ProwlApp(PalisadeApp):
 
     def __init__(self, demo=False, mode="dark", parent=None, embedded=False):
         self._submode = "SCAN"
+        self._scfg, self._scfg_path = _load_scan_cfg()
+        eng = self._scfg.get("engine")
+        self._engine = eng if eng in ("fast", "classic") and not demo else _default_engine(demo)
+        self._sel_row = None
         super().__init__(demo=demo, mode=mode, parent=parent, embedded=embedded)
 
     def current_subtab(self):
@@ -972,12 +1031,31 @@ class ProwlApp(PalisadeApp):
         return body
 
     def _build_scan_page(self):
+        c = self._scfg
         page = QtWidgets.QWidget()
         lay = QtWidgets.QVBoxLayout(page)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(10)
+        lay.setSpacing(8)
 
         self.bar = ControlBar()
+        self.bar.lay.setSpacing(10)
+        self.hold_btn = self.bar.add_button("SCAN", self._toggle_hold)
+        self.hold_btn.setMinimumWidth(96)
+        self.hold_btn.setToolTip("Green = scanning. Press (or Space) to HOLD on the current "
+                                 "channel (red); press again to resume.")
+        self.engine_combo = QtWidgets.QComboBox()
+        self.engine_combo.addItem("FAST (IQ)", "fast")
+        self.engine_combo.addItem("CLASSIC (rtl_fm)", "classic")
+        self.engine_combo.setToolTip("FAST judges every channel in a ~1.7 MHz capture at once "
+                                     "(rtl_tcp). CLASSIC opens rtl_fm per channel.")
+        self.engine_combo.setCurrentIndex(0 if self._engine == "fast" else 1)
+        self.bar.add_field("engine", self.engine_combo, "Engine")
+        self.bank_combo = QtWidgets.QComboBox()
+        self.bank_combo.addItems(list(banks.BANK_ORDER) + [CUSTOM_RANGE])
+        bank = c["bank"] if c["bank"] in banks.BANK_ORDER + [CUSTOM_RANGE] else banks.BANK_ORDER[0]
+        self.bank_combo.setCurrentText(bank)
+        self.bar.add_field("bank", self.bank_combo, "Bank")
+        # classic engine squelch (rtl_fm -l, or the demo's synthetic %) — B2, unchanged
         self.squelch = QtWidgets.QSpinBox()
         if self.demo:
             self.squelch.setRange(0, 100)
@@ -985,7 +1063,6 @@ class ProwlApp(PalisadeApp):
             self.squelch.setSuffix(" %")
             self.squelch.setToolTip("Demo squelch on the synthetic audio level (0-100)")
         else:
-            # B2: the live control IS the engine's rtl_fm power squelch (-l), in its own units
             self.squelch.setRange(0, 1000)
             try:
                 import scanner as _eng
@@ -997,43 +1074,63 @@ class ProwlApp(PalisadeApp):
                                     "scanner stops on empty channels, lower it if it misses traffic. "
                                     "Applies to the live scan at once.")
         self.squelch.valueChanged.connect(self._sq)
-        self.bar.add_field("squelch", self.squelch, "Squelch")
-
-        self.bank_combo = QtWidgets.QComboBox()
-        try:
-            import scanner as engine
-            banks = engine.BANK_ORDER
-        except ImportError:
-            banks = ["NOAA Wx", "CB", "GMRS/FRS", "Marine VHF", "Airband"]
-        self.bank_combo.addItems(banks)
-        try:
-            import scanner as _eng2
-            self.bank_combo.setCurrentText(_eng2.DEFAULTS["bank"])   # E2: an intermittent bank
-        except ImportError:
-            self.bank_combo.setCurrentText("GMRS/FRS")
-        self.bank_combo.currentTextChanged.connect(self._set_bank)
-        self.bar.add_field("bank", self.bank_combo, "Bank")
-
-        self.hold_btn = self.bar.add_button("SCAN", self._toggle_hold)
+        self._sq_classic_box = self.bar.add_field("squelch", self.squelch, "Squelch")
+        # FAST engine squelch: dB above the measured noise floor, remembered per bank
+        self.fast_sq = QtWidgets.QSpinBox()
+        self.fast_sq.setRange(2, 40)
+        self.fast_sq.setSuffix(" dB")
+        self.fast_sq.setToolTip("Stop on a channel this many dB above the noise floor. "
+                                "Remembered per bank.")
+        self.fast_sq.setValue(self._bank_sq(bank))
+        self.fast_sq.valueChanged.connect(self._fast_sq_changed)
+        self.bar.add_field("fast_squelch", self.fast_sq, "Squelch (per bank)")
+        self.step_combo = QtWidgets.QComboBox()
+        for label, hz in SCAN_STEPS:
+            self.step_combo.addItem(label, hz)
+        self.bar.add_field("step", self.step_combo, "Range step")
         self.bar.add_stretch()
-        self.bar.lay.addWidget(micro("Active"))
-        self.active = QtWidgets.QLabel("—  scanning")
-        self.active.setProperty("class", "value")
-        self.bar.lay.addWidget(self.active)
+        for cb in (self.engine_combo, self.bank_combo, self.step_combo):
+            cb.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.engine_combo.setMinimumContentsLength(12)
+        self.bank_combo.setMinimumContentsLength(16)
+        self.step_combo.setMinimumContentsLength(8)
         lay.addWidget(self.bar)
 
-        split = QtWidgets.QHBoxLayout()
-        split.setSpacing(10)
-        self.feed = FeedTable([("freq", "FREQUENCY"), ("label", "CHANNEL"),
-                               ("sig", "LEVEL"), ("last", "LAST (Z)")])
-        self.feed.selected.connect(self._show)
-        split.addWidget(self.feed, 3)
+        info = QtWidgets.QHBoxLayout()
+        info.setContentsMargins(4, 0, 4, 0)
+        info.setSpacing(12)
+        self.active = QtWidgets.QLabel("—  scanning")
+        self.active.setProperty("class", "value")
+        info.addWidget(self.active)
+        self.scan_info = QtWidgets.QLabel("")
+        self.scan_info.setProperty("class", "note")
+        self.scan_info.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
+                                     QtWidgets.QSizePolicy.Preferred)
+        info.addWidget(self.scan_info, 1)
+        lay.addLayout(info)
 
-        right = QtWidgets.QVBoxLayout()
-        right.setSpacing(8)
+        split = QtWidgets.QHBoxLayout()
+        split.setSpacing(8)
+        self.feed = FeedTable([("freq", "FREQUENCY"), ("label", "CHANNEL"), ("mode", "MODE"),
+                               ("sig", "LEVEL"), ("hits", "HITS"), ("last", "LAST (Z)")])
+        self.feed.selected.connect(self._show)
+        split.addWidget(self.feed, 1)
+
+        right = QtWidgets.QScrollArea()
+        right.setWidgetResizable(True)
+        right.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        right.setFrameShape(QtWidgets.QFrame.NoFrame)
+        right.setFixedWidth(320)
+        self.scan_side = right
+        inner = QtWidgets.QWidget()
+        rv = QtWidgets.QVBoxLayout(inner)
+        rv.setContentsMargins(0, 0, 6, 0)
+        rv.setSpacing(6)
+        right.setWidget(inner)
+
         self.detail = DetailCard("CHANNEL")
         self.detail.set_hero("—", "select a channel")
-        right.addWidget(self.detail, 3)
+        rv.addWidget(self.detail)
         self.sig_bar = QtWidgets.QProgressBar()
         self.sig_bar.setRange(0, 100)
         self.sig_bar.setValue(0)
@@ -1043,28 +1140,133 @@ class ProwlApp(PalisadeApp):
             "QProgressBar { background: %s; border: none; border-radius: 3px; }"
             "QProgressBar::chunk { background: %s; border-radius: 3px; }"
             % (self._tok["well"], self._tok["accent"]))
-        right.addWidget(self.sig_bar)
+        rv.addWidget(self.sig_bar)
 
-        fdb = card(2)
-        fl = QtWidgets.QVBoxLayout(fdb)
-        fl.setContentsMargins(11, 9, 11, 9)
-        fl.setSpacing(5)
-        fl.addWidget(micro("Frequency DB"))
+        # ---- timing
+        t = self.sec_timing = Section("TIMING")
+        self.dwell = self._dspin(0.05, 5.0, c["dwell"], 0.05, " s",
+                                 "Time spent sampling each step before moving on")
+        t.row("Dwell", self.dwell)
+        self.resume = self._dspin(0.0, 30.0, c["resume"], 0.5, " s",
+                                  "Quiet time after a transmission ends before scanning resumes")
+        t.row("Resume delay", self.resume)
+        self.max_hold = self._dspin(0.0, 600.0, c["max_hold"], 5.0, " s",
+                                    "Longest stay on one active channel (0 = no limit); a "
+                                    "continuous carrier must not park the scanner")
+        t.row("Max hold", self.max_hold)
+        self.audio_chk = QtWidgets.QCheckBox("Audio out")
+        self.audio_chk.setChecked(bool(c["audio"]))
+        t.row("", self.audio_chk)
+        for w in (self.dwell, self.resume, self.max_hold):
+            w.valueChanged.connect(self._timing_changed)
+        self.audio_chk.toggled.connect(self._audio_changed)
+        rv.addWidget(t)
+
+        # ---- range scan
+        r = self.sec_range = Section("RANGE SCAN")
+        self.include_ranges = QtWidgets.QCheckBox("Also step the bank's ranges")
+        self.include_ranges.setChecked(bool(c["include_ranges"]))
+        self.include_ranges.setToolTip("e.g. Airband (full) = every 25 kHz channel 118-137 MHz")
+        r.row("", self.include_ranges)
+        self.range_lo = self._dspin(24.0, 1766.0, c["range_lo"], 0.025, " MHz", None, 4)
+        self.range_hi = self._dspin(24.0, 1766.0, c["range_hi"], 0.025, " MHz", None, 4)
+        r.row("Start", self.range_lo)
+        r.row("Stop", self.range_hi)
+        self.range_mode = QtWidgets.QComboBox()
+        self.range_mode.addItems(["AM", "NFM", "WFM"])
+        self.range_mode.setCurrentText(c["range_mode"] if c["range_mode"] in ("AM", "NFM", "WFM")
+                                       else "AM")
+        r.row("Mode", self.range_mode)
+        self.range_go = QtWidgets.QPushButton("SCAN THIS RANGE")
+        self.range_go.clicked.connect(self._scan_range)
+        r.row("", self.range_go)
+        self.include_ranges.toggled.connect(lambda _on: self._apply_bank())
+        rv.addWidget(r)
+
+        # ---- priority
+        pr = self.sec_pri = Section("PRIORITY")
+        self.pri_on = QtWidgets.QCheckBox("Priority channel")
+        self.pri_on.setChecked(bool(c["priority_on"]))
+        pr.row("", self.pri_on)
+        self.pri_freq = self._dspin(24.0, 1766.0, c["priority_mhz"], 0.0125, " MHz", None, 4)
+        pr.row("Frequency", self.pri_freq)
+        self.pri_mode = QtWidgets.QComboBox()
+        self.pri_mode.addItems(["AM", "NFM", "WFM"])
+        self.pri_mode.setCurrentText(c["priority_mode"] if c["priority_mode"] in
+                                     ("AM", "NFM", "WFM") else "AM")
+        pr.row("Mode", self.pri_mode)
+        self.pri_every = self._dspin(0.5, 30.0, c["priority_every"], 0.5, " s",
+                                     "How often the priority channel is checked while scanning "
+                                     "or listening elsewhere")
+        pr.row("Check every", self.pri_every)
+        self.pri_set = QtWidgets.QPushButton("SET FROM ACTIVE / SELECTED")
+        self.pri_set.clicked.connect(self._pri_from_selected)
+        pr.row("", self.pri_set)
+        for w in (self.pri_on,):
+            w.toggled.connect(lambda _x: self._priority_changed())
+        for w in (self.pri_freq, self.pri_every):
+            w.valueChanged.connect(lambda _x: self._priority_changed())
+        self.pri_mode.currentIndexChanged.connect(lambda _x: self._priority_changed())
+        rv.addWidget(pr)
+
+        # ---- lockouts
+        lo = self.sec_lock = Section("LOCKOUTS")
+        self.lock_list = QtWidgets.QListWidget()
+        self.lock_list.setMinimumHeight(90)
+        lo.row("", self.lock_list)
+        lb = QtWidgets.QWidget()
+        ll = QtWidgets.QHBoxLayout(lb)
+        ll.setContentsMargins(0, 0, 0, 0)
+        self.lock_cur = QtWidgets.QPushButton("LOCK OUT (S)")
+        self.lock_cur.clicked.connect(self._skip_current)
+        self.lock_del = QtWidgets.QPushButton("REMOVE")
+        self.lock_del.clicked.connect(self._lock_remove)
+        self.lock_clr = QtWidgets.QPushButton("CLEAR")
+        self.lock_clr.clicked.connect(self._lock_clear)
+        for b in (self.lock_cur, self.lock_del, self.lock_clr):
+            ll.addWidget(b)
+        lo.row("", lb)
+        rv.addWidget(lo)
+
+        # ---- frequency DB (was a fixed card)
+        fd = self.sec_fdb = Section("FREQUENCY DB", open_=False)
         self.fdb_input = QtWidgets.QLineEdit()
         self.fdb_input.setPlaceholderText("MHz, or search a service…")
         self.fdb_input.returnPressed.connect(self._fdb_query)
         self.fdb_input.textChanged.connect(self._fdb_query)
-        fl.addWidget(self.fdb_input)
+        fd.row("", self.fdb_input)
         self.fdb_results = QtWidgets.QLabel("")
         self.fdb_results.setProperty("class", "note")
         self.fdb_results.setWordWrap(True)
         self.fdb_results.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        fl.addWidget(self.fdb_results)
-        right.addWidget(fdb, 2)
+        fd.row("", self.fdb_results)
+        rv.addWidget(fd)
+        rv.addStretch(1)
 
-        split.addLayout(right, 1)
+        split.addWidget(right)
         lay.addLayout(split, 1)
+
+        self.engine_combo.currentIndexChanged.connect(self._engine_changed)
+        self.bank_combo.currentTextChanged.connect(self._set_bank)
+        self.step_combo.currentIndexChanged.connect(lambda _i: self._apply_bank())
+        self._sync_step_for_bank(bank)
+        self._sync_engine_rows()
+        self._refresh_locks()
+        set_run(self.hold_btn, True)
         return page
+
+    @staticmethod
+    def _dspin(lo, hi, val, step, suffix, tip=None, decimals=2):
+        w = QtWidgets.QDoubleSpinBox()
+        w.setRange(lo, hi)
+        w.setDecimals(decimals)
+        w.setSingleStep(step)
+        w.setValue(float(val))
+        w.setSuffix(suffix)
+        w.setKeyboardTracking(False)
+        if tip:
+            w.setToolTip(tip)
+        return w
 
     def _build_fm_page(self):
         page = QtWidgets.QWidget()
@@ -1188,9 +1390,31 @@ class ProwlApp(PalisadeApp):
         elif self._submode == "NWR":
             freq, label = self.nwr_combo.currentData() or NWR_CHANNELS[0]
             w = NwrWorker(demo=self.demo, channel=freq, label=label)
+        elif self._engine == "fast":
+            try:
+                chans = self._scan_channels()
+            except ValueError as e:
+                self.scan_info.setText("Range refused: %s" % e)
+                chans = []
+            w = FastScanWorker(demo=self.demo, channels=chans,
+                               squelch_db=float(self.fast_sq.value()),
+                               dwell_s=self.dwell.value(), resume_s=self.resume.value(),
+                               max_hold_s=self.max_hold.value(),
+                               priority=self._priority_tuple(),
+                               priority_every_s=self.pri_every.value(),
+                               lockouts=self._locks(), audio=self.audio_chk.isChecked())
         else:
+            chans = None
+            if not self.demo:
+                try:
+                    chans = [(c[0], c[1], c[2]) for c in self._scan_channels()]
+                except ValueError:
+                    chans = None
             w = ScanWorker(demo=self.demo, bank=self.bank_combo.currentText(),
-                           squelch=self.squelch.value())
+                           squelch=self.squelch.value(), channels=chans,
+                           timing={"dwell": self.dwell.value(), "hold": self.resume.value(),
+                                   "max_active": self.max_hold.value()},
+                           lockouts=self._locks())
         w.set_active(self._active)       # inherit the page's front/back state at start
         return w
 
@@ -1230,14 +1454,238 @@ class ProwlApp(PalisadeApp):
         return False
 
     # ---- SCAN handlers ----
+    def _save_scan(self, **kw):
+        self._scfg.update(kw)
+        if self._scfg_path and not self.demo:
+            try:
+                import suite
+                suite.save_json(self._scfg_path, self._scfg)
+            except Exception:
+                pass
+
+    def _field_visible(self, widget, on):
+        lay = self.bar.lay
+        for i in range(lay.count()):
+            sub = lay.itemAt(i).layout()
+            if sub is not None and sub.indexOf(widget) >= 0:
+                for k in range(sub.count()):
+                    w = sub.itemAt(k).widget()
+                    if w is not None:
+                        w.setVisible(on)
+
+    def _sync_engine_rows(self):
+        fast = self._engine == "fast"
+        self._field_visible(self.squelch, not fast)
+        self._field_visible(self.fast_sq, fast)
+        for w in (self.sec_pri, self.include_ranges, self.pri_on):
+            w.setEnabled(fast)
+        self.sec_pri.setToolTip("" if fast else "Priority needs the FAST engine")
+
+    def _engine_changed(self, *_):
+        self._engine = self.engine_combo.currentData()
+        self._save_scan(engine=self._engine)
+        self._sync_engine_rows()
+        if self._submode == "SCAN":
+            self.swap_worker()
+
+    def _bank_sq(self, bank):
+        b = banks.BANKS.get(bank)
+        default = b["squelch"] if b else 10
+        try:
+            return int(self._scfg.get("bank_squelch", {}).get(bank, default))
+        except (TypeError, ValueError):
+            return default
+
+    def _fast_sq_changed(self, v):
+        bsq = dict(self._scfg.get("bank_squelch") or {})
+        bsq[self.bank_combo.currentText()] = int(v)
+        self._save_scan(bank_squelch=bsq)
+        w = self._worker
+        if isinstance(w, FastScanWorker):
+            w.queue(squelch_db=float(v))
+
+    def _sync_step_for_bank(self, bank):
+        b = banks.BANKS.get(bank)
+        step = b["step"] if b else float(self._scfg.get("range_step", 25000))
+        i = min(range(self.step_combo.count()),
+                key=lambda k: abs(self.step_combo.itemData(k) - step))
+        self.step_combo.blockSignals(True)
+        self.step_combo.setCurrentIndex(i)
+        self.step_combo.blockSignals(False)
+
+    def _scan_channels(self):
+        """[(MHz, label, MODE, bw_hz)] for the current bank (or custom range) + priority."""
+        bank = self.bank_combo.currentText()
+        step = float(self.step_combo.currentData() or 25000)
+        out = []
+        if bank == CUSTOM_RANGE:
+            mode = self.range_mode.currentText()
+            bw = dsp.DEFAULT_BW[mode] if mode != "AM" else 8330
+            for f in banks.range_channels(self.range_lo.value(), self.range_hi.value(), step):
+                out.append((f, "", mode, bw))
+        else:
+            b = banks.BANKS[bank]
+            named = list(b["channels"])
+            out = [(f, lb, b["mode"], b["bw"]) for f, lb in named]
+            if self.include_ranges.isChecked() and self._engine == "fast":
+                for a, z, _st in b["ranges"]:
+                    for f in banks.range_channels(a, z, step):
+                        if not any(abs(f - n) * 1e6 < step / 2 for n, _ in named):
+                            out.append((f, "", b["mode"], b["bw"]))
+            if not out and b["ranges"]:                       # a ranges-only bank
+                a, z, _st = b["ranges"][0]
+                out = [(f, "", b["mode"], b["bw"]) for f in banks.range_channels(a, z, step)]
+            out.sort(key=lambda c: c[0])
+        if self._engine == "fast" and self.pri_on.isChecked():
+            pf = round(self.pri_freq.value(), 4)
+            if not any(abs(c[0] - pf) < 0.0005 for c in out):
+                mode = self.pri_mode.currentText()
+                out.append((pf, "PRIORITY", mode, dsp.DEFAULT_BW[mode] if mode != "AM" else 8330))
+                out.sort(key=lambda c: c[0])
+        return out
+
+    def _priority_tuple(self):
+        if self._engine != "fast" or not self.pri_on.isChecked():
+            return None
+        mode = self.pri_mode.currentText()
+        return (round(self.pri_freq.value(), 4), mode,
+                dsp.DEFAULT_BW[mode] if mode != "AM" else 8330)
+
+    def _apply_bank(self):
+        """Push the bank / range / step / priority list to the running scanner."""
+        try:
+            chans = self._scan_channels()
+        except ValueError as e:
+            self.scan_info.setText("Range refused: %s" % e)
+            return
+        self._save_scan(bank=self.bank_combo.currentText(),
+                        include_ranges=self.include_ranges.isChecked(),
+                        range_step=float(self.step_combo.currentData() or 25000))
+        w = self._worker
+        if isinstance(w, FastScanWorker):
+            w.queue(channels=chans, priority=self._priority_tuple(),
+                    squelch_db=float(self.fast_sq.value()))
+        elif isinstance(w, ScanWorker):
+            if self.demo:
+                w.set_bank(self.bank_combo.currentText())
+            else:
+                w.set_bank(self.bank_combo.currentText(),
+                           channels=[(c[0], c[1], c[2]) for c in chans],
+                           lockouts=self._locks())
+        if self._engine == "classic" and len(chans) > 200:
+            self.scan_info.setText("%d channels: the CLASSIC engine opens rtl_fm per channel "
+                                   "(~1 s each). Use FAST for ranges." % len(chans))
+
     def _set_bank(self, bank):
-        if isinstance(self._worker, ScanWorker):
-            self._worker.set_bank(bank)
+        self.fast_sq.blockSignals(True)
+        self.fast_sq.setValue(self._bank_sq(bank))
+        self.fast_sq.blockSignals(False)
+        self._sync_step_for_bank(bank)
+        b = banks.BANKS.get(bank)
+        if b and b.get("note"):
+            self.scan_info.setText(b["note"])
+        elif bank == CUSTOM_RANGE:
+            self.scan_info.setText("Custom range: set start / stop / mode in RANGE SCAN.")
+        else:
+            self.scan_info.setText("")
+        self._apply_bank()
+
+    def _scan_range(self):
+        if self.bank_combo.currentText() != CUSTOM_RANGE:
+            self.bank_combo.setCurrentText(CUSTOM_RANGE)   # -> _set_bank -> _apply_bank
+        else:
+            self._apply_bank()
+        self._save_scan(range_lo=self.range_lo.value(), range_hi=self.range_hi.value(),
+                        range_mode=self.range_mode.currentText())
+
+    def _timing_changed(self, *_):
+        d, r, m = self.dwell.value(), self.resume.value(), self.max_hold.value()
+        self._save_scan(dwell=d, resume=r, max_hold=m)
+        w = self._worker
+        if isinstance(w, FastScanWorker):
+            w.queue(dwell_s=d, resume_s=r, max_hold_s=m)
+        elif isinstance(w, ScanWorker):
+            w.set_timing(dwell=d, hold=r, max_active=m)
+
+    def _audio_changed(self, on):
+        self._save_scan(audio=bool(on))
+        w = self._worker
+        if isinstance(w, FastScanWorker):
+            w.queue(audio=bool(on))
+
+    def _priority_changed(self):
+        self._save_scan(priority_on=self.pri_on.isChecked(),
+                        priority_mhz=round(self.pri_freq.value(), 4),
+                        priority_mode=self.pri_mode.currentText(),
+                        priority_every=self.pri_every.value())
+        w = self._worker
+        if isinstance(w, FastScanWorker):
+            w.queue(priority_every_s=self.pri_every.value())
+        self._apply_bank()
+
+    def _pri_from_selected(self):
+        row = self._sel_row or {}
+        try:
+            f = float(row.get("freq", ""))
+        except (TypeError, ValueError):
+            return
+        self.pri_freq.blockSignals(True)
+        self.pri_freq.setValue(f)
+        self.pri_freq.blockSignals(False)
+        if row.get("mode") in ("AM", "NFM", "WFM"):
+            self.pri_mode.blockSignals(True)
+            self.pri_mode.setCurrentText(row["mode"])
+            self.pri_mode.blockSignals(False)
+        self.pri_on.setChecked(True)
+        self._priority_changed()
+
+    def _locks(self):
+        out = []
+        for f in self._scfg.get("lockouts") or []:
+            try:
+                out.append(round(float(f), 4))
+            except (TypeError, ValueError):
+                pass
+        return out
+
+    def _refresh_locks(self):
+        self.lock_list.clear()
+        for f in sorted(self._locks()):
+            hit = banks.find(f)
+            self.lock_list.addItem("%.4f  %s" % (f, hit[1] if hit else ""))
+
+    def _set_locks(self, locks):
+        self._save_scan(lockouts=sorted(set(round(float(f), 4) for f in locks)))
+        self._refresh_locks()
+        w = self._worker
+        if isinstance(w, FastScanWorker):
+            w.queue(lockouts=set(self._locks()))
+        elif isinstance(w, ScanWorker):
+            w._skip = set(self._locks())
+
+    def _lock_remove(self):
+        it = self.lock_list.currentItem()
+        if it is None:
+            return
+        f = round(float(it.text().split()[0]), 4)
+        self._set_locks([x for x in self._locks() if x != f])
+
+    def _lock_clear(self):
+        self._set_locks([])
 
     def _toggle_hold(self):
-        if isinstance(self._worker, ScanWorker):
-            self._worker.hold = not self._worker.hold
-            self.hold_btn.setText("HOLD" if self._worker.hold else "SCAN")
+        w = self._worker
+        if isinstance(w, FastScanWorker):
+            w.hold = not w.hold
+            w.set_hold(w.hold)
+            held = w.hold
+        elif isinstance(w, ScanWorker):
+            w.hold = not w.hold
+            held = w.hold
+        else:
+            return
+        self.hold_btn.setText("HOLD" if held else "SCAN")
+        set_run(self.hold_btn, not held)
 
     def _sq(self, v):
         if isinstance(self._worker, ScanWorker):
@@ -1247,10 +1695,14 @@ class ProwlApp(PalisadeApp):
                 self._worker.set_nfm_squelch(v)      # B2: wired to the engine's live setting
 
     def _skip_current(self):
-        if isinstance(self._worker, ScanWorker):
-            f = self._worker.skip_current()
+        w = self._worker
+        if isinstance(w, (ScanWorker, FastScanWorker)):
+            f = w.skip_current()
             if f is not None:
                 self.set_chip("scan", "locked out %.4f" % f, state="warn")
+                self._scfg["lockouts"] = sorted(set(self._locks() + [round(f, 4)]))
+                self._save_scan()
+                self._refresh_locks()
 
     def _fdb_query(self):
         """A bare number = MHz -> lookup/describe; text -> freqdb.search. Pure, no radio."""
@@ -1289,23 +1741,42 @@ class ProwlApp(PalisadeApp):
 
     def _on_scan_row(self, msg):
         rows = msg["rows"]
+        fast = msg.get("kind") == "scan"
         for r in rows:
             r["_colors"] = {"sig": self._sig_color(r.get("_level"), r.get("_hot", False))}
             if r.get("_hot"):
                 r["_colors"]["label"] = self._hot_color()
                 r["_colors"]["freq"] = self._hot_color()
+            if fast:
+                r["hits"] = r.get("hits") or ""
         self.feed.model.set_rows(rows)
         self.header.set_chip("sdr", "%d CH" % len(rows), state="neutral")
         act = msg.get("active")
+        if fast:
+            state = msg.get("state", "SEARCH")
+            bits = ["%s" % state]
+            if msg.get("window"):
+                bits.append("capture %.3f–%.3f MHz" % msg["window"])
+            if msg.get("floor") is not None:
+                bits.append("floor %.0f dBFS" % msg["floor"])
+            bits.append("%d steps" % (msg.get("windows") or 0))
+            if msg.get("pass_s"):
+                bits.append("full pass %.1f s" % msg["pass_s"])
+            self.scan_info.setText("  ·  ".join(bits))
         if act:
             level = act[2]
-            self.active.setText("%s  %s  %s" % (act[0], act[1],
-                                                ("level %d%%" % level) if level is not None
-                                                else "level not measured"))
+            if fast:
+                lvl_txt = ("%+.0f dB over floor" % level) if level is not None else ""
+                bar = int(max(0, min(100, (level or 0) * 2.5)))
+            else:
+                lvl_txt = ("level %d%%" % level) if level is not None else "level not measured"
+                bar = level if level is not None else 0
+            self.active.setText("%s  %s  %s" % (act[0], act[1], lvl_txt))
             self.active.setProperty("class", "value live")
-            self.sig_bar.setValue(level if level is not None else 0)
-            self._show({"freq": act[0], "label": act[1], "sig": _level_text(level),
-                        "last": zulu(), "_hot": True})
+            self.sig_bar.setValue(bar)
+            self._show({"freq": act[0], "label": act[1],
+                        "sig": lvl_txt if fast else _level_text(level),
+                        "last": zulu(), "_hot": True}, follow=True)
         else:
             self.active.setText("—  scanning")
             self.active.setProperty("class", "value")
@@ -1313,14 +1784,29 @@ class ProwlApp(PalisadeApp):
         self.active.style().unpolish(self.active)
         self.active.style().polish(self.active)
 
-    def _show(self, row):
-        self.detail.set_hero(row.get("label", "—"), row.get("freq", "") + " MHz")
-        self.detail.set_rows([
-            ("AUDIO LEVEL", row.get("sig") or "not measured"),
-            ("LAST HEARD", row.get("last", "—")),
-            ("STATUS", "ACTIVE" if row.get("_hot") else "quiet"),
-            ("ALLOCATION", _describe_mhz(row.get("freq", ""))),
-        ])
+    def _on_fast_hit(self, msg):
+        """A FAST-scanner stop: the one typed decode event (no geo, so not a contact)."""
+        if self.demo:
+            return
+        f, label = float(msg["mhz"]), msg.get("label") or ""
+        eventbus.bus.publish(eventbus.decode(
+            "PROWL", "SCAN", "%.4f" % f, "%s active @ %.4f MHz" % (label or "channel", f),
+            severity="live", freq_mhz=f, label=label))
+
+    def _show(self, row, follow=False):
+        if not follow:
+            self._sel_row = row
+        elif self._sel_row is None:
+            self._sel_row = row
+        self.detail.set_hero(row.get("label") or row.get("freq", "—"),
+                             row.get("freq", "") + " MHz")
+        rows = [("LEVEL", row.get("sig") or "not measured"),
+                ("LAST HEARD", row.get("last") or "—"),
+                ("STATUS", "ACTIVE" if row.get("_hot") else "quiet")]
+        if row.get("mode"):
+            rows.append(("MODE", row["mode"]))
+        rows.append(("ALLOCATION", _describe_mhz(row.get("freq", ""))))
+        self.detail.set_rows(rows)
 
     # ---- FM handlers ----
     def _fm_step(self, delta):
@@ -1384,7 +1870,9 @@ class ProwlApp(PalisadeApp):
     # ---- shared row/status routing ----
     def on_row(self, msg):
         kind = msg.get("kind") if isinstance(msg, dict) else None
-        if kind == "fm":
+        if kind == "hit":
+            self._on_fast_hit(msg)
+        elif kind == "fm":
             self._on_fm_row(msg)
         elif kind == "nwr":
             self._on_nwr_row(msg)
@@ -1423,6 +1911,14 @@ class ProwlApp(PalisadeApp):
 
     def on_status(self, status):
         super().on_status(status)
+        if self._submode == "SCAN" and hasattr(self, "hold_btn"):
+            w = self._worker
+            held = bool(getattr(w, "hold", False))
+            down = any(status.get(k) for k in ("off", "standby", "fault", "acquiring")) \
+                or bool(status.get("busy"))
+            running = w is not None and not held and not down
+            self.hold_btn.setText("HOLD" if held else "SCAN")
+            set_run(self.hold_btn, running)
         if "live" in status and status.get("src") == "NWR":
             if status["live"]:
                 self._live_ts = time.time()
