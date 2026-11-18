@@ -1710,9 +1710,11 @@ class ProwlApp(PalisadeApp):
     def _toggle_hold(self):
         w = self._worker
         if isinstance(w, FastScanWorker):
-            w.hold = not w.hold
-            w.set_hold(w.hold)
-            held = w.hold
+            # RA-RADIO N11: the page keeps its own HOLD flag; the worker's is written only on
+            # its own thread (set_hold queues it)
+            self._fast_hold = not self._held(w)
+            w.set_hold(self._fast_hold)
+            held = self._fast_hold
         elif isinstance(w, ScanWorker):
             w.hold = not w.hold
             held = w.hold
@@ -1720,6 +1722,13 @@ class ProwlApp(PalisadeApp):
             return
         self.hold_btn.setText("HOLD" if held else "SCAN")
         set_run(self.hold_btn, not held)
+
+    def _held(self, w):
+        if isinstance(w, FastScanWorker):
+            if getattr(self, "_fast_hold_for", None) is not w:   # a new worker starts scanning
+                self._fast_hold_for, self._fast_hold = w, False
+            return self._fast_hold
+        return bool(getattr(w, "hold", False))
 
     def _sq(self, v):
         if isinstance(self._worker, ScanWorker):
@@ -1951,7 +1960,7 @@ class ProwlApp(PalisadeApp):
         super().on_status(status)
         if self._submode == "SCAN" and hasattr(self, "hold_btn"):
             w = self._worker
-            held = bool(getattr(w, "hold", False))
+            held = self._held(w)
             down = any(status.get(k) for k in ("off", "standby", "fault", "acquiring")) \
                 or bool(status.get("busy"))
             running = w is not None and not held and not down

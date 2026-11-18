@@ -42,7 +42,7 @@ Branch `claude/project-thread-z1copz` · commits 5236dbe, 859b8bf (+ this report
 | Recording audio + IQ | implemented (WAV, .cu8 + json; plays back as source "IQ file") | iqworker.py, iqsource.py | test_recording_from_the_worker…, test_iq_recording_plays_back… |
 | START / STOP red / green (PRISM) | implemented | prism.py run_btn, set_run | test_prism_start_stop_button_is_green… |
 | Preset banks, airband first then ham | implemented (19 banks) | banks.py | test_banks_follow_the_owner_priority… |
-| Full airband 118–137 | implemented (760 ch; FAST pass ≈ 1.5 s, 12 retunes) | banks.py, iqworker.plan_windows | test_full_airband_pass_takes_seconds… |
+| Full airband 118–137 | implemented (760 ch; FAST pass ≈ 3 s live, 12 retunes; RA-RADIO N10 corrected the 1.5 s claim) | banks.py, iqworker.plan_windows | test_full_airband_pass_takes_seconds… |
 | Local ATC (tower / approach / ATIS) by HOME from FAA data | **missing**: needs an FAA frequency dataset; the full 760-channel airband bank hears them all meanwhile | — | — |
 | Local public safety by HOME | **missing** (same: needs RadioReference-style data). Generic VHF/UHF public-safety bank ships; P25/DMR not decoded | banks.py | — |
 | Dwell / hold | implemented (dwell, HOLD button + Space, max hold) | prowl.py TIMING | test_hold_freezes…, test_max_hold… |
@@ -84,3 +84,20 @@ dongle: FM band sweep, 5 s of the strongest station on the speaker + WAV, timed 
 ## Owner questions
 - Local ATC / public-safety by HOME needs a frequency dataset (FAA NASR for airports is public).
   Worth a follow-up cluster?
+
+## RA-RADIO fixes (audit verdict DO NOT MERGE, 4 High)
+
+| ID | Fix | Where | Regression test |
+|---|---|---|---|
+| N1 High | rtl_tcp stdout+stderr merged into one pipe, always drained by a thread | iqsource.py `RtlTcpSource.open`, `_read_err` | test_n1_rtl_tcp_output_is_drained_so_retunes_keep_applying (tests/fake_bin/rtl_tcp prints per retune like the real one) |
+| N2 High | control-socket OSError -> SourceError; worker catches source errors AND bugs per block: FAULT status, rtl_tcp closed, radio released, retried; PRISM run button red on fault / off / standby | iqsource.py `_send`, iqworker.py `run`, `_block_fault`, prism.py `_running`, `on_status` | test_n2_a_dead_control_socket…, test_n2_worker_survives_a_broken_pipe_and_a_bug…, test_n2_prism_run_button_goes_red_on_a_fault, test_prism_standby_without_a_radio_tool_is_red… |
+| N3 High | a new plan clears the saved priority detour / return window; resume guards its indexes | iqworker.py `_reset_plan`, `_resume_listen` | test_n3_changing_the_bank_during_a_priority_check… |
+| N4 High | max hold benches the channel for max(5 s, max hold) of stream time instead of "until the pass wraps" | iqworker.py `_skip_until`, `_eligible`, `_listen_block` | test_n4_max_hold_lets_weaker_channels…[NOAA, AIR]; the old max-hold test no longer accepts "only one hit" |
+| N5 Med | `RtlTcpSource.open(abort=)` polls stop / page hidden / revoke during connect and header wait | iqsource.py, iqworker.py `_open` | test_n5_a_revoke_while_rtl_tcp_starts… |
+| N6 Med | unique recording names (-2, -3 … when the second is taken) | iqsource.py `_unique` | test_n6_two_recordings_in_the_same_second… |
+| N7 Low | free-space guard tested | — | test_n7_recording_stops_itself… |
+| N8 Low | sun theme run colours both black | **owner call**, unchanged | — |
+| N9 Low | RAW item tooltip + mode tooltip say mono | prism.py | test_n9_raw_is_labelled_mono_in_the_ui |
+| N10 Low | pass-time claim corrected to ~3 s | this report | — |
+| N11 Low | lockout ends the listen only if it names the channel being heard; PROWL keeps its own HOLD flag, worker's written only on its thread | iqworker.py `_apply`, prowl.py `_toggle_hold`, `_held` | test_n11_* |
+| device risk | after every retune, IQ already buffered in the socket (old frequency) is dropped before the settle count starts | iqsource.py `drop_buffered` | covered by the live backcheck; confirm on the uConsole with device_check_radio.py |

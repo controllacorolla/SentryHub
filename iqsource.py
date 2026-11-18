@@ -98,7 +98,11 @@ class RtlTcpSource:
         self._carry = b""
         self.err_tail = []
 
-    def open(self):
+    def open(self, abort=None):
+        """Start rtl_tcp, connect, read the header, apply the settings. `abort()` is polled
+        while waiting (RA-RADIO N5): a revoke / PANIC / stop during start-up kills rtl_tcp at
+        once instead of after the connect + header timeouts."""
+        abort = abort or (lambda: False)
         self.port = self.port or _free_port()
         argv = rtl_tcp_argv(self.port, self.centre_hz, self.rate, self.gain_db)
         if self._spawn is not None:
@@ -107,11 +111,18 @@ class RtlTcpSource:
             if not shutil.which("rtl_tcp"):
                 raise SourceError("rtl_tcp not installed (apt install rtl-sdr)")
             from palisade_qt.kit.procs import Pipeline
-            self.proc = Pipeline([argv], stderr_last=subprocess.PIPE)
+            # RA-RADIO N1: rtl_tcp prints a line on EVERY retune. stdout+stderr go to one pipe
+            # that a thread always drains; an unread pipe fills (~64 KB) and rtl_tcp then blocks
+            # on the write and stops applying retunes while IQ keeps flowing.
+            self.proc = Pipeline([argv], stderr_last=subprocess.STDOUT)
+        if getattr(self.proc, "stdout", None) is not None:
             threading.Thread(target=self._read_err, daemon=True).start()
         deadline = time.monotonic() + self.CONNECT_TIMEOUT_S
         last = None
         while time.monotonic() < deadline:
+            if abort():
+                self.close()
+                raise SourceError("start cancelled")
             if self.proc is not None and getattr(self.proc, "poll", lambda: None)() is not None:
                 raise SourceError("rtl_tcp exited (%s)%s" % (
                     self.proc.poll(), (": " + " · ".join(self.err_tail[-2:])) if self.err_tail
@@ -125,12 +136,21 @@ class RtlTcpSource:
         if self.sock is None:
             self.close()
             raise SourceError("could not connect to rtl_tcp: %s" % last)
-        self.sock.settimeout(2.0)
+        self.sock.settimeout(0.2)
         try:
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 512 * 1024)
         except OSError:
             pass
-        hdr = self._recv_exact(12)
+        hdr = b""
+        hdr_deadline = time.monotonic() + 2.0
+        try:
+            while len(hdr) < 12 and time.monotonic() < hdr_deadline:
+                if abort():
+                    raise SourceError("start cancelled")
+                hdr += self._recv_exact(12 - len(hdr))
+        except (SourceError, OSError) as e:
+            self.close()
+            raise SourceError(str(e) if isinstance(e, SourceError) else "rtl_tcp: %s" % e)
         if len(hdr) < 12 or hdr[:4] != b"RTL0":
             self.close()
             raise SourceError("rtl_tcp sent no RTL0 header")
@@ -145,8 +165,9 @@ class RtlTcpSource:
         return self
 
     def _read_err(self):
+        """Drain rtl_tcp's output for its whole life (N1) and keep the last lines for errors."""
         p = self.proc
-        err = getattr(p, "stderr", None)
+        err = getattr(p, "stdout", None)
         if err is None:
             return
         try:
@@ -172,11 +193,41 @@ class RtlTcpSource:
 
     def _send(self, code, value):
         if self.sock is not None:
-            self.sock.sendall(rtl_tcp_cmd(code, value))
+            try:
+                self.sock.sendall(rtl_tcp_cmd(code, value))
+            except OSError as e:                       # RA-RADIO N2: never a bare OSError
+                raise SourceError("rtl_tcp control socket: %s" % e)
 
     def set_freq(self, hz):
         self.centre_hz = int(hz)
         self._send(CMD_FREQ, self.centre_hz)
+        self.drop_buffered()
+
+    def drop_buffered(self):
+        """Discard IQ already sitting in the socket buffer (captured at the OLD frequency), so the
+        settle count after a retune starts on fresh samples even when the reader is behind."""
+        s = self.sock
+        if s is None:
+            return 0
+        n = 0
+        try:
+            s.setblocking(False)
+            while n < (8 << 20):
+                d = s.recv(1 << 18)
+                if not d:
+                    break
+                n += len(d)
+        except (BlockingIOError, InterruptedError):
+            pass
+        except OSError as e:
+            raise SourceError("rtl_tcp connection lost: %s" % e)
+        finally:
+            try:
+                s.settimeout(0.5)
+            except OSError:
+                pass
+        self._carry = b""
+        return n
 
     def set_rate(self, rate):
         self.rate = int(rate)
@@ -488,6 +539,18 @@ def _stamp():
     return time.strftime("%Y%m%d-%H%M%SZ", time.gmtime())
 
 
+def _unique(directory, fmt, exts):
+    """RA-RADIO N6: a path no earlier recording used, even when two start in the same second
+    (fmt has one %s for the stamp + suffix; every ext in exts must be free)."""
+    stamp = _stamp()
+    n = 1
+    while True:
+        base = os.path.join(directory, fmt % (stamp if n == 1 else "%s-%d" % (stamp, n)))
+        if not any(os.path.exists(base + e) for e in exts):
+            return base
+        n += 1
+
+
 def _disk_ok(path):
     try:
         st = os.statvfs(os.path.dirname(path) or ".")
@@ -503,7 +566,7 @@ class IqRecorder:
     def __init__(self, centre_hz, rate, directory=None):
         d = directory or rec_dir()
         os.makedirs(d, exist_ok=True)
-        base = os.path.join(d, "iq_%s_%dHz_%dsps" % (_stamp(), int(centre_hz), int(rate)))
+        base = _unique(d, "iq_%%s_%dHz_%dsps" % (int(centre_hz), int(rate)), (".cu8", ".json"))
         self.path = base + ".cu8"
         with open(base + ".json", "w") as f:
             json.dump({"centre_hz": int(centre_hz), "rate": int(rate), "format": "cu8",
@@ -537,7 +600,7 @@ class AudioRecorder:
     def __init__(self, freq_hz, mode, rate, directory=None):
         d = directory or rec_dir()
         os.makedirs(d, exist_ok=True)
-        self.path = os.path.join(d, "audio_%s_%dHz_%s.wav" % (_stamp(), int(freq_hz), mode))
+        self.path = _unique(d, "audio_%%s_%dHz_%s" % (int(freq_hz), mode), (".wav",)) + ".wav"
         self._w = wave.open(self.path, "wb")
         self._w.setnchannels(1)
         self._w.setsampwidth(2)

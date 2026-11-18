@@ -501,7 +501,7 @@ def test_max_hold_leaves_a_continuous_carrier_and_skips_it_for_the_pass():
     assert hits
     run(2)
     assert w._listen is None or w.channels[w._listen][0] != 127.85
-    assert any(w.channels[k][0] == 127.85 for k in w._skip_this_pass) or len(hits) == 1
+    assert w._skip_until.get(127.85, 0) > w._clock, "benched after its max hold"
 
 
 def test_lockout_is_never_stopped_on_and_skip_current_locks_it():
@@ -795,11 +795,11 @@ def test_prism_settings_persist_and_feed_the_worker():
 
 
 def test_prism_start_stop_button_is_green_running_red_stopped():
-    p = _prism(demo=False)
+    p = _prism(demo=True)          # demo receives (synthetic IQ); offscreen live is STANDBY = red
     try:
         p.start()
         p.set_active(True)
-        _pump(100)
+        _pump(600)
         assert p.run_btn.property("run") == "on" and p.run_btn.text() == "STOP"
         p.run_btn.click()
         _pump(100)
@@ -810,6 +810,17 @@ def test_prism_start_stop_button_is_green_running_red_stopped():
         assert p._worker.held_off and p.run_btn.property("run") == "off"
         p.run_btn.click()
         assert not p._worker.held_off and p.run_btn.property("run") == "on"
+    finally:
+        p.stop()
+
+
+def test_prism_standby_without_a_radio_tool_is_red_not_green():
+    p = _prism(demo=False)         # offscreen: no capture -> STANDBY
+    try:
+        p.start()
+        p.set_active(True)
+        assert _until(lambda: p.run_btn.property("run") == "off", 3000)
+        assert p.run_btn.text() == "START"
     finally:
         p.stop()
 
@@ -1085,5 +1096,234 @@ def test_prowl_fm_tab_tunes_am_and_keeps_am_in_the_weather_band():
         p.fm_mode.setCurrentText("wbfm")
         p._fm_retune()
         assert p.fm_mode.currentText() == "nbfm"
+    finally:
+        p.stop()
+
+
+# ============================================================================ RA-RADIO findings
+FAKE_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_bin")
+
+
+def test_n1_rtl_tcp_output_is_drained_so_retunes_keep_applying(tmp_path, monkeypatch):
+    """rtl_tcp prints a line per retune; an unread pipe fills and it stops retuning (~3,400)."""
+    monkeypatch.setenv("PATH", FAKE_BIN + os.pathsep + os.environ["PATH"])
+    state = tmp_path / "state"
+    monkeypatch.setenv("FAKE_STATE", str(state))
+    s = iqsource.RtlTcpSource(121_500_000, 2048000).open()
+    try:
+        last = None
+        for n in range(5000):
+            last = 118_000_000 + (n % 760) * 25_000
+            s.set_freq(last)
+            if n % 500 == 499:
+                s.read(0.02)
+        assert _until(lambda: state.exists() and state.read_text() == str(last), 5000), \
+            "rtl_tcp stopped applying retunes (output pipe full?)"
+        assert s.alive()
+    finally:
+        s.close()
+
+
+def test_n2_a_dead_control_socket_is_a_source_error():
+    import socket
+    a, b = socket.socketpair()
+    b.sendall(b"RTL0" + struct.pack(">II", 5, 29))
+    src = iqsource.RtlTcpSource(121_500_000, 2048000, spawn=FakeProc, port=1,
+                                connect=lambda p: a).open()
+    b.close()
+    with pytest.raises(iqsource.SourceError):
+        for n in range(100000):
+            src.set_freq(118_000_000 + n)
+    src.close()
+
+
+def test_n2_worker_survives_a_broken_pipe_and_a_bug_and_shows_the_fault(arb):
+    from palisade_qt.iqworker import TunerWorker
+    srv = FakeRtlTcp(signals=[(119.1, "AM", lambda t: True)])
+    procs, holder = [], {}
+
+    class Src(iqsource.RtlTcpSource):
+        def set_freq(self, hz):
+            if getattr(self, "dead", False):
+                raise BrokenPipeError(32, "Broken pipe")
+            super().set_freq(hz)
+
+    def factory(w):
+        holder["s"] = Src(w.centre_hz, w.rate, spawn=lambda av: procs.append(FakeProc(av))
+                          or procs[-1], port=srv.port)
+        return holder["s"]
+    w = TunerWorker(source="rtl", centre_hz=119_000_000, mode="AM", source_factory=factory,
+                    audio=False)
+    rows, status = [], []
+    w.row.connect(rows.append)
+    w.status.connect(status.append)
+    w.start()
+    try:
+        assert _until(lambda: rows, 4000)
+        holder["s"].dead = True
+        w.queue(centre_hz=120_000_000)
+        assert _until(lambda: any(s.get("fault") for s in status), 3000)
+        assert w.isRunning(), "the worker thread is still alive"
+        assert procs[0].terminated >= 1
+        # an internal error in the block processing is a fault too, not a dead thread
+        w._fault = None
+        status.clear()
+        orig = w.process_block
+        w.process_block = lambda raw, iq: (_ for _ in ()).throw(IndexError("boom"))
+        assert _until(lambda: any("IndexError" in str(s.get("fault")) for s in status), 9000)
+        assert w.isRunning()
+        w.process_block = orig
+    finally:
+        w.stop()
+        w.wait(4000)
+        srv.close()
+    assert arb.arbiter.owner() is None
+
+
+def test_n2_prism_run_button_goes_red_on_a_fault():
+    p = _prism()
+    try:
+        p.start()
+        p.set_active(True)
+        _pump(100)
+        p.on_status({"sdr": {"text": "SDR PRISM", "state": "live"}, "live": True})
+        assert p.run_btn.property("run") == "on"
+        p.on_status({"sdr": {"text": "SDR FAULT — x", "state": "alert"}, "fault": "x",
+                     "live": False})
+        assert p.run_btn.property("run") == "off" and p.run_btn.text() == "START"
+        p.run_btn.click()                                  # START retries at once
+        assert p.run_btn.property("run") == "on"
+    finally:
+        p.stop()
+
+
+def test_n3_changing_the_bank_during_a_priority_check_does_not_crash():
+    w, run, rows, hits, audio = _scanner(AIR, [(131.55, "AM", lambda t: True)],
+                                         priority=(121.5, "AM", 8330), priority_every_s=1.0,
+                                         max_hold_s=0, resume_s=3)
+    for _ in range(400):
+        run(0.05)
+        if w._detour is not None:
+            break
+    assert w._detour is not None, "reached a priority check"
+    b = banks.BANKS["NOAA Wx"]
+    w.queue(channels=[(f, lb, b["mode"], b["bw"]) for f, lb in banks.expand(b)], priority=None)
+    run(2.0)
+    assert w._detour is None and w._win < len(w._windows)
+
+
+@pytest.mark.parametrize("chans,strong,weak", [
+    ("NOAA", 162.4, 162.475),          # a one-window bank
+    ("AIR", 124.35, 124.6),            # two channels in the same airband capture
+])
+def test_n4_max_hold_lets_weaker_channels_in_the_same_capture_be_heard(chans, strong, weak):
+    if chans == "NOAA":
+        b = banks.BANKS["NOAA Wx"]
+        chans = [(f, lb, b["mode"], b["bw"]) for f, lb in banks.expand(b)]
+        mode = "NFM"
+    else:
+        chans, mode = AIR, "AM"
+    w, run, rows, hits, audio = _scanner(chans, [(strong, mode, lambda t: True),
+                                                 (strong, mode, lambda t: True),
+                                                 (weak, mode, lambda t: True)],
+                                         max_hold_s=2.0, resume_s=2.0, squelch_db=10)
+    run(20)
+    heard = {round(h["mhz"], 4) for h in hits}
+    assert strong in heard and weak in heard, [round(h["mhz"], 4) for h in hits]
+
+
+def test_n5_a_revoke_while_rtl_tcp_starts_kills_it_before_the_radio_is_freed(arb):
+    import socket
+    from palisade_qt.iqworker import TunerWorker
+    log = []
+    arb.arbiter.transition.connect(lambda e, o, n: log.append((time.monotonic(), "ARB", e)))
+
+    class P(FakeProc):
+        def terminate(self):
+            log.append((time.monotonic(), "PROC", "terminate"))
+            super().terminate()
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()                                              # nothing listens: still starting
+    procs = []
+    w = TunerWorker(source="rtl", audio=False, source_factory=lambda w: iqsource.RtlTcpSource(
+        w.centre_hz, w.rate, spawn=lambda a: procs.append(P(a)) or procs[-1], port=port))
+    w.start()
+    try:
+        assert _until(lambda: procs, 3000)
+        _pump(300)
+        t0 = time.monotonic()
+        arb.arbiter.revoke("PRISM")
+        assert _until(lambda: arb.arbiter.owner() is None, 6000)
+        kill = [t for t, k, e in log if k == "PROC" and t >= t0]
+        free = [t for t, k, e in log if k == "ARB" and e in ("RELEASE", "FORCED_FREE",
+                                                              "FREE") and t >= t0]
+        assert kill and kill[0] - t0 < 2.0, "rtl_tcp killed promptly"
+        assert not free or kill[0] <= free[0], "killed before the radio is freed"
+    finally:
+        w.stop()
+        w.wait(4000)
+
+
+def test_n6_two_recordings_in_the_same_second_get_different_files(tmp_path):
+    a = iqsource.IqRecorder(121_500_000, 2048000, directory=str(tmp_path))
+    b = iqsource.IqRecorder(121_500_000, 2048000, directory=str(tmp_path))
+    c = iqsource.AudioRecorder(121_500_000, "AM", 48000, directory=str(tmp_path))
+    d = iqsource.AudioRecorder(121_500_000, "AM", 48000, directory=str(tmp_path))
+    try:
+        assert a.path != b.path and c.path != d.path
+        a.write(b"\x80" * 4000)
+        b.write(b"\x80" * 2000)
+        a.close()
+        b.close()
+        assert os.path.getsize(a.path) == 4000 and os.path.getsize(b.path) == 2000
+        assert iqsource.file_meta(b.path)["centre_hz"] == 121_500_000
+    finally:
+        c.close()
+        d.close()
+
+
+def test_n7_recording_stops_itself_when_the_disk_is_nearly_full(tmp_path, monkeypatch):
+    monkeypatch.setattr(iqsource, "MIN_FREE_BYTES", 1 << 62)
+    r = iqsource.IqRecorder(121_500_000, 2048000, directory=str(tmp_path))
+    r.write(b"\x80" * 4000)
+    assert r.stopped_reason == "disk nearly full" and r.bytes == 0
+    a = iqsource.AudioRecorder(121_500_000, "AM", 48000, directory=str(tmp_path))
+    a.write(np.zeros(4800, dtype=np.int16))
+    assert a.stopped_reason == "disk nearly full" and a.frames == 0
+
+
+def test_n9_raw_is_labelled_mono_in_the_ui():
+    from PySide6 import QtCore
+    p = _prism()
+    try:
+        tip = p.mode_combo.itemData(dsp.MODES.index("RAW"), QtCore.Qt.ToolTipRole)
+        assert "mono" in tip and "mono" in p.mode_combo.toolTip()
+    finally:
+        p.stop()
+
+
+def test_n11_locking_out_one_channel_never_ends_a_different_listen():
+    w, run, rows, hits, audio = _scanner(AIR, [(124.35, "AM", lambda t: True)])
+    run(4)
+    assert w._listen is not None and w.channels[w._listen][0] == 124.35
+    w.queue(lockout_add=118.0)                 # the page locked out a channel it last showed
+    run(0.2)
+    assert w._listen is not None and w.channels[w._listen][0] == 124.35
+
+
+def test_n11_prowl_hold_does_not_write_the_worker_flag_from_the_gui():
+    p = _prowl(demo=True, engine="fast")
+    try:
+        p.start()
+        p.set_active(True)
+        w = p._worker
+        assert _until(lambda: w.isRunning(), 2000)
+        p._toggle_hold()
+        assert p.hold_btn.text() == "HOLD" and p.hold_btn.property("run") == "off"
+        assert _until(lambda: w.hold, 2000), "the worker applied it on its own thread"
+        p._toggle_hold()
+        assert p.hold_btn.text() == "SCAN" and _until(lambda: not w.hold, 2000)
     finally:
         p.stop()

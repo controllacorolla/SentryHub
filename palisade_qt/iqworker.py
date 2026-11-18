@@ -182,8 +182,15 @@ class IqWorker(Worker):
                 self._status("%s STANDBY — offline (no capture)" % self.LABEL, "warn",
                              standby=True, live=False)
                 return False
-            src.open()
+            if getattr(src, "kind", None) == "rtl":
+                # RA-RADIO N5: a revoke / PANIC / stop during rtl_tcp start-up aborts it now
+                src.open(abort=lambda: self._stop or not self._active or (
+                    self.needs_radio() and not radio_arbiter.arbiter.held_by(self.NAME)))
+            else:
+                src.open()
         except iqsource.SourceError as e:
+            if self._stop or not self._active:
+                return False                             # cancelled, not a fault
             self._fault = (str(e)[:120], time.monotonic())
             self.fault.emit("FAULT: %s %s" % (self.LABEL, e))
             self._status(("%s FAULT — %s" % (self.LABEL, e))[:90], "alert", fault=str(e),
@@ -213,13 +220,11 @@ class IqWorker(Worker):
                 if self._src is None and not self._open():
                     self.sleep(300)
                     continue
-                self._apply(self._take_pending())
                 try:
+                    self._apply(self._take_pending())
                     raw, iq = self._src.read(BLOCK_S)
-                except iqsource.SourceError as e:
-                    self._fault = (str(e)[:120], time.monotonic())
-                    self.fault.emit("FAULT: %s %s" % (self.LABEL, e))
-                    self._close_source()
+                except (iqsource.SourceError, OSError) as e:
+                    self._block_fault(e)
                     continue
                 now = time.monotonic()
                 if iq.size == 0:
@@ -232,7 +237,16 @@ class IqWorker(Worker):
                         self._close_source()
                     continue
                 self._last_data = now
-                self.process_block(raw, iq)
+                try:
+                    self.process_block(raw, iq)
+                except (iqsource.SourceError, OSError) as e:
+                    self._block_fault(e)
+                except Exception as e:                   # RA-RADIO N2: a bug must not kill the
+                    self._block_fault("internal error %s: %s" % (type(e).__name__, e))  # thread
+        except BaseException as e:
+            self._status(("%s OFF — stopped: %s" % (self.LABEL, e))[:90], "alert", live=False,
+                         off=True, fault=str(e))
+            raise
         finally:
             self._release()
             self.on_finish()
@@ -240,6 +254,17 @@ class IqWorker(Worker):
                 radio_arbiter.arbiter.revoked.disconnect(self._on_revoked)
             except (RuntimeError, TypeError):
                 pass
+
+    def _block_fault(self, e):
+        """Any failure while running: FAULT status (buttons go red), source closed, radio given
+        back, retried after FAULT_RETRY_S by _open()."""
+        msg = str(e)[:120]
+        self._fault = (msg, time.monotonic())
+        self.fault.emit("FAULT: %s %s" % (self.LABEL, msg))
+        self._status(("%s FAULT — %s" % (self.LABEL, msg))[:90], "alert", fault=msg, live=False)
+        self._close_source()
+        if self.needs_radio():
+            self._release()
 
     # ---------------- subclass hooks
     def on_source_opened(self, src):
@@ -560,6 +585,7 @@ class FastScanWorker(IqWorker):
         self._clock = 0.0
         self._pass_t0 = 0.0
         self.pass_s = None
+        self._skip_until = {}        # channel MHz -> stream time its max-hold cooldown ends
 
     # ---------------- GUI entry points (flags / queue only)
     def set_hold(self, on):
@@ -587,7 +613,8 @@ class FastScanWorker(IqWorker):
         self._acc_n = 0
         self._settle = 0
         self._t_win = 0.0
-        self._skip_this_pass = set()
+        self._detour = None          # RA-RADIO N3: positions saved for a priority check refer
+        self._return_win = None      # to the OLD plan; a new plan forgets them
 
     def _apply(self, p):
         super()._apply({k: v for k, v in p.items() if k in ("gain_db", "ppm", "rtl_agc")})
@@ -601,8 +628,11 @@ class FastScanWorker(IqWorker):
         if "lockouts" in p:
             self.lockouts = set(round(float(f), 4) for f in p["lockouts"])
         if "lockout_add" in p:
-            self.lockouts.add(round(float(p["lockout_add"]), 4))
-            if self._listen not in (None, "P"):
+            f = round(float(p["lockout_add"]), 4)
+            self.lockouts.add(f)
+            i = self._listen                     # RA-RADIO N11: end the listen only if it is
+            if i not in (None, "P") and i < len(self.channels) and \
+                    round(self.channels[i][0], 4) == f:     # still the channel locked out
                 self._end_listen()
         if "audio" in p:
             self.audio_on = bool(p["audio"])
@@ -639,7 +669,6 @@ class FastScanWorker(IqWorker):
             now = self._clock
             self.pass_s = now - self._pass_t0
             self._pass_t0 = now
-            self._skip_this_pass = set()
         centre = self._windows[self._win][0]
         if self._src is not None and centre != self.centre_hz:
             self.tune_centre(centre)
@@ -697,6 +726,9 @@ class FastScanWorker(IqWorker):
 
     def _resume_listen(self, i, win, t_listen, now):
         """Return from a quiet priority check to the channel we were listening to."""
+        if not (0 <= win < len(self._windows)) or not (i == "P" or 0 <= i < len(self.channels)):
+            self._goto_window(0)                         # plan changed under the detour (N3)
+            return
         self._goto_window_keep(win)
         hz, mode, bw = self._chan_cfg(i)
         self._listen = i
@@ -726,8 +758,8 @@ class FastScanWorker(IqWorker):
         return out
 
     def _eligible(self, k):
-        return (round(self.channels[k][0], 4) not in self.lockouts
-                and k not in self._skip_this_pass)
+        f = round(self.channels[k][0], 4)
+        return f not in self.lockouts and self._clock >= self._skip_until.get(f, -1.0)
 
     def process_block(self, raw, iq):
         if self._spec is None:
@@ -831,7 +863,11 @@ class FastScanWorker(IqWorker):
             self._goto_window(self._win + 1)
             return
         if self.max_hold_s > 0 and now - self._t_listen > self.max_hold_s:
-            self._skip_this_pass.add(i)                    # max hold: skip it for this pass
+            # RA-RADIO N4: max hold benches the channel for as long as it just held the scanner
+            # (at least 5 s), so a continuous carrier (ATIS, NOAA) cannot hide the other
+            # channels of its capture; then it is eligible again
+            if i != "P":
+                self._skip_until[round(self.channels[i][0], 4)] = now + max(5.0, self.max_hold_s)
             self._end_listen()
             self._goto_window(self._win + 1)
             return

@@ -449,6 +449,11 @@ class PrismApp(PalisadeApp):
             b.setToolTip("VFO down / up one step ([ ])")
         self.mode_combo = QtWidgets.QComboBox()
         self.mode_combo.addItems(list(dsp.MODES))
+        # RA-RADIO N9: say what RAW is here (SDR++ RAW is stereo I/Q; this audio path is mono)
+        self.mode_combo.setItemData(dsp.MODES.index("RAW"),
+                                    "RAW: the I channel of the filtered baseband, mono "
+                                    "(not stereo I/Q)", QtCore.Qt.ToolTipRole)
+        self.mode_combo.setToolTip("Demodulator. RAW is mono (I channel only).")
         self.mode_combo.setCurrentText(c["mode"] if c["mode"] in dsp.MODES else "AM")
         bar.add_field("mode", self.mode_combo, "Mode")
         self.bw_spin = QtWidgets.QDoubleSpinBox()
@@ -983,13 +988,15 @@ class PrismApp(PalisadeApp):
     # ---- run state
     def _running(self):
         w = self._worker
-        return w is not None and not self._user_stopped and not getattr(w, "held_off", False)
+        return (w is not None and not self._user_stopped and not getattr(w, "held_off", False)
+                and not getattr(self, "_faulted", False))
 
     def _set_running(self, on):
         w = self._worker
         self._user_stopped = not on
         if w is not None:
             if on:
+                self._faulted = False
                 if hasattr(w, "set_active"):
                     w.set_active(self._active)
                 self.busy.hide()
@@ -1124,6 +1131,11 @@ class PrismApp(PalisadeApp):
 
     def on_status(self, status):
         super().on_status(status)                    # chips (incl. SDR PRISM/BUSY/STANDBY)
+        # RA-RADIO N2: a faulted / stopped receiver is never shown green; live data clears it
+        if status.get("fault") or status.get("off") or status.get("standby"):
+            self._faulted = True
+        elif status.get("live") or (status.get("sdr") or {}).get("state") == "neutral":
+            self._faulted = False
         if status.get("off") or status.get("acquiring"):
             text = (status.get("sdr") or {}).get("text", "")
             if status.get("off") and getattr(self._worker, "held_off", False):
