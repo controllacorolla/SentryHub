@@ -192,8 +192,8 @@ QPushButton.navkey:focus {{ border-style: solid; border-color: {focus} {tile_bd}
                             border-width: {focus_w} {bw} {focus_w} {bw}; }}
 QPushButton.navkey_on {{ background: {tile_on_bg}; border: 2px solid {tile_on_bg}; border-radius: 6px;
                          padding: 0; min-height: 0; text-align: left; }}
-QPushButton.navkey_on:focus {{ border-style: solid solid double solid; border-color: {focus_on} {tile_on_bg};
-                               border-width: {bw} {bw} {focus_under} {bw}; }}
+/* open key focused: a full ring in the focus colour, not a hairline underline (RA-S1b N4) */
+QPushButton.navkey_on:focus {{ border: {focus_w} solid {focus_on}; }}
 QLabel.navcall {{ color: {tile_fg}; font-size: {status}px; font-weight: 600; }}
 QLabel.navcall_on {{ color: {tile_on_fg}; font-size: {status}px; font-weight: 700; }}
 QLabel.navlabel {{ color: {tile_fg}; font-size: {status}px; }}

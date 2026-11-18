@@ -25,8 +25,8 @@ class PpiScope(QtWidgets.QFrame):
         self.resized.emit()
         if getattr(self, "legend", None) is not None:
             # again once the host has re-fitted the scope square (_fit_scope resizes it again
-            # from inside this event, and the inner placement was left at the old width)
-            QtCore.QTimer.singleShot(0, self.place_legend)
+            # from inside this event): read the size as it stands now, after the re-fit
+            self.place_legend()
 
     def place_legend(self):
         """One tight row across the bottom of the scope (see __init__)."""

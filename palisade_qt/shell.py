@@ -6,8 +6,8 @@ Structure (CL1; rail order from device run 2, 2026-11-18: SYSTEM last; keys 1-9 
     6 FORGE hardware · 7 ASSISTANT ask · 8 MESH lora · 9 SYSTEM settings
     (SWEEP counter-surveillance is hidden in v0.1 — release.HIDDEN_PAGES; back with CL7.)
 
-There is no left rail and no footer: navigation and the four shell-owned status slots (MODE / RADIO /
-TX / ENGAGEMENT) share one ≤ 40 px strip, and the page gets everything below it. The shell owns the
+There is no footer: the rail holds the page keys, the four shell-owned status slots (MODE / RADIO /
+TX / ENGAGEMENT) share one ≤ 40 px strip, and the page gets everything else. The shell owns the
 global panels (RADIOS, ENGAGEMENT, alerts, key map, command palette), routes the keyboard, and draws
 a hatched border round the window in DEMO.
 
@@ -16,7 +16,9 @@ unlock_session from the TX panel, engagement.end(), executor.kill_all()); it add
 gate, and touches no decode path. The four slots follow the engines through chrome.gate_signals().
 """
 import os
+import re
 import sys
+import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -95,6 +97,7 @@ class PageNotice(QtWidgets.QLabel):
     the operator clicks the page name in the strip (then it lists everything the page reports)."""
     SHOW_MS = 7000
     LONG_MS = 12000
+    REMIND_S = 60
     _STATES = ("warn", "alert")
 
     def __init__(self, mode, parent):
@@ -107,9 +110,17 @@ class PageNotice(QtWidgets.QLabel):
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.hide)
-        self._active = {}              # page -> {key: state} of the warnings already shown
+        self._active = {}              # page -> {key: _sig} of the warnings already shown
+        self._left = {}                # page -> monotonic time the operator left it
+        self._page, self._keys = None, []    # the page and status keys the notice shows now
+        self._lines, self._worst = [], "warn"
         self.anchor = None             # the widget whose bottom-right corner it sits in
         self.blocked = None            # callable: True while a drawer / panel is open (RA-S1 F8)
+        self.refresh = None            # callable: re-read the page on screen (after a panel closes)
+        self._retry = QtCore.QTimer(self)
+        self._retry.setSingleShot(True)
+        self._retry.setInterval(700)
+        self._retry.timeout.connect(self._on_retry)
         self.hide()
 
     def mousePressEvent(self, ev):
@@ -136,27 +147,86 @@ class PageNotice(QtWidgets.QLabel):
         self.adjustSize()
         self.move(max(0, br.x() - self.width() - 12), max(0, br.y() - self.height() - 12))
 
+    @staticmethod
+    def _sig(v):
+        """What makes a warning the same warning: its state and the words of its text, without the
+        numbers and dashes. A counter or "(12s)" ticking, or an ATLAS layer count going "—" <-> 1, is
+        the same warning (RA-S1 F2, RA-S1c N6); a different message on the same key is new
+        (RA-S1b N1: RECON WIFI STANDBY -> BLE STANDBY on the shared sdr key)."""
+        return (v.get("state"), tuple(re.findall(r"[A-Za-z]+", str(v.get("text") or "").upper())))
+
     def consider(self, page, status):
-        """Show the page's warnings that were not already showing. A warning is one (key, state):
-        a text that only changes (a counter, "(12s)") is the same warning and is not shown again
-        (RA-S1 F2); a warning that clears and comes back is new again (F4); warn -> alert is new.
-        Returns the lines shown."""
+        """Show the page's warnings that were not already shown. A warning that clears and comes
+        back is new again (F4); warn -> alert is new; alert -> warn with the same message is not.
+        While a panel is open nothing is shown and nothing is marked as shown: the retry timer
+        shows it once the panel closes (RA-S1b N2). Returns the lines shown."""
         cur = {}
         for key, v in status.items():
             if (v or {}).get("text") and v.get("state") in self._STATES:
                 cur[key] = v
+        left = self._left.pop(page, None)
+        if left is not None and time.monotonic() - left >= self.REMIND_S:
+            self._active.pop(page, None)          # away a while: remind once on return (N3/N10)
         before = self._active.get(page, {})
-        self._active[page] = {k: v.get("state") for k, v in cur.items()}
-        new, worst = [], "warn"
+        sigs = {k: self._sig(v) for k, v in cur.items()}
+        newk = []
         for key, v in cur.items():
-            if before.get(key) == v.get("state") or (before.get(key) == "alert"):
+            was = before.get(key)
+            if was == sigs[key] or (was and was[0] == "alert" and was[1] == sigs[key][1]):
                 continue
-            new.append(v["text"])
-            if v.get("state") == "alert":
-                worst = "alert"
-        if new and not (callable(self.blocked) and self.blocked()):
-            self._show(["%s · %s" % (page, t) for t in new], worst, self.SHOW_MS)
-        return new
+            newk.append(key)
+        if newk and callable(self.blocked) and self.blocked():
+            # keep only what was already shown and is unchanged; try again shortly
+            self._active[page] = {k: s for k, s in sigs.items() if before.get(k) == s}
+            self._retry.start()
+            return []
+        self._active[page] = sigs
+        showing = self.isVisible() and self._page == page
+        if newk:
+            # a second warning moments later joins the one showing instead of replacing it
+            keys = [k for k in self._keys if k in cur and k not in newk] if showing else []
+            self._show_keys(page, cur, keys + newk, restart=True)
+        elif showing:
+            # the notice only ever says what the page reports NOW (RA-S1d N12): a line whose
+            # warning cleared goes, a line whose text changed is rewritten, the timer runs on
+            keys = [k for k in self._keys if k in cur]
+            if keys:
+                self._show_keys(page, cur, keys, restart=False)
+            else:
+                self.hide()
+                self._page, self._keys = None, []
+        return [cur[k]["text"] for k in newk]
+
+    def _show_keys(self, page, cur, keys, restart):
+        lines = ["%s · %s" % (page, cur[k]["text"]) for k in keys]
+        worst = "alert" if any(cur[k].get("state") == "alert" for k in keys) else "warn"
+        self._page, self._keys = page, list(keys)
+        if restart:
+            self._show(lines, worst, self.SHOW_MS)
+        elif lines != self._lines or worst != self._worst:
+            if callable(self.blocked) and self.blocked():
+                self.hide()            # never raised over an open drawer by an update (RA-S1e N16)
+            else:
+                self._show(lines, worst, max(1, self._timer.remainingTime()))
+        self._lines, self._worst = lines, worst
+
+    def forget(self, page):
+        """The operator left the page. If they come back after REMIND_S, its still-active warnings
+        show once more (RA-S1b N3); a quick flip between pages does not re-show them (RA-S1c N10)."""
+        self._left[page] = time.monotonic()
+
+    def stop(self):
+        """Window closing: no timer fires afterwards (RA-S1c N8)."""
+        self._retry.stop()
+        self._timer.stop()
+        self.refresh = None
+        self.blocked = None
+
+    def _on_retry(self):
+        if callable(self.blocked) and self.blocked():
+            self._retry.start()
+        elif callable(self.refresh):
+            self.refresh()
 
     def show_all(self, page, status):
         lines, worst = [], "neutral"
@@ -165,6 +235,7 @@ class PageNotice(QtWidgets.QLabel):
                 lines.append(v["text"])
                 if v.get("state") == "alert" or (v.get("state") == "warn" and worst != "alert"):
                     worst = v["state"]
+        self._page = None              # the full list stands on its own; nothing merges into it
         self._show(lines or ["%s: nothing to report" % page], worst, self.LONG_MS)
         return lines
 
@@ -248,6 +319,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self.notice = PageNotice(mode, central)
         self.notice.anchor = self.stack
         self.notice.blocked = self._panel_open
+        self.notice.refresh = lambda: self._page_status(self._current)
 
         self.pages = {}
         self._current = None
@@ -295,6 +367,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
             return
         if name != self._current and getattr(self, "notice", None) is not None:
             self.notice.hide()        # a notice belongs to its page, never over the next one (F3)
+            self.notice.forget(self._current)   # its warnings show again on return (RA-S1b N3)
         self._current = name
         self.stack.setCurrentWidget(w)
         self._page_status(name)
@@ -388,7 +461,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
         return self.pages.get(name + ":inner", self.pages.get(name))
 
     def set_nav_hidden(self, hidden):
-        """F on a map page: the page rail goes with the side panels (1-7 still switch pages)."""
+        """F on a map page: the page rail goes with the side panels (the number keys still switch pages)."""
         self.nav_rail.setVisible(not hidden)
 
     # ------------------------------------------------------------------ shell-owned chrome
@@ -811,6 +884,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
         return self.gpshome
 
     def closeEvent(self, ev):
+        if getattr(self, "notice", None) is not None:
+            self.notice.stop()
         if getattr(self, "gpshome", None) is not None:
             self.gpshome.stop()
         app = QtWidgets.QApplication.instance()

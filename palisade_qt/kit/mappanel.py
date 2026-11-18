@@ -75,10 +75,14 @@ class LegendRow(QtWidgets.QFrame):
                                    '<span style="color:#DDD;">&nbsp;%s</span>'
                                    % (tracksym.CLASS_COLOR[k], name))
             lab.setTextFormat(QtCore.Qt.RichText)
-            lab.setStyleSheet("font-size: 13px; background: transparent; border: none;")
+            lab.setStyleSheet("font-size: 16px; background: transparent; border: none;")  # CL1 16 px floor
             lay.addWidget(lab)
             self.items.append(lab)
         self.adjustSize()
+
+    def text(self):
+        """The legend's entries as one string, like the QLabel legend (ATLAS) answers."""
+        return " ".join(lab.text() for lab in self.items)
 
 
 class BaseMap(QtCore.QObject):
