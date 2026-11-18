@@ -87,6 +87,96 @@ class _NetBridge(QtCore.QObject):
         self._np.remove_listener(self._on)
 
 
+class PageNotice(QtWidgets.QLabel):
+    """A short notice that goes away by itself (owner, device run 2026-11-18: no permanent status
+    bar along the bottom of every module; "if you want a little message, not there"). Floats over
+    the bottom-right of the page for a few seconds when the page reports a NEW warning, or when
+    the operator clicks the page name in the strip (then it lists everything the page reports)."""
+    SHOW_MS = 7000
+    LONG_MS = 12000
+    _STATES = ("warn", "alert")
+
+    def __init__(self, mode, parent):
+        super().__init__(parent)
+        self._tok = theme.tokens(mode)
+        self.setObjectName("page_notice")
+        self.setWordWrap(True)
+        self.setMaximumWidth(560)
+        self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
+        self._timer = QtCore.QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self.hide)
+        self._seen = set()
+        self.anchor = None             # the widget whose bottom-right corner it sits in
+        self.hide()
+
+    def mousePressEvent(self, ev):
+        self.hide()                    # click to dismiss
+
+    def _show(self, lines, worst, ms):
+        col = self._tok["alert"] if worst == "alert" else self._tok["warn"] if worst == "warn" \
+            else self._tok["hairline"]
+        self.setStyleSheet("QLabel#page_notice { background:%s; color:%s; border:2px solid %s; "
+                           "border-radius:8px; padding:8px 12px; }"
+                           % (self._tok["p2"], self._tok["text"], col))
+        self.setText("\n".join(lines))
+        self.adjustSize()
+        self.place()
+        self.show()
+        self.raise_()
+        self._timer.start(ms)
+
+    def place(self):
+        a, par = self.anchor, self.parentWidget()
+        if a is None or par is None:
+            return
+        br = a.mapTo(par, QtCore.QPoint(a.width(), a.height()))
+        self.adjustSize()
+        self.move(max(0, br.x() - self.width() - 12), max(0, br.y() - self.height() - 12))
+
+    def consider(self, page, status):
+        """Show the page's warnings that have not been shown before. Returns the lines shown."""
+        new, worst = [], "warn"
+        for key, v in status.items():
+            text = (v or {}).get("text")
+            if not text or (v.get("state") not in self._STATES):
+                continue
+            k = (page, key, text)
+            if k in self._seen:
+                continue
+            self._seen.add(k)
+            new.append(text)
+            if v.get("state") == "alert":
+                worst = "alert"
+        if new:
+            self._show(new, worst, self.SHOW_MS)
+        return new
+
+    def show_all(self, page, status):
+        lines, worst = [], "neutral"
+        for v in status.values():
+            if v and v.get("text"):
+                lines.append(v["text"])
+                if v.get("state") == "alert" or (v.get("state") == "warn" and worst != "alert"):
+                    worst = v["state"]
+        self._show(lines or ["%s: nothing to report" % page], worst, self.LONG_MS)
+        return lines
+
+
+class PageStack(QtWidgets.QStackedWidget):
+    """The page area. A QStackedWidget's minimum is the LARGEST minimum of every page in it, and a
+    layout grows the window to fit it: opening RECON or showing a side panel again after F pushed
+    the window past 1280 px, off the screen and out of its maximized state (device runs
+    2026-11-17/18, "the window keeps resizing itself"). The page area never asks the window to grow;
+    pages lay out inside whatever the window is."""
+
+    def minimumSizeHint(self):
+        return QtCore.QSize(320, 240)
+
+    def sizeHint(self):
+        return QtCore.QSize(SCREEN[0] - 128, SCREEN[1] - 40)
+
+
 class PalisadeHub(QtWidgets.QMainWindow):
     def __init__(self, demo=False, mode="dark"):
         super().__init__()
@@ -116,7 +206,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
         body.setSpacing(0)
         self.nav_rail = self.topbar.nav_rail           # page keys down the left edge (2026-11-17)
         body.addWidget(self.nav_rail)
-        self.stack = QtWidgets.QStackedWidget()
+        self.stack = PageStack()
+        self.stack.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
         body.addWidget(self.stack, 1)
         vbox.addLayout(body, 1)
 
@@ -141,12 +232,15 @@ class PalisadeHub(QtWidgets.QMainWindow):
         self._net_bridge = _NetBridge(self)
         self._net_bridge.changed.connect(self._on_net)
         sessionlog.log().changed.connect(self._on_log)
+        eventbus.bus.published.connect(self._on_bus)       # the BAT slot follows the telemetry
         self.panic_banner = QtWidgets.QLabel("", central)
         self.panic_banner.setProperty("class", "value")
         self.panic_banner.setAlignment(QtCore.Qt.AlignCenter)
         self.panic_banner.setWordWrap(True)
         self.panic_banner.hide()
         self.demo_border = panels.DemoBorder(mode, central) if demo else None
+        self.notice = PageNotice(mode, central)
+        self.notice.anchor = self.stack
 
         self.pages = {}
         self._current = None
@@ -180,6 +274,9 @@ class PalisadeHub(QtWidgets.QMainWindow):
     def _add_page(self, name, widget):
         self.pages[name] = widget
         self.stack.addWidget(widget)
+        if hasattr(widget, "status_shown"):
+            widget.status_shown.connect(lambda n=name: self._page_status(n))
+            self._page_status(name)
         if hasattr(widget, "request"):
             widget.request.connect(self._on_request)
 
@@ -189,6 +286,7 @@ class PalisadeHub(QtWidgets.QMainWindow):
             return
         self._current = name
         self.stack.setCurrentWidget(w)
+        self._page_status(name)
         self.topbar.set_active_page(name)
         self.set_nav_hidden(bool(getattr(w, "side_hidden", lambda: False)()))
         self.setFocus()        # keys go to the page, not to whichever nav key was last focused
@@ -277,7 +375,36 @@ class PalisadeHub(QtWidgets.QMainWindow):
         if self.engage_panel.isVisible():
             self.engage_panel.refresh()
 
+    def _page_status(self, name):
+        """A page's status changed: what used to sit in its bottom bar. OPS's SDR presence goes to
+        the strip's SDR slot (once, labelled); a new warning on the page on screen becomes a short
+        notice (PageNotice)."""
+        page = self.pages.get(name)
+        if page is None or not hasattr(page, "shown_status"):
+            return
+        st = page.shown_status()
+        if name == "OPS" and "sdr" in st:
+            self.topbar.set_sdr_presence((st["sdr"] or {}).get("text"))
+        if name == self._current and getattr(self, "notice", None) is not None:
+            self.notice.consider(name, st)
+
+    def show_page_messages(self):
+        page = self.pages.get(self._current)
+        if page is not None and hasattr(page, "shown_status"):
+            return self.notice.show_all(self._current, page.shown_status())
+        return []
+
+    def _on_bus(self, ev):
+        if ev.get("type") == "decode" and (ev.get("payload") or {}).get("kind") == "telemetry":
+            self.topbar.set_battery(ev["payload"].get("batt"))
+
     def _slot_clicked(self, key):
+        if key == "page":                          # the page name: what this page reports now
+            self.show_page_messages()
+            return
+        if key == "battery":                       # the device's health lives in DOCTOR
+            self.open_callsign("SYSTEM", "DOCTOR")
+            return
         # MODE opens the session log while it carries the fault indicator, else the key map
         if key == "mode":
             key = "log" if sessionlog.log().faults_unseen() else "keys"
@@ -613,6 +740,8 @@ class PalisadeHub(QtWidgets.QMainWindow):
         for o in self._overlays:
             if o.isVisible():
                 o.place()
+        if getattr(self, "notice", None) is not None and self.notice.isVisible():
+            self.notice.place()
 
     def showEvent(self, ev):
         super().showEvent(ev)
@@ -644,6 +773,10 @@ class PalisadeHub(QtWidgets.QMainWindow):
         except (TypeError, RuntimeError):
             pass
         self._net_bridge.stop()
+        try:
+            eventbus.bus.published.disconnect(self._on_bus)
+        except (TypeError, RuntimeError):
+            pass
         for sig, slot in ((sessionlog.log().changed, self._on_log),
                           (self.log_panel.log.changed, self.log_panel._changed)):
             try:
@@ -675,8 +808,22 @@ def main(argv=None):
     sessionlog.install_hooks()                 # C4: uncaught exceptions reach the session log
     sessionlog.watch_network()                 # L3: every outbound request is logged
     hub = PalisadeHub(demo=demo, mode=mode)
-    hub.show()
+    show_fitted(hub)
     return app.exec()
+
+
+def show_fitted(hub, screen=None):
+    """On a screen the size of the uConsole's (or smaller), open maximized: the window IS the screen,
+    and nothing in it can push it bigger (PageStack). On a larger dev screen, a 1280x720 window."""
+    scr = screen or QtGui.QGuiApplication.primaryScreen()
+    avail = scr.availableGeometry() if scr is not None else None
+    if avail is not None and avail.width() <= 1400 and avail.height() <= 850:
+        hub.setMaximumSize(avail.size())
+        hub.showMaximized()
+        return "maximized"
+    hub.resize(*SCREEN)
+    hub.show()
+    return "window"
 
 
 if __name__ == "__main__":

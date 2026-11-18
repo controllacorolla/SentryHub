@@ -29,7 +29,8 @@ from .worker import Worker
 ALL_CALLSIGNS = [
     ("OPS", "home"), ("ATLAS", "map"), ("PRISM", "spectrum"), ("PROWL", "listen"),
     ("SWEEP", "sweep"), ("RECON", "survey"), ("FORGE", "hardware"),
-    ("SYSTEM", "settings"), ("ASSISTANT", "ask"), ("MESH", "lora"),
+    ("ASSISTANT", "ask"), ("MESH", "lora"),
+    ("SYSTEM", "settings"),            # last in the rail (owner, device run 2026-11-18)
 ]
 # v0.1 launch line (owner, 2026-11-16): SWEEP is hidden until CL7 validates its detectors.
 # Its code stays; the strip, the keys and the palette do not offer it.
@@ -68,10 +69,8 @@ class DemoFeedWorker(Worker):
             "kind": "telemetry", "temp": 62 + 3 * math.sin((now - self._t0) * 0.1),
             "batt": batt, "gps": 9}, severity="info", demo=True))
         self.status.emit({"sdr": {"text": "SDR DEMO", "state": "neutral"},
-                          "gps": {"text": "GPS 9 SV", "state": "neutral"},
-                          "pwr": {"text": "PWR %d%%" % batt,
-                                  "state": "alert" if batt <= 10 else "warn" if batt <= 20
-                                  else "neutral"}})
+                          "gps": {"text": "GPS 9 SV", "state": "neutral"}})
+        # battery: the top strip's BAT slot (shell), not a bare PWR in this footer (2026-11-18)
 
 
 def sdr_chip(sys_root="/sys"):
@@ -105,11 +104,7 @@ class LiveStatusWorker(Worker):
         eventbus.bus.publish(eventbus.make_event("decode", "OPS", {
             "kind": "telemetry", "temp": temp, "batt": batt,
             "gps": _read_gps_sats()}, severity="info"))
-        self.status.emit({
-            "sdr": sdr_chip(self._sys_root),
-            "pwr": {"text": "PWR %d%%" % batt if batt is not None else "PWR —",
-                    "state": ("alert" if batt is not None and batt <= 10
-                              else "warn" if batt is not None and batt <= 20 else "neutral")}})
+        self.status.emit({"sdr": sdr_chip(self._sys_root)})   # battery: the strip's BAT slot
 
 
 def _read_cpu_temp():
@@ -209,20 +204,30 @@ class OpsHome(PalisadeApp):
         hv.setSpacing(8)
         # device notes 2026-11-17 (maps too small): the caption sits on the count's row instead of
         # a row of its own, so the scope gets that height back
+        # owner 2026-11-18: a bare big "0" left of "CONTACTS LIVE" read as a logo. The caption now
+        # comes first and names the number: "CONTACTS ON MAP 19", the reason under it.
         stat = QtWidgets.QHBoxLayout()
-        self.big = QtWidgets.QLabel("—")
-        self.big.setProperty("class", "hero")
-        stat.addWidget(self.big)
+        stat.setSpacing(10)
         col = QtWidgets.QVBoxLayout()
         col.setSpacing(1)
-        col.addWidget(micro("Contacts live"))
+        row1 = QtWidgets.QHBoxLayout()
+        row1.setSpacing(10)
+        self.big_cap = micro("Contacts on map")
+        row1.addWidget(self.big_cap, 0, QtCore.Qt.AlignVCenter)
+        self.big = QtWidgets.QLabel("—")
+        self.big.setProperty("class", "value")
+        self.big.setToolTip("contacts on the OPS map now: aircraft, vessels, APRS, drones, sondes")
+        row1.addWidget(self.big, 0, QtCore.Qt.AlignVCenter)
+        row1.addStretch(1)
+        col.addLayout(row1)
         self.sub = QtWidgets.QLabel("standby")
         self.sub.setProperty("class", "note")
         col.addWidget(self.sub)
-        stat.addLayout(col)
-        stat.addStretch(1)
+        stat.addLayout(col, 1)
         # short: the sub-line beside it needs the room (RA-UIP L1)
-        stat.addWidget(micro("All feeds"), 0, QtCore.Qt.AlignTop)
+        feeds = micro("All feeds")
+        feeds.setToolTip("this map merges every contact feed (ADS-B, AIS, APRS, Remote-ID, sondes)")
+        stat.addWidget(feeds, 0, QtCore.Qt.AlignTop)
         hv.addLayout(stat)
         self.ppi = PpiScope(span_nm=80, mode=self.mode)
         self._home_cover = Cover(self.ppi, "offline", "HOME NOT SET",
@@ -253,7 +258,8 @@ class OpsHome(PalisadeApp):
         two = QtWidgets.QHBoxLayout()
         two.setSpacing(9)
         self.mini_pass = self._mini("NEXT PASS", "—")
-        self.mini_pwr = self._mini("POWER", "—")
+        # POWER moved to the strip's BAT slot; this card says where HOME (the map centre) comes from
+        self.mini_pwr = self._mini("HOME", self._home_text())
         two.addWidget(self.mini_pass[0])
         two.addWidget(self.mini_pwr[0])
         rv.addLayout(two)
@@ -311,9 +317,13 @@ class OpsHome(PalisadeApp):
             self._render_decodes()
 
     def _telemetry(self, pl):
-        batt = pl.get("batt")
-        if batt is not None:
-            self.mini_pwr[1].setText("%d%%" % batt)
+        pass                        # battery: the strip's BAT slot (shell._on_bus)
+
+    def _home_text(self):
+        src = eventbus.HOME_SOURCE
+        if not eventbus.home_set() and not self.demo:
+            return "NOT SET"
+        return {"gps": "GPS fix", "settings": "typed", "demo": "demo"}.get(src, src or "—")
 
     def side_changed(self, hidden):
         if hidden:
@@ -349,6 +359,7 @@ class OpsHome(PalisadeApp):
                     c.update(x=x, y=y, rng=math.hypot(x, y))
             self._trails = {}
         self._frame = frame
+        self.mini_pwr[1].setText(self._home_text())
         no_home = not self.demo and not eventbus.home_set()
         self._home_cover.show(no_home)               # N26: no rings from a guessed origin
         h = eventbus.home() or (self.demo and eventbus.DEMO_HOME) or None

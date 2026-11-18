@@ -28,6 +28,11 @@ DARK = {
     "focus": "#FFFFFF", "focus_w": "2px", "bw": "1px",
     "focus_on": "#FFFFFF", "focus_under": "2px",
     "check_bg": "rgba(164,146,218,0.22)", "check_fg": "#C9BCF2", "disabled": "#5F6772",
+    # rail tiles (owner 2026-11-18): pages purple, sub-pages light purple; the open one is solid
+    "tile_bg": "rgba(164,146,218,0.26)", "tile_bd": "#A492DA", "tile_fg": "#E6E9EE",
+    "tile_on_bg": "#A492DA", "tile_on_fg": "#0C0F13",
+    "sub_bg": "rgba(201,188,242,0.24)", "sub_bd": "#C9BCF2", "sub_fg": "#E6E9EE",
+    "sub_on_bg": "#C9BCF2", "sub_on_fg": "#0C0F13",
 }
 LIGHT = {
     "bg": "#E9EBEE", "p1": "#F5F6F8", "p2": "#FFFFFF", "well": "#DADDE2",
@@ -40,6 +45,10 @@ LIGHT = {
     "focus": "#000000", "focus_w": "2px", "bw": "1px",
     "focus_on": "#000000", "focus_under": "2px",
     "check_bg": "rgba(90,71,144,0.18)", "check_fg": "#3B2C6B", "disabled": "#8A9099",
+    "tile_bg": "rgba(90,71,144,0.20)", "tile_bd": "#5A4790", "tile_fg": "#1B1E22",
+    "tile_on_bg": "#5A4790", "tile_on_fg": "#FFFFFF",
+    "sub_bg": "rgba(143,127,196,0.16)", "sub_bd": "#8F7FC4", "sub_fg": "#1B1E22",
+    "sub_on_bg": "#CFC6EC", "sub_on_fg": "#2A1F52",
 }
 # SUN: direct-sunlight theme. Black and white only, nothing under 7:1, 2 px borders. Colour carries
 # nothing here, so every state must also be a word and a shape (the status slots do both).
@@ -54,6 +63,11 @@ SUN = {
     "focus": "#000000", "focus_w": "4px", "bw": "2px",
     "focus_on": "#FFFFFF", "focus_under": "3px",
     "check_bg": "#000000", "check_fg": "#FFFFFF", "disabled": "#595959",
+    # SUN is black and white: pages and sub-pages differ by weight, the open one is inverted
+    "tile_bg": "#FFFFFF", "tile_bd": "#000000", "tile_fg": "#000000",
+    "tile_on_bg": "#000000", "tile_on_fg": "#FFFFFF",
+    "sub_bg": "#FFFFFF", "sub_bd": "#000000", "sub_fg": "#000000",
+    "sub_on_bg": "#000000", "sub_on_fg": "#FFFFFF",
 }
 MODES = {"dark": DARK, "light": LIGHT, "sun": SUN}
 FONT_STACK = '"IBM Plex Mono", "DejaVu Sans Mono", monospace'
@@ -170,33 +184,41 @@ QProgressBar::chunk {{ background: {accent}; border-radius: 3px; }}
 QFrame#top_bar {{ background: {p1}; border: none; border-bottom: {bw} solid {hairline}; }}
 QFrame#nav_rail {{ background: {p1}; border: none; border-right: {bw} solid {hairline}; }}
 QLabel#strip_title {{ color: {text}; font-size: {status}px; font-weight: 600; }}
-QPushButton.navkey {{ background: transparent; border: {bw} solid transparent; border-radius: 5px;
+QPushButton.navkey {{ background: {tile_bg}; border: {bw} solid {tile_bd}; border-radius: 6px;
                       padding: 0; min-height: 0; text-align: left; }}
-QPushButton.navkey:hover {{ background: {row_hover}; }}
-/* focus on a nav key: over- and underline only (RA-CL1c F1). Both text lines run edge to edge
-   (SIDE = 1 px), so a side ring painted over the first/last glyph columns ('8 SYSTEM' read
-   '3 SYSTEM' in SUN). The sides keep their unfocused width + colour; focus_under fits the ink-free
-   rows under the label; corners are square (a rounded thick underline curls up into the edge
-   glyphs); focus_on is the cue on the current page's filled key (SUN: white on black). No width. */
-QPushButton.navkey:focus {{ border-style: solid; border-color: {focus} transparent;
-                            border-width: {bw} {bw} {focus_under} {bw}; border-radius: 0; }}
-QPushButton.navkey_on {{ background: {check_bg}; border: {bw} solid {accent}; border-radius: 0;
+QPushButton.navkey:hover {{ border-width: 2px; }}
+/* focus: a heavier over- and underline in the focus colour, sides unchanged (RA-CL1c F1) */
+QPushButton.navkey:focus {{ border-style: solid; border-color: {focus} {tile_bd};
+                            border-width: {bw} {bw} {focus_under} {bw}; }}
+QPushButton.navkey_on {{ background: {tile_on_bg}; border: 2px solid {tile_on_bg}; border-radius: 6px;
                          padding: 0; min-height: 0; text-align: left; }}
-QPushButton.navkey_on:focus {{ border-style: solid solid double solid; border-color: {focus_on} {accent};
-                               border-width: {bw} {bw} {focus_under} {bw}; border-radius: 0; }}
-QLabel.navcall {{ color: {text}; font-size: {status}px; font-weight: 600; }}
-QLabel.navcall_on {{ color: {check_fg}; font-size: {status}px; font-weight: 600; }}
-QLabel.navlabel {{ color: {muted}; font-size: {status}px; }}
-QLabel.navlabel_on {{ color: {check_fg}; font-size: {status}px; }}
+QPushButton.navkey_on:focus {{ border-style: solid solid double solid; border-color: {focus_on} {tile_on_bg};
+                               border-width: {bw} {bw} {focus_under} {bw}; }}
+QLabel.navcall {{ color: {tile_fg}; font-size: {status}px; font-weight: 600; }}
+QLabel.navcall_on {{ color: {tile_on_fg}; font-size: {status}px; font-weight: 700; }}
+QLabel.navlabel {{ color: {tile_fg}; font-size: {status}px; }}
+QLabel.navlabel_on {{ color: {tile_on_fg}; font-size: {status}px; }}
+/* sub-pages nested under the open page: light purple tiles; the open one solid */
+QWidget[nested="true"] QPushButton.subtab {{ background: {sub_bg}; color: {sub_fg};
+                                             border: {bw} solid {sub_bd}; border-radius: 6px; }}
+QWidget[nested="true"] QPushButton.subtab:checked {{ background: {sub_on_bg}; color: {sub_on_fg};
+                                                     border: 2px solid {sub_on_bg}; font-weight: 600; }}
+QWidget[nested="true"] QPushButton.subtab:focus {{ border: {focus_w} solid {focus}; }}
+/* run state (set_run) */
+QPushButton[run="on"] {{ background: {live}; color: {bg}; border: {bw} solid {live}; font-weight: 600; }}
+QPushButton[run="off"] {{ background: {alert}; color: {bg}; border: {bw} solid {alert}; font-weight: 600; }}
+QPushButton[run="on"]:focus, QPushButton[run="off"]:focus {{ border: {focus_w} solid {focus}; }}
+QPushButton[run="off"]:disabled {{ background: transparent; color: {disabled}; border: {bw} dashed {disabled}; }}
 QFrame.slot {{ background: transparent; border: none; }}  /* no dividers: spacing only (owner 2026-11-17) */
 QFrame.slot:focus {{ border: {focus_w} solid {focus}; }}
 QLabel.slotcap {{ color: {muted}; font-size: {status}px; letter-spacing: 1px; }}
 QLabel.slotval {{ color: {text}; font-size: {status}px; font-weight: 600; }}
 QLabel#dtg {{ color: {text}; font-size: {status}px; }}
-QSlider#vol::groove:horizontal {{ height: 4px; background: {hairline}; border-radius: 2px; }}
-QSlider#vol::handle:horizontal {{ width: 14px; height: 14px; margin: -6px 0;
-                                  border-radius: 7px; background: {accent}; }}
-QSlider#vol::sub-page:horizontal {{ background: {accent}; border-radius: 2px; }}
+QSlider#vol {{ background: transparent; }}
+QSlider#vol::groove:horizontal {{ height: 8px; background: {hairline}; border-radius: 4px; }}
+QSlider#vol::handle:horizontal {{ width: 20px; height: 20px; margin: -6px 0;
+                                  border-radius: 10px; background: {accent}; }}
+QSlider#vol::sub-page:horizontal {{ background: {accent}; border-radius: 4px; }}
 QSlider#vol:focus {{ border: {focus_w} solid {focus}; }}
 QSlider#vol:disabled::handle:horizontal {{ background: {disabled}; }}
 
